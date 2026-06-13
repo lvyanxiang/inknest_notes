@@ -28,6 +28,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Notebook 1'), findsOneWidget);
+    expect(find.byTooltip('Export PDF'), findsOneWidget);
     expect(find.text('No notebooks yet'), findsNothing);
   });
 

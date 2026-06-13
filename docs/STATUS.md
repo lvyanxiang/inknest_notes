@@ -2,9 +2,9 @@
 
 ## Current
 
-- Milestone: 7 - Export
-- Next task: Design export pipeline.
-- Last completed: Milestone 6 PDF import and annotation.
+- Milestone: 8 - Sync and Backup
+- Next task: Choose sync target: iCloud, WebDAV, or custom backend.
+- Last completed: Milestone 7 Export.
 
 ## Decisions
 
@@ -19,6 +19,8 @@
 - Store notebook metadata and page strokes as readable JSON under the app documents directory.
 - Store page order on `Notebook.pageIds`; each page is saved as `pages/<page-id>.json`.
 - Use `file_picker` for PDF selection and `pdfrx` for iOS/iPadOS PDF rendering.
+- Use the `pdf` package for PDF export, `image` for rendered PDF background encoding, and `file_picker.saveFile` for the first save/share action.
+- Exported annotated PDFs rasterize imported PDF backgrounds and overlay editable strokes as vector paths in the generated output.
 
 ## Verification
 
@@ -37,3 +39,4 @@
 - File storage layout is documented in `docs/STORAGE.md`.
 - Editor can add pages, switch pages, and persist each page independently.
 - Library can import a PDF, copy it into notebook assets, create one note page per PDF page, and render the PDF page behind editable strokes.
+- Editor can export the current notebook as a PDF, including blank pages, imported PDF page backgrounds, and handwriting strokes.

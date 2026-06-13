@@ -160,11 +160,11 @@ Acceptance criteria:
 
 Tasks:
 
-- [ ] Design export pipeline.
-- [ ] Render note pages with strokes into export output.
-- [ ] Export blank-page notebooks.
-- [ ] Export annotated PDFs.
-- [ ] Add share/save action.
+- [x] Design export pipeline.
+- [x] Render note pages with strokes into export output.
+- [x] Export blank-page notebooks.
+- [x] Export annotated PDFs.
+- [x] Add share/save action.
 
 ## Milestone 8: Sync and Backup
 
@@ -210,6 +210,6 @@ documents/
 
 ## Current Focus
 
-Start with Milestone 0, then move through the roadmap in order. When a task is
-completed, mark it with `[x]` and keep notes in this file if the implementation
-choice affects later milestones.
+Continue with Milestone 8, then move through the roadmap in order. When a task
+is completed, mark it with `[x]` and keep notes in this file if the
+implementation choice affects later milestones.

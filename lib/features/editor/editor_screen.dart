@@ -1,6 +1,8 @@
 import 'dart:async';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:inknest_notes/export/notebook_pdf_exporter.dart';
 import 'package:inknest_notes/features/editor/canvas/drawing_canvas.dart';
 import 'package:inknest_notes/features/editor/canvas/pdf_page_background.dart';
 import 'package:inknest_notes/features/editor/tools/editor_toolbar.dart';
@@ -30,6 +32,7 @@ class _EditorScreenState extends State<EditorScreen> {
   DrawingTool _tool = const DrawingTool();
   late Notebook _notebook;
   late String _currentPageId;
+  bool _isExporting = false;
   NotePage? _page;
 
   @override
@@ -67,7 +70,7 @@ class _EditorScreenState extends State<EditorScreen> {
       _redoStack.clear();
     });
 
-    _savePage();
+    unawaited(_savePage());
   }
 
   void _undo() {
@@ -82,7 +85,7 @@ class _EditorScreenState extends State<EditorScreen> {
       _page = page.copyWith(strokes: updatedStrokes);
     });
 
-    _savePage();
+    unawaited(_savePage());
   }
 
   void _redo() {
@@ -96,7 +99,7 @@ class _EditorScreenState extends State<EditorScreen> {
       _page = page.copyWith(strokes: [...page.strokes, stroke]);
     });
 
-    _savePage();
+    unawaited(_savePage());
   }
 
   void _setTool(DrawingTool tool) {
@@ -124,7 +127,7 @@ class _EditorScreenState extends State<EditorScreen> {
       _redoStack.clear();
     });
 
-    _savePage();
+    unawaited(_savePage());
   }
 
   bool _strokeIntersectsEraser(Stroke stroke, List<StrokePoint> eraserPoints) {
@@ -141,13 +144,13 @@ class _EditorScreenState extends State<EditorScreen> {
     return false;
   }
 
-  void _savePage() {
+  Future<void> _savePage() async {
     final page = _page;
     if (page == null) {
       return;
     }
 
-    unawaited(widget.notebookRepository.savePage(_notebook, page));
+    await widget.notebookRepository.savePage(_notebook, page);
   }
 
   Future<void> _addPage() async {
@@ -165,6 +168,71 @@ class _EditorScreenState extends State<EditorScreen> {
     });
 
     await _loadPage();
+  }
+
+  Future<void> _exportPdf() async {
+    if (_isExporting) {
+      return;
+    }
+
+    setState(() {
+      _isExporting = true;
+    });
+
+    try {
+      await _savePage();
+      final bytes = await NotebookPdfExporter(
+        notebookRepository: widget.notebookRepository,
+      ).exportNotebook(_notebook);
+      final fileName = _exportFileName();
+      final savedPath = await FilePicker.saveFile(
+        dialogTitle: 'Export notebook',
+        fileName: fileName,
+        type: FileType.custom,
+        allowedExtensions: const ['pdf'],
+        bytes: bytes,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            savedPath == null ? 'Export canceled' : 'Exported $fileName',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Export failed: $error')));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isExporting = false;
+        });
+      }
+    }
+  }
+
+  String _exportFileName() {
+    final sanitizedTitle = _notebook.title.trim().replaceAll(
+      RegExp(r'[\\/:*?"<>|]+'),
+      '-',
+    );
+    final title = sanitizedTitle.isEmpty ? 'InkNest Notes' : sanitizedTitle;
+
+    if (title.toLowerCase().endsWith('.pdf')) {
+      return title;
+    }
+
+    return '$title.pdf';
   }
 
   Future<void> _selectPage(String pageId) async {
@@ -189,6 +257,18 @@ class _EditorScreenState extends State<EditorScreen> {
       appBar: AppBar(
         title: Text(_notebook.title),
         actions: [
+          IconButton(
+            onPressed: page == null || _isExporting
+                ? null
+                : () => unawaited(_exportPdf()),
+            tooltip: 'Export PDF',
+            icon: _isExporting
+                ? const SizedBox.square(
+                    dimension: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.ios_share),
+          ),
           IconButton(
             onPressed: page == null || page.strokes.isEmpty ? null : _undo,
             tooltip: 'Undo',
