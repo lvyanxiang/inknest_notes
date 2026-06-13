@@ -2,7 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 
-enum ToolType { pen }
+enum ToolType { pen, highlighter, eraser }
 
 @immutable
 class DrawingTool {
@@ -15,4 +15,12 @@ class DrawingTool {
   final ToolType type;
   final Color color;
   final double width;
+
+  DrawingTool copyWith({ToolType? type, Color? color, double? width}) {
+    return DrawingTool(
+      type: type ?? this.type,
+      color: color ?? this.color,
+      width: width ?? this.width,
+    );
+  }
 }

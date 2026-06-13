@@ -81,13 +81,13 @@ Acceptance criteria:
 
 Tasks:
 
-- [ ] Add editor toolbar.
-- [ ] Add pen tool.
-- [ ] Add highlighter tool.
-- [ ] Add eraser tool.
-- [ ] Add color selector.
-- [ ] Add width selector.
-- [ ] Improve touch target sizing for tablet use.
+- [x] Add editor toolbar.
+- [x] Add pen tool.
+- [x] Add highlighter tool.
+- [x] Add eraser tool.
+- [x] Add color selector.
+- [x] Add width selector.
+- [x] Improve touch target sizing for tablet use.
 
 ## Milestone 4: Local Persistence
 

@@ -20,6 +20,8 @@ class Stroke {
   final double width;
   final List<StrokePoint> points;
 
+  bool get isHighlighter => tool == ToolType.highlighter;
+
   Stroke copyWith({List<StrokePoint>? points}) {
     return Stroke(
       id: id,

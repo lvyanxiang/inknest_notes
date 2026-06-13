@@ -55,4 +55,45 @@ void main() {
 
     expect(tester.widget<IconButton>(undoButton).onPressed, isNotNull);
   });
+
+  testWidgets('switches editor tools and erases a stroke', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const InkNestApp());
+
+    await tester.tap(find.text('New notebook'));
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Pen'), findsOneWidget);
+    expect(find.byTooltip('Highlighter'), findsOneWidget);
+    expect(find.byTooltip('Eraser'), findsOneWidget);
+    expect(find.byTooltip('Width 3'), findsOneWidget);
+    expect(find.byTooltip('Width 5'), findsOneWidget);
+    expect(find.byTooltip('Width 8'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Highlighter'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Width 8'));
+    await tester.pump();
+
+    final canvas = find.byType(DrawingCanvas);
+    final center = tester.getCenter(canvas);
+    final gesture = await tester.startGesture(center);
+    await gesture.moveBy(const Offset(40, 0));
+    await gesture.up();
+    await tester.pump();
+
+    final undoButton = find.widgetWithIcon(IconButton, Icons.undo);
+    expect(tester.widget<IconButton>(undoButton).onPressed, isNotNull);
+
+    await tester.tap(find.byTooltip('Eraser'));
+    await tester.pump();
+
+    final eraserGesture = await tester.startGesture(center);
+    await eraserGesture.moveBy(const Offset(8, 0));
+    await eraserGesture.up();
+    await tester.pump();
+
+    expect(tester.widget<IconButton>(undoButton).onPressed, isNull);
+  });
 }

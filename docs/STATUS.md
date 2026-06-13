@@ -2,9 +2,9 @@
 
 ## Current
 
-- Milestone: 3 - Editor Tools
-- Next task: Add editor toolbar.
-- Last completed: Milestone 2 single-page handwriting core.
+- Milestone: 4 - Local Persistence
+- Next task: Define file-based storage layout.
+- Last completed: Milestone 3 editor tools.
 
 ## Decisions
 
@@ -15,6 +15,7 @@
 - Keep the first app shell dependency-free; add state management and routing when notebook creation/navigation needs them.
 - Use an in-memory notebook repository until local persistence begins.
 - Keep first handwriting state in editor memory until local persistence begins.
+- Use the first eraser as whole-stroke erasing by proximity; partial stroke splitting can come later.
 
 ## Verification
 
@@ -29,3 +30,4 @@
 - Library, notebook, and editor feature folders exist under `lib/features`.
 - Library can create `Notebook 1` and navigate to an editor placeholder.
 - Editor has a fixed white page canvas, captures pointer strokes, renders with `CustomPainter`, and supports undo/redo.
+- Editor toolbar supports pen, highlighter, eraser, color choices, and width choices.

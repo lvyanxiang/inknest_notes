@@ -10,11 +10,13 @@ class DrawingCanvas extends StatefulWidget {
     required this.page,
     required this.tool,
     required this.onStrokeComplete,
+    required this.onErase,
   });
 
   final NotePage page;
   final DrawingTool tool;
   final ValueChanged<Stroke> onStrokeComplete;
+  final ValueChanged<List<StrokePoint>> onErase;
 
   @override
   State<DrawingCanvas> createState() => _DrawingCanvasState();
@@ -25,6 +27,11 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
 
   void _startStroke(PointerDownEvent event) {
     final point = _pointFromEvent(event.localPosition, event.pressure);
+
+    if (widget.tool.type == ToolType.eraser) {
+      widget.onErase([point]);
+      return;
+    }
 
     setState(() {
       _activeStroke = Stroke(
@@ -38,6 +45,11 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
   }
 
   void _appendPoint(PointerMoveEvent event) {
+    if (widget.tool.type == ToolType.eraser) {
+      widget.onErase([_pointFromEvent(event.localPosition, event.pressure)]);
+      return;
+    }
+
     final activeStroke = _activeStroke;
     if (activeStroke == null) {
       return;
@@ -113,6 +125,9 @@ class _StrokePainter extends CustomPainter {
         ..strokeWidth = stroke.width
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round
+        ..blendMode = stroke.isHighlighter
+            ? BlendMode.multiply
+            : BlendMode.srcOver
         ..style = PaintingStyle.stroke;
 
       if (stroke.points.length == 1) {
