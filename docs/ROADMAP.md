@@ -43,11 +43,11 @@ Acceptance criteria:
 
 Tasks:
 
-- [ ] Build notebook library screen.
-- [ ] Add empty state and create-notebook action.
-- [ ] Define `Notebook` model.
-- [ ] Add in-memory notebook repository.
-- [ ] Navigate from library to editor.
+- [x] Build notebook library screen.
+- [x] Add empty state and create-notebook action.
+- [x] Define `Notebook` model.
+- [x] Add in-memory notebook repository.
+- [x] Navigate from library to editor.
 
 ## Milestone 2: Single-Page Handwriting Core
 
