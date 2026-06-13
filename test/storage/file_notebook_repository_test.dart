@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:inknest_notes/models/note_page.dart';
+import 'package:inknest_notes/models/pdf_background.dart';
 import 'package:inknest_notes/models/stroke.dart';
 import 'package:inknest_notes/models/stroke_point.dart';
 import 'package:inknest_notes/models/tool.dart';
@@ -114,4 +115,62 @@ void main() {
     expect(firstPage.strokes, isEmpty);
     expect(secondPage.strokes, hasLength(1));
   });
+
+  test('persists pdf page background as a relative asset path', () async {
+    final notebook = await repository.createNotebook(title: 'PDF Notes');
+
+    await repository.savePage(
+      notebook,
+      const NotePage(
+        id: 'page-1',
+        width: 768,
+        height: 1024,
+        pdfBackground: PdfBackground(
+          assetPath: 'assets/imported.pdf',
+          pageNumber: 1,
+        ),
+      ),
+    );
+
+    final reloadedRepository = FileNotebookRepository(
+      rootDirectory: tempDirectory,
+    );
+    final reloadedPage = await reloadedRepository.loadPage(notebook, 'page-1');
+
+    expect(reloadedPage.pdfBackground?.assetPath, 'assets/imported.pdf');
+    expect(
+      reloadedPage.pdfBackground?.filePath,
+      '${tempDirectory.path}/notebooks/${notebook.id}/assets/imported.pdf',
+    );
+    expect(reloadedPage.pdfBackground?.pageNumber, 1);
+  });
+
+  test(
+    'resolves old absolute pdf asset paths into the current notebook assets',
+    () async {
+      final notebook = await repository.createNotebook(title: 'PDF Notes');
+
+      await repository.savePage(
+        notebook,
+        const NotePage(
+          id: 'page-1',
+          width: 768,
+          height: 1024,
+          pdfBackground: PdfBackground(
+            assetPath:
+                '/old/container/notebooks/notebook-1/assets/imported.pdf',
+            pageNumber: 1,
+          ),
+        ),
+      );
+
+      final reloadedPage = await repository.loadPage(notebook, 'page-1');
+
+      expect(reloadedPage.pdfBackground?.assetPath, 'assets/imported.pdf');
+      expect(
+        reloadedPage.pdfBackground?.filePath,
+        '${tempDirectory.path}/notebooks/${notebook.id}/assets/imported.pdf',
+      );
+    },
+  );
 }

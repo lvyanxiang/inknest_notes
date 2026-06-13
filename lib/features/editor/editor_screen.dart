@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:inknest_notes/features/editor/canvas/drawing_canvas.dart';
+import 'package:inknest_notes/features/editor/canvas/pdf_page_background.dart';
 import 'package:inknest_notes/features/editor/tools/editor_toolbar.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/notebook.dart';
@@ -240,11 +241,23 @@ class _EditorScreenState extends State<EditorScreen> {
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
-              child: DrawingCanvas(
-                page: page,
-                tool: _tool,
-                onStrokeComplete: _addStroke,
-                onErase: _eraseAt,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (page.pdfBackground case final background?)
+                    PdfPageBackgroundView(
+                      key: ValueKey(
+                        '${background.filePath}-${background.pageNumber}',
+                      ),
+                      background: background,
+                    ),
+                  DrawingCanvas(
+                    page: page,
+                    tool: _tool,
+                    onStrokeComplete: _addStroke,
+                    onErase: _eraseAt,
+                  ),
+                ],
               ),
             ),
           ),

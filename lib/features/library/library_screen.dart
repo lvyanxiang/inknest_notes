@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:inknest_notes/features/editor/editor_screen.dart';
 import 'package:inknest_notes/models/notebook.dart';
@@ -48,6 +51,27 @@ class _LibraryScreenState extends State<LibraryScreen> {
     _openNotebook(notebook);
   }
 
+  Future<void> _importPdf() async {
+    final result = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['pdf'],
+    );
+    final path = result?.files.single.path;
+    if (path == null) {
+      return;
+    }
+
+    final notebook = await widget.notebookRepository.importPdf(File(path));
+
+    await _loadNotebooks();
+
+    if (!mounted) {
+      return;
+    }
+
+    _openNotebook(notebook);
+  }
+
   void _openNotebook(Notebook notebook) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -71,6 +95,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
             icon: const Icon(Icons.search),
           ),
           IconButton(
+            onPressed: _importPdf,
+            tooltip: 'Import PDF',
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+          ),
+          IconButton(
             onPressed: _createNotebook,
             tooltip: 'New notebook',
             icon: const Icon(Icons.add_circle_outline),
@@ -81,7 +110,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : _notebooks.isEmpty
-            ? _EmptyLibrary(onCreateNotebook: _createNotebook)
+            ? _EmptyLibrary(
+                onCreateNotebook: _createNotebook,
+                onImportPdf: _importPdf,
+              )
             : _NotebookGrid(
                 notebooks: _notebooks,
                 onOpenNotebook: _openNotebook,
@@ -92,9 +124,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
 }
 
 class _EmptyLibrary extends StatelessWidget {
-  const _EmptyLibrary({required this.onCreateNotebook});
+  const _EmptyLibrary({
+    required this.onCreateNotebook,
+    required this.onImportPdf,
+  });
 
   final VoidCallback onCreateNotebook;
+  final VoidCallback onImportPdf;
 
   @override
   Widget build(BuildContext context) {
@@ -132,10 +168,22 @@ class _EmptyLibrary extends StatelessWidget {
               ),
               const SizedBox(height: 28),
               Align(
-                child: FilledButton.icon(
-                  onPressed: onCreateNotebook,
-                  icon: const Icon(Icons.add),
-                  label: const Text('New notebook'),
+                child: Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: onCreateNotebook,
+                      icon: const Icon(Icons.add),
+                      label: const Text('New notebook'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: onImportPdf,
+                      icon: const Icon(Icons.picture_as_pdf_outlined),
+                      label: const Text('Import PDF'),
+                    ),
+                  ],
                 ),
               ),
             ],

@@ -2,9 +2,9 @@
 
 ## Current
 
-- Milestone: 6 - PDF Import and Annotation
-- Next task: Evaluate Flutter PDF rendering packages for iOS/iPadOS.
-- Last completed: Milestone 5 multi-page notebooks.
+- Milestone: 7 - Export
+- Next task: Design export pipeline.
+- Last completed: Milestone 6 PDF import and annotation.
 
 ## Decisions
 
@@ -18,6 +18,7 @@
 - Use the first eraser as whole-stroke erasing by proximity; partial stroke splitting can come later.
 - Store notebook metadata and page strokes as readable JSON under the app documents directory.
 - Store page order on `Notebook.pageIds`; each page is saved as `pages/<page-id>.json`.
+- Use `file_picker` for PDF selection and `pdfrx` for iOS/iPadOS PDF rendering.
 
 ## Verification
 
@@ -35,3 +36,4 @@
 - Editor toolbar supports pen, highlighter, eraser, color choices, and width choices.
 - File storage layout is documented in `docs/STORAGE.md`.
 - Editor can add pages, switch pages, and persist each page independently.
+- Library can import a PDF, copy it into notebook assets, create one note page per PDF page, and render the PDF page behind editable strokes.

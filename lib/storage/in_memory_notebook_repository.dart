@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:inknest_notes/models/notebook.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/storage/notebook_repository.dart';
@@ -36,6 +38,11 @@ class InMemoryNotebookRepository implements NotebookRepository {
   }
 
   @override
+  Future<Notebook> importPdf(File sourceFile) {
+    return createNotebook(title: _titleFromFile(sourceFile));
+  }
+
+  @override
   Future<Notebook> addPage(Notebook notebook) async {
     final pageId = 'page-${notebook.pageIds.length + 1}';
     final updatedNotebook = notebook.copyWith(
@@ -65,5 +72,14 @@ class InMemoryNotebookRepository implements NotebookRepository {
   @override
   Future<void> savePage(Notebook notebook, NotePage page) async {
     _pages['${notebook.id}/${page.id}'] = page;
+  }
+
+  String _titleFromFile(File file) {
+    final name = file.uri.pathSegments.isEmpty
+        ? 'Imported PDF'
+        : file.uri.pathSegments.last;
+    return name.toLowerCase().endsWith('.pdf')
+        ? name.substring(0, name.length - 4)
+        : name;
   }
 }

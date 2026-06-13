@@ -29,7 +29,13 @@ Stores one notebook page:
 - `id`
 - `width`
 - `height`
+- `pdfBackground`
 - `strokes`
+
+`pdfBackground` is optional and stores:
+
+- `assetPath`
+- `pageNumber`
 
 Each stroke stores:
 

@@ -18,6 +18,7 @@ void main() {
     expect(find.text('InkNest Notes'), findsOneWidget);
     expect(find.text('No notebooks yet'), findsOneWidget);
     expect(find.text('New notebook'), findsWidgets);
+    expect(find.text('Import PDF'), findsOneWidget);
   });
 
   testWidgets('creates and opens a notebook', (WidgetTester tester) async {

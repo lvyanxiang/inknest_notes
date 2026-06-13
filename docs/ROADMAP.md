@@ -141,12 +141,12 @@ Acceptance criteria:
 
 Tasks:
 
-- [ ] Evaluate Flutter PDF rendering packages for iOS/iPadOS.
-- [ ] Add file picker.
-- [ ] Copy imported PDFs into app storage.
-- [ ] Render PDF pages as page backgrounds.
-- [ ] Bind PDF page background to `NotePage`.
-- [ ] Test annotation persistence.
+- [x] Evaluate Flutter PDF rendering packages for iOS/iPadOS.
+- [x] Add file picker.
+- [x] Copy imported PDFs into app storage.
+- [x] Render PDF pages as page backgrounds.
+- [x] Bind PDF page background to `NotePage`.
+- [x] Test annotation persistence.
 
 ## Milestone 7: Export
 

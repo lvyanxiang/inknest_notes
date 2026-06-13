@@ -3,7 +3,9 @@ import 'dart:io';
 
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/notebook.dart';
+import 'package:inknest_notes/models/pdf_background.dart';
 import 'package:inknest_notes/storage/notebook_repository.dart';
+import 'package:pdfrx/pdfrx.dart';
 
 class FileNotebookRepository implements NotebookRepository {
   FileNotebookRepository({required Directory rootDirectory})
@@ -39,6 +41,49 @@ class FileNotebookRepository implements NotebookRepository {
   }
 
   @override
+  Future<Notebook> importPdf(File sourceFile) async {
+    final notebooks = await _readIndex();
+    final now = DateTime.now();
+    final pdfDocument = await PdfDocument.openFile(sourceFile.path);
+    final pageCount = pdfDocument.pages.length;
+    await pdfDocument.dispose();
+
+    final notebook = Notebook(
+      id: 'notebook-${now.microsecondsSinceEpoch}',
+      title: _titleFromFile(sourceFile),
+      createdAt: now,
+      updatedAt: now,
+      pageIds: [
+        for (var index = 0; index < pageCount; index++) 'page-${index + 1}',
+      ],
+    );
+
+    final assetFile = _pdfAssetFile(notebook);
+    await assetFile.parent.create(recursive: true);
+    await sourceFile.copy(assetFile.path);
+
+    await _writeIndex([...notebooks, notebook]);
+    for (var index = 0; index < pageCount; index++) {
+      final pageId = notebook.pageIds[index];
+      await savePage(
+        notebook,
+        NotePage(
+          id: pageId,
+          width: _pageWidth,
+          height: _pageHeight,
+          pdfBackground: PdfBackground(
+            assetPath: 'assets/imported.pdf',
+            pageNumber: index + 1,
+            resolvedFilePath: assetFile.path,
+          ),
+        ),
+      );
+    }
+
+    return notebook;
+  }
+
+  @override
   Future<Notebook> addPage(Notebook notebook) async {
     final pageId = 'page-${notebook.pageIds.length + 1}';
     final updatedNotebook = notebook.copyWith(
@@ -66,7 +111,8 @@ class FileNotebookRepository implements NotebookRepository {
     }
 
     final json = jsonDecode(await pageFile.readAsString());
-    return NotePage.fromJson(json as Map<String, Object?>);
+    final page = NotePage.fromJson(json as Map<String, Object?>);
+    return _resolvePageAssets(notebook, page);
   }
 
   @override
@@ -115,7 +161,57 @@ class FileNotebookRepository implements NotebookRepository {
     );
   }
 
+  File _pdfAssetFile(Notebook notebook) {
+    return File(
+      '${_notebooksDirectory.path}/${notebook.id}/assets/imported.pdf',
+    );
+  }
+
+  NotePage _resolvePageAssets(Notebook notebook, NotePage page) {
+    final background = page.pdfBackground;
+    if (background == null) {
+      return page;
+    }
+
+    final normalizedAssetPath = _normalizePdfAssetPath(background.assetPath);
+    return page.copyWith(
+      pdfBackground: background.copyWith(
+        assetPath: normalizedAssetPath,
+        resolvedFilePath: _resolvePdfAssetPath(notebook, background.assetPath),
+      ),
+    );
+  }
+
+  String _normalizePdfAssetPath(String assetPath) {
+    if (File(assetPath).isAbsolute) {
+      return 'assets/imported.pdf';
+    }
+
+    return assetPath;
+  }
+
+  String _resolvePdfAssetPath(Notebook notebook, String assetPath) {
+    final absoluteFile = File(assetPath);
+    if (absoluteFile.isAbsolute && absoluteFile.existsSync()) {
+      return absoluteFile.path;
+    }
+
+    final normalizedAssetPath = _normalizePdfAssetPath(assetPath);
+    return File(
+      '${_notebooksDirectory.path}/${notebook.id}/$normalizedAssetPath',
+    ).path;
+  }
+
   NotePage _emptyPage(String pageId) {
     return NotePage(id: pageId, width: _pageWidth, height: _pageHeight);
+  }
+
+  String _titleFromFile(File file) {
+    final name = file.uri.pathSegments.isEmpty
+        ? 'Imported PDF'
+        : file.uri.pathSegments.last;
+    return name.toLowerCase().endsWith('.pdf')
+        ? name.substring(0, name.length - 4)
+        : name;
   }
 }
