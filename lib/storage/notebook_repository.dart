@@ -6,7 +6,9 @@ abstract class NotebookRepository {
 
   Future<Notebook> createNotebook({String? title});
 
-  Future<NotePage> loadPage(Notebook notebook);
+  Future<Notebook> addPage(Notebook notebook);
+
+  Future<NotePage> loadPage(Notebook notebook, String pageId);
 
   Future<void> savePage(Notebook notebook, NotePage page);
 }

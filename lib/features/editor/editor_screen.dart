@@ -27,16 +27,23 @@ class EditorScreen extends StatefulWidget {
 class _EditorScreenState extends State<EditorScreen> {
   final List<Stroke> _redoStack = [];
   DrawingTool _tool = const DrawingTool();
+  late Notebook _notebook;
+  late String _currentPageId;
   NotePage? _page;
 
   @override
   void initState() {
     super.initState();
+    _notebook = widget.notebook;
+    _currentPageId = _notebook.pageIds.first;
     _loadPage();
   }
 
   Future<void> _loadPage() async {
-    final page = await widget.notebookRepository.loadPage(widget.notebook);
+    final page = await widget.notebookRepository.loadPage(
+      _notebook,
+      _currentPageId,
+    );
 
     if (!mounted) {
       return;
@@ -44,6 +51,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
     setState(() {
       _page = page;
+      _redoStack.clear();
     });
   }
 
@@ -138,7 +146,38 @@ class _EditorScreenState extends State<EditorScreen> {
       return;
     }
 
-    unawaited(widget.notebookRepository.savePage(widget.notebook, page));
+    unawaited(widget.notebookRepository.savePage(_notebook, page));
+  }
+
+  Future<void> _addPage() async {
+    final updatedNotebook = await widget.notebookRepository.addPage(_notebook);
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _notebook = updatedNotebook;
+      _currentPageId = updatedNotebook.pageIds.last;
+      _page = null;
+      _redoStack.clear();
+    });
+
+    await _loadPage();
+  }
+
+  Future<void> _selectPage(String pageId) async {
+    if (pageId == _currentPageId) {
+      return;
+    }
+
+    setState(() {
+      _currentPageId = pageId;
+      _page = null;
+      _redoStack.clear();
+    });
+
+    await _loadPage();
   }
 
   @override
@@ -147,7 +186,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.notebook.title),
+        title: Text(_notebook.title),
         actions: [
           IconButton(
             onPressed: page == null || page.strokes.isEmpty ? null : _undo,
@@ -168,6 +207,12 @@ class _EditorScreenState extends State<EditorScreen> {
             child: page == null
                 ? const Center(child: CircularProgressIndicator())
                 : _buildPageCanvas(page),
+          ),
+          _PageNavigator(
+            pageIds: _notebook.pageIds,
+            currentPageId: _currentPageId,
+            onSelectPage: (pageId) => unawaited(_selectPage(pageId)),
+            onAddPage: () => unawaited(_addPage()),
           ),
         ],
       ),
@@ -202,6 +247,59 @@ class _EditorScreenState extends State<EditorScreen> {
                 onErase: _eraseAt,
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PageNavigator extends StatelessWidget {
+  const _PageNavigator({
+    required this.pageIds,
+    required this.currentPageId,
+    required this.onSelectPage,
+    required this.onAddPage,
+  });
+
+  final List<String> pageIds;
+  final String currentPageId;
+  final ValueChanged<String> onSelectPage;
+  final VoidCallback onAddPage;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Material(
+      color: colorScheme.surface,
+      elevation: 1,
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 64,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            children: [
+              for (final (index, pageId) in pageIds.indexed)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Tooltip(
+                    message: 'Page ${index + 1}',
+                    child: ChoiceChip(
+                      selected: pageId == currentPageId,
+                      label: Text('${index + 1}'),
+                      onSelected: (_) => onSelectPage(pageId),
+                    ),
+                  ),
+                ),
+              IconButton.filledTonal(
+                onPressed: onAddPage,
+                tooltip: 'Add page',
+                icon: const Icon(Icons.add),
+              ),
+            ],
           ),
         ),
       ),

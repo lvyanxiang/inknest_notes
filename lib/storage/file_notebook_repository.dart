@@ -9,7 +9,6 @@ class FileNotebookRepository implements NotebookRepository {
   FileNotebookRepository({required Directory rootDirectory})
     : _notebooksDirectory = Directory('${rootDirectory.path}/notebooks');
 
-  static const pageFileName = 'page-1.json';
   static const _pageWidth = 768.0;
   static const _pageHeight = 1024.0;
 
@@ -31,18 +30,39 @@ class FileNotebookRepository implements NotebookRepository {
       title: title ?? 'Notebook ${notebooks.length + 1}',
       createdAt: now,
       updatedAt: now,
+      pageIds: const ['page-1'],
     );
 
     await _writeIndex([...notebooks, notebook]);
-    await savePage(notebook, _emptyPage());
+    await savePage(notebook, _emptyPage('page-1'));
     return notebook;
   }
 
   @override
-  Future<NotePage> loadPage(Notebook notebook) async {
-    final pageFile = _pageFile(notebook);
+  Future<Notebook> addPage(Notebook notebook) async {
+    final pageId = 'page-${notebook.pageIds.length + 1}';
+    final updatedNotebook = notebook.copyWith(
+      updatedAt: DateTime.now(),
+      pageIds: [...notebook.pageIds, pageId],
+    );
+
+    final notebooks = await _readIndex();
+    await _writeIndex([
+      for (final existingNotebook in notebooks)
+        if (existingNotebook.id == notebook.id)
+          updatedNotebook
+        else
+          existingNotebook,
+    ]);
+    await savePage(updatedNotebook, _emptyPage(pageId));
+    return updatedNotebook;
+  }
+
+  @override
+  Future<NotePage> loadPage(Notebook notebook, String pageId) async {
+    final pageFile = _pageFile(notebook, pageId);
     if (!await pageFile.exists()) {
-      return _emptyPage();
+      return _emptyPage(pageId);
     }
 
     final json = jsonDecode(await pageFile.readAsString());
@@ -51,7 +71,7 @@ class FileNotebookRepository implements NotebookRepository {
 
   @override
   Future<void> savePage(Notebook notebook, NotePage page) async {
-    final pageFile = _pageFile(notebook);
+    final pageFile = _pageFile(notebook, page.id);
     await pageFile.parent.create(recursive: true);
     await pageFile.writeAsString(
       const JsonEncoder.withIndent('  ').convert(page.toJson()),
@@ -89,13 +109,13 @@ class FileNotebookRepository implements NotebookRepository {
     );
   }
 
-  File _pageFile(Notebook notebook) {
+  File _pageFile(Notebook notebook, String pageId) {
     return File(
-      '${_notebooksDirectory.path}/${notebook.id}/pages/$pageFileName',
+      '${_notebooksDirectory.path}/${notebook.id}/pages/$pageId.json',
     );
   }
 
-  NotePage _emptyPage() {
-    return const NotePage(id: 'page-1', width: _pageWidth, height: _pageHeight);
+  NotePage _emptyPage(String pageId) {
+    return NotePage(id: pageId, width: _pageWidth, height: _pageHeight);
   }
 }

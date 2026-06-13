@@ -2,9 +2,9 @@
 
 ## Current
 
-- Milestone: 5 - Multi-Page Notebooks
-- Next task: Add page list or page navigator.
-- Last completed: Milestone 4 local persistence.
+- Milestone: 6 - PDF Import and Annotation
+- Next task: Evaluate Flutter PDF rendering packages for iOS/iPadOS.
+- Last completed: Milestone 5 multi-page notebooks.
 
 ## Decisions
 
@@ -17,6 +17,7 @@
 - Keep first handwriting state in editor memory until local persistence begins.
 - Use the first eraser as whole-stroke erasing by proximity; partial stroke splitting can come later.
 - Store notebook metadata and page strokes as readable JSON under the app documents directory.
+- Store page order on `Notebook.pageIds`; each page is saved as `pages/<page-id>.json`.
 
 ## Verification
 
@@ -33,3 +34,4 @@
 - Editor has a fixed white page canvas, captures pointer strokes, renders with `CustomPainter`, and supports undo/redo.
 - Editor toolbar supports pen, highlighter, eraser, color choices, and width choices.
 - File storage layout is documented in `docs/STORAGE.md`.
+- Editor can add pages, switch pages, and persist each page independently.

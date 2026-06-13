@@ -122,11 +122,11 @@ Acceptance criteria:
 
 Tasks:
 
-- [ ] Add page list or page navigator.
-- [ ] Add new-page action.
-- [ ] Store multiple pages per notebook.
-- [ ] Navigate between pages.
-- [ ] Persist page order and page content.
+- [x] Add page list or page navigator.
+- [x] Add new-page action.
+- [x] Store multiple pages per notebook.
+- [x] Navigate between pages.
+- [x] Persist page order and page content.
 
 ## Milestone 6: PDF Import and Annotation
 

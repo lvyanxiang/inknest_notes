@@ -104,4 +104,33 @@ void main() {
 
     expect(tester.widget<IconButton>(undoButton).onPressed, isNull);
   });
+
+  testWidgets('adds and switches notebook pages', (WidgetTester tester) async {
+    await pumpInkNestApp(tester);
+
+    await tester.tap(find.text('New notebook'));
+    await tester.pumpAndSettle();
+
+    final canvas = find.byType(DrawingCanvas);
+    final undoButton = find.widgetWithIcon(IconButton, Icons.undo);
+
+    final gesture = await tester.startGesture(tester.getCenter(canvas));
+    await gesture.moveBy(const Offset(32, 24));
+    await gesture.up();
+    await tester.pump();
+
+    expect(tester.widget<IconButton>(undoButton).onPressed, isNotNull);
+
+    await tester.tap(find.byTooltip('Add page'));
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Page 1'), findsOneWidget);
+    expect(find.byTooltip('Page 2'), findsOneWidget);
+    expect(tester.widget<IconButton>(undoButton).onPressed, isNull);
+
+    await tester.tap(find.byTooltip('Page 1'));
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<IconButton>(undoButton).onPressed, isNotNull);
+  });
 }

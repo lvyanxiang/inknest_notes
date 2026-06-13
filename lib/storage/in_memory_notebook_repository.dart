@@ -23,10 +23,11 @@ class InMemoryNotebookRepository implements NotebookRepository {
       title: title ?? 'Notebook ${_nextNotebookNumber++}',
       createdAt: now,
       updatedAt: now,
+      pageIds: const ['page-1'],
     );
 
     _notebooks.add(notebook);
-    _pages[notebook.id] = const NotePage(
+    _pages['${notebook.id}/page-1'] = const NotePage(
       id: 'page-1',
       width: _pageWidth,
       height: _pageHeight,
@@ -35,13 +36,34 @@ class InMemoryNotebookRepository implements NotebookRepository {
   }
 
   @override
-  Future<NotePage> loadPage(Notebook notebook) async {
-    return _pages[notebook.id] ??
-        const NotePage(id: 'page-1', width: _pageWidth, height: _pageHeight);
+  Future<Notebook> addPage(Notebook notebook) async {
+    final pageId = 'page-${notebook.pageIds.length + 1}';
+    final updatedNotebook = notebook.copyWith(
+      updatedAt: DateTime.now(),
+      pageIds: [...notebook.pageIds, pageId],
+    );
+    final index = _notebooks.indexWhere(
+      (existing) => existing.id == notebook.id,
+    );
+    if (index != -1) {
+      _notebooks[index] = updatedNotebook;
+    }
+    _pages['${notebook.id}/$pageId'] = NotePage(
+      id: pageId,
+      width: _pageWidth,
+      height: _pageHeight,
+    );
+    return updatedNotebook;
+  }
+
+  @override
+  Future<NotePage> loadPage(Notebook notebook, String pageId) async {
+    return _pages['${notebook.id}/$pageId'] ??
+        NotePage(id: pageId, width: _pageWidth, height: _pageHeight);
   }
 
   @override
   Future<void> savePage(Notebook notebook, NotePage page) async {
-    _pages[notebook.id] = page;
+    _pages['${notebook.id}/${page.id}'] = page;
   }
 }

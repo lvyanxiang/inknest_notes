@@ -8,6 +8,7 @@ notebooks/
   notebook-id/
     pages/
       page-1.json
+      page-2.json
     assets/
 ```
 
@@ -19,10 +20,11 @@ Stores notebook metadata:
 - `title`
 - `createdAt`
 - `updatedAt`
+- `pageIds`
 
-## `notebooks/<id>/pages/page-1.json`
+## `notebooks/<id>/pages/<page-id>.json`
 
-Stores the first page:
+Stores one notebook page:
 
 - `id`
 - `width`

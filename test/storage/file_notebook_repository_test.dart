@@ -57,7 +57,7 @@ void main() {
       rootDirectory: tempDirectory,
     );
     final reloadedNotebooks = await reloadedRepository.listNotebooks();
-    final reloadedPage = await reloadedRepository.loadPage(notebook);
+    final reloadedPage = await reloadedRepository.loadPage(notebook, 'page-1');
 
     expect(reloadedNotebooks.single.title, 'Physics');
     expect(reloadedPage.strokes, hasLength(1));
@@ -65,5 +65,53 @@ void main() {
       reloadedPage.strokes.single.points.single.offset,
       const Offset(10, 20),
     );
+  });
+
+  test('persists page order and separate page content', () async {
+    final notebook = await repository.createNotebook(title: 'Sketches');
+    final updatedNotebook = await repository.addPage(notebook);
+
+    expect(updatedNotebook.pageIds, ['page-1', 'page-2']);
+
+    await repository.savePage(
+      updatedNotebook,
+      NotePage(
+        id: 'page-2',
+        width: 768,
+        height: 1024,
+        strokes: [
+          Stroke(
+            id: 'stroke-2',
+            tool: ToolType.highlighter,
+            color: const Color(0xFFB98A16),
+            width: 12,
+            points: [
+              StrokePoint(
+                offset: const Offset(30, 40),
+                pressure: 1,
+                time: DateTime.utc(2026, 6, 13),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    final reloadedRepository = FileNotebookRepository(
+      rootDirectory: tempDirectory,
+    );
+    final reloadedNotebook = (await reloadedRepository.listNotebooks()).single;
+    final firstPage = await reloadedRepository.loadPage(
+      reloadedNotebook,
+      'page-1',
+    );
+    final secondPage = await reloadedRepository.loadPage(
+      reloadedNotebook,
+      'page-2',
+    );
+
+    expect(reloadedNotebook.pageIds, ['page-1', 'page-2']);
+    expect(firstPage.strokes, isEmpty);
+    expect(secondPage.strokes, hasLength(1));
   });
 }
