@@ -62,12 +62,12 @@ Acceptance criteria:
 
 Tasks:
 
-- [ ] Define `NotePage`, `Stroke`, `StrokePoint`, and `Tool` models.
-- [ ] Build editor screen with a fixed page canvas.
-- [ ] Capture pointer events for drawing.
-- [ ] Render strokes with `CustomPainter`.
-- [ ] Add pen color and width settings.
-- [ ] Add undo and redo.
+- [x] Define `NotePage`, `Stroke`, `StrokePoint`, and `Tool` models.
+- [x] Build editor screen with a fixed page canvas.
+- [x] Capture pointer events for drawing.
+- [x] Render strokes with `CustomPainter`.
+- [x] Add pen color and width settings.
+- [x] Add undo and redo.
 
 ## Milestone 3: Editor Tools
 

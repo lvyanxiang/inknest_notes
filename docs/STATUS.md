@@ -2,9 +2,9 @@
 
 ## Current
 
-- Milestone: 2 - Single-Page Handwriting Core
-- Next task: Define `NotePage`, `Stroke`, `StrokePoint`, and `Tool` models.
-- Last completed: Milestone 1 notebook library MVP.
+- Milestone: 3 - Editor Tools
+- Next task: Add editor toolbar.
+- Last completed: Milestone 2 single-page handwriting core.
 
 ## Decisions
 
@@ -14,6 +14,7 @@
 - Use project skill `.codex/skills/inknest-project` to recover context without rereading the whole repo.
 - Keep the first app shell dependency-free; add state management and routing when notebook creation/navigation needs them.
 - Use an in-memory notebook repository until local persistence begins.
+- Keep first handwriting state in editor memory until local persistence begins.
 
 ## Verification
 
@@ -27,3 +28,4 @@
 - App/theme code lives under `lib/app`.
 - Library, notebook, and editor feature folders exist under `lib/features`.
 - Library can create `Notebook 1` and navigate to an editor placeholder.
+- Editor has a fixed white page canvas, captures pointer strokes, renders with `CustomPainter`, and supports undo/redo.
