@@ -2,9 +2,9 @@
 
 ## Current
 
-- Milestone: 4 - Local Persistence
-- Next task: Define file-based storage layout.
-- Last completed: Milestone 3 editor tools.
+- Milestone: 5 - Multi-Page Notebooks
+- Next task: Add page list or page navigator.
+- Last completed: Milestone 4 local persistence.
 
 ## Decisions
 
@@ -16,6 +16,7 @@
 - Use an in-memory notebook repository until local persistence begins.
 - Keep first handwriting state in editor memory until local persistence begins.
 - Use the first eraser as whole-stroke erasing by proximity; partial stroke splitting can come later.
+- Store notebook metadata and page strokes as readable JSON under the app documents directory.
 
 ## Verification
 
@@ -31,3 +32,4 @@
 - Library can create `Notebook 1` and navigate to an editor placeholder.
 - Editor has a fixed white page canvas, captures pointer strokes, renders with `CustomPainter`, and supports undo/redo.
 - Editor toolbar supports pen, highlighter, eraser, color choices, and width choices.
+- File storage layout is documented in `docs/STORAGE.md`.

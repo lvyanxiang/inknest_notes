@@ -1,7 +1,12 @@
 import 'package:inknest_notes/models/notebook.dart';
+import 'package:inknest_notes/models/note_page.dart';
 
 abstract class NotebookRepository {
-  List<Notebook> listNotebooks();
+  Future<List<Notebook>> listNotebooks();
 
-  Notebook createNotebook({String? title});
+  Future<Notebook> createNotebook({String? title});
+
+  Future<NotePage> loadPage(Notebook notebook);
+
+  Future<void> savePage(Notebook notebook, NotePage page);
 }

@@ -14,19 +14,36 @@ class LibraryScreen extends StatefulWidget {
 
 class _LibraryScreenState extends State<LibraryScreen> {
   late List<Notebook> _notebooks;
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _notebooks = widget.notebookRepository.listNotebooks();
+    _notebooks = [];
+    _loadNotebooks();
   }
 
-  void _createNotebook() {
-    final notebook = widget.notebookRepository.createNotebook();
+  Future<void> _loadNotebooks() async {
+    final notebooks = await widget.notebookRepository.listNotebooks();
+
+    if (!mounted) {
+      return;
+    }
 
     setState(() {
-      _notebooks = widget.notebookRepository.listNotebooks();
+      _notebooks = notebooks;
+      _isLoading = false;
     });
+  }
+
+  Future<void> _createNotebook() async {
+    final notebook = await widget.notebookRepository.createNotebook();
+
+    await _loadNotebooks();
+
+    if (!mounted) {
+      return;
+    }
 
     _openNotebook(notebook);
   }
@@ -34,7 +51,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
   void _openNotebook(Notebook notebook) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (context) => EditorScreen(notebook: notebook),
+        builder: (context) => EditorScreen(
+          notebook: notebook,
+          notebookRepository: widget.notebookRepository,
+        ),
       ),
     );
   }
@@ -58,7 +78,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
         ],
       ),
       body: SafeArea(
-        child: _notebooks.isEmpty
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _notebooks.isEmpty
             ? _EmptyLibrary(onCreateNotebook: _createNotebook)
             : _NotebookGrid(
                 notebooks: _notebooks,

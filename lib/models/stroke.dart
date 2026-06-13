@@ -22,6 +22,29 @@ class Stroke {
 
   bool get isHighlighter => tool == ToolType.highlighter;
 
+  factory Stroke.fromJson(Map<String, Object?> json) {
+    return Stroke(
+      id: json['id']! as String,
+      tool: ToolType.values.byName(json['tool']! as String),
+      color: Color(json['color']! as int),
+      width: (json['width']! as num).toDouble(),
+      points: (json['points']! as List<Object?>)
+          .cast<Map<String, Object?>>()
+          .map(StrokePoint.fromJson)
+          .toList(),
+    );
+  }
+
+  Map<String, Object?> toJson() {
+    return {
+      'id': id,
+      'tool': tool.name,
+      'color': color.toARGB32(),
+      'width': width,
+      'points': points.map((point) => point.toJson()).toList(),
+    };
+  }
+
   Stroke copyWith({List<StrokePoint>? points}) {
     return Stroke(
       id: id,

@@ -102,12 +102,12 @@ Acceptance criteria:
 
 Tasks:
 
-- [ ] Define file-based storage layout.
-- [ ] Implement JSON serialization for notebook data.
-- [ ] Implement local notebook repository.
-- [ ] Save strokes after editing.
-- [ ] Load saved notebooks on app start.
-- [ ] Add basic repository tests.
+- [x] Define file-based storage layout.
+- [x] Implement JSON serialization for notebook data.
+- [x] Implement local notebook repository.
+- [x] Save strokes after editing.
+- [x] Load saved notebooks on app start.
+- [x] Add basic repository tests.
 
 ## Milestone 5: Multi-Page Notebooks
 

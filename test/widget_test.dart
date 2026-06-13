@@ -2,10 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:inknest_notes/app/app.dart';
 import 'package:inknest_notes/features/editor/canvas/drawing_canvas.dart';
+import 'package:inknest_notes/storage/in_memory_notebook_repository.dart';
 
 void main() {
+  Future<void> pumpInkNestApp(WidgetTester tester) async {
+    await tester.pumpWidget(
+      InkNestApp(notebookRepository: InMemoryNotebookRepository()),
+    );
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('shows the notebook library shell', (WidgetTester tester) async {
-    await tester.pumpWidget(const InkNestApp());
+    await pumpInkNestApp(tester);
 
     expect(find.text('InkNest Notes'), findsOneWidget);
     expect(find.text('No notebooks yet'), findsOneWidget);
@@ -13,7 +21,7 @@ void main() {
   });
 
   testWidgets('creates and opens a notebook', (WidgetTester tester) async {
-    await tester.pumpWidget(const InkNestApp());
+    await pumpInkNestApp(tester);
 
     await tester.tap(find.text('New notebook'));
     await tester.pumpAndSettle();
@@ -25,7 +33,7 @@ void main() {
   testWidgets('draws a stroke and supports undo redo', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const InkNestApp());
+    await pumpInkNestApp(tester);
 
     await tester.tap(find.text('New notebook'));
     await tester.pumpAndSettle();
@@ -59,7 +67,7 @@ void main() {
   testWidgets('switches editor tools and erases a stroke', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const InkNestApp());
+    await pumpInkNestApp(tester);
 
     await tester.tap(find.text('New notebook'));
     await tester.pumpAndSettle();
