@@ -1,17 +1,22 @@
-# inknest_notes
+# InkNest Notes
 
-A new Flutter project.
+InkNest Notes is a Flutter note-taking app inspired by GoodNotes and Notability.
 
-## Getting Started
+## Roadmap
 
-This project is a starting point for a Flutter application.
+Development is tracked in [docs/ROADMAP.md](docs/ROADMAP.md).
 
-A few resources to get you started if this is your first Flutter project:
+The current focus is building a strong handwriting-first MVP:
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+- Notebook library
+- Paged editor
+- Low-latency handwriting
+- Local persistence
+- PDF annotation
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Development
+
+```sh
+flutter run
+flutter test
+```
