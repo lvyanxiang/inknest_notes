@@ -2,9 +2,9 @@
 
 ## Current
 
-- Milestone: 0 - Project Foundation
-- Next task: Replace counter demo with `InkNest Notes` app shell.
-- Last completed: Created project roadmap in `docs/ROADMAP.md`.
+- Milestone: 1 - Notebook Library MVP
+- Next task: Build notebook library screen.
+- Last completed: Milestone 0 project foundation.
 
 ## Decisions
 
@@ -12,12 +12,16 @@
 - Use this file as the short resume point for future sessions.
 - Keep the first product direction iPadOS/iOS-first, handwriting-first, and paged-notebook based.
 - Use project skill `.codex/skills/inknest-project` to recover context without rereading the whole repo.
+- Keep the first app shell dependency-free; add state management and routing when notebook creation/navigation needs them.
 
 ## Verification
 
-- Not run yet for app code after roadmap/status setup.
+- `dart format lib test` passed.
+- `flutter test` passed.
+- `flutter analyze` passed.
 
 ## Notes
 
-- The Flutter app is still the default counter template.
-- Start implementation with Milestone 0 before adding external dependencies.
+- `lib/main.dart` now starts `InkNestApp`.
+- App/theme code lives under `lib/app`.
+- Library, notebook, and editor feature folders exist under `lib/features`.

@@ -24,11 +24,11 @@ Acceptance criteria:
 
 Tasks:
 
-- [ ] Replace counter demo with `InkNest Notes` app shell.
-- [ ] Create app-level structure under `lib/app`.
-- [ ] Create feature folders for library, notebook, and editor.
-- [ ] Add an initial visual theme suitable for a note-taking tool.
-- [ ] Update the default widget test.
+- [x] Replace counter demo with `InkNest Notes` app shell.
+- [x] Create app-level structure under `lib/app`.
+- [x] Create feature folders for library, notebook, and editor.
+- [x] Add an initial visual theme suitable for a note-taking tool.
+- [x] Update the default widget test.
 
 ## Milestone 1: Notebook Library MVP
 
