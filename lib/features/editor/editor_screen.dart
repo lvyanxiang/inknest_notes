@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -301,46 +302,360 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   Widget _buildPageCanvas(NotePage page) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: AspectRatio(
-          aspectRatio: page.width / page.height,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFFE4DED1)),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x1A1E2526),
-                  blurRadius: 18,
-                  offset: Offset(0, 8),
+    return _ZoomablePageViewport(
+      key: ValueKey('viewport-${page.id}'),
+      page: page,
+      child: _buildPageSurface(page),
+    );
+  }
+
+  Widget _buildPageSurface(NotePage page) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFE4DED1)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x1A1E2526),
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (page.pdfBackground case final background?)
+              PdfPageBackgroundView(
+                key: ValueKey(
+                  '${background.filePath}-${background.pageNumber}',
+                ),
+                background: background,
+              ),
+            DrawingCanvas(
+              page: page,
+              tool: _tool,
+              onStrokeComplete: _addStroke,
+              onErase: _eraseAt,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ZoomablePageViewport extends StatefulWidget {
+  const _ZoomablePageViewport({
+    super.key,
+    required this.page,
+    required this.child,
+  });
+
+  final NotePage page;
+  final Widget child;
+
+  @override
+  State<_ZoomablePageViewport> createState() => _ZoomablePageViewportState();
+}
+
+class _ZoomablePageViewportState extends State<_ZoomablePageViewport> {
+  static const _padding = 24.0;
+  static const _minScale = 1.0;
+  static const _maxScale = 4.0;
+  static const _minimumVisiblePageExtent = 96.0;
+
+  final Map<int, Offset> _activePointers = {};
+  double _scale = 1.0;
+  Offset _pan = Offset.zero;
+  Offset? _lastFocalPoint;
+  double? _lastPointerDistance;
+  Size _viewportSize = Size.zero;
+  Size _pageSize = Size.zero;
+  Offset _pageOrigin = Offset.zero;
+
+  @override
+  void didUpdateWidget(covariant _ZoomablePageViewport oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.page.id != oldWidget.page.id) {
+      _resetZoom();
+    }
+  }
+
+  void _handlePointerDown(PointerDownEvent event) {
+    _activePointers[event.pointer] = event.localPosition;
+    _primePinchGesture();
+  }
+
+  void _handlePointerMove(PointerMoveEvent event) {
+    if (!_activePointers.containsKey(event.pointer)) {
+      return;
+    }
+
+    _activePointers[event.pointer] = event.localPosition;
+    if (_activePointers.length < 2) {
+      return;
+    }
+
+    final focalPoint = _pinchFocalPoint();
+    final distance = _pinchDistance();
+    final previousFocalPoint = _lastFocalPoint;
+    final previousDistance = _lastPointerDistance;
+
+    if (previousFocalPoint != null &&
+        previousDistance != null &&
+        previousDistance > 0 &&
+        distance > 0) {
+      _applyPinchUpdate(
+        previousFocalPoint: previousFocalPoint,
+        focalPoint: focalPoint,
+        scaleFactor: distance / previousDistance,
+      );
+    }
+
+    _lastFocalPoint = focalPoint;
+    _lastPointerDistance = distance;
+  }
+
+  void _handlePointerEnd(PointerEvent event) {
+    _activePointers.remove(event.pointer);
+    if (_activePointers.length < 2) {
+      _lastFocalPoint = null;
+      _lastPointerDistance = null;
+    } else {
+      _primePinchGesture();
+    }
+  }
+
+  void _primePinchGesture() {
+    if (_activePointers.length < 2) {
+      return;
+    }
+
+    _lastFocalPoint = _pinchFocalPoint();
+    _lastPointerDistance = _pinchDistance();
+  }
+
+  void _applyPinchUpdate({
+    required Offset previousFocalPoint,
+    required Offset focalPoint,
+    required double scaleFactor,
+  }) {
+    final pagePoint = _viewportToPage(previousFocalPoint);
+    final nextScale = (_scale * scaleFactor).clamp(_minScale, _maxScale);
+    final nextPan = _panForPagePoint(
+      pagePoint: pagePoint,
+      focalPoint: focalPoint,
+      scale: nextScale,
+    );
+
+    setState(() {
+      _scale = nextScale.toDouble();
+      _pan = _clampPan(nextPan, scale: _scale);
+    });
+  }
+
+  void _zoomBy(double scaleFactor) {
+    final focalPoint = Offset(
+      _viewportSize.width / 2,
+      _viewportSize.height / 2,
+    );
+    _applyPinchUpdate(
+      previousFocalPoint: focalPoint,
+      focalPoint: focalPoint,
+      scaleFactor: scaleFactor,
+    );
+  }
+
+  void _resetZoom() {
+    setState(() {
+      _scale = 1.0;
+      _pan = Offset.zero;
+      _lastFocalPoint = null;
+      _lastPointerDistance = null;
+    });
+  }
+
+  Offset _pinchFocalPoint() {
+    final points = _activePointers.values.take(2).toList();
+    return Offset(
+      (points[0].dx + points[1].dx) / 2,
+      (points[0].dy + points[1].dy) / 2,
+    );
+  }
+
+  double _pinchDistance() {
+    final points = _activePointers.values.take(2).toList();
+    return (points[0] - points[1]).distance;
+  }
+
+  Offset _viewportToPage(Offset viewportPoint) {
+    final center = _pageCenter;
+    return (viewportPoint - _pageOrigin - _pan - center) / _scale + center;
+  }
+
+  Offset _panForPagePoint({
+    required Offset pagePoint,
+    required Offset focalPoint,
+    required double scale,
+  }) {
+    final center = _pageCenter;
+    return focalPoint - _pageOrigin - center - (pagePoint - center) * scale;
+  }
+
+  Offset _clampPan(Offset pan, {double? scale}) {
+    if (_pageSize == Size.zero || _viewportSize == Size.zero) {
+      return pan;
+    }
+
+    final effectiveScale = scale ?? _scale;
+    final scaledSize = Size(
+      _pageSize.width * effectiveScale,
+      _pageSize.height * effectiveScale,
+    );
+    final centerShift = _pageCenter - _pageCenter * effectiveScale;
+    final minimumVisibleX = math.min(
+      _minimumVisiblePageExtent,
+      math.min(_viewportSize.width, scaledSize.width) / 2,
+    );
+    final minimumVisibleY = math.min(
+      _minimumVisiblePageExtent,
+      math.min(_viewportSize.height, scaledSize.height) / 2,
+    );
+
+    final minX =
+        minimumVisibleX - scaledSize.width - _pageOrigin.dx - centerShift.dx;
+    final maxX =
+        _viewportSize.width - minimumVisibleX - _pageOrigin.dx - centerShift.dx;
+    final minY =
+        minimumVisibleY - scaledSize.height - _pageOrigin.dy - centerShift.dy;
+    final maxY =
+        _viewportSize.height -
+        minimumVisibleY -
+        _pageOrigin.dy -
+        centerShift.dy;
+
+    return Offset(
+      pan.dx.clamp(minX, maxX).toDouble(),
+      pan.dy.clamp(minY, maxY).toDouble(),
+    );
+  }
+
+  Offset get _pageCenter => Offset(_pageSize.width / 2, _pageSize.height / 2);
+
+  Size _fittedPageSize(BoxConstraints constraints) {
+    final availableWidth = math.max(0.0, constraints.maxWidth - _padding * 2);
+    final availableHeight = math.max(0.0, constraints.maxHeight - _padding * 2);
+    final scale = math.min(
+      availableWidth / widget.page.width,
+      availableHeight / widget.page.height,
+    );
+
+    return Size(widget.page.width * scale, widget.page.height * scale);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        _viewportSize = constraints.biggest;
+        _pageSize = _fittedPageSize(constraints);
+        _pageOrigin = Offset(
+          (constraints.maxWidth - _pageSize.width) / 2,
+          (constraints.maxHeight - _pageSize.height) / 2,
+        );
+        _pan = _clampPan(_pan);
+
+        return Listener(
+          behavior: HitTestBehavior.opaque,
+          onPointerDown: _handlePointerDown,
+          onPointerMove: _handlePointerMove,
+          onPointerUp: _handlePointerEnd,
+          onPointerCancel: _handlePointerEnd,
+          child: ClipRect(
+            child: Stack(
+              children: [
+                Positioned(
+                  left: _pageOrigin.dx,
+                  top: _pageOrigin.dy,
+                  width: _pageSize.width,
+                  height: _pageSize.height,
+                  child: Transform.translate(
+                    offset: _pan,
+                    child: Transform.scale(
+                      scale: _scale,
+                      alignment: Alignment.center,
+                      child: widget.child,
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 16,
+                  right: 16,
+                  child: _ZoomControls(
+                    canZoomOut: _scale > _minScale,
+                    canZoomIn: _scale < _maxScale,
+                    onZoomOut: () => _zoomBy(0.8),
+                    onReset: _resetZoom,
+                    onZoomIn: () => _zoomBy(1.25),
+                  ),
                 ),
               ],
             ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  if (page.pdfBackground case final background?)
-                    PdfPageBackgroundView(
-                      key: ValueKey(
-                        '${background.filePath}-${background.pageNumber}',
-                      ),
-                      background: background,
-                    ),
-                  DrawingCanvas(
-                    page: page,
-                    tool: _tool,
-                    onStrokeComplete: _addStroke,
-                    onErase: _eraseAt,
-                  ),
-                ],
-              ),
-            ),
           ),
+        );
+      },
+    );
+  }
+}
+
+class _ZoomControls extends StatelessWidget {
+  const _ZoomControls({
+    required this.canZoomOut,
+    required this.canZoomIn,
+    required this.onZoomOut,
+    required this.onReset,
+    required this.onZoomIn,
+  });
+
+  final bool canZoomOut;
+  final bool canZoomIn;
+  final VoidCallback onZoomOut;
+  final VoidCallback onReset;
+  final VoidCallback onZoomIn;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Material(
+      color: colorScheme.surface,
+      elevation: 2,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              onPressed: canZoomOut ? onZoomOut : null,
+              tooltip: 'Zoom out',
+              icon: const Icon(Icons.zoom_out),
+            ),
+            IconButton(
+              onPressed: onReset,
+              tooltip: 'Reset zoom',
+              icon: const Icon(Icons.center_focus_strong),
+            ),
+            IconButton(
+              onPressed: canZoomIn ? onZoomIn : null,
+              tooltip: 'Zoom in',
+              icon: const Icon(Icons.zoom_in),
+            ),
+          ],
         ),
       ),
     );

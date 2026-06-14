@@ -23,10 +23,24 @@ class DrawingCanvas extends StatefulWidget {
 }
 
 class _DrawingCanvasState extends State<DrawingCanvas> {
+  final Set<int> _activePointers = {};
+  int? _drawingPointer;
   Stroke? _activeStroke;
+  bool _isMultitouch = false;
 
   void _startStroke(PointerDownEvent event) {
+    _activePointers.add(event.pointer);
+    if (_activePointers.length > 1) {
+      _cancelActiveStroke();
+      return;
+    }
+
+    if (_isMultitouch) {
+      return;
+    }
+
     final point = _pointFromEvent(event.localPosition, event.pressure);
+    _drawingPointer = event.pointer;
 
     if (widget.tool.type == ToolType.eraser) {
       widget.onErase([point]);
@@ -45,6 +59,10 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
   }
 
   void _appendPoint(PointerMoveEvent event) {
+    if (_isMultitouch || event.pointer != _drawingPointer) {
+      return;
+    }
+
     if (widget.tool.type == ToolType.eraser) {
       widget.onErase([_pointFromEvent(event.localPosition, event.pressure)]);
       return;
@@ -65,8 +83,22 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
     });
   }
 
-  void _endStroke() {
+  void _endStroke(PointerEvent event) {
+    _activePointers.remove(event.pointer);
+
+    if (_isMultitouch) {
+      if (_activePointers.isEmpty) {
+        _isMultitouch = false;
+      }
+      return;
+    }
+
+    if (event.pointer != _drawingPointer) {
+      return;
+    }
+
     final activeStroke = _activeStroke;
+    _drawingPointer = null;
     if (activeStroke == null) {
       return;
     }
@@ -78,6 +110,19 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
     if (activeStroke.points.isNotEmpty) {
       widget.onStrokeComplete(activeStroke);
     }
+  }
+
+  void _cancelActiveStroke() {
+    _drawingPointer = null;
+    _isMultitouch = true;
+
+    if (_activeStroke == null) {
+      return;
+    }
+
+    setState(() {
+      _activeStroke = null;
+    });
   }
 
   StrokePoint _pointFromEvent(Offset offset, double pressure) {
@@ -94,8 +139,8 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
       behavior: HitTestBehavior.opaque,
       onPointerDown: _startStroke,
       onPointerMove: _appendPoint,
-      onPointerUp: (_) => _endStroke(),
-      onPointerCancel: (_) => _endStroke(),
+      onPointerUp: _endStroke,
+      onPointerCancel: _endStroke,
       child: RepaintBoundary(
         child: CustomPaint(
           painter: _StrokePainter(

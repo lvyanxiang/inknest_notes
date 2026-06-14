@@ -2,9 +2,9 @@
 
 ## Current
 
-- Milestone: Post-MVP planning and polish
-- Next task: Start Post-MVP 1 - Editor Usability from `docs/POST_MVP_ROADMAP.md`.
-- Last completed: Paused Milestone 8 Sync and Backup after the MVP export milestone.
+- Milestone: Post-MVP 1 - Editor Usability
+- Next task: Add Pencil draw plus finger pan mode.
+- Last completed: Added zoom and pan for the editor page viewport.
 
 ## Decisions
 
@@ -25,6 +25,7 @@
 - Use `docs/POST_MVP_ROADMAP.md` for GoodNotes / Notability-style post-MVP planning.
 - Use `docs/SUBSCRIPTION_PLAN.md` as the product reference for Free, InkNest Cloud, and future Pro monetization.
 - Long-term product direction: iPad handwriting/PDF study, phone capture/review, and Web Yuque-like knowledge base.
+- Use a custom two-finger zoom/pan viewport instead of `InteractiveViewer` so single-pointer drawing remains reliable.
 
 ## Verification
 
@@ -32,6 +33,9 @@
 - `flutter test` passed.
 - `flutter analyze` passed.
 - `git diff --check` passed after the post-MVP documentation update.
+- `dart format lib test` passed after editor zoom/pan.
+- `flutter test` passed after editor zoom/pan.
+- `flutter analyze` passed after editor zoom/pan.
 
 ## Notes
 
@@ -45,6 +49,7 @@
 - Editor can add pages, switch pages, and persist each page independently.
 - Library can import a PDF, copy it into notebook assets, create one note page per PDF page, and render the PDF page behind editable strokes.
 - Editor can export the current notebook as a PDF, including blank pages, imported PDF page backgrounds, and handwriting strokes.
+- Editor page viewport supports zoom controls and two-finger pinch/pan without saving accidental strokes.
 - Post-MVP feature gaps and optimization areas are documented in `docs/POST_MVP_ROADMAP.md`.
 - Subscription packaging, platform behavior, and local/cloud merge rules are documented in `docs/SUBSCRIPTION_PLAN.md`.
 - Web knowledge-base, mobile companion, collaboration, and AI directions are captured as later post-MVP milestones.

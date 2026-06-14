@@ -66,6 +66,69 @@ void main() {
     expect(tester.widget<IconButton>(undoButton).onPressed, isNotNull);
   });
 
+  testWidgets('zooms the page and still supports drawing', (
+    WidgetTester tester,
+  ) async {
+    await pumpInkNestApp(tester);
+
+    await tester.tap(find.text('New notebook'));
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Zoom out'), findsOneWidget);
+    expect(find.byTooltip('Reset zoom'), findsOneWidget);
+    expect(find.byTooltip('Zoom in'), findsOneWidget);
+
+    final zoomOutButton = find.widgetWithIcon(IconButton, Icons.zoom_out);
+    expect(tester.widget<IconButton>(zoomOutButton).onPressed, isNull);
+
+    await tester.tap(find.byTooltip('Zoom in'));
+    await tester.pump();
+
+    expect(tester.widget<IconButton>(zoomOutButton).onPressed, isNotNull);
+
+    await tester.tap(find.byTooltip('Reset zoom'));
+    await tester.pump();
+
+    final canvas = find.byType(DrawingCanvas);
+    final gesture = await tester.startGesture(tester.getCenter(canvas));
+    await gesture.moveBy(const Offset(32, 24));
+    await gesture.up();
+    await tester.pump();
+
+    final undoButton = find.widgetWithIcon(IconButton, Icons.undo);
+    expect(tester.widget<IconButton>(undoButton).onPressed, isNotNull);
+  });
+
+  testWidgets('pinch zoom does not create a stroke', (
+    WidgetTester tester,
+  ) async {
+    await pumpInkNestApp(tester);
+
+    await tester.tap(find.text('New notebook'));
+    await tester.pumpAndSettle();
+
+    final canvas = find.byType(DrawingCanvas);
+    final center = tester.getCenter(canvas);
+    final firstFinger = await tester.startGesture(
+      center - const Offset(24, 0),
+      pointer: 7,
+    );
+    final secondFinger = await tester.startGesture(
+      center + const Offset(24, 0),
+      pointer: 8,
+    );
+
+    await firstFinger.moveBy(const Offset(-24, 0));
+    await secondFinger.moveBy(const Offset(24, 0));
+    await tester.pump();
+    await firstFinger.up();
+    await secondFinger.up();
+    await tester.pump();
+
+    final undoButton = find.widgetWithIcon(IconButton, Icons.undo);
+    expect(tester.widget<IconButton>(undoButton).onPressed, isNull);
+  });
+
   testWidgets('switches editor tools and erases a stroke', (
     WidgetTester tester,
   ) async {
