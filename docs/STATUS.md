@@ -23,6 +23,8 @@
 - Exported annotated PDFs rasterize imported PDF backgrounds and overlay editable strokes as vector paths in the generated output.
 - Pause sync and backup until the editor, PDF, and library workflows are more polished.
 - Use `docs/POST_MVP_ROADMAP.md` for GoodNotes / Notability-style post-MVP planning.
+- Use `docs/SUBSCRIPTION_PLAN.md` as the product reference for Free, InkNest Cloud, and future Pro monetization.
+- Long-term product direction: iPad handwriting/PDF study, phone capture/review, and Web Yuque-like knowledge base.
 
 ## Verification
 
@@ -44,3 +46,5 @@
 - Library can import a PDF, copy it into notebook assets, create one note page per PDF page, and render the PDF page behind editable strokes.
 - Editor can export the current notebook as a PDF, including blank pages, imported PDF page backgrounds, and handwriting strokes.
 - Post-MVP feature gaps and optimization areas are documented in `docs/POST_MVP_ROADMAP.md`.
+- Subscription packaging, platform behavior, and local/cloud merge rules are documented in `docs/SUBSCRIPTION_PLAN.md`.
+- Web knowledge-base, mobile companion, collaboration, and AI directions are captured as later post-MVP milestones.

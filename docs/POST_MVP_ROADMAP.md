@@ -20,6 +20,18 @@ PDF study, document organization, and reliable export. The next phase should
 not chase every competitor feature at once; it should deepen the features users
 touch every session.
 
+Long term, InkNest should grow beyond a GoodNotes / Notability-style notebook
+into a cross-device knowledge product:
+
+- iPad: deep handwriting, PDF study, classroom notes, meeting notes, and offline
+  creation.
+- Phone: quick capture, review, search, scanning, audio, and lightweight notes.
+- Web: a Yuque-like knowledge base for organizing, editing, searching,
+  sharing, and connecting notes into durable knowledge.
+
+The product promise is: write ideas down naturally, then turn them into
+structured knowledge.
+
 ## New Features To Add
 
 ### Editor Experience
@@ -68,6 +80,29 @@ touch every session.
 - OCR for imported images and scanned PDFs.
 - Shared notebooks or collaboration.
 - Cross-device sync and backup, revisiting the paused Milestone 8.
+
+### Mobile Companion
+
+- Fast note capture on phone.
+- Read and search notebooks from the phone.
+- Capture photos or scans into a notebook.
+- Record audio notes.
+- Add lightweight typed notes.
+- Review recent and favorite notebooks.
+
+### Web Knowledge Base
+
+- Space and knowledge-base structure similar to Yuque-style products.
+- Folder tree or document hierarchy.
+- Markdown or rich-text documents.
+- Embed handwritten pages, notebook pages, PDFs, and images inside documents.
+- Link notebooks and documents together.
+- Tags, backlinks, references, and favorites.
+- Full-text search across typed notes, OCR text, PDF text, and recognized
+  handwriting.
+- Share links for documents or notebooks.
+- Team spaces and collaborative editing later.
+- AI summaries, question answering, and knowledge-base retrieval later.
 
 ## Existing Features To Optimize And Extend
 
@@ -179,3 +214,36 @@ document workflows are stable.
 - Add notebook archive format.
 - Implement backup and restore.
 - Add conflict detection and explicit recovery behavior.
+
+### Post-MVP 7: Mobile Companion
+
+Goal: make phone apps useful for capture, review, and lightweight notes without
+trying to match the full iPad writing surface.
+
+- Add account-backed notebook list.
+- Add read-only notebook and PDF viewing.
+- Add quick typed notes.
+- Add camera scan import.
+- Add audio capture.
+- Add global search.
+
+### Post-MVP 8: Web Knowledge Base
+
+Goal: turn synced notes into an organized knowledge base on the Web.
+
+- Add Web workspace and document hierarchy.
+- Add Markdown or rich-text document editing.
+- Embed notebook pages and PDFs in Web documents.
+- Add tags, backlinks, and favorites.
+- Add search across documents and synced notebook content.
+- Add sharing links.
+
+### Post-MVP 9: Collaboration And AI
+
+Goal: make the knowledge base useful for teams, study, and long-term retrieval.
+
+- Add team spaces.
+- Add comments and collaborative editing.
+- Add AI summaries.
+- Add AI question answering over selected notebooks or spaces.
+- Add flashcards or quiz generation.
