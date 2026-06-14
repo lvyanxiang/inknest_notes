@@ -166,9 +166,13 @@ Tasks:
 - [x] Export annotated PDFs.
 - [x] Add share/save action.
 
-## Milestone 8: Sync and Backup
+## Milestone 8: Sync and Backup (Paused)
 
 Goal: protect user data across devices.
+
+Status: paused after the MVP export milestone. Sync and backup remain important,
+but this milestone should resume after the core editor, PDF, and library
+workflows are more polished.
 
 Acceptance criteria:
 
@@ -210,6 +214,6 @@ documents/
 
 ## Current Focus
 
-Continue with Milestone 8, then move through the roadmap in order. When a task
-is completed, mark it with `[x]` and keep notes in this file if the
-implementation choice affects later milestones.
+Milestone 8 is paused. Continue with the post-MVP improvement plan in
+`docs/POST_MVP_ROADMAP.md`, starting with editor usability and current MVP
+polish before returning to sync and backup.

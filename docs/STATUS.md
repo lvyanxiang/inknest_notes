@@ -2,9 +2,9 @@
 
 ## Current
 
-- Milestone: 8 - Sync and Backup
-- Next task: Choose sync target: iCloud, WebDAV, or custom backend.
-- Last completed: Milestone 7 Export.
+- Milestone: Post-MVP planning and polish
+- Next task: Start Post-MVP 1 - Editor Usability from `docs/POST_MVP_ROADMAP.md`.
+- Last completed: Paused Milestone 8 Sync and Backup after the MVP export milestone.
 
 ## Decisions
 
@@ -21,12 +21,15 @@
 - Use `file_picker` for PDF selection and `pdfrx` for iOS/iPadOS PDF rendering.
 - Use the `pdf` package for PDF export, `image` for rendered PDF background encoding, and `file_picker.saveFile` for the first save/share action.
 - Exported annotated PDFs rasterize imported PDF backgrounds and overlay editable strokes as vector paths in the generated output.
+- Pause sync and backup until the editor, PDF, and library workflows are more polished.
+- Use `docs/POST_MVP_ROADMAP.md` for GoodNotes / Notability-style post-MVP planning.
 
 ## Verification
 
 - `dart format lib test` passed.
 - `flutter test` passed.
 - `flutter analyze` passed.
+- `git diff --check` passed after the post-MVP documentation update.
 
 ## Notes
 
@@ -40,3 +43,4 @@
 - Editor can add pages, switch pages, and persist each page independently.
 - Library can import a PDF, copy it into notebook assets, create one note page per PDF page, and render the PDF page behind editable strokes.
 - Editor can export the current notebook as a PDF, including blank pages, imported PDF page backgrounds, and handwriting strokes.
+- Post-MVP feature gaps and optimization areas are documented in `docs/POST_MVP_ROADMAP.md`.

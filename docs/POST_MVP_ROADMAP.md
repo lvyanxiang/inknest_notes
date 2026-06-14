@@ -1,0 +1,181 @@
+# InkNest Notes Post-MVP Roadmap
+
+This document starts after the current MVP baseline:
+
+- Notebook library.
+- Local notebook persistence.
+- Multi-page handwriting notebooks.
+- Pen, highlighter, eraser, color, and width controls.
+- PDF import and annotation.
+- PDF export.
+
+Milestone 8 sync and backup is intentionally paused. Data protection remains
+important, but the next product work should first make the core writing,
+reading, organizing, and PDF workflows feel closer to GoodNotes and Notability.
+
+## Product Goal
+
+InkNest should become a polished iPad-first note-taking app for handwriting,
+PDF study, document organization, and reliable export. The next phase should
+not chase every competitor feature at once; it should deepen the features users
+touch every session.
+
+## New Features To Add
+
+### Editor Experience
+
+- Zoom and pan with two-finger gestures.
+- Apple Pencil-focused input mode with finger pan and Pencil draw behavior.
+- Page thumbnail strip or sidebar for faster page navigation.
+- Page templates: blank, ruled, dotted, grid, Cornell, planner.
+- Page actions: duplicate, delete, reorder, rotate, and insert before/after.
+- Lasso selection for moving, resizing, recoloring, and deleting strokes.
+- Text boxes for typed notes.
+- Image insertion from Photos or Files.
+- Shape tool for lines, arrows, rectangles, circles, and auto-shape cleanup.
+- Favorites toolbar for common pens, highlighters, and colors.
+
+### PDF And Study Workflow
+
+- Import multiple PDFs into an existing notebook.
+- Insert blank pages before, after, or between PDF pages.
+- PDF page thumbnails, outlines, and bookmarks.
+- PDF search when the source PDF has selectable text.
+- Export options: current page, selected pages, full notebook, flattened PDF.
+- Preserve original PDF page size where possible instead of forcing every PDF
+  page into the same page dimensions.
+
+### Library And Organization
+
+- Rename, delete, duplicate, and archive notebooks.
+- Folder support.
+- Notebook covers and preview thumbnails.
+- Sort by recent, title, created date, and updated date.
+- Search notebooks by title.
+- Recent notebooks section.
+- Trash/recovery for deleted notebooks.
+
+### Notability-Like Capabilities
+
+- Audio recording attached to a notebook.
+- Playback timeline linked to written strokes.
+- Simple presentation mode.
+- Split view or multi-window support for iPad workflows.
+
+### Advanced Capabilities
+
+- Handwriting recognition and full-text search.
+- OCR for imported images and scanned PDFs.
+- Shared notebooks or collaboration.
+- Cross-device sync and backup, revisiting the paused Milestone 8.
+
+## Existing Features To Optimize And Extend
+
+### Handwriting Canvas
+
+- Improve stroke smoothing and reduce jitter.
+- Add pressure-sensitive width for Pencil input.
+- Support partial erasing instead of whole-stroke erasing only.
+- Improve highlighter blend behavior on PDF backgrounds.
+- Keep latency low as page stroke count grows.
+- Add canvas virtualization or repaint boundaries for large notebooks.
+
+### Persistence
+
+- Add autosave debouncing and an explicit save queue.
+- Avoid rewriting page files more often than necessary.
+- Add storage migrations for future model changes.
+- Add crash-safe writes using temporary files and atomic replacement.
+- Generate thumbnails during save or in a background queue.
+
+### PDF Rendering
+
+- Cache rendered PDF page backgrounds.
+- Avoid reloading PDF documents unnecessarily.
+- Improve behavior for very large PDFs.
+- Support encrypted or password-protected PDFs later.
+- Improve export quality and file size tradeoffs.
+
+### Export
+
+- Add export progress and cancellation.
+- Allow page-range selection.
+- Add share-sheet flow in addition to save-to-file.
+- Preserve page dimensions and PDF metadata where possible.
+- Explore overlaying annotations on original PDF pages instead of rasterizing
+  backgrounds for export.
+
+### Editor UI
+
+- Make tool controls more compact for iPad landscape use.
+- Add keyboard shortcuts for undo, redo, tool switching, and export.
+- Add undo/redo history per page with clearer state.
+- Improve page navigator density and thumbnails.
+- Add accessibility labels for all important controls.
+
+### Testing And Release Quality
+
+- Add golden tests for editor UI states.
+- Add storage migration tests.
+- Add export snapshot tests for generated PDFs.
+- Add large notebook performance tests.
+- Add manual QA checklist for iPad real-device builds.
+- Track known iOS / Flutter engine issues in a release checklist.
+
+## Suggested Next Milestones
+
+### Post-MVP 1: Editor Usability
+
+Goal: make writing and navigating a notebook feel natural on iPad.
+
+- Add zoom and pan.
+- Add Pencil draw plus finger pan mode.
+- Add page thumbnails.
+- Add page duplicate, delete, and reorder.
+- Improve stroke smoothing and partial erasing.
+
+### Post-MVP 2: Library Organization
+
+Goal: make notebooks manageable as the user creates more documents.
+
+- Rename, delete, duplicate, and archive notebooks.
+- Add folders.
+- Add sorting, search, recent notebooks, and notebook thumbnails.
+
+### Post-MVP 3: PDF Study Workflow
+
+Goal: make PDF annotation feel like a real study workflow.
+
+- Insert blank pages into PDFs.
+- Add PDF thumbnails, outlines, and bookmarks.
+- Add page-range export.
+- Improve PDF background caching and export quality.
+
+### Post-MVP 4: Rich Notes
+
+Goal: support mixed handwritten and typed notes.
+
+- Add text boxes.
+- Add image insertion.
+- Add shape tool.
+- Add favorites toolbar.
+
+### Post-MVP 5: Audio And Search
+
+Goal: add Notability-style study features.
+
+- Add audio recording.
+- Link playback timeline with strokes.
+- Add PDF text search.
+- Explore handwriting recognition and OCR.
+
+### Post-MVP 6: Sync And Backup
+
+Goal: resume the paused data protection milestone once local editing and
+document workflows are stable.
+
+- Choose sync target.
+- Define sync metadata.
+- Add notebook archive format.
+- Implement backup and restore.
+- Add conflict detection and explicit recovery behavior.
