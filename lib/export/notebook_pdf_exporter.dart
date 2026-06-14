@@ -1,11 +1,13 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui' show Offset;
 
 import 'package:image/image.dart' as image;
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/notebook.dart';
 import 'package:inknest_notes/models/pdf_background.dart';
 import 'package:inknest_notes/models/stroke.dart';
+import 'package:inknest_notes/models/stroke_geometry.dart';
 import 'package:inknest_notes/models/stroke_point.dart';
 import 'package:inknest_notes/storage/notebook_repository.dart';
 import 'package:pdf/pdf.dart' as pdf;
@@ -98,19 +100,61 @@ class NotebookPdfExporter {
           ..drawEllipse(point.x, point.y, radius, radius)
           ..fillPath();
       } else {
-        final firstPoint = _mapPoint(stroke.points.first, page, scaleX, scaleY);
-        canvas.moveTo(firstPoint.x, firstPoint.y);
-
-        for (final point in stroke.points.skip(1)) {
-          final mappedPoint = _mapPoint(point, page, scaleX, scaleY);
-          canvas.lineTo(mappedPoint.x, mappedPoint.y);
-        }
+        _paintSmoothStrokePath(canvas, stroke, page, scaleX, scaleY);
 
         canvas.strokePath();
       }
 
       canvas.restoreContext();
     }
+  }
+
+  void _paintSmoothStrokePath(
+    pdf.PdfGraphics canvas,
+    Stroke stroke,
+    NotePage page,
+    double scaleX,
+    double scaleY,
+  ) {
+    final mappedPoints = [
+      for (final point in stroke.points)
+        _mapPointOffset(point, page, scaleX, scaleY),
+    ];
+
+    canvas.moveTo(mappedPoints.first.dx, mappedPoints.first.dy);
+    var currentPoint = mappedPoints.first;
+    for (final segment in StrokeGeometry.buildSmoothSegments(mappedPoints)) {
+      final control = segment.control;
+      if (control == null) {
+        canvas.lineTo(segment.end.dx, segment.end.dy);
+      } else {
+        _quadraticCurveTo(
+          canvas: canvas,
+          start: currentPoint,
+          control: control,
+          end: segment.end,
+        );
+      }
+      currentPoint = segment.end;
+    }
+  }
+
+  void _quadraticCurveTo({
+    required pdf.PdfGraphics canvas,
+    required Offset start,
+    required Offset control,
+    required Offset end,
+  }) {
+    final firstControl = start + (control - start) * (2 / 3);
+    final secondControl = end + (control - end) * (2 / 3);
+    canvas.curveTo(
+      firstControl.dx,
+      firstControl.dy,
+      secondControl.dx,
+      secondControl.dy,
+      end.dx,
+      end.dy,
+    );
   }
 
   pdf.PdfGraphicState _graphicStateFor(Stroke stroke) {
@@ -133,6 +177,18 @@ class NotebookPdfExporter {
     double scaleY,
   ) {
     return pdf.PdfPoint(
+      point.offset.dx * scaleX,
+      (page.height - point.offset.dy) * scaleY,
+    );
+  }
+
+  Offset _mapPointOffset(
+    StrokePoint point,
+    NotePage page,
+    double scaleX,
+    double scaleY,
+  ) {
+    return Offset(
       point.offset.dx * scaleX,
       (page.height - point.offset.dy) * scaleY,
     );

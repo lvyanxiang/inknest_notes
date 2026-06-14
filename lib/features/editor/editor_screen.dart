@@ -11,6 +11,7 @@ import 'package:inknest_notes/features/editor/tools/editor_toolbar.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/notebook.dart';
 import 'package:inknest_notes/models/stroke.dart';
+import 'package:inknest_notes/models/stroke_geometry.dart';
 import 'package:inknest_notes/models/stroke_point.dart';
 import 'package:inknest_notes/models/tool.dart';
 import 'package:inknest_notes/storage/notebook_repository.dart';
@@ -171,11 +172,13 @@ class _EditorScreenState extends State<EditorScreen> {
       return;
     }
 
-    final remainingStrokes = page.strokes
-        .where((stroke) => !_strokeIntersectsEraser(stroke, points))
-        .toList();
+    final remainingStrokes = StrokeGeometry.eraseStrokes(
+      strokes: page.strokes,
+      eraserPoints: points,
+      radius: _tool.width / 2,
+    );
 
-    if (remainingStrokes.length == page.strokes.length) {
+    if (identical(remainingStrokes, page.strokes)) {
       return;
     }
 
@@ -188,20 +191,6 @@ class _EditorScreenState extends State<EditorScreen> {
     });
 
     unawaited(_savePage(updatedPage));
-  }
-
-  bool _strokeIntersectsEraser(Stroke stroke, List<StrokePoint> eraserPoints) {
-    final radius = _tool.width / 2;
-
-    for (final strokePoint in stroke.points) {
-      for (final eraserPoint in eraserPoints) {
-        if ((strokePoint.offset - eraserPoint.offset).distance <= radius) {
-          return true;
-        }
-      }
-    }
-
-    return false;
   }
 
   Future<void> _savePage([NotePage? page]) async {
@@ -1242,12 +1231,7 @@ class _PageThumbnailPainter extends CustomPainter {
         continue;
       }
 
-      final path = Path()
-        ..moveTo(stroke.points.first.offset.dx, stroke.points.first.offset.dy);
-      for (final point in stroke.points.skip(1)) {
-        path.lineTo(point.offset.dx, point.offset.dy);
-      }
-      canvas.drawPath(path, paint);
+      canvas.drawPath(StrokeGeometry.buildSmoothPath(stroke.points), paint);
     }
 
     canvas.restore();

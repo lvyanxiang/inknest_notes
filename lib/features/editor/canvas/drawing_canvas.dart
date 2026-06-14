@@ -3,6 +3,7 @@ import 'dart:ui' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/stroke.dart';
+import 'package:inknest_notes/models/stroke_geometry.dart';
 import 'package:inknest_notes/models/stroke_point.dart';
 import 'package:inknest_notes/models/tool.dart';
 
@@ -76,7 +77,8 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
     }
 
     if (widget.tool.type == ToolType.eraser) {
-      widget.onErase([_pointFromEvent(event.localPosition, event.pressure)]);
+      final point = _pointFromEvent(event.localPosition, event.pressure);
+      widget.onErase([point]);
       return;
     }
 
@@ -85,12 +87,14 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
       return;
     }
 
+    final point = _pointFromEvent(event.localPosition, event.pressure);
+    if (!StrokeGeometry.shouldAppendPoint(activeStroke.points, point)) {
+      return;
+    }
+
     setState(() {
       _activeStroke = activeStroke.copyWith(
-        points: [
-          ...activeStroke.points,
-          _pointFromEvent(event.localPosition, event.pressure),
-        ],
+        points: [...activeStroke.points, point],
       );
     });
   }
@@ -204,12 +208,7 @@ class _StrokePainter extends CustomPainter {
         continue;
       }
 
-      final path = Path()
-        ..moveTo(stroke.points.first.offset.dx, stroke.points.first.offset.dy);
-      for (final point in stroke.points.skip(1)) {
-        path.lineTo(point.offset.dx, point.offset.dy);
-      }
-      canvas.drawPath(path, paint);
+      canvas.drawPath(StrokeGeometry.buildSmoothPath(stroke.points), paint);
     }
   }
 

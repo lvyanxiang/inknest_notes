@@ -2,9 +2,9 @@
 
 ## Current
 
-- Milestone: Post-MVP 1 - Editor Usability
-- Next task: Improve stroke smoothing and partial erasing.
-- Last completed: Added page duplicate, delete, and reorder.
+- Milestone: Post-MVP 2 - Library Organization
+- Next task: Add notebook rename, delete, duplicate, and archive.
+- Last completed: Improved stroke smoothing and partial erasing.
 
 ## Decisions
 
@@ -29,6 +29,7 @@
 - Keep finger drawing available by default; use an explicit Finger pan mode to make touch drag the page while stylus/mouse input writes.
 - Keep the first page thumbnail strip lightweight: show page shape, selection state, handwriting preview, and a PDF marker before adding full PDF thumbnail caching.
 - Store page operations in the repository layer: duplicate inserts after the source page, delete keeps at least one page, and reorder starts with thumbnail menu move-left/move-right actions.
+- Use shared stroke geometry helpers for smoothed screen drawing, thumbnail drawing, PDF export paths, and partial eraser stroke splitting.
 
 ## Verification
 
@@ -48,6 +49,9 @@
 - `dart format lib test` passed after page duplicate/delete/reorder.
 - `flutter test` passed after page duplicate/delete/reorder.
 - `flutter analyze` passed after page duplicate/delete/reorder.
+- `dart format lib test` passed after stroke smoothing and partial erasing.
+- `flutter test` passed after stroke smoothing and partial erasing.
+- `flutter analyze` passed after stroke smoothing and partial erasing.
 
 ## Notes
 
@@ -65,6 +69,7 @@
 - Editor toolbar includes Finger pan mode; when enabled, touch drags the page and stylus input still writes.
 - Editor bottom navigator now shows page thumbnails with selection state, page numbers, handwriting previews, and PDF page markers.
 - Editor page thumbnails include actions to duplicate, delete with confirmation, and move pages left or right.
+- Editor strokes render with smoothed paths on canvas, thumbnails, and exported PDFs; the eraser can split strokes instead of only deleting whole strokes.
 - Post-MVP feature gaps and optimization areas are documented in `docs/POST_MVP_ROADMAP.md`.
 - Subscription packaging, platform behavior, and local/cloud merge rules are documented in `docs/SUBSCRIPTION_PLAN.md`.
 - Web knowledge-base, mobile companion, collaboration, and AI directions are captured as later post-MVP milestones.
