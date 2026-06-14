@@ -31,6 +31,7 @@ void main() {
 
     expect(find.text('Notebook 1'), findsOneWidget);
     expect(find.byTooltip('Export PDF'), findsOneWidget);
+    expect(find.byKey(const ValueKey('page-thumbnail-page-1')), findsOneWidget);
     expect(find.text('No notebooks yet'), findsNothing);
   });
 
@@ -225,6 +226,8 @@ void main() {
     await tester.tap(find.byTooltip('Add page'));
     await tester.pumpAndSettle();
 
+    expect(find.byKey(const ValueKey('page-thumbnail-page-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('page-thumbnail-page-2')), findsOneWidget);
     expect(find.byTooltip('Page 1'), findsOneWidget);
     expect(find.byTooltip('Page 2'), findsOneWidget);
     expect(tester.widget<IconButton>(undoButton).onPressed, isNull);

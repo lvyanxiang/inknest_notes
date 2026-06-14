@@ -3,8 +3,8 @@
 ## Current
 
 - Milestone: Post-MVP 1 - Editor Usability
-- Next task: Add page thumbnails.
-- Last completed: Added Pencil draw plus finger pan mode.
+- Next task: Add page duplicate, delete, and reorder.
+- Last completed: Added page thumbnails.
 
 ## Decisions
 
@@ -27,6 +27,7 @@
 - Long-term product direction: iPad handwriting/PDF study, phone capture/review, and Web Yuque-like knowledge base.
 - Use a custom two-finger zoom/pan viewport instead of `InteractiveViewer` so single-pointer drawing remains reliable.
 - Keep finger drawing available by default; use an explicit Finger pan mode to make touch drag the page while stylus/mouse input writes.
+- Keep the first page thumbnail strip lightweight: show page shape, selection state, handwriting preview, and a PDF marker before adding full PDF thumbnail caching.
 
 ## Verification
 
@@ -40,6 +41,9 @@
 - `dart format lib test` passed after Finger pan mode.
 - `flutter test` passed after Finger pan mode.
 - `flutter analyze` passed after Finger pan mode.
+- `dart format lib test` passed after page thumbnails.
+- `flutter test` passed after page thumbnails.
+- `flutter analyze` passed after page thumbnails.
 
 ## Notes
 
@@ -55,6 +59,7 @@
 - Editor can export the current notebook as a PDF, including blank pages, imported PDF page backgrounds, and handwriting strokes.
 - Editor page viewport supports zoom controls and two-finger pinch/pan without saving accidental strokes.
 - Editor toolbar includes Finger pan mode; when enabled, touch drags the page and stylus input still writes.
+- Editor bottom navigator now shows page thumbnails with selection state, page numbers, handwriting previews, and PDF page markers.
 - Post-MVP feature gaps and optimization areas are documented in `docs/POST_MVP_ROADMAP.md`.
 - Subscription packaging, platform behavior, and local/cloud merge rules are documented in `docs/SUBSCRIPTION_PLAN.md`.
 - Web knowledge-base, mobile companion, collaboration, and AI directions are captured as later post-MVP milestones.

@@ -31,6 +31,7 @@ class EditorScreen extends StatefulWidget {
 
 class _EditorScreenState extends State<EditorScreen> {
   final List<Stroke> _redoStack = [];
+  final Map<String, NotePage> _pagesById = {};
   DrawingTool _tool = const DrawingTool();
   late Notebook _notebook;
   late String _currentPageId;
@@ -44,6 +45,7 @@ class _EditorScreenState extends State<EditorScreen> {
     _notebook = widget.notebook;
     _currentPageId = _notebook.pageIds.first;
     _loadPage();
+    unawaited(_loadPageThumbnails());
   }
 
   Future<void> _loadPage() async {
@@ -58,7 +60,44 @@ class _EditorScreenState extends State<EditorScreen> {
 
     setState(() {
       _page = page;
+      _pagesById[page.id] = page;
       _redoStack.clear();
+    });
+  }
+
+  Future<void> _loadPageThumbnails() async {
+    final notebook = _notebook;
+    final missingPageIds = [
+      for (final pageId in notebook.pageIds)
+        if (!_pagesById.containsKey(pageId)) pageId,
+    ];
+
+    if (missingPageIds.isEmpty) {
+      return;
+    }
+
+    final loadedPages = <String, NotePage>{};
+    for (final pageId in missingPageIds) {
+      loadedPages[pageId] = await widget.notebookRepository.loadPage(
+        notebook,
+        pageId,
+      );
+    }
+
+    if (!mounted || notebook.id != _notebook.id) {
+      return;
+    }
+
+    setState(() {
+      for (final entry in loadedPages.entries) {
+        if (_notebook.pageIds.contains(entry.key) &&
+            !_pagesById.containsKey(entry.key)) {
+          _pagesById[entry.key] = entry.value;
+        }
+      }
+      if (_page case final currentPage?) {
+        _pagesById[currentPage.id] = currentPage;
+      }
     });
   }
 
@@ -68,12 +107,15 @@ class _EditorScreenState extends State<EditorScreen> {
       return;
     }
 
+    final updatedPage = page.copyWith(strokes: [...page.strokes, stroke]);
+
     setState(() {
-      _page = page.copyWith(strokes: [...page.strokes, stroke]);
+      _page = updatedPage;
+      _pagesById[updatedPage.id] = updatedPage;
       _redoStack.clear();
     });
 
-    unawaited(_savePage());
+    unawaited(_savePage(updatedPage));
   }
 
   void _undo() {
@@ -82,13 +124,16 @@ class _EditorScreenState extends State<EditorScreen> {
       return;
     }
 
+    final updatedStrokes = page.strokes.toList();
+    _redoStack.add(updatedStrokes.removeLast());
+    final updatedPage = page.copyWith(strokes: updatedStrokes);
+
     setState(() {
-      final updatedStrokes = page.strokes.toList();
-      _redoStack.add(updatedStrokes.removeLast());
-      _page = page.copyWith(strokes: updatedStrokes);
+      _page = updatedPage;
+      _pagesById[updatedPage.id] = updatedPage;
     });
 
-    unawaited(_savePage());
+    unawaited(_savePage(updatedPage));
   }
 
   void _redo() {
@@ -97,12 +142,15 @@ class _EditorScreenState extends State<EditorScreen> {
       return;
     }
 
+    final stroke = _redoStack.removeLast();
+    final updatedPage = page.copyWith(strokes: [...page.strokes, stroke]);
+
     setState(() {
-      final stroke = _redoStack.removeLast();
-      _page = page.copyWith(strokes: [...page.strokes, stroke]);
+      _page = updatedPage;
+      _pagesById[updatedPage.id] = updatedPage;
     });
 
-    unawaited(_savePage());
+    unawaited(_savePage(updatedPage));
   }
 
   void _setTool(DrawingTool tool) {
@@ -131,12 +179,15 @@ class _EditorScreenState extends State<EditorScreen> {
       return;
     }
 
+    final updatedPage = page.copyWith(strokes: remainingStrokes);
+
     setState(() {
-      _page = page.copyWith(strokes: remainingStrokes);
+      _page = updatedPage;
+      _pagesById[updatedPage.id] = updatedPage;
       _redoStack.clear();
     });
 
-    unawaited(_savePage());
+    unawaited(_savePage(updatedPage));
   }
 
   bool _strokeIntersectsEraser(Stroke stroke, List<StrokePoint> eraserPoints) {
@@ -153,13 +204,13 @@ class _EditorScreenState extends State<EditorScreen> {
     return false;
   }
 
-  Future<void> _savePage() async {
-    final page = _page;
-    if (page == null) {
+  Future<void> _savePage([NotePage? page]) async {
+    final pageToSave = page ?? _page;
+    if (pageToSave == null) {
       return;
     }
 
-    await widget.notebookRepository.savePage(_notebook, page);
+    await widget.notebookRepository.savePage(_notebook, pageToSave);
   }
 
   Future<void> _addPage() async {
@@ -177,6 +228,7 @@ class _EditorScreenState extends State<EditorScreen> {
     });
 
     await _loadPage();
+    unawaited(_loadPageThumbnails());
   }
 
   Future<void> _exportPdf() async {
@@ -305,6 +357,7 @@ class _EditorScreenState extends State<EditorScreen> {
           ),
           _PageNavigator(
             pageIds: _notebook.pageIds,
+            pagesById: _pagesById,
             currentPageId: _currentPageId,
             onSelectPage: (pageId) => unawaited(_selectPage(pageId)),
             onAddPage: () => unawaited(_addPage()),
@@ -718,12 +771,14 @@ class _ZoomControls extends StatelessWidget {
 class _PageNavigator extends StatelessWidget {
   const _PageNavigator({
     required this.pageIds,
+    required this.pagesById,
     required this.currentPageId,
     required this.onSelectPage,
     required this.onAddPage,
   });
 
   final List<String> pageIds;
+  final Map<String, NotePage> pagesById;
   final String currentPageId;
   final ValueChanged<String> onSelectPage;
   final VoidCallback onAddPage;
@@ -738,32 +793,203 @@ class _PageNavigator extends StatelessWidget {
       child: SafeArea(
         top: false,
         child: SizedBox(
-          height: 64,
+          height: 118,
           child: ListView(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             children: [
               for (final (index, pageId) in pageIds.indexed)
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
-                  child: Tooltip(
-                    message: 'Page ${index + 1}',
-                    child: ChoiceChip(
-                      selected: pageId == currentPageId,
-                      label: Text('${index + 1}'),
-                      onSelected: (_) => onSelectPage(pageId),
-                    ),
+                  child: _PageThumbnailButton(
+                    pageId: pageId,
+                    pageNumber: index + 1,
+                    page: pagesById[pageId],
+                    isSelected: pageId == currentPageId,
+                    onPressed: () => onSelectPage(pageId),
                   ),
                 ),
-              IconButton.filledTonal(
-                onPressed: onAddPage,
-                tooltip: 'Add page',
-                icon: const Icon(Icons.add),
+              Center(
+                child: IconButton.filledTonal(
+                  onPressed: onAddPage,
+                  tooltip: 'Add page',
+                  icon: const Icon(Icons.add),
+                ),
               ),
             ],
           ),
         ),
       ),
     );
+  }
+}
+
+class _PageThumbnailButton extends StatelessWidget {
+  const _PageThumbnailButton({
+    required this.pageId,
+    required this.pageNumber,
+    required this.page,
+    required this.isSelected,
+    required this.onPressed,
+  });
+
+  final String pageId;
+  final int pageNumber;
+  final NotePage? page;
+  final bool isSelected;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final borderColor = isSelected
+        ? colorScheme.primary
+        : colorScheme.outlineVariant;
+
+    return Tooltip(
+      message: 'Page $pageNumber',
+      child: InkWell(
+        key: ValueKey('page-thumbnail-$pageId'),
+        borderRadius: BorderRadius.circular(8),
+        onTap: onPressed,
+        child: SizedBox(
+          width: 72,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 160),
+                width: 58,
+                height: 78,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: borderColor,
+                    width: isSelected ? 2 : 1,
+                  ),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x171E2526),
+                      blurRadius: 8,
+                      offset: Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(5),
+                  child: page == null
+                      ? Icon(
+                          Icons.description_outlined,
+                          color: colorScheme.outline,
+                          size: 22,
+                        )
+                      : _PageThumbnailPreview(page: page!),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '$pageNumber',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: isSelected
+                      ? colorScheme.primary
+                      : colorScheme.onSurfaceVariant,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PageThumbnailPreview extends StatelessWidget {
+  const _PageThumbnailPreview({required this.page});
+
+  final NotePage page;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        if (page.pdfBackground != null)
+          ColoredBox(
+            color: const Color(0xFFF3F0EA),
+            child: Icon(
+              Icons.picture_as_pdf_outlined,
+              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.55),
+              size: 20,
+            ),
+          ),
+        CustomPaint(painter: _PageThumbnailPainter(page: page)),
+      ],
+    );
+  }
+}
+
+class _PageThumbnailPainter extends CustomPainter {
+  const _PageThumbnailPainter({required this.page});
+
+  final NotePage page;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final scale = math.min(size.width / page.width, size.height / page.height);
+    final scaledPageSize = Size(page.width * scale, page.height * scale);
+    final offset = Offset(
+      (size.width - scaledPageSize.width) / 2,
+      (size.height - scaledPageSize.height) / 2,
+    );
+
+    canvas
+      ..save()
+      ..translate(offset.dx, offset.dy)
+      ..scale(scale);
+
+    for (final stroke in page.strokes) {
+      if (stroke.points.isEmpty) {
+        continue;
+      }
+
+      final paint = Paint()
+        ..color = stroke.color
+        ..strokeWidth = math.max(stroke.width, 1.4 / scale)
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..blendMode = stroke.isHighlighter
+            ? BlendMode.multiply
+            : BlendMode.srcOver
+        ..style = PaintingStyle.stroke;
+
+      if (stroke.points.length == 1) {
+        canvas.drawCircle(
+          stroke.points.first.offset,
+          paint.strokeWidth / 2,
+          paint..style = PaintingStyle.fill,
+        );
+        continue;
+      }
+
+      final path = Path()
+        ..moveTo(stroke.points.first.offset.dx, stroke.points.first.offset.dy);
+      for (final point in stroke.points.skip(1)) {
+        path.lineTo(point.offset.dx, point.offset.dy);
+      }
+      canvas.drawPath(path, paint);
+    }
+
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _PageThumbnailPainter oldDelegate) {
+    return oldDelegate.page != page;
   }
 }
