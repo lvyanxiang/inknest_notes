@@ -166,7 +166,7 @@ Goal: make writing and navigating a notebook feel natural on iPad.
 - [x] Add zoom and pan.
 - [x] Add Pencil draw plus finger pan mode.
 - [x] Add page thumbnails.
-- [ ] Add page duplicate, delete, and reorder.
+- [x] Add page duplicate, delete, and reorder.
 - [ ] Improve stroke smoothing and partial erasing.
 
 ### Post-MVP 2: Library Organization

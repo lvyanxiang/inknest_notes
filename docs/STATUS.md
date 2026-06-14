@@ -3,8 +3,8 @@
 ## Current
 
 - Milestone: Post-MVP 1 - Editor Usability
-- Next task: Add page duplicate, delete, and reorder.
-- Last completed: Added page thumbnails.
+- Next task: Improve stroke smoothing and partial erasing.
+- Last completed: Added page duplicate, delete, and reorder.
 
 ## Decisions
 
@@ -28,6 +28,7 @@
 - Use a custom two-finger zoom/pan viewport instead of `InteractiveViewer` so single-pointer drawing remains reliable.
 - Keep finger drawing available by default; use an explicit Finger pan mode to make touch drag the page while stylus/mouse input writes.
 - Keep the first page thumbnail strip lightweight: show page shape, selection state, handwriting preview, and a PDF marker before adding full PDF thumbnail caching.
+- Store page operations in the repository layer: duplicate inserts after the source page, delete keeps at least one page, and reorder starts with thumbnail menu move-left/move-right actions.
 
 ## Verification
 
@@ -44,6 +45,9 @@
 - `dart format lib test` passed after page thumbnails.
 - `flutter test` passed after page thumbnails.
 - `flutter analyze` passed after page thumbnails.
+- `dart format lib test` passed after page duplicate/delete/reorder.
+- `flutter test` passed after page duplicate/delete/reorder.
+- `flutter analyze` passed after page duplicate/delete/reorder.
 
 ## Notes
 
@@ -60,6 +64,7 @@
 - Editor page viewport supports zoom controls and two-finger pinch/pan without saving accidental strokes.
 - Editor toolbar includes Finger pan mode; when enabled, touch drags the page and stylus input still writes.
 - Editor bottom navigator now shows page thumbnails with selection state, page numbers, handwriting previews, and PDF page markers.
+- Editor page thumbnails include actions to duplicate, delete with confirmation, and move pages left or right.
 - Post-MVP feature gaps and optimization areas are documented in `docs/POST_MVP_ROADMAP.md`.
 - Subscription packaging, platform behavior, and local/cloud merge rules are documented in `docs/SUBSCRIPTION_PLAN.md`.
 - Web knowledge-base, mobile companion, collaboration, and AI directions are captured as later post-MVP milestones.

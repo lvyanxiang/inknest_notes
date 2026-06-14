@@ -12,6 +12,12 @@ abstract class NotebookRepository {
 
   Future<Notebook> addPage(Notebook notebook);
 
+  Future<Notebook> duplicatePage(Notebook notebook, String pageId);
+
+  Future<Notebook> deletePage(Notebook notebook, String pageId);
+
+  Future<Notebook> movePage(Notebook notebook, String pageId, int newIndex);
+
   Future<NotePage> loadPage(Notebook notebook, String pageId);
 
   Future<void> savePage(Notebook notebook, NotePage page);

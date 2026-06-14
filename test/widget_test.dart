@@ -237,4 +237,44 @@ void main() {
 
     expect(tester.widget<IconButton>(undoButton).onPressed, isNotNull);
   });
+
+  testWidgets('uses page thumbnail actions to duplicate delete and reorder', (
+    WidgetTester tester,
+  ) async {
+    await pumpInkNestApp(tester);
+
+    await tester.tap(find.text('New notebook'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Page 1 actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Duplicate page'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('page-thumbnail-page-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('page-thumbnail-page-2')), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Page 2 actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Move page left'));
+    await tester.pumpAndSettle();
+
+    final page1Left = tester.getTopLeft(
+      find.byKey(const ValueKey('page-thumbnail-page-1')),
+    );
+    final page2Left = tester.getTopLeft(
+      find.byKey(const ValueKey('page-thumbnail-page-2')),
+    );
+    expect(page2Left.dx, lessThan(page1Left.dx));
+
+    await tester.tap(find.byTooltip('Page 1 actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete page'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('page-thumbnail-page-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('page-thumbnail-page-2')), findsNothing);
+  });
 }

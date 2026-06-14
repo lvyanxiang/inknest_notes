@@ -231,6 +231,126 @@ class _EditorScreenState extends State<EditorScreen> {
     unawaited(_loadPageThumbnails());
   }
 
+  Future<void> _duplicatePage(String pageId) async {
+    await _savePage();
+
+    final previousPageIds = _notebook.pageIds.toSet();
+    final updatedNotebook = await widget.notebookRepository.duplicatePage(
+      _notebook,
+      pageId,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    final duplicatedPageId = updatedNotebook.pageIds.firstWhere(
+      (updatedPageId) => !previousPageIds.contains(updatedPageId),
+      orElse: () => pageId,
+    );
+
+    setState(() {
+      _notebook = updatedNotebook;
+      _currentPageId = duplicatedPageId;
+      _page = null;
+      _redoStack.clear();
+    });
+
+    await _loadPage();
+    unawaited(_loadPageThumbnails());
+  }
+
+  Future<void> _deletePage(String pageId) async {
+    if (_notebook.pageIds.length <= 1) {
+      return;
+    }
+
+    final pageNumber = _notebook.pageIds.indexOf(pageId) + 1;
+    final shouldDelete = await _confirmDeletePage(pageNumber);
+    if (!shouldDelete || !mounted) {
+      return;
+    }
+
+    await _savePage();
+
+    final previousIndex = _notebook.pageIds.indexOf(pageId);
+    final isDeletingCurrentPage = pageId == _currentPageId;
+    final updatedNotebook = await widget.notebookRepository.deletePage(
+      _notebook,
+      pageId,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    final nextPageId = isDeletingCurrentPage
+        ? updatedNotebook.pageIds[math.min(
+            previousIndex,
+            updatedNotebook.pageIds.length - 1,
+          )]
+        : _currentPageId;
+
+    setState(() {
+      _notebook = updatedNotebook;
+      _currentPageId = nextPageId;
+      _pagesById.remove(pageId);
+      if (isDeletingCurrentPage) {
+        _page = null;
+        _redoStack.clear();
+      }
+    });
+
+    if (isDeletingCurrentPage) {
+      await _loadPage();
+    }
+    unawaited(_loadPageThumbnails());
+  }
+
+  Future<bool> _confirmDeletePage(int pageNumber) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Delete page?'),
+          content: Text('Page $pageNumber will be removed from this notebook.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.of(context).pop(true),
+              icon: const Icon(Icons.delete_outline),
+              label: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    return confirmed ?? false;
+  }
+
+  Future<void> _movePage(String pageId, int newIndex) async {
+    await _savePage();
+
+    final updatedNotebook = await widget.notebookRepository.movePage(
+      _notebook,
+      pageId,
+      newIndex,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _notebook = updatedNotebook;
+    });
+    unawaited(_loadPageThumbnails());
+  }
+
   Future<void> _exportPdf() async {
     if (_isExporting) {
       return;
@@ -361,6 +481,10 @@ class _EditorScreenState extends State<EditorScreen> {
             currentPageId: _currentPageId,
             onSelectPage: (pageId) => unawaited(_selectPage(pageId)),
             onAddPage: () => unawaited(_addPage()),
+            onDuplicatePage: (pageId) => unawaited(_duplicatePage(pageId)),
+            onDeletePage: (pageId) => unawaited(_deletePage(pageId)),
+            onMovePage: (pageId, newIndex) =>
+                unawaited(_movePage(pageId, newIndex)),
           ),
         ],
       ),
@@ -775,6 +899,9 @@ class _PageNavigator extends StatelessWidget {
     required this.currentPageId,
     required this.onSelectPage,
     required this.onAddPage,
+    required this.onDuplicatePage,
+    required this.onDeletePage,
+    required this.onMovePage,
   });
 
   final List<String> pageIds;
@@ -782,6 +909,9 @@ class _PageNavigator extends StatelessWidget {
   final String currentPageId;
   final ValueChanged<String> onSelectPage;
   final VoidCallback onAddPage;
+  final ValueChanged<String> onDuplicatePage;
+  final ValueChanged<String> onDeletePage;
+  final void Function(String pageId, int newIndex) onMovePage;
 
   @override
   Widget build(BuildContext context) {
@@ -806,7 +936,14 @@ class _PageNavigator extends StatelessWidget {
                     pageNumber: index + 1,
                     page: pagesById[pageId],
                     isSelected: pageId == currentPageId,
+                    canDelete: pageIds.length > 1,
+                    canMoveLeft: index > 0,
+                    canMoveRight: index < pageIds.length - 1,
                     onPressed: () => onSelectPage(pageId),
+                    onDuplicate: () => onDuplicatePage(pageId),
+                    onDelete: () => onDeletePage(pageId),
+                    onMoveLeft: () => onMovePage(pageId, index - 1),
+                    onMoveRight: () => onMovePage(pageId, index + 1),
                   ),
                 ),
               Center(
@@ -830,14 +967,45 @@ class _PageThumbnailButton extends StatelessWidget {
     required this.pageNumber,
     required this.page,
     required this.isSelected,
+    required this.canDelete,
+    required this.canMoveLeft,
+    required this.canMoveRight,
     required this.onPressed,
+    required this.onDuplicate,
+    required this.onDelete,
+    required this.onMoveLeft,
+    required this.onMoveRight,
   });
 
   final String pageId;
   final int pageNumber;
   final NotePage? page;
   final bool isSelected;
+  final bool canDelete;
+  final bool canMoveLeft;
+  final bool canMoveRight;
   final VoidCallback onPressed;
+  final VoidCallback onDuplicate;
+  final VoidCallback onDelete;
+  final VoidCallback onMoveLeft;
+  final VoidCallback onMoveRight;
+
+  void _handleAction(_PageAction action) {
+    switch (action) {
+      case _PageAction.duplicate:
+        onDuplicate();
+        break;
+      case _PageAction.delete:
+        onDelete();
+        break;
+      case _PageAction.moveLeft:
+        onMoveLeft();
+        break;
+      case _PageAction.moveRight:
+        onMoveRight();
+        break;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -857,35 +1025,50 @@ class _PageThumbnailButton extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 160),
-                width: 58,
-                height: 78,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(
-                    color: borderColor,
-                    width: isSelected ? 2 : 1,
-                  ),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x171E2526),
-                      blurRadius: 8,
-                      offset: Offset(0, 3),
+              Stack(
+                children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 160),
+                    width: 58,
+                    height: 78,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: borderColor,
+                        width: isSelected ? 2 : 1,
+                      ),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x171E2526),
+                          blurRadius: 8,
+                          offset: Offset(0, 3),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(5),
-                  child: page == null
-                      ? Icon(
-                          Icons.description_outlined,
-                          color: colorScheme.outline,
-                          size: 22,
-                        )
-                      : _PageThumbnailPreview(page: page!),
-                ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(5),
+                      child: page == null
+                          ? Icon(
+                              Icons.description_outlined,
+                              color: colorScheme.outline,
+                              size: 22,
+                            )
+                          : _PageThumbnailPreview(page: page!),
+                    ),
+                  ),
+                  Positioned(
+                    top: 3,
+                    right: 3,
+                    child: _PageActionMenu(
+                      pageNumber: pageNumber,
+                      canDelete: canDelete,
+                      canMoveLeft: canMoveLeft,
+                      canMoveRight: canMoveRight,
+                      onSelected: _handleAction,
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 4),
               Text(
@@ -905,6 +1088,88 @@ class _PageThumbnailButton extends StatelessWidget {
       ),
     );
   }
+}
+
+enum _PageAction { duplicate, delete, moveLeft, moveRight }
+
+class _PageActionMenu extends StatelessWidget {
+  const _PageActionMenu({
+    required this.pageNumber,
+    required this.canDelete,
+    required this.canMoveLeft,
+    required this.canMoveRight,
+    required this.onSelected,
+  });
+
+  final int pageNumber;
+  final bool canDelete;
+  final bool canMoveLeft;
+  final bool canMoveRight;
+  final ValueChanged<_PageAction> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return PopupMenuButton<_PageAction>(
+      tooltip: 'Page $pageNumber actions',
+      padding: EdgeInsets.zero,
+      onSelected: onSelected,
+      itemBuilder: (context) {
+        return [
+          _pageActionItem(
+            value: _PageAction.duplicate,
+            icon: Icons.copy,
+            label: 'Duplicate page',
+          ),
+          _pageActionItem(
+            value: _PageAction.delete,
+            icon: Icons.delete_outline,
+            label: 'Delete page',
+            enabled: canDelete,
+          ),
+          _pageActionItem(
+            value: _PageAction.moveLeft,
+            icon: Icons.arrow_back,
+            label: 'Move page left',
+            enabled: canMoveLeft,
+          ),
+          _pageActionItem(
+            value: _PageAction.moveRight,
+            icon: Icons.arrow_forward,
+            label: 'Move page right',
+            enabled: canMoveRight,
+          ),
+        ];
+      },
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: colorScheme.surface.withValues(alpha: 0.92),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: colorScheme.outlineVariant),
+        ),
+        child: const SizedBox.square(
+          dimension: 24,
+          child: Icon(Icons.more_horiz, size: 18),
+        ),
+      ),
+    );
+  }
+}
+
+PopupMenuItem<_PageAction> _pageActionItem({
+  required _PageAction value,
+  required IconData icon,
+  required String label,
+  bool enabled = true,
+}) {
+  return PopupMenuItem<_PageAction>(
+    value: value,
+    enabled: enabled,
+    child: Row(
+      children: [Icon(icon, size: 18), const SizedBox(width: 12), Text(label)],
+    ),
+  );
 }
 
 class _PageThumbnailPreview extends StatelessWidget {

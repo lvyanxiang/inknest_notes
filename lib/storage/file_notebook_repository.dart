@@ -85,21 +85,92 @@ class FileNotebookRepository implements NotebookRepository {
 
   @override
   Future<Notebook> addPage(Notebook notebook) async {
-    final pageId = 'page-${notebook.pageIds.length + 1}';
+    final pageId = _nextPageId(notebook.pageIds);
     final updatedNotebook = notebook.copyWith(
       updatedAt: DateTime.now(),
       pageIds: [...notebook.pageIds, pageId],
     );
 
-    final notebooks = await _readIndex();
-    await _writeIndex([
-      for (final existingNotebook in notebooks)
-        if (existingNotebook.id == notebook.id)
-          updatedNotebook
-        else
-          existingNotebook,
-    ]);
+    await _replaceNotebook(updatedNotebook);
     await savePage(updatedNotebook, _emptyPage(pageId));
+    return updatedNotebook;
+  }
+
+  @override
+  Future<Notebook> duplicatePage(Notebook notebook, String pageId) async {
+    final sourceIndex = notebook.pageIds.indexOf(pageId);
+    if (sourceIndex == -1) {
+      return notebook;
+    }
+
+    final sourcePage = await loadPage(notebook, pageId);
+    final newPageId = _nextPageId(notebook.pageIds);
+    final updatedPageIds = notebook.pageIds.toList()
+      ..insert(sourceIndex + 1, newPageId);
+    final updatedNotebook = notebook.copyWith(
+      updatedAt: DateTime.now(),
+      pageIds: updatedPageIds,
+    );
+    final duplicatedPage = NotePage(
+      id: newPageId,
+      width: sourcePage.width,
+      height: sourcePage.height,
+      pdfBackground: sourcePage.pdfBackground,
+      strokes: sourcePage.strokes,
+    );
+
+    await _replaceNotebook(updatedNotebook);
+    await savePage(updatedNotebook, duplicatedPage);
+    return updatedNotebook;
+  }
+
+  @override
+  Future<Notebook> deletePage(Notebook notebook, String pageId) async {
+    if (notebook.pageIds.length <= 1 || !notebook.pageIds.contains(pageId)) {
+      return notebook;
+    }
+
+    final updatedNotebook = notebook.copyWith(
+      updatedAt: DateTime.now(),
+      pageIds: [
+        for (final existingPageId in notebook.pageIds)
+          if (existingPageId != pageId) existingPageId,
+      ],
+    );
+
+    await _replaceNotebook(updatedNotebook);
+    final pageFile = _pageFile(notebook, pageId);
+    if (await pageFile.exists()) {
+      await pageFile.delete();
+    }
+    return updatedNotebook;
+  }
+
+  @override
+  Future<Notebook> movePage(
+    Notebook notebook,
+    String pageId,
+    int newIndex,
+  ) async {
+    final currentIndex = notebook.pageIds.indexOf(pageId);
+    if (currentIndex == -1) {
+      return notebook;
+    }
+
+    final clampedIndex = newIndex.clamp(0, notebook.pageIds.length - 1).toInt();
+    if (currentIndex == clampedIndex) {
+      return notebook;
+    }
+
+    final updatedPageIds = notebook.pageIds.toList()
+      ..removeAt(currentIndex)
+      ..insert(clampedIndex, pageId);
+    final updatedNotebook = notebook.copyWith(
+      updatedAt: DateTime.now(),
+      pageIds: updatedPageIds,
+    );
+
+    await _replaceNotebook(updatedNotebook);
     return updatedNotebook;
   }
 
@@ -155,6 +226,14 @@ class FileNotebookRepository implements NotebookRepository {
     );
   }
 
+  Future<void> _replaceNotebook(Notebook notebook) async {
+    final notebooks = await _readIndex();
+    await _writeIndex([
+      for (final existingNotebook in notebooks)
+        if (existingNotebook.id == notebook.id) notebook else existingNotebook,
+    ]);
+  }
+
   File _pageFile(Notebook notebook, String pageId) {
     return File(
       '${_notebooksDirectory.path}/${notebook.id}/pages/$pageId.json',
@@ -204,6 +283,18 @@ class FileNotebookRepository implements NotebookRepository {
 
   NotePage _emptyPage(String pageId) {
     return NotePage(id: pageId, width: _pageWidth, height: _pageHeight);
+  }
+
+  String _nextPageId(List<String> pageIds) {
+    var maxPageNumber = 0;
+    for (final pageId in pageIds) {
+      final pageNumber = int.tryParse(pageId.replaceFirst('page-', ''));
+      if (pageNumber != null && pageNumber > maxPageNumber) {
+        maxPageNumber = pageNumber;
+      }
+    }
+
+    return 'page-${maxPageNumber + 1}';
   }
 
   String _titleFromFile(File file) {

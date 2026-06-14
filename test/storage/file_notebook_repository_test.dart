@@ -116,6 +116,60 @@ void main() {
     expect(secondPage.strokes, hasLength(1));
   });
 
+  test('duplicates, deletes, and reorders pages persistently', () async {
+    var notebook = await repository.createNotebook(title: 'Page Operations');
+
+    await repository.savePage(
+      notebook,
+      NotePage(
+        id: 'page-1',
+        width: 768,
+        height: 1024,
+        strokes: [
+          Stroke(
+            id: 'stroke-1',
+            tool: ToolType.pen,
+            color: const Color(0xFF1E2526),
+            width: 5,
+            points: [
+              StrokePoint(
+                offset: const Offset(10, 20),
+                pressure: 1,
+                time: DateTime.utc(2026, 6, 14),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    notebook = await repository.addPage(notebook);
+    notebook = await repository.duplicatePage(notebook, 'page-1');
+
+    expect(notebook.pageIds, ['page-1', 'page-3', 'page-2']);
+
+    final duplicatedPage = await repository.loadPage(notebook, 'page-3');
+    expect(duplicatedPage.strokes, hasLength(1));
+    expect(duplicatedPage.strokes.single.id, 'stroke-1');
+
+    notebook = await repository.movePage(notebook, 'page-2', 0);
+
+    expect(notebook.pageIds, ['page-2', 'page-1', 'page-3']);
+
+    notebook = await repository.deletePage(notebook, 'page-1');
+
+    expect(notebook.pageIds, ['page-2', 'page-3']);
+    expect(
+      File(
+        '${tempDirectory.path}/notebooks/${notebook.id}/pages/page-1.json',
+      ).existsSync(),
+      isFalse,
+    );
+
+    final reloadedNotebook = (await repository.listNotebooks()).single;
+    expect(reloadedNotebook.pageIds, ['page-2', 'page-3']);
+  });
+
   test('persists pdf page background as a relative asset path', () async {
     final notebook = await repository.createNotebook(title: 'PDF Notes');
 
