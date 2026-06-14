@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' show PointerDeviceKind;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -34,6 +35,7 @@ class _EditorScreenState extends State<EditorScreen> {
   late Notebook _notebook;
   late String _currentPageId;
   bool _isExporting = false;
+  bool _fingerPanEnabled = false;
   NotePage? _page;
 
   @override
@@ -106,6 +108,12 @@ class _EditorScreenState extends State<EditorScreen> {
   void _setTool(DrawingTool tool) {
     setState(() {
       _tool = tool;
+    });
+  }
+
+  void _setFingerPanEnabled(bool value) {
+    setState(() {
+      _fingerPanEnabled = value;
     });
   }
 
@@ -284,7 +292,12 @@ class _EditorScreenState extends State<EditorScreen> {
       ),
       body: Column(
         children: [
-          EditorToolbar(tool: _tool, onToolChanged: _setTool),
+          EditorToolbar(
+            tool: _tool,
+            fingerPanEnabled: _fingerPanEnabled,
+            onToolChanged: _setTool,
+            onFingerPanChanged: _setFingerPanEnabled,
+          ),
           Expanded(
             child: page == null
                 ? const Center(child: CircularProgressIndicator())
@@ -305,6 +318,7 @@ class _EditorScreenState extends State<EditorScreen> {
     return _ZoomablePageViewport(
       key: ValueKey('viewport-${page.id}'),
       page: page,
+      fingerPanEnabled: _fingerPanEnabled,
       child: _buildPageSurface(page),
     );
   }
@@ -338,6 +352,7 @@ class _EditorScreenState extends State<EditorScreen> {
             DrawingCanvas(
               page: page,
               tool: _tool,
+              fingerPanEnabled: _fingerPanEnabled,
               onStrokeComplete: _addStroke,
               onErase: _eraseAt,
             ),
@@ -352,10 +367,12 @@ class _ZoomablePageViewport extends StatefulWidget {
   const _ZoomablePageViewport({
     super.key,
     required this.page,
+    required this.fingerPanEnabled,
     required this.child,
   });
 
   final NotePage page;
+  final bool fingerPanEnabled;
   final Widget child;
 
   @override
@@ -383,11 +400,25 @@ class _ZoomablePageViewportState extends State<_ZoomablePageViewport> {
     if (widget.page.id != oldWidget.page.id) {
       _resetZoom();
     }
+    if (widget.fingerPanEnabled != oldWidget.fingerPanEnabled) {
+      _activePointers.clear();
+      _lastFocalPoint = null;
+      _lastPointerDistance = null;
+    }
   }
 
   void _handlePointerDown(PointerDownEvent event) {
+    if (event.kind != PointerDeviceKind.touch) {
+      return;
+    }
+
     _activePointers[event.pointer] = event.localPosition;
-    _primePinchGesture();
+    if (_activePointers.length >= 2) {
+      _primePinchGesture();
+    } else if (widget.fingerPanEnabled) {
+      _lastFocalPoint = event.localPosition;
+      _lastPointerDistance = null;
+    }
   }
 
   void _handlePointerMove(PointerMoveEvent event) {
@@ -396,7 +427,10 @@ class _ZoomablePageViewportState extends State<_ZoomablePageViewport> {
     }
 
     _activePointers[event.pointer] = event.localPosition;
-    if (_activePointers.length < 2) {
+    if (_activePointers.length == 1) {
+      if (widget.fingerPanEnabled) {
+        _handleSingleFingerPan(event.localPosition);
+      }
       return;
     }
 
@@ -421,13 +455,32 @@ class _ZoomablePageViewportState extends State<_ZoomablePageViewport> {
   }
 
   void _handlePointerEnd(PointerEvent event) {
+    if (event.kind != PointerDeviceKind.touch) {
+      return;
+    }
+
     _activePointers.remove(event.pointer);
-    if (_activePointers.length < 2) {
-      _lastFocalPoint = null;
+    if (_activePointers.length >= 2) {
+      _primePinchGesture();
+    } else if (_activePointers.length == 1 && widget.fingerPanEnabled) {
+      _lastFocalPoint = _activePointers.values.single;
       _lastPointerDistance = null;
     } else {
-      _primePinchGesture();
+      _lastFocalPoint = null;
+      _lastPointerDistance = null;
     }
+  }
+
+  void _handleSingleFingerPan(Offset focalPoint) {
+    final previousFocalPoint = _lastFocalPoint;
+    if (previousFocalPoint != null) {
+      final delta = focalPoint - previousFocalPoint;
+      setState(() {
+        _pan = _clampPan(_pan + delta);
+      });
+    }
+
+    _lastFocalPoint = focalPoint;
   }
 
   void _primePinchGesture() {

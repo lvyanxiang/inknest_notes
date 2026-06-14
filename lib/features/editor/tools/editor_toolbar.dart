@@ -5,11 +5,15 @@ class EditorToolbar extends StatelessWidget {
   const EditorToolbar({
     super.key,
     required this.tool,
+    required this.fingerPanEnabled,
     required this.onToolChanged,
+    required this.onFingerPanChanged,
   });
 
   final DrawingTool tool;
+  final bool fingerPanEnabled;
   final ValueChanged<DrawingTool> onToolChanged;
+  final ValueChanged<bool> onFingerPanChanged;
 
   static const _colors = [
     Color(0xFF1E2526),
@@ -83,6 +87,13 @@ class EditorToolbar extends StatelessWidget {
                   isSelected: tool.width == width,
                   onPressed: () => _selectWidth(width),
                 ),
+              const _ToolbarDivider(),
+              _ModeButton(
+                icon: Icons.pan_tool_alt,
+                label: 'Finger pan',
+                isSelected: fingerPanEnabled,
+                onPressed: () => onFingerPanChanged(!fingerPanEnabled),
+              ),
             ],
           ),
         ),
@@ -93,6 +104,36 @@ class EditorToolbar extends StatelessWidget {
 
 class _ToolButton extends StatelessWidget {
   const _ToolButton({
+    required this.icon,
+    required this.label,
+    required this.isSelected,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool isSelected;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: Tooltip(
+        message: label,
+        child: IconButton.filledTonal(
+          isSelected: isSelected,
+          onPressed: onPressed,
+          icon: Icon(icon),
+          selectedIcon: Icon(icon),
+        ),
+      ),
+    );
+  }
+}
+
+class _ModeButton extends StatelessWidget {
+  const _ModeButton({
     required this.icon,
     required this.label,
     required this.isSelected,

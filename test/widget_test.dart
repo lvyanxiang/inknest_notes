@@ -1,3 +1,5 @@
+import 'dart:ui' show PointerDeviceKind;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:inknest_notes/app/app.dart';
@@ -140,6 +142,7 @@ void main() {
     expect(find.byTooltip('Pen'), findsOneWidget);
     expect(find.byTooltip('Highlighter'), findsOneWidget);
     expect(find.byTooltip('Eraser'), findsOneWidget);
+    expect(find.byTooltip('Finger pan'), findsOneWidget);
     expect(find.byTooltip('Width 3'), findsOneWidget);
     expect(find.byTooltip('Width 5'), findsOneWidget);
     expect(find.byTooltip('Width 8'), findsOneWidget);
@@ -168,6 +171,39 @@ void main() {
     await tester.pump();
 
     expect(tester.widget<IconButton>(undoButton).onPressed, isNull);
+  });
+
+  testWidgets('finger pan mode ignores touch drawing but accepts stylus', (
+    WidgetTester tester,
+  ) async {
+    await pumpInkNestApp(tester);
+
+    await tester.tap(find.text('New notebook'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Finger pan'));
+    await tester.pump();
+
+    final canvas = find.byType(DrawingCanvas);
+    var center = tester.getCenter(canvas);
+    final touchGesture = await tester.startGesture(center);
+    await touchGesture.moveBy(const Offset(32, 24));
+    await touchGesture.up();
+    await tester.pump();
+
+    final undoButton = find.widgetWithIcon(IconButton, Icons.undo);
+    expect(tester.widget<IconButton>(undoButton).onPressed, isNull);
+
+    center = tester.getCenter(canvas);
+    final stylusGesture = await tester.startGesture(
+      center,
+      kind: PointerDeviceKind.stylus,
+    );
+    await stylusGesture.moveBy(const Offset(32, 24));
+    await stylusGesture.up();
+    await tester.pump();
+
+    expect(tester.widget<IconButton>(undoButton).onPressed, isNotNull);
   });
 
   testWidgets('adds and switches notebook pages', (WidgetTester tester) async {

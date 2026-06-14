@@ -1,3 +1,5 @@
+import 'dart:ui' show PointerDeviceKind;
+
 import 'package:flutter/material.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/stroke.dart';
@@ -9,12 +11,14 @@ class DrawingCanvas extends StatefulWidget {
     super.key,
     required this.page,
     required this.tool,
+    required this.fingerPanEnabled,
     required this.onStrokeComplete,
     required this.onErase,
   });
 
   final NotePage page;
   final DrawingTool tool;
+  final bool fingerPanEnabled;
   final ValueChanged<Stroke> onStrokeComplete;
   final ValueChanged<List<StrokePoint>> onErase;
 
@@ -29,6 +33,10 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
   bool _isMultitouch = false;
 
   void _startStroke(PointerDownEvent event) {
+    if (_shouldIgnorePointer(event)) {
+      return;
+    }
+
     _activePointers.add(event.pointer);
     if (_activePointers.length > 1) {
       _cancelActiveStroke();
@@ -59,6 +67,10 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
   }
 
   void _appendPoint(PointerMoveEvent event) {
+    if (_shouldIgnorePointer(event)) {
+      return;
+    }
+
     if (_isMultitouch || event.pointer != _drawingPointer) {
       return;
     }
@@ -84,6 +96,10 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
   }
 
   void _endStroke(PointerEvent event) {
+    if (_shouldIgnorePointer(event)) {
+      return;
+    }
+
     _activePointers.remove(event.pointer);
 
     if (_isMultitouch) {
@@ -110,6 +126,10 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
     if (activeStroke.points.isNotEmpty) {
       widget.onStrokeComplete(activeStroke);
     }
+  }
+
+  bool _shouldIgnorePointer(PointerEvent event) {
+    return widget.fingerPanEnabled && event.kind == PointerDeviceKind.touch;
   }
 
   void _cancelActiveStroke() {
