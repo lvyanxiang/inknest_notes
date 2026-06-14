@@ -13,8 +13,10 @@ class InMemoryNotebookRepository implements NotebookRepository {
   int _nextNotebookNumber = 1;
 
   @override
-  Future<List<Notebook>> listNotebooks() async {
-    return List.unmodifiable(_notebooks);
+  Future<List<Notebook>> listNotebooks({bool archived = false}) async {
+    return List.unmodifiable(
+      _notebooks.where((notebook) => notebook.isArchived == archived),
+    );
   }
 
   @override
@@ -43,6 +45,58 @@ class InMemoryNotebookRepository implements NotebookRepository {
   }
 
   @override
+  Future<Notebook> renameNotebook(Notebook notebook, String title) async {
+    final updatedNotebook = notebook.copyWith(
+      title: title.trim().isEmpty ? notebook.title : title.trim(),
+      updatedAt: DateTime.now(),
+    );
+    _replaceNotebook(updatedNotebook);
+    return updatedNotebook;
+  }
+
+  @override
+  Future<Notebook> duplicateNotebook(Notebook notebook) async {
+    final now = DateTime.now();
+    final duplicatedNotebook = Notebook(
+      id: 'notebook-${now.microsecondsSinceEpoch}',
+      title: '${notebook.title} Copy',
+      createdAt: now,
+      updatedAt: now,
+      pageIds: notebook.pageIds,
+      isArchived: false,
+    );
+
+    _notebooks.add(duplicatedNotebook);
+    for (final pageId in notebook.pageIds) {
+      final sourcePage = await loadPage(notebook, pageId);
+      _pages[_pageKey(duplicatedNotebook, pageId)] = sourcePage;
+    }
+
+    return duplicatedNotebook;
+  }
+
+  @override
+  Future<Notebook> setNotebookArchived(
+    Notebook notebook,
+    bool isArchived,
+  ) async {
+    final updatedNotebook = notebook.copyWith(
+      updatedAt: DateTime.now(),
+      isArchived: isArchived,
+    );
+    _replaceNotebook(updatedNotebook);
+    return updatedNotebook;
+  }
+
+  @override
+  Future<void> deleteNotebook(Notebook notebook) async {
+    _notebooks.removeWhere((existing) => existing.id == notebook.id);
+    for (final pageId in notebook.pageIds) {
+      _pages.remove(_pageKey(notebook, pageId));
+    }
+  }
+
+  @override
   Future<Notebook> addPage(Notebook notebook) async {
     final pageId = _nextPageId(notebook.pageIds);
     final updatedNotebook = notebook.copyWith(
@@ -50,7 +104,7 @@ class InMemoryNotebookRepository implements NotebookRepository {
       pageIds: [...notebook.pageIds, pageId],
     );
     _replaceNotebook(updatedNotebook);
-    _pages['${notebook.id}/$pageId'] = NotePage(
+    _pages[_pageKey(notebook, pageId)] = NotePage(
       id: pageId,
       width: _pageWidth,
       height: _pageHeight,
@@ -75,7 +129,7 @@ class InMemoryNotebookRepository implements NotebookRepository {
     );
 
     _replaceNotebook(updatedNotebook);
-    _pages['${notebook.id}/$newPageId'] = NotePage(
+    _pages[_pageKey(notebook, newPageId)] = NotePage(
       id: newPageId,
       width: sourcePage.width,
       height: sourcePage.height,
@@ -101,7 +155,7 @@ class InMemoryNotebookRepository implements NotebookRepository {
     );
 
     _replaceNotebook(updatedNotebook);
-    _pages.remove('${notebook.id}/$pageId');
+    _pages.remove(_pageKey(notebook, pageId));
     return updatedNotebook;
   }
 
@@ -135,13 +189,13 @@ class InMemoryNotebookRepository implements NotebookRepository {
 
   @override
   Future<NotePage> loadPage(Notebook notebook, String pageId) async {
-    return _pages['${notebook.id}/$pageId'] ??
+    return _pages[_pageKey(notebook, pageId)] ??
         NotePage(id: pageId, width: _pageWidth, height: _pageHeight);
   }
 
   @override
   Future<void> savePage(Notebook notebook, NotePage page) async {
-    _pages['${notebook.id}/${page.id}'] = page;
+    _pages[_pageKey(notebook, page.id)] = page;
   }
 
   void _replaceNotebook(Notebook notebook) {
@@ -151,6 +205,10 @@ class InMemoryNotebookRepository implements NotebookRepository {
     if (index != -1) {
       _notebooks[index] = notebook;
     }
+  }
+
+  String _pageKey(Notebook notebook, String pageId) {
+    return '${notebook.id}/$pageId';
   }
 
   String _nextPageId(List<String> pageIds) {

@@ -170,6 +170,83 @@ void main() {
     expect(reloadedNotebook.pageIds, ['page-2', 'page-3']);
   });
 
+  test(
+    'renames, duplicates, archives, restores, and deletes notebooks',
+    () async {
+      var notebook = await repository.createNotebook(title: 'Meeting Notes');
+      notebook = await repository.addPage(notebook);
+
+      await repository.savePage(
+        notebook,
+        NotePage(
+          id: 'page-2',
+          width: 768,
+          height: 1024,
+          strokes: [
+            Stroke(
+              id: 'stroke-2',
+              tool: ToolType.pen,
+              color: const Color(0xFF1E2526),
+              width: 5,
+              points: [
+                StrokePoint(
+                  offset: const Offset(12, 24),
+                  pressure: 1,
+                  time: DateTime.utc(2026, 6, 14),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      notebook = await repository.renameNotebook(notebook, 'Project Notes');
+
+      expect((await repository.listNotebooks()).single.title, 'Project Notes');
+
+      final duplicatedNotebook = await repository.duplicateNotebook(notebook);
+      final duplicatedPage = await repository.loadPage(
+        duplicatedNotebook,
+        'page-2',
+      );
+
+      expect(duplicatedNotebook.title, 'Project Notes Copy');
+      expect(duplicatedNotebook.pageIds, ['page-1', 'page-2']);
+      expect(duplicatedPage.strokes, hasLength(1));
+
+      notebook = await repository.setNotebookArchived(notebook, true);
+
+      expect(
+        (await repository.listNotebooks()).map((notebook) => notebook.title),
+        ['Project Notes Copy'],
+      );
+      expect(
+        (await repository.listNotebooks(
+          archived: true,
+        )).map((notebook) => notebook.title),
+        ['Project Notes'],
+      );
+
+      notebook = await repository.setNotebookArchived(notebook, false);
+
+      expect(await repository.listNotebooks(archived: true), isEmpty);
+      expect((await repository.listNotebooks()), hasLength(2));
+
+      await repository.deleteNotebook(duplicatedNotebook);
+
+      expect(
+        (await repository.listNotebooks()).map((notebook) => notebook.title),
+        ['Project Notes'],
+      );
+      expect(
+        Directory(
+          '${tempDirectory.path}/notebooks/${duplicatedNotebook.id}',
+        ).existsSync(),
+        isFalse,
+      );
+    },
+  );
+
   test('persists pdf page background as a relative asset path', () async {
     final notebook = await repository.createNotebook(title: 'PDF Notes');
 

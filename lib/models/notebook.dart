@@ -5,6 +5,7 @@ class Notebook {
     required this.createdAt,
     required this.updatedAt,
     this.pageIds = const ['page-1'],
+    this.isArchived = false,
   });
 
   final String id;
@@ -12,6 +13,7 @@ class Notebook {
   final DateTime createdAt;
   final DateTime updatedAt;
   final List<String> pageIds;
+  final bool isArchived;
 
   factory Notebook.fromJson(Map<String, Object?> json) {
     return Notebook(
@@ -22,6 +24,7 @@ class Notebook {
       pageIds:
           (json['pageIds'] as List<Object?>?)?.cast<String>() ??
           const ['page-1'],
+      isArchived: json['isArchived'] as bool? ?? false,
     );
   }
 
@@ -32,16 +35,23 @@ class Notebook {
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
       'pageIds': pageIds,
+      'isArchived': isArchived,
     };
   }
 
-  Notebook copyWith({DateTime? updatedAt, List<String>? pageIds}) {
+  Notebook copyWith({
+    String? title,
+    DateTime? updatedAt,
+    List<String>? pageIds,
+    bool? isArchived,
+  }) {
     return Notebook(
       id: id,
-      title: title,
+      title: title ?? this.title,
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       pageIds: pageIds ?? this.pageIds,
+      isArchived: isArchived ?? this.isArchived,
     );
   }
 }

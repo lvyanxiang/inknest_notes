@@ -35,6 +35,73 @@ void main() {
     expect(find.text('No notebooks yet'), findsNothing);
   });
 
+  testWidgets('manages notebooks from the library card menu', (
+    WidgetTester tester,
+  ) async {
+    await pumpInkNestApp(tester);
+
+    await tester.tap(find.text('New notebook'));
+    await tester.pumpAndSettle();
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Notebook 1 actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Rename notebook'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Project Notes');
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Project Notes'), findsOneWidget);
+    expect(find.text('Notebook 1'), findsNothing);
+
+    await tester.tap(find.byTooltip('Project Notes actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Duplicate notebook'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Project Notes'), findsOneWidget);
+    expect(find.text('Project Notes Copy'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Project Notes actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Archive notebook'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Project Notes'), findsNothing);
+    expect(find.text('Project Notes Copy'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Show archived'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Project Notes'), findsOneWidget);
+    expect(find.text('Project Notes Copy'), findsNothing);
+
+    await tester.tap(find.byTooltip('Project Notes actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Restore notebook'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('No archived notebooks'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Show notebooks'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Project Notes'), findsOneWidget);
+    expect(find.text('Project Notes Copy'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Project Notes Copy actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete notebook'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Project Notes'), findsOneWidget);
+    expect(find.text('Project Notes Copy'), findsNothing);
+  });
+
   testWidgets('draws a stroke and supports undo redo', (
     WidgetTester tester,
   ) async {

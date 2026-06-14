@@ -3,8 +3,8 @@
 ## Current
 
 - Milestone: Post-MVP 2 - Library Organization
-- Next task: Add notebook rename, delete, duplicate, and archive.
-- Last completed: Improved stroke smoothing and partial erasing.
+- Next task: Add folders.
+- Last completed: Added notebook rename, delete, duplicate, and archive.
 
 ## Decisions
 
@@ -30,6 +30,7 @@
 - Keep the first page thumbnail strip lightweight: show page shape, selection state, handwriting preview, and a PDF marker before adding full PDF thumbnail caching.
 - Store page operations in the repository layer: duplicate inserts after the source page, delete keeps at least one page, and reorder starts with thumbnail menu move-left/move-right actions.
 - Use shared stroke geometry helpers for smoothed screen drawing, thumbnail drawing, PDF export paths, and partial eraser stroke splitting.
+- Keep archived notebooks out of the default library list; show them through an explicit archived view where they can be restored or deleted.
 
 ## Verification
 
@@ -52,6 +53,9 @@
 - `dart format lib test` passed after stroke smoothing and partial erasing.
 - `flutter test` passed after stroke smoothing and partial erasing.
 - `flutter analyze` passed after stroke smoothing and partial erasing.
+- `dart format lib test` passed after notebook library actions.
+- `flutter test` passed after notebook library actions.
+- `flutter analyze` passed after notebook library actions.
 
 ## Notes
 
@@ -70,6 +74,7 @@
 - Editor bottom navigator now shows page thumbnails with selection state, page numbers, handwriting previews, and PDF page markers.
 - Editor page thumbnails include actions to duplicate, delete with confirmation, and move pages left or right.
 - Editor strokes render with smoothed paths on canvas, thumbnails, and exported PDFs; the eraser can split strokes instead of only deleting whole strokes.
+- Library notebook cards include rename, duplicate, archive/restore, and delete actions backed by repository persistence.
 - Post-MVP feature gaps and optimization areas are documented in `docs/POST_MVP_ROADMAP.md`.
 - Subscription packaging, platform behavior, and local/cloud merge rules are documented in `docs/SUBSCRIPTION_PLAN.md`.
 - Web knowledge-base, mobile companion, collaboration, and AI directions are captured as later post-MVP milestones.

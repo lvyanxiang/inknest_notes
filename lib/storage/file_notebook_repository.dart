@@ -19,8 +19,11 @@ class FileNotebookRepository implements NotebookRepository {
   File get _indexFile => File('${_notebooksDirectory.path}/index.json');
 
   @override
-  Future<List<Notebook>> listNotebooks() async {
-    return _readIndex();
+  Future<List<Notebook>> listNotebooks({bool archived = false}) async {
+    final notebooks = await _readIndex();
+    return notebooks
+        .where((notebook) => notebook.isArchived == archived)
+        .toList();
   }
 
   @override
@@ -81,6 +84,73 @@ class FileNotebookRepository implements NotebookRepository {
     }
 
     return notebook;
+  }
+
+  @override
+  Future<Notebook> renameNotebook(Notebook notebook, String title) async {
+    final updatedNotebook = notebook.copyWith(
+      title: title.trim().isEmpty ? notebook.title : title.trim(),
+      updatedAt: DateTime.now(),
+    );
+
+    await _replaceNotebook(updatedNotebook);
+    return updatedNotebook;
+  }
+
+  @override
+  Future<Notebook> duplicateNotebook(Notebook notebook) async {
+    final now = DateTime.now();
+    final duplicatedNotebook = Notebook(
+      id: 'notebook-${now.microsecondsSinceEpoch}',
+      title: '${notebook.title} Copy',
+      createdAt: now,
+      updatedAt: now,
+      pageIds: notebook.pageIds,
+    );
+    final sourceDirectory = _notebookDirectory(notebook);
+    final destinationDirectory = _notebookDirectory(duplicatedNotebook);
+
+    if (await sourceDirectory.exists()) {
+      await _copyDirectory(sourceDirectory, destinationDirectory);
+    } else {
+      await destinationDirectory.create(recursive: true);
+      for (final pageId in notebook.pageIds) {
+        final page = await loadPage(notebook, pageId);
+        await savePage(duplicatedNotebook, page);
+      }
+    }
+
+    final notebooks = await _readIndex();
+    await _writeIndex([...notebooks, duplicatedNotebook]);
+    return duplicatedNotebook;
+  }
+
+  @override
+  Future<Notebook> setNotebookArchived(
+    Notebook notebook,
+    bool isArchived,
+  ) async {
+    final updatedNotebook = notebook.copyWith(
+      updatedAt: DateTime.now(),
+      isArchived: isArchived,
+    );
+
+    await _replaceNotebook(updatedNotebook);
+    return updatedNotebook;
+  }
+
+  @override
+  Future<void> deleteNotebook(Notebook notebook) async {
+    final notebooks = await _readIndex();
+    await _writeIndex([
+      for (final existingNotebook in notebooks)
+        if (existingNotebook.id != notebook.id) existingNotebook,
+    ]);
+
+    final notebookDirectory = _notebookDirectory(notebook);
+    if (await notebookDirectory.exists()) {
+      await notebookDirectory.delete(recursive: true);
+    }
   }
 
   @override
@@ -240,10 +310,27 @@ class FileNotebookRepository implements NotebookRepository {
     );
   }
 
+  Directory _notebookDirectory(Notebook notebook) {
+    return Directory('${_notebooksDirectory.path}/${notebook.id}');
+  }
+
   File _pdfAssetFile(Notebook notebook) {
     return File(
       '${_notebooksDirectory.path}/${notebook.id}/assets/imported.pdf',
     );
+  }
+
+  Future<void> _copyDirectory(Directory source, Directory destination) async {
+    await destination.create(recursive: true);
+    await for (final entity in source.list(recursive: false)) {
+      final newPath = entity.path.replaceFirst(source.path, destination.path);
+      if (entity is Directory) {
+        await _copyDirectory(entity, Directory(newPath));
+      } else if (entity is File) {
+        await File(newPath).parent.create(recursive: true);
+        await entity.copy(newPath);
+      }
+    }
   }
 
   NotePage _resolvePageAssets(Notebook notebook, NotePage page) {
