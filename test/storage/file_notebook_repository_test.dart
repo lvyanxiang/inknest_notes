@@ -247,6 +247,42 @@ void main() {
     },
   );
 
+  test('creates folders and moves notebooks in and out of folders', () async {
+    final folder = await repository.createFolder('Class Notes');
+    var notebook = await repository.createNotebook(title: 'Math');
+
+    expect((await repository.listFolders()).single.name, 'Class Notes');
+    expect((await repository.listNotebooks()).single.title, 'Math');
+
+    notebook = await repository.moveNotebookToFolder(notebook, folder.id);
+
+    expect(await repository.listNotebooks(), isEmpty);
+    expect(
+      (await repository.listNotebooks(
+        folderId: folder.id,
+      )).map((notebook) => notebook.title),
+      ['Math'],
+    );
+
+    final renamedFolder = await repository.renameFolder(folder, 'School');
+
+    expect((await repository.listFolders()).single.name, 'School');
+
+    notebook = await repository.moveNotebookToFolder(notebook, null);
+
+    expect(notebook.folderId, isNull);
+    expect((await repository.listNotebooks()).single.title, 'Math');
+
+    notebook = await repository.moveNotebookToFolder(
+      notebook,
+      renamedFolder.id,
+    );
+    await repository.deleteFolder(renamedFolder);
+
+    expect(await repository.listFolders(), isEmpty);
+    expect((await repository.listNotebooks()).single.folderId, isNull);
+  });
+
   test('persists pdf page background as a relative asset path', () async {
     final notebook = await repository.createNotebook(title: 'PDF Notes');
 

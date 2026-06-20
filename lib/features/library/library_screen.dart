@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:inknest_notes/features/editor/editor_screen.dart';
 import 'package:inknest_notes/models/notebook.dart';
+import 'package:inknest_notes/models/notebook_folder.dart';
 import 'package:inknest_notes/storage/notebook_repository.dart';
 
 class LibraryScreen extends StatefulWidget {
@@ -17,20 +18,28 @@ class LibraryScreen extends StatefulWidget {
 
 class _LibraryScreenState extends State<LibraryScreen> {
   late List<Notebook> _notebooks;
+  late List<NotebookFolder> _folders;
   bool _isLoading = true;
   bool _showArchived = false;
+  String? _currentFolderId;
+  NotebookFolder? _currentFolder;
 
   @override
   void initState() {
     super.initState();
     _notebooks = [];
+    _folders = [];
     _loadNotebooks();
   }
 
   Future<void> _loadNotebooks() async {
     final notebooks = await widget.notebookRepository.listNotebooks(
       archived: _showArchived,
+      folderId: _showArchived ? null : _currentFolderId,
     );
+    final folders = !_showArchived && _currentFolderId == null
+        ? await widget.notebookRepository.listFolders()
+        : <NotebookFolder>[];
 
     if (!mounted) {
       return;
@@ -38,12 +47,20 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
     setState(() {
       _notebooks = notebooks;
+      _folders = folders;
       _isLoading = false;
     });
   }
 
   Future<void> _createNotebook() async {
-    final notebook = await widget.notebookRepository.createNotebook();
+    var notebook = await widget.notebookRepository.createNotebook();
+    final folderId = _showArchived ? null : _currentFolderId;
+    if (folderId != null) {
+      notebook = await widget.notebookRepository.moveNotebookToFolder(
+        notebook,
+        folderId,
+      );
+    }
 
     _showArchived = false;
     await _loadNotebooks();
@@ -66,6 +83,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
     }
 
     final notebook = await widget.notebookRepository.importPdf(File(path));
+    final folderId = _showArchived ? null : _currentFolderId;
+    final importedNotebook = folderId == null
+        ? notebook
+        : await widget.notebookRepository.moveNotebookToFolder(
+            notebook,
+            folderId,
+          );
 
     _showArchived = false;
     await _loadNotebooks();
@@ -74,7 +98,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       return;
     }
 
-    _openNotebook(notebook);
+    _openNotebook(importedNotebook);
   }
 
   void _openNotebook(Notebook notebook) {
@@ -91,13 +115,113 @@ class _LibraryScreenState extends State<LibraryScreen> {
   void _toggleArchivedView() {
     setState(() {
       _showArchived = !_showArchived;
+      if (_showArchived) {
+        _currentFolderId = null;
+        _currentFolder = null;
+      }
       _isLoading = true;
     });
     _loadNotebooks();
   }
 
+  void _showRootLibrary() {
+    setState(() {
+      _showArchived = false;
+      _currentFolderId = null;
+      _currentFolder = null;
+      _isLoading = true;
+    });
+    _loadNotebooks();
+  }
+
+  void _openFolder(NotebookFolder folder) {
+    setState(() {
+      _showArchived = false;
+      _currentFolderId = folder.id;
+      _currentFolder = folder;
+      _isLoading = true;
+    });
+    _loadNotebooks();
+  }
+
+  Future<void> _createFolder() async {
+    final name = await _promptName(
+      dialogTitle: 'New folder',
+      labelText: 'Folder name',
+      initialValue: '',
+    );
+    if (name == null) {
+      return;
+    }
+
+    await widget.notebookRepository.createFolder(name);
+    await _loadNotebooks();
+  }
+
+  Future<void> _renameFolder(NotebookFolder folder) async {
+    final name = await _promptName(
+      dialogTitle: 'Rename folder',
+      labelText: 'Folder name',
+      initialValue: folder.name,
+    );
+    if (name == null) {
+      return;
+    }
+
+    await widget.notebookRepository.renameFolder(folder, name);
+    if (_currentFolderId == folder.id) {
+      _currentFolder = folder.copyWith(name: name);
+    }
+    await _loadNotebooks();
+  }
+
+  Future<void> _deleteFolder(NotebookFolder folder) async {
+    final shouldDelete = await _confirmDeleteFolder(folder);
+    if (!shouldDelete) {
+      return;
+    }
+
+    await widget.notebookRepository.deleteFolder(folder);
+    if (_currentFolderId == folder.id) {
+      _currentFolderId = null;
+      _currentFolder = null;
+    }
+    await _loadNotebooks();
+  }
+
+  Future<bool> _confirmDeleteFolder(NotebookFolder folder) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Delete folder?'),
+          content: Text(
+            '${folder.name} will be removed. Notebooks inside it will move back to the library.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.of(context).pop(true),
+              icon: const Icon(Icons.delete_outline),
+              label: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    return confirmed ?? false;
+  }
+
   Future<void> _renameNotebook(Notebook notebook) async {
-    final title = await _promptNotebookTitle(notebook.title);
+    final title = await _promptName(
+      dialogTitle: 'Rename notebook',
+      labelText: 'Notebook title',
+      initialValue: notebook.title,
+    );
     if (title == null) {
       return;
     }
@@ -106,10 +230,18 @@ class _LibraryScreenState extends State<LibraryScreen> {
     await _loadNotebooks();
   }
 
-  Future<String?> _promptNotebookTitle(String currentTitle) async {
+  Future<String?> _promptName({
+    required String dialogTitle,
+    required String labelText,
+    required String initialValue,
+  }) async {
     final result = await showDialog<String>(
       context: context,
-      builder: (context) => _RenameNotebookDialog(initialTitle: currentTitle),
+      builder: (context) => _NamePromptDialog(
+        title: dialogTitle,
+        labelText: labelText,
+        initialValue: initialValue,
+      ),
     );
 
     if (result == null || result.trim().isEmpty) {
@@ -117,6 +249,47 @@ class _LibraryScreenState extends State<LibraryScreen> {
     }
 
     return result.trim();
+  }
+
+  Future<void> _moveNotebook(Notebook notebook) async {
+    final folders = await widget.notebookRepository.listFolders();
+    if (!mounted) {
+      return;
+    }
+
+    final destination = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return SimpleDialog(
+          title: const Text('Move notebook'),
+          children: [
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop(''),
+              child: const ListTile(
+                leading: Icon(Icons.home_outlined),
+                title: Text('Library'),
+              ),
+            ),
+            for (final folder in folders)
+              SimpleDialogOption(
+                onPressed: () => Navigator.of(context).pop(folder.id),
+                child: ListTile(
+                  leading: const Icon(Icons.folder_outlined),
+                  title: Text(folder.name),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+
+    if (destination == null) {
+      return;
+    }
+
+    final folderId = destination.isEmpty ? null : destination;
+    await widget.notebookRepository.moveNotebookToFolder(notebook, folderId);
+    await _loadNotebooks();
   }
 
   Future<void> _duplicateNotebook(Notebook notebook) async {
@@ -176,7 +349,16 @@ class _LibraryScreenState extends State<LibraryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('InkNest Notes'),
+        leading: _showArchived || _currentFolderId != null
+            ? IconButton(
+                onPressed: _showRootLibrary,
+                tooltip: 'Show library',
+                icon: const Icon(Icons.arrow_back),
+              )
+            : null,
+        title: Text(
+          _showArchived ? 'Archived' : _currentFolder?.name ?? 'InkNest Notes',
+        ),
         actions: [
           IconButton(
             onPressed: () {},
@@ -190,6 +372,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
               _showArchived ? Icons.inventory_2 : Icons.inventory_2_outlined,
             ),
           ),
+          if (!_showArchived && _currentFolderId == null)
+            IconButton(
+              onPressed: _createFolder,
+              tooltip: 'New folder',
+              icon: const Icon(Icons.create_new_folder_outlined),
+            ),
           IconButton(
             onPressed: _importPdf,
             tooltip: 'Import PDF',
@@ -205,18 +393,24 @@ class _LibraryScreenState extends State<LibraryScreen> {
       body: SafeArea(
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
-            : _notebooks.isEmpty
+            : _notebooks.isEmpty && _folders.isEmpty
             ? _EmptyLibrary(
                 showArchived: _showArchived,
+                folderName: _currentFolder?.name,
                 onCreateNotebook: _createNotebook,
                 onImportPdf: _importPdf,
               )
-            : _NotebookGrid(
+            : _LibraryGrid(
+                folders: _folders,
                 notebooks: _notebooks,
                 showArchived: _showArchived,
+                onOpenFolder: _openFolder,
+                onRenameFolder: (folder) => _renameFolder(folder),
+                onDeleteFolder: (folder) => _deleteFolder(folder),
                 onOpenNotebook: _openNotebook,
                 onRenameNotebook: (notebook) => _renameNotebook(notebook),
                 onDuplicateNotebook: (notebook) => _duplicateNotebook(notebook),
+                onMoveNotebook: (notebook) => _moveNotebook(notebook),
                 onArchiveNotebook: (notebook) =>
                     _setNotebookArchived(notebook, true),
                 onRestoreNotebook: (notebook) =>
@@ -231,11 +425,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
 class _EmptyLibrary extends StatelessWidget {
   const _EmptyLibrary({
     required this.showArchived,
+    required this.folderName,
     required this.onCreateNotebook,
     required this.onImportPdf,
   });
 
   final bool showArchived;
+  final String? folderName;
   final VoidCallback onCreateNotebook;
   final VoidCallback onImportPdf;
 
@@ -259,7 +455,11 @@ class _EmptyLibrary extends StatelessWidget {
               ),
               const SizedBox(height: 24),
               Text(
-                showArchived ? 'No archived notebooks' : 'No notebooks yet',
+                showArchived
+                    ? 'No archived notebooks'
+                    : folderName == null
+                    ? 'No notebooks yet'
+                    : 'No notebooks in $folderName',
                 textAlign: TextAlign.center,
                 style: textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.w700,
@@ -269,7 +469,9 @@ class _EmptyLibrary extends StatelessWidget {
               Text(
                 showArchived
                     ? 'Archived notebooks will appear here until you restore or delete them.'
-                    : 'Create your first notebook to start sketching ideas, class notes, and PDF annotations.',
+                    : folderName == null
+                    ? 'Create your first notebook to start sketching ideas, class notes, and PDF annotations.'
+                    : 'Move notebooks into this folder or create a new notebook here.',
                 textAlign: TextAlign.center,
                 style: textTheme.bodyLarge?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -305,22 +507,28 @@ class _EmptyLibrary extends StatelessWidget {
   }
 }
 
-class _RenameNotebookDialog extends StatefulWidget {
-  const _RenameNotebookDialog({required this.initialTitle});
+class _NamePromptDialog extends StatefulWidget {
+  const _NamePromptDialog({
+    required this.title,
+    required this.labelText,
+    required this.initialValue,
+  });
 
-  final String initialTitle;
+  final String title;
+  final String labelText;
+  final String initialValue;
 
   @override
-  State<_RenameNotebookDialog> createState() => _RenameNotebookDialogState();
+  State<_NamePromptDialog> createState() => _NamePromptDialogState();
 }
 
-class _RenameNotebookDialogState extends State<_RenameNotebookDialog> {
+class _NamePromptDialogState extends State<_NamePromptDialog> {
   late final TextEditingController _controller;
 
   @override
   void initState() {
     super.initState();
-    _controller = TextEditingController(text: widget.initialTitle);
+    _controller = TextEditingController(text: widget.initialValue);
   }
 
   @override
@@ -336,11 +544,11 @@ class _RenameNotebookDialogState extends State<_RenameNotebookDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Rename notebook'),
+      title: Text(widget.title),
       content: TextField(
         controller: _controller,
         autofocus: true,
-        decoration: const InputDecoration(labelText: 'Notebook title'),
+        decoration: InputDecoration(labelText: widget.labelText),
         textInputAction: TextInputAction.done,
         onSubmitted: (_) => _save(),
       ),
@@ -355,23 +563,33 @@ class _RenameNotebookDialogState extends State<_RenameNotebookDialog> {
   }
 }
 
-class _NotebookGrid extends StatelessWidget {
-  const _NotebookGrid({
+class _LibraryGrid extends StatelessWidget {
+  const _LibraryGrid({
+    required this.folders,
     required this.notebooks,
     required this.showArchived,
+    required this.onOpenFolder,
+    required this.onRenameFolder,
+    required this.onDeleteFolder,
     required this.onOpenNotebook,
     required this.onRenameNotebook,
     required this.onDuplicateNotebook,
+    required this.onMoveNotebook,
     required this.onArchiveNotebook,
     required this.onRestoreNotebook,
     required this.onDeleteNotebook,
   });
 
+  final List<NotebookFolder> folders;
   final List<Notebook> notebooks;
   final bool showArchived;
+  final ValueChanged<NotebookFolder> onOpenFolder;
+  final ValueChanged<NotebookFolder> onRenameFolder;
+  final ValueChanged<NotebookFolder> onDeleteFolder;
   final ValueChanged<Notebook> onOpenNotebook;
   final ValueChanged<Notebook> onRenameNotebook;
   final ValueChanged<Notebook> onDuplicateNotebook;
+  final ValueChanged<Notebook> onMoveNotebook;
   final ValueChanged<Notebook> onArchiveNotebook;
   final ValueChanged<Notebook> onRestoreNotebook;
   final ValueChanged<Notebook> onDeleteNotebook;
@@ -386,9 +604,19 @@ class _NotebookGrid extends StatelessWidget {
         crossAxisSpacing: 18,
         mainAxisSpacing: 18,
       ),
-      itemCount: notebooks.length,
+      itemCount: folders.length + notebooks.length,
       itemBuilder: (context, index) {
-        final notebook = notebooks[index];
+        if (index < folders.length) {
+          final folder = folders[index];
+          return _FolderCard(
+            folder: folder,
+            onTap: () => onOpenFolder(folder),
+            onRename: () => onRenameFolder(folder),
+            onDelete: () => onDeleteFolder(folder),
+          );
+        }
+
+        final notebook = notebooks[index - folders.length];
 
         return _NotebookCard(
           notebook: notebook,
@@ -396,11 +624,109 @@ class _NotebookGrid extends StatelessWidget {
           onTap: () => onOpenNotebook(notebook),
           onRename: () => onRenameNotebook(notebook),
           onDuplicate: () => onDuplicateNotebook(notebook),
+          onMove: () => onMoveNotebook(notebook),
           onArchive: () => onArchiveNotebook(notebook),
           onRestore: () => onRestoreNotebook(notebook),
           onDelete: () => onDeleteNotebook(notebook),
         );
       },
+    );
+  }
+}
+
+class _FolderCard extends StatelessWidget {
+  const _FolderCard({
+    required this.folder,
+    required this.onTap,
+    required this.onRename,
+    required this.onDelete,
+  });
+
+  final NotebookFolder folder;
+  final VoidCallback onTap;
+  final VoidCallback onRename;
+  final VoidCallback onDelete;
+
+  void _handleAction(_FolderAction action) {
+    switch (action) {
+      case _FolderAction.rename:
+        onRename();
+        break;
+      case _FolderAction.delete:
+        onDelete();
+        break;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: colorScheme.surface,
+                        border: const Border(
+                          bottom: BorderSide(color: Color(0xFFE4DED1)),
+                        ),
+                      ),
+                      child: Center(
+                        child: Icon(
+                          Icons.folder_outlined,
+                          size: 64,
+                          color: colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: _FolderActionMenu(
+                      folderName: folder.name,
+                      onSelected: _handleAction,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    folder.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Folder',
+                    style: textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -412,6 +738,7 @@ class _NotebookCard extends StatelessWidget {
     required this.onTap,
     required this.onRename,
     required this.onDuplicate,
+    required this.onMove,
     required this.onArchive,
     required this.onRestore,
     required this.onDelete,
@@ -422,6 +749,7 @@ class _NotebookCard extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onRename;
   final VoidCallback onDuplicate;
+  final VoidCallback onMove;
   final VoidCallback onArchive;
   final VoidCallback onRestore;
   final VoidCallback onDelete;
@@ -433,6 +761,9 @@ class _NotebookCard extends StatelessWidget {
         break;
       case _NotebookAction.duplicate:
         onDuplicate();
+        break;
+      case _NotebookAction.move:
+        onMove();
         break;
       case _NotebookAction.archive:
         onArchive();
@@ -522,7 +853,69 @@ class _NotebookCard extends StatelessWidget {
   }
 }
 
-enum _NotebookAction { rename, duplicate, archive, restore, delete }
+enum _FolderAction { rename, delete }
+
+class _FolderActionMenu extends StatelessWidget {
+  const _FolderActionMenu({required this.folderName, required this.onSelected});
+
+  final String folderName;
+  final ValueChanged<_FolderAction> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return PopupMenuButton<_FolderAction>(
+      tooltip: '$folderName actions',
+      padding: EdgeInsets.zero,
+      onSelected: onSelected,
+      itemBuilder: (context) {
+        return [
+          _folderActionItem(
+            value: _FolderAction.rename,
+            icon: Icons.edit_outlined,
+            label: 'Rename folder',
+          ),
+          _folderActionItem(
+            value: _FolderAction.delete,
+            icon: Icons.delete_outline,
+            label: 'Delete folder',
+          ),
+        ];
+      },
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: colorScheme.surface.withValues(alpha: 0.92),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: colorScheme.outlineVariant),
+        ),
+        child: const SizedBox.square(
+          dimension: 32,
+          child: Icon(Icons.more_horiz, size: 20),
+        ),
+      ),
+    );
+  }
+}
+
+PopupMenuItem<_FolderAction> _folderActionItem({
+  required _FolderAction value,
+  required IconData icon,
+  required String label,
+}) {
+  return PopupMenuItem<_FolderAction>(
+    value: value,
+    child: Row(
+      children: [
+        Icon(icon, size: 18),
+        const SizedBox(width: 12),
+        Expanded(child: Text(label, overflow: TextOverflow.ellipsis)),
+      ],
+    ),
+  );
+}
+
+enum _NotebookAction { rename, duplicate, move, archive, restore, delete }
 
 class _NotebookActionMenu extends StatelessWidget {
   const _NotebookActionMenu({
@@ -555,6 +948,12 @@ class _NotebookActionMenu extends StatelessWidget {
             icon: Icons.copy,
             label: 'Duplicate notebook',
           ),
+          if (!showArchived)
+            _notebookActionItem(
+              value: _NotebookAction.move,
+              icon: Icons.drive_file_move_outline,
+              label: 'Move notebook',
+            ),
           if (showArchived)
             _notebookActionItem(
               value: _NotebookAction.restore,

@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/notebook.dart';
+import 'package:inknest_notes/models/notebook_folder.dart';
 import 'package:inknest_notes/models/pdf_background.dart';
 import 'package:inknest_notes/storage/notebook_repository.dart';
 import 'package:pdfrx/pdfrx.dart';
@@ -17,13 +18,79 @@ class FileNotebookRepository implements NotebookRepository {
   final Directory _notebooksDirectory;
 
   File get _indexFile => File('${_notebooksDirectory.path}/index.json');
+  File get _foldersFile => File('${_notebooksDirectory.path}/folders.json');
 
   @override
-  Future<List<Notebook>> listNotebooks({bool archived = false}) async {
+  Future<List<Notebook>> listNotebooks({
+    bool archived = false,
+    String? folderId,
+  }) async {
     final notebooks = await _readIndex();
-    return notebooks
-        .where((notebook) => notebook.isArchived == archived)
-        .toList();
+    return notebooks.where((notebook) {
+      if (notebook.isArchived != archived) {
+        return false;
+      }
+      if (archived) {
+        return folderId == null || notebook.folderId == folderId;
+      }
+
+      return notebook.folderId == folderId;
+    }).toList();
+  }
+
+  @override
+  Future<List<NotebookFolder>> listFolders() {
+    return _readFolders();
+  }
+
+  @override
+  Future<NotebookFolder> createFolder(String name) async {
+    final folders = await _readFolders();
+    final now = DateTime.now();
+    final folder = NotebookFolder(
+      id: 'folder-${now.microsecondsSinceEpoch}',
+      name: name.trim().isEmpty ? 'Folder ${folders.length + 1}' : name.trim(),
+      createdAt: now,
+      updatedAt: now,
+    );
+
+    await _writeFolders([...folders, folder]);
+    return folder;
+  }
+
+  @override
+  Future<NotebookFolder> renameFolder(
+    NotebookFolder folder,
+    String name,
+  ) async {
+    final updatedFolder = folder.copyWith(
+      name: name.trim().isEmpty ? folder.name : name.trim(),
+      updatedAt: DateTime.now(),
+    );
+    final folders = await _readFolders();
+    await _writeFolders([
+      for (final existingFolder in folders)
+        if (existingFolder.id == folder.id) updatedFolder else existingFolder,
+    ]);
+    return updatedFolder;
+  }
+
+  @override
+  Future<void> deleteFolder(NotebookFolder folder) async {
+    final folders = await _readFolders();
+    await _writeFolders([
+      for (final existingFolder in folders)
+        if (existingFolder.id != folder.id) existingFolder,
+    ]);
+
+    final notebooks = await _readIndex();
+    await _writeIndex([
+      for (final notebook in notebooks)
+        if (notebook.folderId == folder.id)
+          notebook.copyWith(folderId: null, updatedAt: DateTime.now())
+        else
+          notebook,
+    ]);
   }
 
   @override
@@ -106,6 +173,7 @@ class FileNotebookRepository implements NotebookRepository {
       createdAt: now,
       updatedAt: now,
       pageIds: notebook.pageIds,
+      folderId: notebook.isArchived ? null : notebook.folderId,
     );
     final sourceDirectory = _notebookDirectory(notebook);
     final destinationDirectory = _notebookDirectory(duplicatedNotebook);
@@ -151,6 +219,20 @@ class FileNotebookRepository implements NotebookRepository {
     if (await notebookDirectory.exists()) {
       await notebookDirectory.delete(recursive: true);
     }
+  }
+
+  @override
+  Future<Notebook> moveNotebookToFolder(
+    Notebook notebook,
+    String? folderId,
+  ) async {
+    final updatedNotebook = notebook.copyWith(
+      updatedAt: DateTime.now(),
+      folderId: folderId,
+    );
+
+    await _replaceNotebook(updatedNotebook);
+    return updatedNotebook;
   }
 
   @override
@@ -293,6 +375,27 @@ class FileNotebookRepository implements NotebookRepository {
       const JsonEncoder.withIndent(
         '  ',
       ).convert(notebooks.map((notebook) => notebook.toJson()).toList()),
+    );
+  }
+
+  Future<List<NotebookFolder>> _readFolders() async {
+    if (!await _foldersFile.exists()) {
+      return [];
+    }
+
+    final json = jsonDecode(await _foldersFile.readAsString());
+    return (json as List<Object?>)
+        .cast<Map<String, Object?>>()
+        .map(NotebookFolder.fromJson)
+        .toList();
+  }
+
+  Future<void> _writeFolders(List<NotebookFolder> folders) async {
+    await _notebooksDirectory.create(recursive: true);
+    await _foldersFile.writeAsString(
+      const JsonEncoder.withIndent(
+        '  ',
+      ).convert(folders.map((folder) => folder.toJson()).toList()),
     );
   }
 

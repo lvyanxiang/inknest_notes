@@ -3,8 +3,8 @@
 ## Current
 
 - Milestone: Post-MVP 2 - Library Organization
-- Next task: Add folders.
-- Last completed: Added notebook rename, delete, duplicate, and archive.
+- Next task: Add sorting, search, recent notebooks, and notebook thumbnails.
+- Last completed: Added folders.
 
 ## Decisions
 
@@ -31,6 +31,7 @@
 - Store page operations in the repository layer: duplicate inserts after the source page, delete keeps at least one page, and reorder starts with thumbnail menu move-left/move-right actions.
 - Use shared stroke geometry helpers for smoothed screen drawing, thumbnail drawing, PDF export paths, and partial eraser stroke splitting.
 - Keep archived notebooks out of the default library list; show them through an explicit archived view where they can be restored or deleted.
+- Store folders as first-class repository metadata; keep folders one level deep for now, and use `Notebook.folderId` to move notebooks between the root library and a folder.
 
 ## Verification
 
@@ -56,6 +57,9 @@
 - `dart format lib test` passed after notebook library actions.
 - `flutter test` passed after notebook library actions.
 - `flutter analyze` passed after notebook library actions.
+- `dart format lib test` passed after folders.
+- `flutter test` passed after folders.
+- `flutter analyze` passed after folders.
 
 ## Notes
 
@@ -75,6 +79,7 @@
 - Editor page thumbnails include actions to duplicate, delete with confirmation, and move pages left or right.
 - Editor strokes render with smoothed paths on canvas, thumbnails, and exported PDFs; the eraser can split strokes instead of only deleting whole strokes.
 - Library notebook cards include rename, duplicate, archive/restore, and delete actions backed by repository persistence.
+- Library supports creating root-level folders, moving notebooks into folders, entering folders, and deleting folders while moving contained notebooks back to the root library.
 - Post-MVP feature gaps and optimization areas are documented in `docs/POST_MVP_ROADMAP.md`.
 - Subscription packaging, platform behavior, and local/cloud merge rules are documented in `docs/SUBSCRIPTION_PLAN.md`.
 - Web knowledge-base, mobile companion, collaboration, and AI directions are captured as later post-MVP milestones.

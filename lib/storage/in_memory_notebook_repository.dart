@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:inknest_notes/models/notebook.dart';
+import 'package:inknest_notes/models/notebook_folder.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/storage/notebook_repository.dart';
 
@@ -9,14 +10,70 @@ class InMemoryNotebookRepository implements NotebookRepository {
   static const _pageHeight = 1024.0;
 
   final List<Notebook> _notebooks = [];
+  final List<NotebookFolder> _folders = [];
   final Map<String, NotePage> _pages = {};
   int _nextNotebookNumber = 1;
+  int _nextFolderNumber = 1;
 
   @override
-  Future<List<Notebook>> listNotebooks({bool archived = false}) async {
+  Future<List<Notebook>> listNotebooks({
+    bool archived = false,
+    String? folderId,
+  }) async {
     return List.unmodifiable(
-      _notebooks.where((notebook) => notebook.isArchived == archived),
+      _notebooks.where((notebook) {
+        if (notebook.isArchived != archived) {
+          return false;
+        }
+        if (archived) {
+          return folderId == null || notebook.folderId == folderId;
+        }
+
+        return notebook.folderId == folderId;
+      }),
     );
+  }
+
+  @override
+  Future<List<NotebookFolder>> listFolders() async {
+    return List.unmodifiable(_folders);
+  }
+
+  @override
+  Future<NotebookFolder> createFolder(String name) async {
+    final now = DateTime.now();
+    final folder = NotebookFolder(
+      id: 'folder-${now.microsecondsSinceEpoch}',
+      name: name.trim().isEmpty ? 'Folder ${_nextFolderNumber++}' : name.trim(),
+      createdAt: now,
+      updatedAt: now,
+    );
+
+    _folders.add(folder);
+    return folder;
+  }
+
+  @override
+  Future<NotebookFolder> renameFolder(
+    NotebookFolder folder,
+    String name,
+  ) async {
+    final updatedFolder = folder.copyWith(
+      name: name.trim().isEmpty ? folder.name : name.trim(),
+      updatedAt: DateTime.now(),
+    );
+    _replaceFolder(updatedFolder);
+    return updatedFolder;
+  }
+
+  @override
+  Future<void> deleteFolder(NotebookFolder folder) async {
+    _folders.removeWhere((existing) => existing.id == folder.id);
+    for (final notebook in _notebooks.toList()) {
+      if (notebook.folderId == folder.id) {
+        _replaceNotebook(notebook.copyWith(folderId: null));
+      }
+    }
   }
 
   @override
@@ -64,6 +121,7 @@ class InMemoryNotebookRepository implements NotebookRepository {
       updatedAt: now,
       pageIds: notebook.pageIds,
       isArchived: false,
+      folderId: notebook.isArchived ? null : notebook.folderId,
     );
 
     _notebooks.add(duplicatedNotebook);
@@ -94,6 +152,19 @@ class InMemoryNotebookRepository implements NotebookRepository {
     for (final pageId in notebook.pageIds) {
       _pages.remove(_pageKey(notebook, pageId));
     }
+  }
+
+  @override
+  Future<Notebook> moveNotebookToFolder(
+    Notebook notebook,
+    String? folderId,
+  ) async {
+    final updatedNotebook = notebook.copyWith(
+      updatedAt: DateTime.now(),
+      folderId: folderId,
+    );
+    _replaceNotebook(updatedNotebook);
+    return updatedNotebook;
   }
 
   @override
@@ -204,6 +275,13 @@ class InMemoryNotebookRepository implements NotebookRepository {
     );
     if (index != -1) {
       _notebooks[index] = notebook;
+    }
+  }
+
+  void _replaceFolder(NotebookFolder folder) {
+    final index = _folders.indexWhere((existing) => existing.id == folder.id);
+    if (index != -1) {
+      _folders[index] = folder;
     }
   }
 

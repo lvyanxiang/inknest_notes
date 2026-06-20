@@ -102,6 +102,43 @@ void main() {
     expect(find.text('Project Notes Copy'), findsNothing);
   });
 
+  testWidgets('creates folders and moves notebooks into folders', (
+    WidgetTester tester,
+  ) async {
+    await pumpInkNestApp(tester);
+
+    await tester.tap(find.text('New notebook'));
+    await tester.pumpAndSettle();
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('New folder'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Class Notes');
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Class Notes'), findsOneWidget);
+    expect(find.text('Notebook 1'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Notebook 1 actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Move notebook'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ListTile, 'Class Notes'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Class Notes'), findsOneWidget);
+    expect(find.text('Notebook 1'), findsNothing);
+
+    await tester.tap(find.text('Class Notes'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Class Notes'), findsOneWidget);
+    expect(find.text('Notebook 1'), findsOneWidget);
+    expect(find.byTooltip('Show library'), findsOneWidget);
+  });
+
   testWidgets('draws a stroke and supports undo redo', (
     WidgetTester tester,
   ) async {

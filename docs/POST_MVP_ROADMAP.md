@@ -174,7 +174,7 @@ Goal: make writing and navigating a notebook feel natural on iPad.
 Goal: make notebooks manageable as the user creates more documents.
 
 - [x] Rename, delete, duplicate, and archive notebooks.
-- [ ] Add folders.
+- [x] Add folders.
 - [ ] Add sorting, search, recent notebooks, and notebook thumbnails.
 
 ### Post-MVP 3: PDF Study Workflow

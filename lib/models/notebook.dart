@@ -6,6 +6,7 @@ class Notebook {
     required this.updatedAt,
     this.pageIds = const ['page-1'],
     this.isArchived = false,
+    this.folderId,
   });
 
   final String id;
@@ -14,6 +15,7 @@ class Notebook {
   final DateTime updatedAt;
   final List<String> pageIds;
   final bool isArchived;
+  final String? folderId;
 
   factory Notebook.fromJson(Map<String, Object?> json) {
     return Notebook(
@@ -25,6 +27,7 @@ class Notebook {
           (json['pageIds'] as List<Object?>?)?.cast<String>() ??
           const ['page-1'],
       isArchived: json['isArchived'] as bool? ?? false,
+      folderId: json['folderId'] as String?,
     );
   }
 
@@ -36,6 +39,7 @@ class Notebook {
       'updatedAt': updatedAt.toIso8601String(),
       'pageIds': pageIds,
       'isArchived': isArchived,
+      if (folderId != null) 'folderId': folderId,
     };
   }
 
@@ -44,6 +48,7 @@ class Notebook {
     DateTime? updatedAt,
     List<String>? pageIds,
     bool? isArchived,
+    Object? folderId = _folderIdNotChanged,
   }) {
     return Notebook(
       id: id,
@@ -52,6 +57,11 @@ class Notebook {
       updatedAt: updatedAt ?? this.updatedAt,
       pageIds: pageIds ?? this.pageIds,
       isArchived: isArchived ?? this.isArchived,
+      folderId: folderId == _folderIdNotChanged
+          ? this.folderId
+          : folderId as String?,
     );
   }
 }
+
+const Object _folderIdNotChanged = Object();
