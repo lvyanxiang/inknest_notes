@@ -32,6 +32,12 @@ abstract class NotebookRepository {
 
   Future<Notebook> moveNotebookToFolder(Notebook notebook, String? folderId);
 
+  Future<Notebook> setPageBookmarked(
+    Notebook notebook,
+    String pageId,
+    bool isBookmarked,
+  );
+
   Future<Notebook> addPage(Notebook notebook);
 
   Future<Notebook> insertPage(Notebook notebook, int index);

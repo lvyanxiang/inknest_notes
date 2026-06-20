@@ -5,6 +5,7 @@ import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/notebook.dart';
 import 'package:inknest_notes/models/notebook_folder.dart';
 import 'package:inknest_notes/models/pdf_background.dart';
+import 'package:inknest_notes/models/pdf_outline_entry.dart';
 import 'package:inknest_notes/storage/notebook_repository.dart';
 import 'package:pdfrx/pdfrx.dart';
 
@@ -116,6 +117,10 @@ class FileNotebookRepository implements NotebookRepository {
     final now = DateTime.now();
     final pdfDocument = await PdfDocument.openFile(sourceFile.path);
     final pageCount = pdfDocument.pages.length;
+    final pageIds = [
+      for (var index = 0; index < pageCount; index++) 'page-${index + 1}',
+    ];
+    final pdfOutlines = await _loadPdfOutlineEntries(pdfDocument, pageIds);
     await pdfDocument.dispose();
 
     final notebook = Notebook(
@@ -123,9 +128,8 @@ class FileNotebookRepository implements NotebookRepository {
       title: _titleFromFile(sourceFile),
       createdAt: now,
       updatedAt: now,
-      pageIds: [
-        for (var index = 0; index < pageCount; index++) 'page-${index + 1}',
-      ],
+      pageIds: pageIds,
+      pdfOutlines: pdfOutlines,
     );
 
     final assetFile = _pdfAssetFile(notebook);
@@ -174,6 +178,8 @@ class FileNotebookRepository implements NotebookRepository {
       updatedAt: now,
       pageIds: notebook.pageIds,
       folderId: notebook.isArchived ? null : notebook.folderId,
+      pdfOutlines: notebook.pdfOutlines,
+      bookmarkedPageIds: notebook.bookmarkedPageIds,
     );
     final sourceDirectory = _notebookDirectory(notebook);
     final destinationDirectory = _notebookDirectory(duplicatedNotebook);
@@ -229,6 +235,26 @@ class FileNotebookRepository implements NotebookRepository {
     final updatedNotebook = notebook.copyWith(
       updatedAt: DateTime.now(),
       folderId: folderId,
+    );
+
+    await _replaceNotebook(updatedNotebook);
+    return updatedNotebook;
+  }
+
+  @override
+  Future<Notebook> setPageBookmarked(
+    Notebook notebook,
+    String pageId,
+    bool isBookmarked,
+  ) async {
+    final bookmarkedPageIds = [
+      for (final bookmarkedPageId in notebook.bookmarkedPageIds)
+        if (bookmarkedPageId != pageId) bookmarkedPageId,
+      if (isBookmarked && notebook.pageIds.contains(pageId)) pageId,
+    ];
+    final updatedNotebook = notebook.copyWith(
+      updatedAt: DateTime.now(),
+      bookmarkedPageIds: bookmarkedPageIds,
     );
 
     await _replaceNotebook(updatedNotebook);
@@ -311,6 +337,10 @@ class FileNotebookRepository implements NotebookRepository {
       pageIds: [
         for (final existingPageId in notebook.pageIds)
           if (existingPageId != pageId) existingPageId,
+      ],
+      bookmarkedPageIds: [
+        for (final bookmarkedPageId in notebook.bookmarkedPageIds)
+          if (bookmarkedPageId != pageId) bookmarkedPageId,
       ],
     );
 
@@ -473,6 +503,40 @@ class FileNotebookRepository implements NotebookRepository {
         resolvedFilePath: _resolvePdfAssetPath(notebook, background.assetPath),
       ),
     );
+  }
+
+  List<PdfOutlineEntry> _pdfOutlineEntries(
+    List<PdfOutlineNode> nodes,
+    List<String> pageIds,
+  ) {
+    return [for (final node in nodes) ?_pdfOutlineEntry(node, pageIds)];
+  }
+
+  Future<List<PdfOutlineEntry>> _loadPdfOutlineEntries(
+    PdfDocument document,
+    List<String> pageIds,
+  ) async {
+    try {
+      return _pdfOutlineEntries(await document.loadOutline(), pageIds);
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  PdfOutlineEntry? _pdfOutlineEntry(PdfOutlineNode node, List<String> pageIds) {
+    final title = node.title.trim().isEmpty ? 'Untitled' : node.title.trim();
+    final pageNumber = node.dest?.pageNumber;
+    final pageId =
+        pageNumber == null || pageNumber < 1 || pageNumber > pageIds.length
+        ? null
+        : pageIds[pageNumber - 1];
+    final children = _pdfOutlineEntries(node.children, pageIds);
+
+    if (pageId == null && children.isEmpty) {
+      return null;
+    }
+
+    return PdfOutlineEntry(title: title, pageId: pageId, children: children);
   }
 
   String _normalizePdfAssetPath(String assetPath) {

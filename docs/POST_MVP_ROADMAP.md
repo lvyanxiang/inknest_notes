@@ -182,7 +182,7 @@ Goal: make notebooks manageable as the user creates more documents.
 Goal: make PDF annotation feel like a real study workflow.
 
 - [x] Insert blank pages into PDFs.
-- [ ] Add PDF thumbnails, outlines, and bookmarks.
+- [x] Add PDF thumbnails, outlines, and bookmarks.
 - [ ] Add page-range export.
 - [ ] Improve PDF background caching and export quality.
 

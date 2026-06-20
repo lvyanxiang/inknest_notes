@@ -10,6 +10,7 @@ import 'package:inknest_notes/features/editor/canvas/pdf_page_background.dart';
 import 'package:inknest_notes/features/editor/tools/editor_toolbar.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/notebook.dart';
+import 'package:inknest_notes/models/pdf_outline_entry.dart';
 import 'package:inknest_notes/models/stroke.dart';
 import 'package:inknest_notes/models/stroke_geometry.dart';
 import 'package:inknest_notes/models/stroke_point.dart';
@@ -200,6 +201,39 @@ class _EditorScreenState extends State<EditorScreen> {
     }
 
     await widget.notebookRepository.savePage(_notebook, pageToSave);
+  }
+
+  Future<void> _setCurrentPageBookmarked(bool isBookmarked) async {
+    final updatedNotebook = await widget.notebookRepository.setPageBookmarked(
+      _notebook,
+      _currentPageId,
+      isBookmarked,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _notebook = updatedNotebook;
+    });
+  }
+
+  void _showNavigationSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return _PdfNavigationSheet(
+          notebook: _notebook,
+          currentPageId: _currentPageId,
+          onSelectPage: (pageId) {
+            Navigator.of(sheetContext).pop();
+            unawaited(_selectPage(pageId));
+          },
+        );
+      },
+    );
   }
 
   Future<void> _addPage() async {
@@ -454,11 +488,32 @@ class _EditorScreenState extends State<EditorScreen> {
   @override
   Widget build(BuildContext context) {
     final page = _page;
+    final isCurrentPageBookmarked = _notebook.bookmarkedPageIds.contains(
+      _currentPageId,
+    );
 
     return Scaffold(
       appBar: AppBar(
         title: Text(_notebook.title),
         actions: [
+          IconButton(
+            onPressed: _showNavigationSheet,
+            tooltip: 'Outline and bookmarks',
+            icon: const Icon(Icons.menu_book_outlined),
+          ),
+          IconButton(
+            onPressed: page == null
+                ? null
+                : () => unawaited(
+                    _setCurrentPageBookmarked(!isCurrentPageBookmarked),
+                  ),
+            tooltip: isCurrentPageBookmarked
+                ? 'Remove bookmark'
+                : 'Bookmark page',
+            icon: Icon(
+              isCurrentPageBookmarked ? Icons.bookmark : Icons.bookmark_border,
+            ),
+          ),
           IconButton(
             onPressed: page == null || _isExporting
                 ? null
@@ -500,6 +555,7 @@ class _EditorScreenState extends State<EditorScreen> {
             pageIds: _notebook.pageIds,
             pagesById: _pagesById,
             currentPageId: _currentPageId,
+            bookmarkedPageIds: _notebook.bookmarkedPageIds.toSet(),
             onSelectPage: (pageId) => unawaited(_selectPage(pageId)),
             onAddPage: () => unawaited(_addPage()),
             onInsertPage: (index) => unawaited(_insertPage(index)),
@@ -560,6 +616,209 @@ class _EditorScreenState extends State<EditorScreen> {
       ),
     );
   }
+}
+
+class _PdfNavigationSheet extends StatelessWidget {
+  const _PdfNavigationSheet({
+    required this.notebook,
+    required this.currentPageId,
+    required this.onSelectPage,
+  });
+
+  final Notebook notebook;
+  final String currentPageId;
+  final ValueChanged<String> onSelectPage;
+
+  @override
+  Widget build(BuildContext context) {
+    final initialIndex =
+        notebook.pdfOutlines.isEmpty && notebook.bookmarkedPageIds.isNotEmpty
+        ? 1
+        : 0;
+
+    return DefaultTabController(
+      length: 2,
+      initialIndex: initialIndex,
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 420,
+          child: Column(
+            children: [
+              const TabBar(
+                tabs: [
+                  Tab(icon: Icon(Icons.format_list_bulleted), text: 'Outline'),
+                  Tab(icon: Icon(Icons.bookmark_border), text: 'Bookmarks'),
+                ],
+              ),
+              Expanded(
+                child: TabBarView(
+                  children: [
+                    _OutlineTab(
+                      notebook: notebook,
+                      currentPageId: currentPageId,
+                      onSelectPage: onSelectPage,
+                    ),
+                    _BookmarksTab(
+                      notebook: notebook,
+                      currentPageId: currentPageId,
+                      onSelectPage: onSelectPage,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _OutlineTab extends StatelessWidget {
+  const _OutlineTab({
+    required this.notebook,
+    required this.currentPageId,
+    required this.onSelectPage,
+  });
+
+  final Notebook notebook;
+  final String currentPageId;
+  final ValueChanged<String> onSelectPage;
+
+  @override
+  Widget build(BuildContext context) {
+    final entries = _flattenOutlineEntries(notebook.pdfOutlines);
+    if (entries.isEmpty) {
+      return const _NavigationEmptyState(
+        icon: Icons.format_list_bulleted,
+        title: 'No PDF outline',
+      );
+    }
+
+    return ListView.builder(
+      itemCount: entries.length,
+      itemBuilder: (context, index) {
+        final entry = entries[index];
+        final pageId = entry.outline.pageId;
+        final canOpen = pageId != null && notebook.pageIds.contains(pageId);
+        final isSelected = pageId == currentPageId;
+
+        return ListTile(
+          enabled: canOpen,
+          contentPadding: EdgeInsets.only(
+            left: 16 + entry.depth * 20,
+            right: 16,
+          ),
+          leading: Icon(
+            isSelected ? Icons.radio_button_checked : Icons.article_outlined,
+          ),
+          title: Text(
+            entry.outline.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: pageId == null ? null : Text(_pageLabel(notebook, pageId)),
+          onTap: canOpen ? () => onSelectPage(pageId) : null,
+        );
+      },
+    );
+  }
+}
+
+class _BookmarksTab extends StatelessWidget {
+  const _BookmarksTab({
+    required this.notebook,
+    required this.currentPageId,
+    required this.onSelectPage,
+  });
+
+  final Notebook notebook;
+  final String currentPageId;
+  final ValueChanged<String> onSelectPage;
+
+  @override
+  Widget build(BuildContext context) {
+    final bookmarkedPageIds = [
+      for (final pageId in notebook.bookmarkedPageIds)
+        if (notebook.pageIds.contains(pageId)) pageId,
+    ];
+
+    if (bookmarkedPageIds.isEmpty) {
+      return const _NavigationEmptyState(
+        icon: Icons.bookmark_border,
+        title: 'No bookmarks',
+      );
+    }
+
+    return ListView.builder(
+      itemCount: bookmarkedPageIds.length,
+      itemBuilder: (context, index) {
+        final pageId = bookmarkedPageIds[index];
+        final isSelected = pageId == currentPageId;
+
+        return ListTile(
+          leading: Icon(isSelected ? Icons.bookmark : Icons.bookmark_border),
+          title: Text(_pageLabel(notebook, pageId)),
+          onTap: () => onSelectPage(pageId),
+        );
+      },
+    );
+  }
+}
+
+class _NavigationEmptyState extends StatelessWidget {
+  const _NavigationEmptyState({required this.icon, required this.title});
+
+  final IconData icon;
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 48, color: colorScheme.onSurfaceVariant),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            style: textTheme.titleMedium?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FlattenedOutlineEntry {
+  const _FlattenedOutlineEntry({required this.outline, required this.depth});
+
+  final PdfOutlineEntry outline;
+  final int depth;
+}
+
+List<_FlattenedOutlineEntry> _flattenOutlineEntries(
+  List<PdfOutlineEntry> outlines, [
+  int depth = 0,
+]) {
+  return [
+    for (final outline in outlines) ...[
+      _FlattenedOutlineEntry(outline: outline, depth: depth),
+      ..._flattenOutlineEntries(outline.children, depth + 1),
+    ],
+  ];
+}
+
+String _pageLabel(Notebook notebook, String pageId) {
+  final pageIndex = notebook.pageIds.indexOf(pageId);
+  return pageIndex == -1 ? 'Missing page' : 'Page ${pageIndex + 1}';
 }
 
 class _ZoomablePageViewport extends StatefulWidget {
@@ -919,6 +1178,7 @@ class _PageNavigator extends StatelessWidget {
     required this.pageIds,
     required this.pagesById,
     required this.currentPageId,
+    required this.bookmarkedPageIds,
     required this.onSelectPage,
     required this.onAddPage,
     required this.onInsertPage,
@@ -930,6 +1190,7 @@ class _PageNavigator extends StatelessWidget {
   final List<String> pageIds;
   final Map<String, NotePage> pagesById;
   final String currentPageId;
+  final Set<String> bookmarkedPageIds;
   final ValueChanged<String> onSelectPage;
   final VoidCallback onAddPage;
   final ValueChanged<int> onInsertPage;
@@ -960,6 +1221,7 @@ class _PageNavigator extends StatelessWidget {
                     pageNumber: index + 1,
                     page: pagesById[pageId],
                     isSelected: pageId == currentPageId,
+                    isBookmarked: bookmarkedPageIds.contains(pageId),
                     canDelete: pageIds.length > 1,
                     canMoveLeft: index > 0,
                     canMoveRight: index < pageIds.length - 1,
@@ -993,6 +1255,7 @@ class _PageThumbnailButton extends StatelessWidget {
     required this.pageNumber,
     required this.page,
     required this.isSelected,
+    required this.isBookmarked,
     required this.canDelete,
     required this.canMoveLeft,
     required this.canMoveRight,
@@ -1009,6 +1272,7 @@ class _PageThumbnailButton extends StatelessWidget {
   final int pageNumber;
   final NotePage? page;
   final bool isSelected;
+  final bool isBookmarked;
   final bool canDelete;
   final bool canMoveLeft;
   final bool canMoveRight;
@@ -1104,6 +1368,16 @@ class _PageThumbnailButton extends StatelessWidget {
                       onSelected: _handleAction,
                     ),
                   ),
+                  if (isBookmarked)
+                    Positioned(
+                      left: 3,
+                      top: 3,
+                      child: Icon(
+                        Icons.bookmark,
+                        size: 16,
+                        color: colorScheme.primary,
+                      ),
+                    ),
                 ],
               ),
               const SizedBox(height: 4),
@@ -1241,15 +1515,15 @@ class _PageThumbnailPreview extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        if (page.pdfBackground != null)
-          ColoredBox(
-            color: const Color(0xFFF3F0EA),
-            child: Icon(
-              Icons.picture_as_pdf_outlined,
-              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.55),
-              size: 20,
+        if (page.pdfBackground case final background?)
+          PdfPageBackgroundView(
+            key: ValueKey(
+              'page-thumbnail-background-${background.filePath}-${background.pageNumber}',
             ),
-          ),
+            background: background,
+          )
+        else
+          ColoredBox(color: colorScheme.surface),
         CustomPaint(painter: _PageThumbnailPainter(page: page)),
       ],
     );

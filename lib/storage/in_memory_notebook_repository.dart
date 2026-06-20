@@ -122,6 +122,8 @@ class InMemoryNotebookRepository implements NotebookRepository {
       pageIds: notebook.pageIds,
       isArchived: false,
       folderId: notebook.isArchived ? null : notebook.folderId,
+      pdfOutlines: notebook.pdfOutlines,
+      bookmarkedPageIds: notebook.bookmarkedPageIds,
     );
 
     _notebooks.add(duplicatedNotebook);
@@ -163,6 +165,26 @@ class InMemoryNotebookRepository implements NotebookRepository {
       updatedAt: DateTime.now(),
       folderId: folderId,
     );
+    _replaceNotebook(updatedNotebook);
+    return updatedNotebook;
+  }
+
+  @override
+  Future<Notebook> setPageBookmarked(
+    Notebook notebook,
+    String pageId,
+    bool isBookmarked,
+  ) async {
+    final bookmarkedPageIds = [
+      for (final bookmarkedPageId in notebook.bookmarkedPageIds)
+        if (bookmarkedPageId != pageId) bookmarkedPageId,
+      if (isBookmarked && notebook.pageIds.contains(pageId)) pageId,
+    ];
+    final updatedNotebook = notebook.copyWith(
+      updatedAt: DateTime.now(),
+      bookmarkedPageIds: bookmarkedPageIds,
+    );
+
     _replaceNotebook(updatedNotebook);
     return updatedNotebook;
   }
@@ -243,6 +265,10 @@ class InMemoryNotebookRepository implements NotebookRepository {
       pageIds: [
         for (final existingPageId in notebook.pageIds)
           if (existingPageId != pageId) existingPageId,
+      ],
+      bookmarkedPageIds: [
+        for (final bookmarkedPageId in notebook.bookmarkedPageIds)
+          if (bookmarkedPageId != pageId) bookmarkedPageId,
       ],
     );
 

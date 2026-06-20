@@ -1,3 +1,5 @@
+import 'package:inknest_notes/models/pdf_outline_entry.dart';
+
 class Notebook {
   const Notebook({
     required this.id,
@@ -7,6 +9,8 @@ class Notebook {
     this.pageIds = const ['page-1'],
     this.isArchived = false,
     this.folderId,
+    this.pdfOutlines = const [],
+    this.bookmarkedPageIds = const [],
   });
 
   final String id;
@@ -16,6 +20,8 @@ class Notebook {
   final List<String> pageIds;
   final bool isArchived;
   final String? folderId;
+  final List<PdfOutlineEntry> pdfOutlines;
+  final List<String> bookmarkedPageIds;
 
   factory Notebook.fromJson(Map<String, Object?> json) {
     return Notebook(
@@ -28,6 +34,15 @@ class Notebook {
           const ['page-1'],
       isArchived: json['isArchived'] as bool? ?? false,
       folderId: json['folderId'] as String?,
+      pdfOutlines:
+          (json['pdfOutlines'] as List<Object?>?)
+              ?.cast<Map<String, Object?>>()
+              .map(PdfOutlineEntry.fromJson)
+              .toList() ??
+          const [],
+      bookmarkedPageIds:
+          (json['bookmarkedPageIds'] as List<Object?>?)?.cast<String>() ??
+          const [],
     );
   }
 
@@ -40,6 +55,9 @@ class Notebook {
       'pageIds': pageIds,
       'isArchived': isArchived,
       if (folderId != null) 'folderId': folderId,
+      if (pdfOutlines.isNotEmpty)
+        'pdfOutlines': pdfOutlines.map((entry) => entry.toJson()).toList(),
+      if (bookmarkedPageIds.isNotEmpty) 'bookmarkedPageIds': bookmarkedPageIds,
     };
   }
 
@@ -49,6 +67,8 @@ class Notebook {
     List<String>? pageIds,
     bool? isArchived,
     Object? folderId = _folderIdNotChanged,
+    List<PdfOutlineEntry>? pdfOutlines,
+    List<String>? bookmarkedPageIds,
   }) {
     return Notebook(
       id: id,
@@ -60,6 +80,8 @@ class Notebook {
       folderId: folderId == _folderIdNotChanged
           ? this.folderId
           : folderId as String?,
+      pdfOutlines: pdfOutlines ?? this.pdfOutlines,
+      bookmarkedPageIds: bookmarkedPageIds ?? this.bookmarkedPageIds,
     );
   }
 }

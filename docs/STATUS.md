@@ -3,8 +3,8 @@
 ## Current
 
 - Milestone: Post-MVP 3 - PDF Study Workflow
-- Next task: Add PDF thumbnails, outlines, and bookmarks.
-- Last completed: Inserted blank pages into PDFs.
+- Next task: Add page-range export.
+- Last completed: Added PDF thumbnails, outlines, and bookmarks.
 
 ## Decisions
 
@@ -35,6 +35,9 @@
 - Keep library search and sort as UI-level derived state over repository results for now.
 - Render first-pass notebook thumbnails from the first page's saved strokes plus lightweight PDF/page markers before adding cached PDF bitmap thumbnails.
 - Store blank-page insertion in the repository layer; inserted pages inherit the nearest page size but start without PDF background or strokes.
+- Store imported PDF outlines on `Notebook.pdfOutlines`, keyed to notebook page IDs so page insertion and reordering do not break outline navigation.
+- Store user page bookmarks on `Notebook.bookmarkedPageIds` and persist them through the repository layer.
+- Let PDF import continue when outline loading fails; the Outline tab simply starts empty.
 
 ## Verification
 
@@ -71,6 +74,10 @@
 - `flutter test` passed after inserting blank pages.
 - `flutter analyze` passed after inserting blank pages.
 - `git diff --check` passed after inserting blank pages.
+- `dart format lib test` passed after PDF thumbnails, outlines, and bookmarks.
+- `flutter test` passed after PDF thumbnails, outlines, and bookmarks.
+- `flutter analyze` passed after PDF thumbnails, outlines, and bookmarks.
+- `git diff --check` passed after PDF thumbnails, outlines, and bookmarks.
 
 ## Notes
 
@@ -93,6 +100,7 @@
 - Library supports creating root-level folders, moving notebooks into folders, entering folders, and deleting folders while moving contained notebooks back to the root library.
 - Library supports searching notebooks and folders, sorting notebooks, opening recent notebooks, and showing first-page notebook thumbnails with handwriting/PDF/archive markers.
 - Editor page thumbnails can insert blank pages before or after any page, including between imported PDF pages.
+- Editor page thumbnails render PDF page backgrounds, and the editor has an Outline/Bookmarks panel plus per-page bookmark toggling.
 - Post-MVP feature gaps and optimization areas are documented in `docs/POST_MVP_ROADMAP.md`.
 - Subscription packaging, platform behavior, and local/cloud merge rules are documented in `docs/SUBSCRIPTION_PLAN.md`.
 - Web knowledge-base, mobile companion, collaboration, and AI directions are captured as later post-MVP milestones.

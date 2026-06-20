@@ -394,6 +394,38 @@ void main() {
     expect(tester.widget<IconButton>(undoButton).onPressed, isNotNull);
   });
 
+  testWidgets('bookmarks pages from the editor navigation panel', (
+    WidgetTester tester,
+  ) async {
+    await pumpInkNestApp(tester);
+
+    await tester.tap(find.text('New notebook'));
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Bookmark page'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Bookmark page'));
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Remove bookmark'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Outline and bookmarks'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Bookmarks'), findsOneWidget);
+    expect(find.text('Page 1'), findsOneWidget);
+
+    await tester.tap(find.text('Page 1'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Page 1'), findsNothing);
+
+    await tester.tap(find.byTooltip('Remove bookmark'));
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Bookmark page'), findsOneWidget);
+  });
+
   testWidgets('inserts blank pages before and after selected pages', (
     WidgetTester tester,
   ) async {

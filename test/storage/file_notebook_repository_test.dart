@@ -209,6 +209,28 @@ void main() {
     expect(reloadedNotebook.pageIds, ['page-3', 'page-1', 'page-2']);
   });
 
+  test('persists page bookmarks', () async {
+    var notebook = await repository.createNotebook(title: 'Study Notes');
+    notebook = await repository.addPage(notebook);
+
+    notebook = await repository.setPageBookmarked(notebook, 'page-2', true);
+
+    var reloadedNotebook = (await repository.listNotebooks()).single;
+    expect(reloadedNotebook.bookmarkedPageIds, ['page-2']);
+
+    reloadedNotebook = await repository.setPageBookmarked(
+      reloadedNotebook,
+      'page-2',
+      false,
+    );
+
+    expect(reloadedNotebook.bookmarkedPageIds, isEmpty);
+    expect(
+      (await repository.listNotebooks()).single.bookmarkedPageIds,
+      isEmpty,
+    );
+  });
+
   test(
     'renames, duplicates, archives, restores, and deletes notebooks',
     () async {
