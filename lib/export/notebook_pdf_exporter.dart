@@ -24,10 +24,14 @@ class NotebookPdfExporter {
   final NotebookRepository notebookRepository;
   final PdfPageBackgroundRenderer _backgroundRenderer;
 
-  Future<Uint8List> exportNotebook(Notebook notebook) async {
+  Future<Uint8List> exportNotebook(
+    Notebook notebook, {
+    List<String>? pageIds,
+  }) async {
     final document = pw.Document(title: notebook.title);
+    final exportPageIds = pageIds ?? notebook.pageIds;
 
-    for (final pageId in notebook.pageIds) {
+    for (final pageId in exportPageIds) {
       final page = await notebookRepository.loadPage(notebook, pageId);
       final background = await _renderBackground(page);
 

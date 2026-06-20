@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as image;
 import 'package:inknest_notes/export/notebook_pdf_exporter.dart';
 import 'package:inknest_notes/models/note_page.dart';
+import 'package:inknest_notes/models/notebook.dart';
 import 'package:inknest_notes/models/pdf_background.dart';
 import 'package:inknest_notes/models/stroke.dart';
 import 'package:inknest_notes/models/stroke_point.dart';
@@ -64,6 +65,23 @@ void main() {
     expect(backgroundRenderer.renderedBackgrounds.single.pageNumber, 2);
     expect(backgroundRenderer.renderedPages.single.id, 'page-1');
   });
+
+  test(
+    'exports only selected page ids when a page range is provided',
+    () async {
+      final repository = _TrackingNotebookRepository();
+      var notebook = await repository.createNotebook(title: 'Selected Pages');
+      notebook = await repository.addPage(notebook);
+
+      final bytes = await NotebookPdfExporter(
+        notebookRepository: repository,
+        backgroundRenderer: _UnexpectedBackgroundRenderer(),
+      ).exportNotebook(notebook, pageIds: const ['page-2']);
+
+      expect(String.fromCharCodes(bytes.take(4)), '%PDF');
+      expect(repository.loadedPageIds, ['page-2']);
+    },
+  );
 }
 
 Stroke _sampleStroke() {
@@ -116,5 +134,15 @@ class _UnexpectedBackgroundRenderer implements PdfPageBackgroundRenderer {
     NotePage page,
   ) {
     throw StateError('No PDF background should be rendered in this test.');
+  }
+}
+
+class _TrackingNotebookRepository extends InMemoryNotebookRepository {
+  final List<String> loadedPageIds = [];
+
+  @override
+  Future<NotePage> loadPage(Notebook notebook, String pageId) async {
+    loadedPageIds.add(pageId);
+    return super.loadPage(notebook, pageId);
   }
 }

@@ -4,6 +4,7 @@ import 'dart:ui' show PointerDeviceKind;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:inknest_notes/export/notebook_pdf_exporter.dart';
 import 'package:inknest_notes/features/editor/canvas/drawing_canvas.dart';
 import 'package:inknest_notes/features/editor/canvas/pdf_page_background.dart';
@@ -411,6 +412,20 @@ class _EditorScreenState extends State<EditorScreen> {
       return;
     }
 
+    final selection = await showDialog<_ExportSelection>(
+      context: context,
+      builder: (context) {
+        return _ExportOptionsDialog(
+          pageIds: _notebook.pageIds,
+          currentPageId: _currentPageId,
+        );
+      },
+    );
+
+    if (!mounted || selection == null) {
+      return;
+    }
+
     setState(() {
       _isExporting = true;
     });
@@ -419,8 +434,8 @@ class _EditorScreenState extends State<EditorScreen> {
       await _savePage();
       final bytes = await NotebookPdfExporter(
         notebookRepository: widget.notebookRepository,
-      ).exportNotebook(_notebook);
-      final fileName = _exportFileName();
+      ).exportNotebook(_notebook, pageIds: selection.pageIds);
+      final fileName = _exportFileName(selection);
       final savedPath = await FilePicker.saveFile(
         dialogTitle: 'Export notebook',
         fileName: fileName,
@@ -457,18 +472,17 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
-  String _exportFileName() {
+  String _exportFileName(_ExportSelection selection) {
     final sanitizedTitle = _notebook.title.trim().replaceAll(
       RegExp(r'[\\/:*?"<>|]+'),
       '-',
     );
     final title = sanitizedTitle.isEmpty ? 'InkNest Notes' : sanitizedTitle;
+    final baseName = title.toLowerCase().endsWith('.pdf')
+        ? title.substring(0, title.length - 4)
+        : title;
 
-    if (title.toLowerCase().endsWith('.pdf')) {
-      return title;
-    }
-
-    return '$title.pdf';
+    return '$baseName${selection.fileNameSuffix}.pdf';
   }
 
   Future<void> _selectPage(String pageId) async {
@@ -614,6 +628,236 @@ class _EditorScreenState extends State<EditorScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+enum _ExportScope { fullNotebook, currentPage, pageRange }
+
+class _ExportSelection {
+  const _ExportSelection({required this.pageIds, required this.fileNameSuffix});
+
+  final List<String> pageIds;
+  final String fileNameSuffix;
+}
+
+class _ExportOptionsDialog extends StatefulWidget {
+  const _ExportOptionsDialog({
+    required this.pageIds,
+    required this.currentPageId,
+  });
+
+  final List<String> pageIds;
+  final String currentPageId;
+
+  @override
+  State<_ExportOptionsDialog> createState() => _ExportOptionsDialogState();
+}
+
+class _ExportOptionsDialogState extends State<_ExportOptionsDialog> {
+  _ExportScope _scope = _ExportScope.fullNotebook;
+  late final TextEditingController _startController;
+  late final TextEditingController _endController;
+
+  int get _pageCount => widget.pageIds.length;
+
+  int get _currentPageNumber {
+    final currentIndex = widget.pageIds.indexOf(widget.currentPageId);
+    return currentIndex == -1 ? 1 : currentIndex + 1;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    final currentPageNumber = _currentPageNumber.toString();
+    _startController = TextEditingController(text: currentPageNumber);
+    _endController = TextEditingController(text: currentPageNumber);
+  }
+
+  @override
+  void dispose() {
+    _startController.dispose();
+    _endController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final rangeError = _scope == _ExportScope.pageRange ? _rangeError : null;
+    final selection = _selectionOrNull;
+
+    return AlertDialog(
+      title: const Text('Export PDF'),
+      content: SingleChildScrollView(
+        child: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SegmentedButton<_ExportScope>(
+                showSelectedIcon: false,
+                selected: {_scope},
+                segments: const [
+                  ButtonSegment(
+                    value: _ExportScope.fullNotebook,
+                    icon: Icon(Icons.library_books_outlined),
+                    label: Text('Full'),
+                  ),
+                  ButtonSegment(
+                    value: _ExportScope.currentPage,
+                    icon: Icon(Icons.description_outlined),
+                    label: Text('Current'),
+                  ),
+                  ButtonSegment(
+                    value: _ExportScope.pageRange,
+                    icon: Icon(Icons.view_agenda_outlined),
+                    label: Text('Range'),
+                  ),
+                ],
+                onSelectionChanged: (selected) {
+                  setState(() {
+                    _scope = selected.single;
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
+              Text(
+                _scopeSummary,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              if (_scope == _ExportScope.pageRange) ...[
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _startController,
+                        decoration: const InputDecoration(
+                          labelText: 'From',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                        ],
+                        onChanged: (_) => setState(() {}),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextField(
+                        controller: _endController,
+                        decoration: const InputDecoration(
+                          labelText: 'To',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                        ],
+                        onChanged: (_) => setState(() {}),
+                      ),
+                    ),
+                  ],
+                ),
+                if (rangeError != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    rangeError,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.error,
+                    ),
+                  ),
+                ],
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton.icon(
+          onPressed: selection == null
+              ? null
+              : () => Navigator.of(context).pop(selection),
+          icon: const Icon(Icons.ios_share),
+          label: const Text('Export'),
+        ),
+      ],
+    );
+  }
+
+  String get _scopeSummary {
+    return switch (_scope) {
+      _ExportScope.fullNotebook => 'All $_pageCount pages',
+      _ExportScope.currentPage => 'Page $_currentPageNumber',
+      _ExportScope.pageRange => 'Pages 1-$_pageCount',
+    };
+  }
+
+  String? get _rangeError {
+    final start = int.tryParse(_startController.text.trim());
+    final end = int.tryParse(_endController.text.trim());
+
+    if (start == null || end == null) {
+      return 'Enter page numbers.';
+    }
+    if (start < 1 || end < 1 || start > _pageCount || end > _pageCount) {
+      return 'Pages must be between 1 and $_pageCount.';
+    }
+    if (start > end) {
+      return 'From must be before To.';
+    }
+
+    return null;
+  }
+
+  _ExportSelection? get _selectionOrNull {
+    if (widget.pageIds.isEmpty) {
+      return null;
+    }
+
+    return switch (_scope) {
+      _ExportScope.fullNotebook => _ExportSelection(
+        pageIds: List.unmodifiable(widget.pageIds),
+        fileNameSuffix: '',
+      ),
+      _ExportScope.currentPage => _currentPageSelection,
+      _ExportScope.pageRange => _rangeSelection,
+    };
+  }
+
+  _ExportSelection? get _currentPageSelection {
+    final currentIndex = widget.pageIds.indexOf(widget.currentPageId);
+    if (currentIndex == -1) {
+      return null;
+    }
+
+    return _ExportSelection(
+      pageIds: [widget.currentPageId],
+      fileNameSuffix: '-page-${currentIndex + 1}',
+    );
+  }
+
+  _ExportSelection? get _rangeSelection {
+    if (_rangeError != null) {
+      return null;
+    }
+
+    final start = int.parse(_startController.text.trim());
+    final end = int.parse(_endController.text.trim());
+    final suffix = start == end ? '-page-$start' : '-pages-$start-$end';
+
+    return _ExportSelection(
+      pageIds: List.unmodifiable(widget.pageIds.sublist(start - 1, end)),
+      fileNameSuffix: suffix,
     );
   }
 }

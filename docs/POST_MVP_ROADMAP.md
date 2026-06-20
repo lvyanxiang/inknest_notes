@@ -64,7 +64,7 @@ The detailed plan lives in `docs/SMART_INK_PLAN.md`.
 - Insert blank pages before, after, or between PDF pages.
 - PDF page thumbnails, outlines, and bookmarks.
 - PDF search when the source PDF has selectable text.
-- Export options: current page, selected pages, full notebook, flattened PDF.
+- Export options: non-contiguous selected pages and flattened PDF refinements.
 - Preserve original PDF page size where possible instead of forcing every PDF
   page into the same page dimensions.
 
@@ -147,7 +147,7 @@ The detailed plan lives in `docs/SMART_INK_PLAN.md`.
 ### Export
 
 - Add export progress and cancellation.
-- Allow page-range selection.
+- Allow non-contiguous selected-page export.
 - Add share-sheet flow in addition to save-to-file.
 - Preserve page dimensions and PDF metadata where possible.
 - Explore overlaying annotations on original PDF pages instead of rasterizing
@@ -196,7 +196,7 @@ Goal: make PDF annotation feel like a real study workflow.
 
 - [x] Insert blank pages into PDFs.
 - [x] Add PDF thumbnails, outlines, and bookmarks.
-- [ ] Add page-range export.
+- [x] Add page-range export.
 - [ ] Improve PDF background caching and export quality.
 
 ### Post-MVP 4: Rich Notes

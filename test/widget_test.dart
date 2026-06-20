@@ -35,6 +35,48 @@ void main() {
     expect(find.text('No notebooks yet'), findsNothing);
   });
 
+  testWidgets('shows export options and validates page ranges', (
+    WidgetTester tester,
+  ) async {
+    await pumpInkNestApp(tester);
+
+    await tester.tap(find.text('New notebook'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Add page'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Export PDF'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Export PDF'), findsOneWidget);
+    expect(find.text('Full'), findsOneWidget);
+    expect(find.text('Current'), findsOneWidget);
+    expect(find.text('Range'), findsOneWidget);
+    expect(find.text('All 2 pages'), findsOneWidget);
+
+    await tester.tap(find.text('Range'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Pages 1-2'), findsOneWidget);
+    expect(find.byType(TextField), findsNWidgets(2));
+
+    await tester.enterText(find.byType(TextField).last, '9');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Pages must be between 1 and 2.'), findsOneWidget);
+    expect(
+      tester
+          .widget<FilledButton>(find.widgetWithText(FilledButton, 'Export'))
+          .onPressed,
+      isNull,
+    );
+
+    await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Export PDF'), findsNothing);
+  });
+
   testWidgets('manages notebooks from the library card menu', (
     WidgetTester tester,
   ) async {

@@ -3,8 +3,8 @@
 ## Current
 
 - Milestone: Post-MVP 3 - PDF Study Workflow
-- Next task: Add page-range export.
-- Last completed: Added PDF thumbnails, outlines, and bookmarks.
+- Next task: Improve PDF background caching and export quality.
+- Last completed: Added page-range export.
 
 ## Decisions
 
@@ -40,6 +40,7 @@
 - Let PDF import continue when outline loading fails; the Outline tab simply starts empty.
 - Track Smart Ink in the existing post-MVP roadmap rather than a separate plan for now: rough finger handwriting -> recognition -> user confirmation -> neat handwriting-style editable text.
 - Use `docs/SMART_INK_PLAN.md` as the dedicated Smart Ink planning document while keeping implementation after the current PDF workflow and Rich Notes prerequisites.
+- Export PDF opens a scope dialog before the save flow and can export the full notebook, current page, or a contiguous page range.
 
 ## Verification
 
@@ -82,6 +83,10 @@
 - `git diff --check` passed after PDF thumbnails, outlines, and bookmarks.
 - `git diff --check` passed after adding Smart Ink to the roadmap.
 - `git diff --check` passed after adding `docs/SMART_INK_PLAN.md`.
+- `dart format lib test` passed after page-range export.
+- `flutter test` passed after page-range export.
+- `flutter analyze` passed after page-range export.
+- `git diff --check` passed after page-range export.
 
 ## Notes
 
@@ -105,6 +110,7 @@
 - Library supports searching notebooks and folders, sorting notebooks, opening recent notebooks, and showing first-page notebook thumbnails with handwriting/PDF/archive markers.
 - Editor page thumbnails can insert blank pages before or after any page, including between imported PDF pages.
 - Editor page thumbnails render PDF page backgrounds, and the editor has an Outline/Bookmarks panel plus per-page bookmark toggling.
+- Editor export can save the full notebook, current page, or a page range, with filenames suffixed by exported scope.
 - Smart Ink planning lives in `docs/SMART_INK_PLAN.md`.
 - Post-MVP feature gaps and optimization areas are documented in `docs/POST_MVP_ROADMAP.md`.
 - Subscription packaging, platform behavior, and local/cloud merge rules are documented in `docs/SUBSCRIPTION_PLAN.md`.
