@@ -2,9 +2,9 @@
 
 ## Current
 
-- Milestone: Post-MVP 2 - Library Organization
-- Next task: Add sorting, search, recent notebooks, and notebook thumbnails.
-- Last completed: Added folders.
+- Milestone: Post-MVP 3 - PDF Study Workflow
+- Next task: Insert blank pages into PDFs.
+- Last completed: Added sorting, search, recent notebooks, and notebook thumbnails.
 
 ## Decisions
 
@@ -32,6 +32,8 @@
 - Use shared stroke geometry helpers for smoothed screen drawing, thumbnail drawing, PDF export paths, and partial eraser stroke splitting.
 - Keep archived notebooks out of the default library list; show them through an explicit archived view where they can be restored or deleted.
 - Store folders as first-class repository metadata; keep folders one level deep for now, and use `Notebook.folderId` to move notebooks between the root library and a folder.
+- Keep library search and sort as UI-level derived state over repository results for now.
+- Render first-pass notebook thumbnails from the first page's saved strokes plus lightweight PDF/page markers before adding cached PDF bitmap thumbnails.
 
 ## Verification
 
@@ -60,6 +62,10 @@
 - `dart format lib test` passed after folders.
 - `flutter test` passed after folders.
 - `flutter analyze` passed after folders.
+- `dart format lib test` passed after library search, sort, recent notebooks, and thumbnails.
+- `flutter test` passed after library search, sort, recent notebooks, and thumbnails.
+- `flutter analyze` passed after library search, sort, recent notebooks, and thumbnails.
+- `git diff --check` passed after library search, sort, recent notebooks, and thumbnails.
 
 ## Notes
 
@@ -80,6 +86,7 @@
 - Editor strokes render with smoothed paths on canvas, thumbnails, and exported PDFs; the eraser can split strokes instead of only deleting whole strokes.
 - Library notebook cards include rename, duplicate, archive/restore, and delete actions backed by repository persistence.
 - Library supports creating root-level folders, moving notebooks into folders, entering folders, and deleting folders while moving contained notebooks back to the root library.
+- Library supports searching notebooks and folders, sorting notebooks, opening recent notebooks, and showing first-page notebook thumbnails with handwriting/PDF/archive markers.
 - Post-MVP feature gaps and optimization areas are documented in `docs/POST_MVP_ROADMAP.md`.
 - Subscription packaging, platform behavior, and local/cloud merge rules are documented in `docs/SUBSCRIPTION_PLAN.md`.
 - Web knowledge-base, mobile companion, collaboration, and AI directions are captured as later post-MVP milestones.

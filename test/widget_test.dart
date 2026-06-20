@@ -139,6 +139,58 @@ void main() {
     expect(find.byTooltip('Show library'), findsOneWidget);
   });
 
+  testWidgets('searches sorts and previews recent notebooks', (
+    WidgetTester tester,
+  ) async {
+    await pumpInkNestApp(tester);
+
+    await tester.tap(find.text('New notebook'));
+    await tester.pumpAndSettle();
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('New notebook'));
+    await tester.pumpAndSettle();
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Recent notebooks'), findsOneWidget);
+    expect(
+      find.byWidgetPredicate((widget) {
+        final key = widget.key;
+        return key is ValueKey<String> &&
+            key.value.startsWith('notebook-thumbnail-card-');
+      }),
+      findsNWidgets(2),
+    );
+
+    await tester.tap(find.byTooltip('Search notebooks'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '2');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Notebook 2'), findsOneWidget);
+    expect(find.text('Notebook 1'), findsNothing);
+    expect(find.text('Recent notebooks'), findsNothing);
+
+    await tester.tap(find.byTooltip('Clear search'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Sort notebooks'));
+    await tester.pumpAndSettle();
+    final titleSortItem = find.ancestor(
+      of: find.text('Title'),
+      matching: find.byWidgetPredicate(
+        (widget) => widget is CheckedPopupMenuItem,
+      ),
+    );
+    await tester.tap(titleSortItem);
+    await tester.pumpAndSettle();
+
+    final firstNotebookPosition = tester.getTopLeft(find.text('Notebook 1'));
+    final secondNotebookPosition = tester.getTopLeft(find.text('Notebook 2'));
+    expect(firstNotebookPosition.dx, lessThan(secondNotebookPosition.dx));
+  });
+
   testWidgets('draws a stroke and supports undo redo', (
     WidgetTester tester,
   ) async {

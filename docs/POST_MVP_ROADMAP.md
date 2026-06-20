@@ -175,7 +175,7 @@ Goal: make notebooks manageable as the user creates more documents.
 
 - [x] Rename, delete, duplicate, and archive notebooks.
 - [x] Add folders.
-- [ ] Add sorting, search, recent notebooks, and notebook thumbnails.
+- [x] Add sorting, search, recent notebooks, and notebook thumbnails.
 
 ### Post-MVP 3: PDF Study Workflow
 

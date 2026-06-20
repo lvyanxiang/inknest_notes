@@ -1,10 +1,13 @@
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:inknest_notes/features/editor/editor_screen.dart';
+import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/notebook.dart';
 import 'package:inknest_notes/models/notebook_folder.dart';
+import 'package:inknest_notes/models/stroke_geometry.dart';
 import 'package:inknest_notes/storage/notebook_repository.dart';
 
 class LibraryScreen extends StatefulWidget {
@@ -16,11 +19,32 @@ class LibraryScreen extends StatefulWidget {
   State<LibraryScreen> createState() => _LibraryScreenState();
 }
 
+enum _LibrarySortMode { recent, title, created, updated }
+
+extension _LibrarySortModeLabel on _LibrarySortMode {
+  String get label {
+    switch (this) {
+      case _LibrarySortMode.recent:
+        return 'Recent';
+      case _LibrarySortMode.title:
+        return 'Title';
+      case _LibrarySortMode.created:
+        return 'Created date';
+      case _LibrarySortMode.updated:
+        return 'Updated date';
+    }
+  }
+}
+
 class _LibraryScreenState extends State<LibraryScreen> {
+  final _searchController = TextEditingController();
   late List<Notebook> _notebooks;
   late List<NotebookFolder> _folders;
   bool _isLoading = true;
   bool _showArchived = false;
+  bool _isSearchVisible = false;
+  String _searchQuery = '';
+  _LibrarySortMode _sortMode = _LibrarySortMode.recent;
   String? _currentFolderId;
   NotebookFolder? _currentFolder;
 
@@ -30,6 +54,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
     _notebooks = [];
     _folders = [];
     _loadNotebooks();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadNotebooks() async {
@@ -49,6 +79,81 @@ class _LibraryScreenState extends State<LibraryScreen> {
       _notebooks = notebooks;
       _folders = folders;
       _isLoading = false;
+    });
+  }
+
+  List<Notebook> get _visibleNotebooks {
+    final notebooks = _notebooks.where((notebook) {
+      return _matchesSearch(notebook.title);
+    }).toList();
+
+    notebooks.sort(_compareNotebooks);
+    return notebooks;
+  }
+
+  List<NotebookFolder> get _visibleFolders {
+    final folders = _folders.where((folder) {
+      return _matchesSearch(folder.name);
+    }).toList();
+
+    folders.sort(
+      (first, second) =>
+          first.name.toLowerCase().compareTo(second.name.toLowerCase()),
+    );
+    return folders;
+  }
+
+  List<Notebook> get _recentNotebooks {
+    if (_showArchived || _currentFolderId != null || _searchQuery.isNotEmpty) {
+      return const [];
+    }
+
+    final notebooks = [..._notebooks]
+      ..sort((first, second) => second.updatedAt.compareTo(first.updatedAt));
+    return notebooks.take(3).toList();
+  }
+
+  bool _matchesSearch(String value) {
+    final query = _searchQuery.trim().toLowerCase();
+    return query.isEmpty || value.toLowerCase().contains(query);
+  }
+
+  int _compareNotebooks(Notebook first, Notebook second) {
+    switch (_sortMode) {
+      case _LibrarySortMode.recent:
+      case _LibrarySortMode.updated:
+        return second.updatedAt.compareTo(first.updatedAt);
+      case _LibrarySortMode.created:
+        return second.createdAt.compareTo(first.createdAt);
+      case _LibrarySortMode.title:
+        return first.title.toLowerCase().compareTo(second.title.toLowerCase());
+    }
+  }
+
+  void _toggleSearch() {
+    setState(() {
+      _isSearchVisible = !_isSearchVisible;
+      if (!_isSearchVisible) {
+        _searchController.clear();
+        _searchQuery = '';
+      }
+    });
+  }
+
+  void _updateSearchQuery(String value) {
+    setState(() {
+      _searchQuery = value;
+    });
+  }
+
+  void _clearSearch() {
+    _searchController.clear();
+    _updateSearchQuery('');
+  }
+
+  void _setSortMode(_LibrarySortMode mode) {
+    setState(() {
+      _sortMode = mode;
     });
   }
 
@@ -347,6 +452,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final visibleFolders = _visibleFolders;
+    final visibleNotebooks = _visibleNotebooks;
+    final recentNotebooks = _recentNotebooks;
+
     return Scaffold(
       appBar: AppBar(
         leading: _showArchived || _currentFolderId != null
@@ -361,9 +470,25 @@ class _LibraryScreenState extends State<LibraryScreen> {
         ),
         actions: [
           IconButton(
-            onPressed: () {},
-            tooltip: 'Search notebooks',
-            icon: const Icon(Icons.search),
+            onPressed: _toggleSearch,
+            tooltip: _isSearchVisible ? 'Close search' : 'Search notebooks',
+            icon: Icon(_isSearchVisible ? Icons.search_off : Icons.search),
+          ),
+          PopupMenuButton<_LibrarySortMode>(
+            tooltip: 'Sort notebooks',
+            icon: const Icon(Icons.sort),
+            initialValue: _sortMode,
+            onSelected: _setSortMode,
+            itemBuilder: (context) {
+              return [
+                for (final mode in _LibrarySortMode.values)
+                  CheckedPopupMenuItem<_LibrarySortMode>(
+                    value: mode,
+                    checked: mode == _sortMode,
+                    child: Text(mode.label),
+                  ),
+              ];
+            },
           ),
           IconButton(
             onPressed: _toggleArchivedView,
@@ -393,30 +518,202 @@ class _LibraryScreenState extends State<LibraryScreen> {
       body: SafeArea(
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
-            : _notebooks.isEmpty && _folders.isEmpty
-            ? _EmptyLibrary(
-                showArchived: _showArchived,
-                folderName: _currentFolder?.name,
-                onCreateNotebook: _createNotebook,
-                onImportPdf: _importPdf,
-              )
-            : _LibraryGrid(
-                folders: _folders,
-                notebooks: _notebooks,
-                showArchived: _showArchived,
-                onOpenFolder: _openFolder,
-                onRenameFolder: (folder) => _renameFolder(folder),
-                onDeleteFolder: (folder) => _deleteFolder(folder),
-                onOpenNotebook: _openNotebook,
-                onRenameNotebook: (notebook) => _renameNotebook(notebook),
-                onDuplicateNotebook: (notebook) => _duplicateNotebook(notebook),
-                onMoveNotebook: (notebook) => _moveNotebook(notebook),
-                onArchiveNotebook: (notebook) =>
-                    _setNotebookArchived(notebook, true),
-                onRestoreNotebook: (notebook) =>
-                    _setNotebookArchived(notebook, false),
-                onDeleteNotebook: (notebook) => _deleteNotebook(notebook),
+            : Column(
+                children: [
+                  if (_isSearchVisible || _searchQuery.isNotEmpty)
+                    _LibrarySearchBar(
+                      controller: _searchController,
+                      onChanged: _updateSearchQuery,
+                      onClear: _clearSearch,
+                    ),
+                  if (recentNotebooks.isNotEmpty)
+                    _RecentNotebookStrip(
+                      notebooks: recentNotebooks,
+                      notebookRepository: widget.notebookRepository,
+                      onOpenNotebook: _openNotebook,
+                    ),
+                  Expanded(
+                    child: visibleNotebooks.isEmpty && visibleFolders.isEmpty
+                        ? _searchQuery.isEmpty
+                              ? _EmptyLibrary(
+                                  showArchived: _showArchived,
+                                  folderName: _currentFolder?.name,
+                                  onCreateNotebook: _createNotebook,
+                                  onImportPdf: _importPdf,
+                                )
+                              : _NoSearchResults(query: _searchQuery)
+                        : _LibraryGrid(
+                            folders: visibleFolders,
+                            notebooks: visibleNotebooks,
+                            showArchived: _showArchived,
+                            notebookRepository: widget.notebookRepository,
+                            onOpenFolder: _openFolder,
+                            onRenameFolder: (folder) => _renameFolder(folder),
+                            onDeleteFolder: (folder) => _deleteFolder(folder),
+                            onOpenNotebook: _openNotebook,
+                            onRenameNotebook: (notebook) =>
+                                _renameNotebook(notebook),
+                            onDuplicateNotebook: (notebook) =>
+                                _duplicateNotebook(notebook),
+                            onMoveNotebook: (notebook) =>
+                                _moveNotebook(notebook),
+                            onArchiveNotebook: (notebook) =>
+                                _setNotebookArchived(notebook, true),
+                            onRestoreNotebook: (notebook) =>
+                                _setNotebookArchived(notebook, false),
+                            onDeleteNotebook: (notebook) =>
+                                _deleteNotebook(notebook),
+                          ),
+                  ),
+                ],
               ),
+      ),
+    );
+  }
+}
+
+class _LibrarySearchBar extends StatelessWidget {
+  const _LibrarySearchBar({
+    required this.controller,
+    required this.onChanged,
+    required this.onClear,
+  });
+
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 4),
+      child: TextField(
+        controller: controller,
+        autofocus: true,
+        decoration: InputDecoration(
+          hintText: 'Search notebooks',
+          prefixIcon: const Icon(Icons.search),
+          suffixIcon: controller.text.isEmpty
+              ? null
+              : IconButton(
+                  onPressed: onClear,
+                  tooltip: 'Clear search',
+                  icon: const Icon(Icons.close),
+                ),
+          border: const OutlineInputBorder(),
+        ),
+        textInputAction: TextInputAction.search,
+        onChanged: onChanged,
+      ),
+    );
+  }
+}
+
+class _NoSearchResults extends StatelessWidget {
+  const _NoSearchResults({required this.query});
+
+  final String query;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.search_off,
+              size: 64,
+              color: colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'No matching notebooks',
+              textAlign: TextAlign.center,
+              style: textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              query,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RecentNotebookStrip extends StatelessWidget {
+  const _RecentNotebookStrip({
+    required this.notebooks,
+    required this.notebookRepository,
+    required this.onOpenNotebook,
+  });
+
+  final List<Notebook> notebooks;
+  final NotebookRepository notebookRepository;
+  final ValueChanged<Notebook> onOpenNotebook;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Recent notebooks',
+            style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 96,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: notebooks.length,
+              separatorBuilder: (context, index) => const SizedBox(width: 12),
+              itemBuilder: (context, index) {
+                final notebook = notebooks[index];
+                return Tooltip(
+                  message: 'Open recent ${notebook.title}',
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: () => onOpenNotebook(notebook),
+                      child: SizedBox(
+                        width: 72,
+                        child: Center(
+                          child: _NotebookThumbnail(
+                            notebook: notebook,
+                            notebookRepository: notebookRepository,
+                            keyPrefix: 'notebook-thumbnail-recent',
+                            width: 54,
+                            height: 72,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -568,6 +865,7 @@ class _LibraryGrid extends StatelessWidget {
     required this.folders,
     required this.notebooks,
     required this.showArchived,
+    required this.notebookRepository,
     required this.onOpenFolder,
     required this.onRenameFolder,
     required this.onDeleteFolder,
@@ -583,6 +881,7 @@ class _LibraryGrid extends StatelessWidget {
   final List<NotebookFolder> folders;
   final List<Notebook> notebooks;
   final bool showArchived;
+  final NotebookRepository notebookRepository;
   final ValueChanged<NotebookFolder> onOpenFolder;
   final ValueChanged<NotebookFolder> onRenameFolder;
   final ValueChanged<NotebookFolder> onDeleteFolder;
@@ -621,6 +920,7 @@ class _LibraryGrid extends StatelessWidget {
         return _NotebookCard(
           notebook: notebook,
           showArchived: showArchived,
+          notebookRepository: notebookRepository,
           onTap: () => onOpenNotebook(notebook),
           onRename: () => onRenameNotebook(notebook),
           onDuplicate: () => onDuplicateNotebook(notebook),
@@ -731,10 +1031,215 @@ class _FolderCard extends StatelessWidget {
   }
 }
 
+class _NotebookThumbnail extends StatelessWidget {
+  const _NotebookThumbnail({
+    required this.notebook,
+    required this.notebookRepository,
+    required this.keyPrefix,
+    this.showArchived = false,
+    this.width = 92,
+    this.height = 124,
+  });
+
+  final Notebook notebook;
+  final NotebookRepository notebookRepository;
+  final String keyPrefix;
+  final bool showArchived;
+  final double width;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final pageId = notebook.pageIds.isEmpty ? null : notebook.pageIds.first;
+
+    return SizedBox(
+      key: ValueKey('$keyPrefix-${notebook.id}'),
+      width: width,
+      height: height,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(5),
+          border: Border.all(color: const Color(0xFFE4DED1)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.08),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: pageId == null
+              ? _NotebookThumbnailPlaceholder(showArchived: showArchived)
+              : FutureBuilder<NotePage>(
+                  future: notebookRepository.loadPage(notebook, pageId),
+                  builder: (context, snapshot) {
+                    final page = snapshot.data;
+                    if (page == null) {
+                      return _NotebookThumbnailPlaceholder(
+                        showArchived: showArchived,
+                      );
+                    }
+
+                    return Stack(
+                      children: [
+                        Positioned.fill(
+                          child: CustomPaint(
+                            painter: _NotebookThumbnailPainter(page: page),
+                          ),
+                        ),
+                        if (page.pdfBackground != null)
+                          const Positioned(
+                            left: 5,
+                            bottom: 5,
+                            child: _ThumbnailBadge(
+                              icon: Icons.picture_as_pdf_outlined,
+                            ),
+                          ),
+                        if (showArchived)
+                          const Positioned(
+                            right: 5,
+                            bottom: 5,
+                            child: _ThumbnailBadge(
+                              icon: Icons.inventory_2_outlined,
+                            ),
+                          ),
+                      ],
+                    );
+                  },
+                ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NotebookThumbnailPlaceholder extends StatelessWidget {
+  const _NotebookThumbnailPlaceholder({required this.showArchived});
+
+  final bool showArchived;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return DecoratedBox(
+      decoration: const BoxDecoration(color: Colors.white),
+      child: Center(
+        child: Icon(
+          showArchived ? Icons.inventory_2_outlined : Icons.article_outlined,
+          color: colorScheme.primary,
+          size: 32,
+        ),
+      ),
+    );
+  }
+}
+
+class _ThumbnailBadge extends StatelessWidget {
+  const _ThumbnailBadge({required this.icon});
+
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colorScheme.surface.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: SizedBox.square(
+        dimension: 22,
+        child: Icon(icon, size: 14, color: colorScheme.primary),
+      ),
+    );
+  }
+}
+
+class _NotebookThumbnailPainter extends CustomPainter {
+  const _NotebookThumbnailPainter({required this.page});
+
+  final NotePage page;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final pageWidth = page.width <= 0 ? size.width : page.width;
+    final pageHeight = page.height <= 0 ? size.height : page.height;
+    final scale = math.min(size.width / pageWidth, size.height / pageHeight);
+    final previewSize = Size(pageWidth * scale, pageHeight * scale);
+    final previewOffset = Offset(
+      (size.width - previewSize.width) / 2,
+      (size.height - previewSize.height) / 2,
+    );
+    final previewRect = previewOffset & previewSize;
+
+    canvas.drawRect(Offset.zero & size, Paint()..color = Colors.white);
+
+    if (page.pdfBackground != null) {
+      final pdfPaint = Paint()..color = const Color(0xFFFFF6E2);
+      canvas.drawRect(previewRect, pdfPaint);
+
+      final linePaint = Paint()
+        ..color = const Color(0xFFE7DCC4)
+        ..strokeWidth = 1;
+      for (var y = previewRect.top + 14; y < previewRect.bottom; y += 14) {
+        canvas.drawLine(
+          Offset(previewRect.left + 8, y),
+          Offset(previewRect.right - 8, y),
+          linePaint,
+        );
+      }
+    }
+
+    canvas.save();
+    canvas.clipRect(previewRect);
+    canvas.translate(previewOffset.dx, previewOffset.dy);
+    canvas.scale(scale);
+
+    for (final stroke in page.strokes) {
+      if (stroke.points.isEmpty) {
+        continue;
+      }
+
+      final paint = Paint()
+        ..color = stroke.isHighlighter
+            ? stroke.color.withValues(alpha: 0.36)
+            : stroke.color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke.width
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round;
+
+      if (stroke.points.length == 1) {
+        canvas.drawCircle(
+          stroke.points.single.offset,
+          stroke.width / 2,
+          paint..style = PaintingStyle.fill,
+        );
+      } else {
+        canvas.drawPath(StrokeGeometry.buildSmoothPath(stroke.points), paint);
+      }
+    }
+
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_NotebookThumbnailPainter oldDelegate) {
+    return oldDelegate.page != page;
+  }
+}
+
 class _NotebookCard extends StatelessWidget {
   const _NotebookCard({
     required this.notebook,
     required this.showArchived,
+    required this.notebookRepository,
     required this.onTap,
     required this.onRename,
     required this.onDuplicate,
@@ -746,6 +1251,7 @@ class _NotebookCard extends StatelessWidget {
 
   final Notebook notebook;
   final bool showArchived;
+  final NotebookRepository notebookRepository;
   final VoidCallback onTap;
   final VoidCallback onRename;
   final VoidCallback onDuplicate;
@@ -801,12 +1307,11 @@ class _NotebookCard extends StatelessWidget {
                         ),
                       ),
                       child: Center(
-                        child: Icon(
-                          showArchived
-                              ? Icons.inventory_2_outlined
-                              : Icons.article_outlined,
-                          size: 56,
-                          color: colorScheme.primary,
+                        child: _NotebookThumbnail(
+                          notebook: notebook,
+                          notebookRepository: notebookRepository,
+                          keyPrefix: 'notebook-thumbnail-card',
+                          showArchived: showArchived,
                         ),
                       ),
                     ),
