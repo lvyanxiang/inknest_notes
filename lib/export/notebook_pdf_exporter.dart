@@ -93,8 +93,33 @@ class NotebookPdfExporter {
             painter: (canvas, size) => _paintStrokes(canvas, size, page),
           ),
         ),
+        ..._buildTextBoxes(page),
       ],
     );
+  }
+
+  Iterable<pw.Widget> _buildTextBoxes(NotePage page) {
+    return [
+      for (final textBox in page.textBoxes)
+        if (textBox.text.trim().isNotEmpty)
+          pw.Positioned(
+            left: textBox.position.dx,
+            top: textBox.position.dy,
+            child: pw.SizedBox(
+              width: textBox.width,
+              child: pw.Text(
+                textBox.text,
+                style: pw.TextStyle(
+                  color: pdf.PdfColor.fromInt(
+                    _opaqueArgb(textBox.color.toARGB32()),
+                  ),
+                  fontSize: textBox.fontSize,
+                  lineSpacing: textBox.fontSize * 0.2,
+                ),
+              ),
+            ),
+          ),
+    ];
   }
 
   void _paintStrokes(pdf.PdfGraphics canvas, pdf.PdfPoint size, NotePage page) {

@@ -8,8 +8,10 @@ import 'package:flutter/services.dart';
 import 'package:inknest_notes/export/notebook_pdf_exporter.dart';
 import 'package:inknest_notes/features/editor/canvas/drawing_canvas.dart';
 import 'package:inknest_notes/features/editor/canvas/pdf_page_background.dart';
+import 'package:inknest_notes/features/editor/text/text_box_layer.dart';
 import 'package:inknest_notes/features/editor/tools/editor_toolbar.dart';
 import 'package:inknest_notes/models/note_page.dart';
+import 'package:inknest_notes/models/note_text_box.dart';
 import 'package:inknest_notes/models/notebook.dart';
 import 'package:inknest_notes/models/pdf_outline_entry.dart';
 import 'package:inknest_notes/models/stroke.dart';
@@ -40,6 +42,7 @@ class _EditorScreenState extends State<EditorScreen> {
   late String _currentPageId;
   bool _isExporting = false;
   bool _fingerPanEnabled = false;
+  String? _activeTextBoxId;
   NotePage? _page;
 
   @override
@@ -65,6 +68,7 @@ class _EditorScreenState extends State<EditorScreen> {
       _page = page;
       _pagesById[page.id] = page;
       _redoStack.clear();
+      _activeTextBoxId = null;
     });
   }
 
@@ -119,6 +123,98 @@ class _EditorScreenState extends State<EditorScreen> {
     });
 
     unawaited(_savePage(updatedPage));
+  }
+
+  void _addTextBoxAt(Offset position) {
+    final page = _page;
+    if (page == null) {
+      return;
+    }
+
+    final width = math.min(240.0, math.max(120.0, page.width - 32));
+    final textBox = NoteTextBox(
+      id: 'text-${DateTime.now().microsecondsSinceEpoch}',
+      position: _clampTextBoxPosition(
+        page: page,
+        position: position - Offset(width / 2, 24),
+        width: width,
+      ),
+      width: width,
+      color: _tool.color,
+    );
+    final updatedPage = page.copyWith(textBoxes: [...page.textBoxes, textBox]);
+
+    setState(() {
+      _page = updatedPage;
+      _pagesById[updatedPage.id] = updatedPage;
+      _activeTextBoxId = textBox.id;
+      _redoStack.clear();
+    });
+
+    unawaited(_savePage(updatedPage));
+  }
+
+  void _updateTextBox(NoteTextBox textBox) {
+    final page = _page;
+    if (page == null) {
+      return;
+    }
+
+    final updatedTextBoxes = [
+      for (final existingTextBox in page.textBoxes)
+        if (existingTextBox.id == textBox.id) textBox else existingTextBox,
+    ];
+    final updatedPage = page.copyWith(textBoxes: updatedTextBoxes);
+
+    setState(() {
+      _page = updatedPage;
+      _pagesById[updatedPage.id] = updatedPage;
+      _activeTextBoxId = textBox.id;
+      _redoStack.clear();
+    });
+
+    unawaited(_savePage(updatedPage));
+  }
+
+  void _deleteTextBox(String textBoxId) {
+    final page = _page;
+    if (page == null) {
+      return;
+    }
+
+    final updatedTextBoxes = [
+      for (final textBox in page.textBoxes)
+        if (textBox.id != textBoxId) textBox,
+    ];
+    if (updatedTextBoxes.length == page.textBoxes.length) {
+      return;
+    }
+
+    final updatedPage = page.copyWith(textBoxes: updatedTextBoxes);
+
+    setState(() {
+      _page = updatedPage;
+      _pagesById[updatedPage.id] = updatedPage;
+      if (_activeTextBoxId == textBoxId) {
+        _activeTextBoxId = null;
+      }
+      _redoStack.clear();
+    });
+
+    unawaited(_savePage(updatedPage));
+  }
+
+  Offset _clampTextBoxPosition({
+    required NotePage page,
+    required Offset position,
+    required double width,
+  }) {
+    final maxX = math.max(0.0, page.width - width);
+    final maxY = math.max(0.0, page.height - 64);
+    return Offset(
+      position.dx.clamp(0, maxX).toDouble(),
+      position.dy.clamp(0, maxY).toDouble(),
+    );
   }
 
   void _undo() {
@@ -624,6 +720,15 @@ class _EditorScreenState extends State<EditorScreen> {
               fingerPanEnabled: _fingerPanEnabled,
               onStrokeComplete: _addStroke,
               onErase: _eraseAt,
+            ),
+            TextBoxLayer(
+              page: page,
+              activeTextBoxId: _activeTextBoxId,
+              onCreateTextBox: _tool.type == ToolType.text
+                  ? _addTextBoxAt
+                  : null,
+              onTextBoxChanged: _updateTextBox,
+              onTextBoxDeleted: _deleteTextBox,
             ),
           ],
         ),
@@ -1818,6 +1923,27 @@ class _PageThumbnailPainter extends CustomPainter {
       }
 
       canvas.drawPath(StrokeGeometry.buildSmoothPath(stroke.points), paint);
+    }
+
+    for (final textBox in page.textBoxes) {
+      if (textBox.text.trim().isEmpty) {
+        continue;
+      }
+
+      final textPainter = TextPainter(
+        text: TextSpan(
+          text: textBox.text,
+          style: TextStyle(
+            color: textBox.color,
+            fontSize: textBox.fontSize,
+            height: 1.2,
+          ),
+        ),
+        maxLines: 3,
+        textDirection: TextDirection.ltr,
+      )..layout(maxWidth: textBox.width);
+
+      textPainter.paint(canvas, textBox.position);
     }
 
     canvas.restore();

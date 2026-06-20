@@ -133,6 +133,10 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
   }
 
   bool _shouldIgnorePointer(PointerEvent event) {
+    if (widget.tool.type == ToolType.text) {
+      return true;
+    }
+
     return widget.fingerPanEnabled && event.kind == PointerDeviceKind.touch;
   }
 

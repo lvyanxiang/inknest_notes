@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:inknest_notes/models/note_page.dart';
+import 'package:inknest_notes/models/note_text_box.dart';
 import 'package:inknest_notes/models/pdf_background.dart';
 import 'package:inknest_notes/models/stroke.dart';
 import 'package:inknest_notes/models/stroke_point.dart';
@@ -35,6 +36,15 @@ void main() {
       id: 'page-1',
       width: 768,
       height: 1024,
+      textBoxes: const [
+        NoteTextBox(
+          id: 'text-1',
+          position: Offset(80, 96),
+          text: 'Momentum',
+          width: 220,
+          fontSize: 20,
+        ),
+      ],
       strokes: [
         Stroke(
           id: 'stroke-1',
@@ -66,6 +76,8 @@ void main() {
       reloadedPage.strokes.single.points.single.offset,
       const Offset(10, 20),
     );
+    expect(reloadedPage.textBoxes.single.text, 'Momentum');
+    expect(reloadedPage.textBoxes.single.position, const Offset(80, 96));
   });
 
   test('persists page order and separate page content', () async {
@@ -125,6 +137,13 @@ void main() {
         id: 'page-1',
         width: 768,
         height: 1024,
+        textBoxes: const [
+          NoteTextBox(
+            id: 'text-1',
+            position: Offset(120, 160),
+            text: 'Copied text',
+          ),
+        ],
         strokes: [
           Stroke(
             id: 'stroke-1',
@@ -151,6 +170,7 @@ void main() {
     final duplicatedPage = await repository.loadPage(notebook, 'page-3');
     expect(duplicatedPage.strokes, hasLength(1));
     expect(duplicatedPage.strokes.single.id, 'stroke-1');
+    expect(duplicatedPage.textBoxes.single.text, 'Copied text');
 
     notebook = await repository.movePage(notebook, 'page-2', 0);
 

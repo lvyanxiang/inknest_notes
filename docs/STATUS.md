@@ -3,8 +3,8 @@
 ## Current
 
 - Milestone: Post-MVP 4 - Rich Notes
-- Next task: Add text boxes.
-- Last completed: Improved PDF background caching and export quality.
+- Next task: Add handwriting-style text rendering.
+- Last completed: Added text boxes.
 
 ## Decisions
 
@@ -43,6 +43,9 @@
 - Export PDF opens a scope dialog before the save flow and can export the full notebook, current page, or a contiguous page range.
 - PDF export caches rendered PDF backgrounds during a single export, reuses opened PDF documents per file path, and targets 2x background rendering up to a 2400px longest edge.
 - Editor PDF background views reuse document references by file path and isolate background repainting with `RepaintBoundary`.
+- Store typed note content on `NotePage.textBoxes` as `NoteTextBox` objects with page coordinates, color, width, and font size.
+- Text boxes first support add, edit, move, delete, persistence, page duplication, thumbnails, and PDF export.
+- First text-box PDF export uses the `pdf` package default font; richer Unicode/CJK and handwriting-style font embedding should be handled in the next text-rendering step.
 
 ## Verification
 
@@ -93,6 +96,10 @@
 - `flutter test` passed after PDF background caching and export quality.
 - `flutter analyze` passed after PDF background caching and export quality.
 - `git diff --check` passed after PDF background caching and export quality.
+- `dart format lib test` passed after text boxes.
+- `flutter test` passed after text boxes.
+- `flutter analyze` passed after text boxes.
+- `git diff --check` passed after text boxes.
 
 ## Notes
 
@@ -118,6 +125,7 @@
 - Editor page thumbnails render PDF page backgrounds, and the editor has an Outline/Bookmarks panel plus per-page bookmark toggling.
 - Editor export can save the full notebook, current page, or a page range, with filenames suffixed by exported scope.
 - PDF export now avoids rerendering duplicate backgrounds in the same export and renders imported PDF backgrounds at a higher default pixel density.
+- Editor toolbar includes a Text tool that can add typed text boxes to the current page; text boxes can be edited, moved, deleted, persisted, shown in thumbnails, and exported to PDF.
 - Smart Ink planning lives in `docs/SMART_INK_PLAN.md`.
 - Post-MVP feature gaps and optimization areas are documented in `docs/POST_MVP_ROADMAP.md`.
 - Subscription packaging, platform behavior, and local/cloud merge rules are documented in `docs/SUBSCRIPTION_PLAN.md`.

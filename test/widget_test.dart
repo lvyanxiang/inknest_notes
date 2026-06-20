@@ -35,6 +35,39 @@ void main() {
     expect(find.text('No notebooks yet'), findsNothing);
   });
 
+  testWidgets('adds edits persists and deletes editor text boxes', (
+    WidgetTester tester,
+  ) async {
+    await pumpInkNestApp(tester);
+
+    await tester.tap(find.text('New notebook'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Text'));
+    await tester.pumpAndSettle();
+
+    await tester.tapAt(tester.getCenter(find.byType(DrawingCanvas)));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(TextField), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), 'Typed note');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Typed note'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Add page'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Page 1'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Typed note'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Delete text box'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Typed note'), findsNothing);
+  });
+
   testWidgets('shows export options and validates page ranges', (
     WidgetTester tester,
   ) async {

@@ -249,6 +249,7 @@ class InMemoryNotebookRepository implements NotebookRepository {
       height: sourcePage.height,
       pdfBackground: sourcePage.pdfBackground,
       strokes: sourcePage.strokes,
+      textBoxes: sourcePage.textBoxes,
     );
 
     return updatedNotebook;

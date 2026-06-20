@@ -319,6 +319,7 @@ class FileNotebookRepository implements NotebookRepository {
       height: sourcePage.height,
       pdfBackground: sourcePage.pdfBackground,
       strokes: sourcePage.strokes,
+      textBoxes: sourcePage.textBoxes,
     );
 
     await _replaceNotebook(updatedNotebook);

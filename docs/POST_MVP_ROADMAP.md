@@ -203,8 +203,8 @@ Goal: make PDF annotation feel like a real study workflow.
 
 Goal: support mixed handwritten and typed notes.
 
-- [ ] Add text boxes.
-- Add handwriting-style text rendering.
+- [x] Add text boxes.
+- [ ] Add handwriting-style text rendering.
 - Add Smart Ink beautify: lasso rough handwriting, recognize text, confirm, and
   replace with neat handwriting-style editable text. See
   `docs/SMART_INK_PLAN.md`.

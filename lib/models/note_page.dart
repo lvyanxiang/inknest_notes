@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:inknest_notes/models/note_text_box.dart';
 import 'package:inknest_notes/models/pdf_background.dart';
 import 'package:inknest_notes/models/stroke.dart';
 
@@ -10,6 +11,7 @@ class NotePage {
     required this.height,
     this.pdfBackground,
     this.strokes = const [],
+    this.textBoxes = const [],
   });
 
   final String id;
@@ -17,6 +19,7 @@ class NotePage {
   final double height;
   final PdfBackground? pdfBackground;
   final List<Stroke> strokes;
+  final List<NoteTextBox> textBoxes;
 
   factory NotePage.fromJson(Map<String, Object?> json) {
     return NotePage(
@@ -32,6 +35,10 @@ class NotePage {
           .cast<Map<String, Object?>>()
           .map(Stroke.fromJson)
           .toList(),
+      textBoxes: ((json['textBoxes'] as List<Object?>?) ?? const [])
+          .cast<Map<String, Object?>>()
+          .map(NoteTextBox.fromJson)
+          .toList(),
     );
   }
 
@@ -42,16 +49,22 @@ class NotePage {
       'height': height,
       if (pdfBackground != null) 'pdfBackground': pdfBackground!.toJson(),
       'strokes': strokes.map((stroke) => stroke.toJson()).toList(),
+      'textBoxes': textBoxes.map((textBox) => textBox.toJson()).toList(),
     };
   }
 
-  NotePage copyWith({PdfBackground? pdfBackground, List<Stroke>? strokes}) {
+  NotePage copyWith({
+    PdfBackground? pdfBackground,
+    List<Stroke>? strokes,
+    List<NoteTextBox>? textBoxes,
+  }) {
     return NotePage(
       id: id,
       width: width,
       height: height,
       pdfBackground: pdfBackground ?? this.pdfBackground,
       strokes: strokes ?? this.strokes,
+      textBoxes: textBoxes ?? this.textBoxes,
     );
   }
 }

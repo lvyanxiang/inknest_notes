@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as image;
 import 'package:inknest_notes/export/notebook_pdf_exporter.dart';
 import 'package:inknest_notes/models/note_page.dart';
+import 'package:inknest_notes/models/note_text_box.dart';
 import 'package:inknest_notes/models/notebook.dart';
 import 'package:inknest_notes/models/pdf_background.dart';
 import 'package:inknest_notes/models/stroke.dart';
@@ -23,6 +24,13 @@ void main() {
         id: 'page-1',
         width: 768,
         height: 1024,
+        textBoxes: const [
+          NoteTextBox(
+            id: 'text-1',
+            position: Offset(120, 160),
+            text: 'Typed note',
+          ),
+        ],
         strokes: [_sampleStroke()],
       ),
     );
