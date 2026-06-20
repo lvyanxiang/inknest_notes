@@ -3,8 +3,8 @@
 ## Current
 
 - Milestone: Post-MVP 3 - PDF Study Workflow
-- Next task: Insert blank pages into PDFs.
-- Last completed: Added sorting, search, recent notebooks, and notebook thumbnails.
+- Next task: Add PDF thumbnails, outlines, and bookmarks.
+- Last completed: Inserted blank pages into PDFs.
 
 ## Decisions
 
@@ -34,6 +34,7 @@
 - Store folders as first-class repository metadata; keep folders one level deep for now, and use `Notebook.folderId` to move notebooks between the root library and a folder.
 - Keep library search and sort as UI-level derived state over repository results for now.
 - Render first-pass notebook thumbnails from the first page's saved strokes plus lightweight PDF/page markers before adding cached PDF bitmap thumbnails.
+- Store blank-page insertion in the repository layer; inserted pages inherit the nearest page size but start without PDF background or strokes.
 
 ## Verification
 
@@ -66,6 +67,10 @@
 - `flutter test` passed after library search, sort, recent notebooks, and thumbnails.
 - `flutter analyze` passed after library search, sort, recent notebooks, and thumbnails.
 - `git diff --check` passed after library search, sort, recent notebooks, and thumbnails.
+- `dart format lib test` passed after inserting blank pages.
+- `flutter test` passed after inserting blank pages.
+- `flutter analyze` passed after inserting blank pages.
+- `git diff --check` passed after inserting blank pages.
 
 ## Notes
 
@@ -87,6 +92,7 @@
 - Library notebook cards include rename, duplicate, archive/restore, and delete actions backed by repository persistence.
 - Library supports creating root-level folders, moving notebooks into folders, entering folders, and deleting folders while moving contained notebooks back to the root library.
 - Library supports searching notebooks and folders, sorting notebooks, opening recent notebooks, and showing first-page notebook thumbnails with handwriting/PDF/archive markers.
+- Editor page thumbnails can insert blank pages before or after any page, including between imported PDF pages.
 - Post-MVP feature gaps and optimization areas are documented in `docs/POST_MVP_ROADMAP.md`.
 - Subscription packaging, platform behavior, and local/cloud merge rules are documented in `docs/SUBSCRIPTION_PLAN.md`.
 - Web knowledge-base, mobile companion, collaboration, and AI directions are captured as later post-MVP milestones.

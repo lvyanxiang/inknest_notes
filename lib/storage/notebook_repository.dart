@@ -34,6 +34,8 @@ abstract class NotebookRepository {
 
   Future<Notebook> addPage(Notebook notebook);
 
+  Future<Notebook> insertPage(Notebook notebook, int index);
+
   Future<Notebook> duplicatePage(Notebook notebook, String pageId);
 
   Future<Notebook> deletePage(Notebook notebook, String pageId);

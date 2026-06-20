@@ -220,6 +220,38 @@ class _EditorScreenState extends State<EditorScreen> {
     unawaited(_loadPageThumbnails());
   }
 
+  Future<void> _insertPage(int index) async {
+    await _savePage();
+
+    final previousPageIds = _notebook.pageIds.toSet();
+    final updatedNotebook = await widget.notebookRepository.insertPage(
+      _notebook,
+      index,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    final insertedPageId = updatedNotebook.pageIds.firstWhere(
+      (updatedPageId) => !previousPageIds.contains(updatedPageId),
+      orElse: () =>
+          updatedNotebook.pageIds[index
+              .clamp(0, updatedNotebook.pageIds.length - 1)
+              .toInt()],
+    );
+
+    setState(() {
+      _notebook = updatedNotebook;
+      _currentPageId = insertedPageId;
+      _page = null;
+      _redoStack.clear();
+    });
+
+    await _loadPage();
+    unawaited(_loadPageThumbnails());
+  }
+
   Future<void> _duplicatePage(String pageId) async {
     await _savePage();
 
@@ -470,6 +502,7 @@ class _EditorScreenState extends State<EditorScreen> {
             currentPageId: _currentPageId,
             onSelectPage: (pageId) => unawaited(_selectPage(pageId)),
             onAddPage: () => unawaited(_addPage()),
+            onInsertPage: (index) => unawaited(_insertPage(index)),
             onDuplicatePage: (pageId) => unawaited(_duplicatePage(pageId)),
             onDeletePage: (pageId) => unawaited(_deletePage(pageId)),
             onMovePage: (pageId, newIndex) =>
@@ -888,6 +921,7 @@ class _PageNavigator extends StatelessWidget {
     required this.currentPageId,
     required this.onSelectPage,
     required this.onAddPage,
+    required this.onInsertPage,
     required this.onDuplicatePage,
     required this.onDeletePage,
     required this.onMovePage,
@@ -898,6 +932,7 @@ class _PageNavigator extends StatelessWidget {
   final String currentPageId;
   final ValueChanged<String> onSelectPage;
   final VoidCallback onAddPage;
+  final ValueChanged<int> onInsertPage;
   final ValueChanged<String> onDuplicatePage;
   final ValueChanged<String> onDeletePage;
   final void Function(String pageId, int newIndex) onMovePage;
@@ -929,6 +964,8 @@ class _PageNavigator extends StatelessWidget {
                     canMoveLeft: index > 0,
                     canMoveRight: index < pageIds.length - 1,
                     onPressed: () => onSelectPage(pageId),
+                    onInsertBefore: () => onInsertPage(index),
+                    onInsertAfter: () => onInsertPage(index + 1),
                     onDuplicate: () => onDuplicatePage(pageId),
                     onDelete: () => onDeletePage(pageId),
                     onMoveLeft: () => onMovePage(pageId, index - 1),
@@ -960,6 +997,8 @@ class _PageThumbnailButton extends StatelessWidget {
     required this.canMoveLeft,
     required this.canMoveRight,
     required this.onPressed,
+    required this.onInsertBefore,
+    required this.onInsertAfter,
     required this.onDuplicate,
     required this.onDelete,
     required this.onMoveLeft,
@@ -974,6 +1013,8 @@ class _PageThumbnailButton extends StatelessWidget {
   final bool canMoveLeft;
   final bool canMoveRight;
   final VoidCallback onPressed;
+  final VoidCallback onInsertBefore;
+  final VoidCallback onInsertAfter;
   final VoidCallback onDuplicate;
   final VoidCallback onDelete;
   final VoidCallback onMoveLeft;
@@ -981,6 +1022,12 @@ class _PageThumbnailButton extends StatelessWidget {
 
   void _handleAction(_PageAction action) {
     switch (action) {
+      case _PageAction.insertBefore:
+        onInsertBefore();
+        break;
+      case _PageAction.insertAfter:
+        onInsertAfter();
+        break;
       case _PageAction.duplicate:
         onDuplicate();
         break;
@@ -1079,7 +1126,14 @@ class _PageThumbnailButton extends StatelessWidget {
   }
 }
 
-enum _PageAction { duplicate, delete, moveLeft, moveRight }
+enum _PageAction {
+  insertBefore,
+  insertAfter,
+  duplicate,
+  delete,
+  moveLeft,
+  moveRight,
+}
 
 class _PageActionMenu extends StatelessWidget {
   const _PageActionMenu({
@@ -1106,6 +1160,16 @@ class _PageActionMenu extends StatelessWidget {
       onSelected: onSelected,
       itemBuilder: (context) {
         return [
+          _pageActionItem(
+            value: _PageAction.insertBefore,
+            icon: Icons.add,
+            label: 'Insert page before',
+          ),
+          _pageActionItem(
+            value: _PageAction.insertAfter,
+            icon: Icons.add,
+            label: 'Insert page after',
+          ),
           _pageActionItem(
             value: _PageAction.duplicate,
             icon: Icons.copy,
@@ -1156,7 +1220,11 @@ PopupMenuItem<_PageAction> _pageActionItem({
     value: value,
     enabled: enabled,
     child: Row(
-      children: [Icon(icon, size: 18), const SizedBox(width: 12), Text(label)],
+      children: [
+        Icon(icon, size: 18),
+        const SizedBox(width: 12),
+        Expanded(child: Text(label, overflow: TextOverflow.ellipsis)),
+      ],
     ),
   );
 }

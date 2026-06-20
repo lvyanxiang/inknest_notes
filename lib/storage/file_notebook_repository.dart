@@ -249,6 +249,30 @@ class FileNotebookRepository implements NotebookRepository {
   }
 
   @override
+  Future<Notebook> insertPage(Notebook notebook, int index) async {
+    final pageId = _nextPageId(notebook.pageIds);
+    final clampedIndex = index.clamp(0, notebook.pageIds.length).toInt();
+    final referencePage = await _pageForInsertedBlank(notebook, clampedIndex);
+    final updatedPageIds = notebook.pageIds.toList()
+      ..insert(clampedIndex, pageId);
+    final updatedNotebook = notebook.copyWith(
+      updatedAt: DateTime.now(),
+      pageIds: updatedPageIds,
+    );
+
+    await _replaceNotebook(updatedNotebook);
+    await savePage(
+      updatedNotebook,
+      NotePage(
+        id: pageId,
+        width: referencePage.width,
+        height: referencePage.height,
+      ),
+    );
+    return updatedNotebook;
+  }
+
+  @override
   Future<Notebook> duplicatePage(Notebook notebook, String pageId) async {
     final sourceIndex = notebook.pageIds.indexOf(pageId);
     if (sourceIndex == -1) {
@@ -473,6 +497,15 @@ class FileNotebookRepository implements NotebookRepository {
 
   NotePage _emptyPage(String pageId) {
     return NotePage(id: pageId, width: _pageWidth, height: _pageHeight);
+  }
+
+  Future<NotePage> _pageForInsertedBlank(Notebook notebook, int index) {
+    if (notebook.pageIds.isEmpty) {
+      return Future.value(_emptyPage('blank-reference'));
+    }
+
+    final referenceIndex = index == 0 ? 0 : index - 1;
+    return loadPage(notebook, notebook.pageIds[referenceIndex]);
   }
 
   String _nextPageId(List<String> pageIds) {

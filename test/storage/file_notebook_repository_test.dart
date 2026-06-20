@@ -170,6 +170,45 @@ void main() {
     expect(reloadedNotebook.pageIds, ['page-2', 'page-3']);
   });
 
+  test('inserts blank pages around PDF pages persistently', () async {
+    var notebook = await repository.createNotebook(title: 'PDF Study');
+    await repository.savePage(
+      notebook,
+      const NotePage(
+        id: 'page-1',
+        width: 612,
+        height: 792,
+        pdfBackground: PdfBackground(
+          assetPath: 'assets/imported.pdf',
+          pageNumber: 1,
+        ),
+        strokes: [],
+      ),
+    );
+
+    notebook = await repository.insertPage(notebook, 1);
+
+    expect(notebook.pageIds, ['page-1', 'page-2']);
+
+    final pageAfterPdf = await repository.loadPage(notebook, 'page-2');
+    expect(pageAfterPdf.width, 612);
+    expect(pageAfterPdf.height, 792);
+    expect(pageAfterPdf.pdfBackground, isNull);
+    expect(pageAfterPdf.strokes, isEmpty);
+
+    notebook = await repository.insertPage(notebook, 0);
+
+    expect(notebook.pageIds, ['page-3', 'page-1', 'page-2']);
+
+    final pageBeforePdf = await repository.loadPage(notebook, 'page-3');
+    expect(pageBeforePdf.width, 612);
+    expect(pageBeforePdf.height, 792);
+    expect(pageBeforePdf.pdfBackground, isNull);
+
+    final reloadedNotebook = (await repository.listNotebooks()).single;
+    expect(reloadedNotebook.pageIds, ['page-3', 'page-1', 'page-2']);
+  });
+
   test(
     'renames, duplicates, archives, restores, and deletes notebooks',
     () async {

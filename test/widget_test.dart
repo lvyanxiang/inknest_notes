@@ -394,6 +394,43 @@ void main() {
     expect(tester.widget<IconButton>(undoButton).onPressed, isNotNull);
   });
 
+  testWidgets('inserts blank pages before and after selected pages', (
+    WidgetTester tester,
+  ) async {
+    await pumpInkNestApp(tester);
+
+    await tester.tap(find.text('New notebook'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Page 1 actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Insert page after'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('page-thumbnail-page-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('page-thumbnail-page-2')), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Page 2 actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Insert page before'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('page-thumbnail-page-3')), findsOneWidget);
+
+    final page1Left = tester.getTopLeft(
+      find.byKey(const ValueKey('page-thumbnail-page-1')),
+    );
+    final page2Left = tester.getTopLeft(
+      find.byKey(const ValueKey('page-thumbnail-page-2')),
+    );
+    final page3Left = tester.getTopLeft(
+      find.byKey(const ValueKey('page-thumbnail-page-3')),
+    );
+
+    expect(page1Left.dx, lessThan(page3Left.dx));
+    expect(page3Left.dx, lessThan(page2Left.dx));
+  });
+
   testWidgets('uses page thumbnail actions to duplicate delete and reorder', (
     WidgetTester tester,
   ) async {
