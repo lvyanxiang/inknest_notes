@@ -38,6 +38,8 @@
 - Store imported PDF outlines on `Notebook.pdfOutlines`, keyed to notebook page IDs so page insertion and reordering do not break outline navigation.
 - Store user page bookmarks on `Notebook.bookmarkedPageIds` and persist them through the repository layer.
 - Let PDF import continue when outline loading fails; the Outline tab simply starts empty.
+- Track Smart Ink in the existing post-MVP roadmap rather than a separate plan for now: rough finger handwriting -> recognition -> user confirmation -> neat handwriting-style editable text.
+- Use `docs/SMART_INK_PLAN.md` as the dedicated Smart Ink planning document while keeping implementation after the current PDF workflow and Rich Notes prerequisites.
 
 ## Verification
 
@@ -78,6 +80,8 @@
 - `flutter test` passed after PDF thumbnails, outlines, and bookmarks.
 - `flutter analyze` passed after PDF thumbnails, outlines, and bookmarks.
 - `git diff --check` passed after PDF thumbnails, outlines, and bookmarks.
+- `git diff --check` passed after adding Smart Ink to the roadmap.
+- `git diff --check` passed after adding `docs/SMART_INK_PLAN.md`.
 
 ## Notes
 
@@ -101,6 +105,7 @@
 - Library supports searching notebooks and folders, sorting notebooks, opening recent notebooks, and showing first-page notebook thumbnails with handwriting/PDF/archive markers.
 - Editor page thumbnails can insert blank pages before or after any page, including between imported PDF pages.
 - Editor page thumbnails render PDF page backgrounds, and the editor has an Outline/Bookmarks panel plus per-page bookmark toggling.
+- Smart Ink planning lives in `docs/SMART_INK_PLAN.md`.
 - Post-MVP feature gaps and optimization areas are documented in `docs/POST_MVP_ROADMAP.md`.
 - Subscription packaging, platform behavior, and local/cloud merge rules are documented in `docs/SUBSCRIPTION_PLAN.md`.
 - Web knowledge-base, mobile companion, collaboration, and AI directions are captured as later post-MVP milestones.

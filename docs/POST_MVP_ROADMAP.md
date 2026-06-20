@@ -32,17 +32,28 @@ into a cross-device knowledge product:
 The product promise is: write ideas down naturally, then turn them into
 structured knowledge.
 
+For users without a stylus, InkNest should also offer a Smart Ink path:
+rough finger handwriting can be recognized as text, confirmed by the user, and
+re-rendered as neat handwriting-style editable text.
+The detailed plan lives in `docs/SMART_INK_PLAN.md`.
+
 ## New Features To Add
 
 ### Editor Experience
 
 - Zoom and pan with two-finger gestures.
 - Apple Pencil-focused input mode with finger pan and Pencil draw behavior.
+- Finger Writing Assist for smoothing rough finger handwriting before any
+  recognition step.
 - Page thumbnail strip or sidebar for faster page navigation.
 - Page templates: blank, ruled, dotted, grid, Cornell, planner.
 - Page actions: duplicate, delete, reorder, rotate, and insert before/after.
 - Lasso selection for moving, resizing, recoloring, and deleting strokes.
 - Text boxes for typed notes.
+- Handwriting-style text rendering for typed or recognized text.
+- Smart Ink beautify flow: select rough handwriting, recognize it as text,
+  confirm the result, then replace or insert a neat handwriting-style version
+  (`docs/SMART_INK_PLAN.md`).
 - Image insertion from Photos or Files.
 - Shape tool for lines, arrows, rectangles, circles, and auto-shape cleanup.
 - Favorites toolbar for common pens, highlighters, and colors.
@@ -77,6 +88,8 @@ structured knowledge.
 ### Advanced Capabilities
 
 - Handwriting recognition and full-text search.
+- Smart Ink recognition for converting selected handwriting into editable text
+  before re-rendering it with handwriting-style fonts.
 - OCR for imported images and scanned PDFs.
 - Shared notebooks or collaboration.
 - Cross-device sync and backup, revisiting the paused Milestone 8.
@@ -191,6 +204,10 @@ Goal: make PDF annotation feel like a real study workflow.
 Goal: support mixed handwritten and typed notes.
 
 - Add text boxes.
+- Add handwriting-style text rendering.
+- Add Smart Ink beautify: lasso rough handwriting, recognize text, confirm, and
+  replace with neat handwriting-style editable text. See
+  `docs/SMART_INK_PLAN.md`.
 - Add image insertion.
 - Add shape tool.
 - Add favorites toolbar.
@@ -202,7 +219,7 @@ Goal: add Notability-style study features.
 - Add audio recording.
 - Link playback timeline with strokes.
 - Add PDF text search.
-- Explore handwriting recognition and OCR.
+- Explore handwriting recognition and OCR for search and Smart Ink.
 
 ### Post-MVP 6: Sync And Backup
 
