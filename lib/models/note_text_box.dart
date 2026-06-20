@@ -2,6 +2,8 @@ import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 
+enum NoteTextBoxStyle { regular, handwriting }
+
 @immutable
 class NoteTextBox {
   const NoteTextBox({
@@ -11,6 +13,7 @@ class NoteTextBox {
     this.width = 240,
     this.color = const Color(0xFF1E2526),
     this.fontSize = 24,
+    this.style = NoteTextBoxStyle.regular,
   });
 
   final String id;
@@ -19,6 +22,7 @@ class NoteTextBox {
   final double width;
   final Color color;
   final double fontSize;
+  final NoteTextBoxStyle style;
 
   factory NoteTextBox.fromJson(Map<String, Object?> json) {
     return NoteTextBox(
@@ -31,6 +35,9 @@ class NoteTextBox {
       width: (json['width']! as num).toDouble(),
       color: Color(json['color']! as int),
       fontSize: (json['fontSize']! as num).toDouble(),
+      style: NoteTextBoxStyle.values.byName(
+        json['style'] as String? ?? NoteTextBoxStyle.regular.name,
+      ),
     );
   }
 
@@ -43,6 +50,7 @@ class NoteTextBox {
       'width': width,
       'color': color.toARGB32(),
       'fontSize': fontSize,
+      'style': style.name,
     };
   }
 
@@ -52,6 +60,7 @@ class NoteTextBox {
     double? width,
     Color? color,
     double? fontSize,
+    NoteTextBoxStyle? style,
   }) {
     return NoteTextBox(
       id: id,
@@ -60,6 +69,7 @@ class NoteTextBox {
       width: width ?? this.width,
       color: color ?? this.color,
       fontSize: fontSize ?? this.fontSize,
+      style: style ?? this.style,
     );
   }
 }

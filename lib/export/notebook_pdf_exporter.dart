@@ -1,9 +1,12 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
-import 'dart:ui' show Offset;
+import 'dart:ui' as ui;
 
+import 'package:flutter/painting.dart' as painting;
 import 'package:image/image.dart' as image;
+import 'package:inknest_notes/features/editor/text/note_text_box_styles.dart';
 import 'package:inknest_notes/models/note_page.dart';
+import 'package:inknest_notes/models/note_text_box.dart';
 import 'package:inknest_notes/models/notebook.dart';
 import 'package:inknest_notes/models/pdf_background.dart';
 import 'package:inknest_notes/models/stroke.dart';
@@ -39,12 +42,13 @@ class NotebookPdfExporter {
       for (final pageId in exportPageIds) {
         final page = await notebookRepository.loadPage(notebook, pageId);
         final background = await _renderBackground(page);
+        final textBoxes = await _renderTextBoxes(page);
 
         document.addPage(
           pw.Page(
             pageFormat: pdf.PdfPageFormat(page.width, page.height),
             margin: pw.EdgeInsets.zero,
-            build: (context) => _buildPage(page, background),
+            build: (context) => _buildPage(page, background, textBoxes),
           ),
         );
       }
@@ -77,7 +81,11 @@ class NotebookPdfExporter {
     );
   }
 
-  pw.Widget _buildPage(NotePage page, RenderedPdfPageBackground? background) {
+  pw.Widget _buildPage(
+    NotePage page,
+    RenderedPdfPageBackground? background,
+    List<_RenderedTextBox> textBoxes,
+  ) {
     return pw.Stack(
       children: [
         pw.Positioned.fill(child: pw.Container(color: pdf.PdfColors.white)),
@@ -93,33 +101,80 @@ class NotebookPdfExporter {
             painter: (canvas, size) => _paintStrokes(canvas, size, page),
           ),
         ),
-        ..._buildTextBoxes(page),
+        ..._buildTextBoxes(textBoxes),
       ],
     );
   }
 
-  Iterable<pw.Widget> _buildTextBoxes(NotePage page) {
+  Iterable<pw.Widget> _buildTextBoxes(List<_RenderedTextBox> textBoxes) {
     return [
-      for (final textBox in page.textBoxes)
-        if (textBox.text.trim().isNotEmpty)
-          pw.Positioned(
-            left: textBox.position.dx,
-            top: textBox.position.dy,
-            child: pw.SizedBox(
-              width: textBox.width,
-              child: pw.Text(
-                textBox.text,
-                style: pw.TextStyle(
-                  color: pdf.PdfColor.fromInt(
-                    _opaqueArgb(textBox.color.toARGB32()),
-                  ),
-                  fontSize: textBox.fontSize,
-                  lineSpacing: textBox.fontSize * 0.2,
-                ),
-              ),
-            ),
+      for (final textBox in textBoxes)
+        pw.Positioned(
+          left: textBox.model.position.dx,
+          top: textBox.model.position.dy,
+          child: pw.Image(
+            pw.MemoryImage(textBox.pngBytes),
+            width: textBox.width,
+            height: textBox.height,
           ),
+        ),
     ];
+  }
+
+  Future<List<_RenderedTextBox>> _renderTextBoxes(NotePage page) async {
+    final renderedTextBoxes = <_RenderedTextBox>[];
+    for (final textBox in page.textBoxes) {
+      if (textBox.text.trim().isEmpty) {
+        continue;
+      }
+
+      final renderedTextBox = await _renderTextBox(textBox);
+      if (renderedTextBox != null) {
+        renderedTextBoxes.add(renderedTextBox);
+      }
+    }
+
+    return renderedTextBoxes;
+  }
+
+  Future<_RenderedTextBox?> _renderTextBox(NoteTextBox textBox) async {
+    const pixelRatio = 2.0;
+    final textPainter = painting.TextPainter(
+      text: painting.TextSpan(
+        text: textBox.text,
+        style: noteTextBoxTextStyle(textBox),
+      ),
+      textDirection: ui.TextDirection.ltr,
+    )..layout(maxWidth: textBox.width);
+    final width = math.max(1.0, textBox.width);
+    final height = math.max(1.0, textPainter.height);
+    final pixelWidth = math.max(1, (width * pixelRatio).ceil());
+    final pixelHeight = math.max(1, (height * pixelRatio).ceil());
+    final recorder = ui.PictureRecorder();
+    final canvas = ui.Canvas(recorder)..scale(pixelRatio, pixelRatio);
+
+    textPainter.paint(canvas, ui.Offset.zero);
+    final picture = recorder.endRecording();
+    try {
+      final image = await picture.toImage(pixelWidth, pixelHeight);
+      try {
+        final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+        if (byteData == null) {
+          return null;
+        }
+
+        return _RenderedTextBox(
+          model: textBox,
+          width: width,
+          height: height,
+          pngBytes: byteData.buffer.asUint8List(),
+        );
+      } finally {
+        image.dispose();
+      }
+    } finally {
+      picture.dispose();
+    }
   }
 
   void _paintStrokes(pdf.PdfGraphics canvas, pdf.PdfPoint size, NotePage page) {
@@ -191,9 +246,9 @@ class NotebookPdfExporter {
 
   void _quadraticCurveTo({
     required pdf.PdfGraphics canvas,
-    required Offset start,
-    required Offset control,
-    required Offset end,
+    required ui.Offset start,
+    required ui.Offset control,
+    required ui.Offset end,
   }) {
     final firstControl = start + (control - start) * (2 / 3);
     final secondControl = end + (control - end) * (2 / 3);
@@ -232,13 +287,13 @@ class NotebookPdfExporter {
     );
   }
 
-  Offset _mapPointOffset(
+  ui.Offset _mapPointOffset(
     StrokePoint point,
     NotePage page,
     double scaleX,
     double scaleY,
   ) {
-    return Offset(
+    return ui.Offset(
       point.offset.dx * scaleX,
       (page.height - point.offset.dy) * scaleY,
     );
@@ -383,6 +438,20 @@ class _BackgroundCacheKey {
 
   @override
   int get hashCode => Object.hash(filePath, pageNumber, width, height);
+}
+
+class _RenderedTextBox {
+  const _RenderedTextBox({
+    required this.model,
+    required this.width,
+    required this.height,
+    required this.pngBytes,
+  });
+
+  final NoteTextBox model;
+  final double width;
+  final double height;
+  final Uint8List pngBytes;
 }
 
 class _RenderSize {

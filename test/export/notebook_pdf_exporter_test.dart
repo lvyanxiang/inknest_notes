@@ -28,7 +28,8 @@ void main() {
           NoteTextBox(
             id: 'text-1',
             position: Offset(120, 160),
-            text: 'Typed note',
+            text: 'Typed note 中文',
+            style: NoteTextBoxStyle.handwriting,
           ),
         ],
         strokes: [_sampleStroke()],

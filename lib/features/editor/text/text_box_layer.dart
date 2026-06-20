@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:inknest_notes/features/editor/text/note_text_box_styles.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/note_text_box.dart';
 
@@ -112,9 +113,17 @@ class _EditableTextBoxState extends State<_EditableTextBox> {
     );
   }
 
+  void _toggleStyle() {
+    final style = widget.textBox.style == NoteTextBoxStyle.handwriting
+        ? NoteTextBoxStyle.regular
+        : NoteTextBoxStyle.handwriting;
+    widget.onChanged(widget.textBox.copyWith(style: style));
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isHandwriting = widget.textBox.style == NoteTextBoxStyle.handwriting;
 
     return Material(
       color: Colors.transparent,
@@ -151,6 +160,20 @@ class _EditableTextBoxState extends State<_EditableTextBox> {
                   ),
                   const Spacer(),
                   IconButton(
+                    tooltip: isHandwriting ? 'Plain text' : 'Handwriting style',
+                    onPressed: _toggleStyle,
+                    icon: Icon(
+                      isHandwriting ? Icons.text_fields : Icons.draw_outlined,
+                      size: 16,
+                    ),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 28,
+                      height: 28,
+                    ),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  IconButton(
                     tooltip: 'Delete text box',
                     onPressed: () => widget.onDeleted(widget.textBox.id),
                     icon: const Icon(Icons.close, size: 16),
@@ -176,11 +199,7 @@ class _EditableTextBoxState extends State<_EditableTextBox> {
                 border: InputBorder.none,
                 contentPadding: EdgeInsets.fromLTRB(10, 4, 10, 10),
               ),
-              style: TextStyle(
-                color: widget.textBox.color,
-                fontSize: widget.textBox.fontSize,
-                height: 1.2,
-              ),
+              style: noteTextBoxTextStyle(widget.textBox),
               onChanged: (text) {
                 widget.onChanged(widget.textBox.copyWith(text: text));
               },

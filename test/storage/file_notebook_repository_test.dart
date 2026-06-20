@@ -43,6 +43,7 @@ void main() {
           text: 'Momentum',
           width: 220,
           fontSize: 20,
+          style: NoteTextBoxStyle.handwriting,
         ),
       ],
       strokes: [
@@ -78,6 +79,7 @@ void main() {
     );
     expect(reloadedPage.textBoxes.single.text, 'Momentum');
     expect(reloadedPage.textBoxes.single.position, const Offset(80, 96));
+    expect(reloadedPage.textBoxes.single.style, NoteTextBoxStyle.handwriting);
   });
 
   test('persists page order and separate page content', () async {

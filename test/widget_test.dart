@@ -54,6 +54,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Typed note'), findsOneWidget);
+    expect(find.byTooltip('Handwriting style'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Handwriting style'));
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Plain text'), findsOneWidget);
 
     await tester.tap(find.byTooltip('Add page'));
     await tester.pumpAndSettle();

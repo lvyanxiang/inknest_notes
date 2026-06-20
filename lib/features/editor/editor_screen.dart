@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:inknest_notes/export/notebook_pdf_exporter.dart';
 import 'package:inknest_notes/features/editor/canvas/drawing_canvas.dart';
 import 'package:inknest_notes/features/editor/canvas/pdf_page_background.dart';
+import 'package:inknest_notes/features/editor/text/note_text_box_styles.dart';
 import 'package:inknest_notes/features/editor/text/text_box_layer.dart';
 import 'package:inknest_notes/features/editor/tools/editor_toolbar.dart';
 import 'package:inknest_notes/models/note_page.dart';
@@ -1933,11 +1934,7 @@ class _PageThumbnailPainter extends CustomPainter {
       final textPainter = TextPainter(
         text: TextSpan(
           text: textBox.text,
-          style: TextStyle(
-            color: textBox.color,
-            fontSize: textBox.fontSize,
-            height: 1.2,
-          ),
+          style: noteTextBoxTextStyle(textBox),
         ),
         maxLines: 3,
         textDirection: TextDirection.ltr,
