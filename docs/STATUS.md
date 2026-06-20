@@ -2,9 +2,9 @@
 
 ## Current
 
-- Milestone: Post-MVP 3 - PDF Study Workflow
-- Next task: Improve PDF background caching and export quality.
-- Last completed: Added page-range export.
+- Milestone: Post-MVP 4 - Rich Notes
+- Next task: Add text boxes.
+- Last completed: Improved PDF background caching and export quality.
 
 ## Decisions
 
@@ -41,6 +41,8 @@
 - Track Smart Ink in the existing post-MVP roadmap rather than a separate plan for now: rough finger handwriting -> recognition -> user confirmation -> neat handwriting-style editable text.
 - Use `docs/SMART_INK_PLAN.md` as the dedicated Smart Ink planning document while keeping implementation after the current PDF workflow and Rich Notes prerequisites.
 - Export PDF opens a scope dialog before the save flow and can export the full notebook, current page, or a contiguous page range.
+- PDF export caches rendered PDF backgrounds during a single export, reuses opened PDF documents per file path, and targets 2x background rendering up to a 2400px longest edge.
+- Editor PDF background views reuse document references by file path and isolate background repainting with `RepaintBoundary`.
 
 ## Verification
 
@@ -87,6 +89,10 @@
 - `flutter test` passed after page-range export.
 - `flutter analyze` passed after page-range export.
 - `git diff --check` passed after page-range export.
+- `dart format lib test` passed after PDF background caching and export quality.
+- `flutter test` passed after PDF background caching and export quality.
+- `flutter analyze` passed after PDF background caching and export quality.
+- `git diff --check` passed after PDF background caching and export quality.
 
 ## Notes
 
@@ -111,6 +117,7 @@
 - Editor page thumbnails can insert blank pages before or after any page, including between imported PDF pages.
 - Editor page thumbnails render PDF page backgrounds, and the editor has an Outline/Bookmarks panel plus per-page bookmark toggling.
 - Editor export can save the full notebook, current page, or a page range, with filenames suffixed by exported scope.
+- PDF export now avoids rerendering duplicate backgrounds in the same export and renders imported PDF backgrounds at a higher default pixel density.
 - Smart Ink planning lives in `docs/SMART_INK_PLAN.md`.
 - Post-MVP feature gaps and optimization areas are documented in `docs/POST_MVP_ROADMAP.md`.
 - Subscription packaging, platform behavior, and local/cloud merge rules are documented in `docs/SUBSCRIPTION_PLAN.md`.

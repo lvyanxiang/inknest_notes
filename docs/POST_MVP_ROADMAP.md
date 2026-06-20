@@ -197,13 +197,13 @@ Goal: make PDF annotation feel like a real study workflow.
 - [x] Insert blank pages into PDFs.
 - [x] Add PDF thumbnails, outlines, and bookmarks.
 - [x] Add page-range export.
-- [ ] Improve PDF background caching and export quality.
+- [x] Improve PDF background caching and export quality.
 
 ### Post-MVP 4: Rich Notes
 
 Goal: support mixed handwritten and typed notes.
 
-- Add text boxes.
+- [ ] Add text boxes.
 - Add handwriting-style text rendering.
 - Add Smart Ink beautify: lasso rough handwriting, recognize text, confirm, and
   replace with neat handwriting-style editable text. See

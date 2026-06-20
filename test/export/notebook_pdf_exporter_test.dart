@@ -66,6 +66,40 @@ void main() {
     expect(backgroundRenderer.renderedPages.single.id, 'page-1');
   });
 
+  test('reuses rendered PDF backgrounds during a single export', () async {
+    final repository = InMemoryNotebookRepository();
+    var notebook = await repository.createNotebook(title: 'Duplicated PDF');
+    notebook = await repository.addPage(notebook);
+    final backgroundRenderer = _FakeBackgroundRenderer();
+    const background = PdfBackground(
+      assetPath: 'assets/imported.pdf',
+      pageNumber: 1,
+      resolvedFilePath: '/tmp/imported.pdf',
+    );
+
+    for (final pageId in notebook.pageIds) {
+      await repository.savePage(
+        notebook,
+        NotePage(
+          id: pageId,
+          width: 768,
+          height: 1024,
+          pdfBackground: background,
+          strokes: [_sampleStroke()],
+        ),
+      );
+    }
+
+    final bytes = await NotebookPdfExporter(
+      notebookRepository: repository,
+      backgroundRenderer: backgroundRenderer,
+    ).exportNotebook(notebook);
+
+    expect(String.fromCharCodes(bytes.take(4)), '%PDF');
+    expect(backgroundRenderer.renderedBackgrounds, hasLength(1));
+    expect(backgroundRenderer.renderedPages.single.id, 'page-1');
+  });
+
   test(
     'exports only selected page ids when a page range is provided',
     () async {
@@ -125,6 +159,9 @@ class _FakeBackgroundRenderer implements PdfPageBackgroundRenderer {
 
     return RenderedPdfPageBackground(pngBytes: _tinyPngBytes());
   }
+
+  @override
+  Future<void> dispose() async {}
 }
 
 class _UnexpectedBackgroundRenderer implements PdfPageBackgroundRenderer {
@@ -135,6 +172,9 @@ class _UnexpectedBackgroundRenderer implements PdfPageBackgroundRenderer {
   ) {
     throw StateError('No PDF background should be rendered in this test.');
   }
+
+  @override
+  Future<void> dispose() async {}
 }
 
 class _TrackingNotebookRepository extends InMemoryNotebookRepository {

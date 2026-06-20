@@ -19,32 +19,43 @@ class NotebookPdfExporter {
     required this.notebookRepository,
     PdfPageBackgroundRenderer? backgroundRenderer,
   }) : _backgroundRenderer =
-           backgroundRenderer ?? const PdfrxPageBackgroundRenderer();
+           backgroundRenderer ?? PdfrxPageBackgroundRenderer(),
+       _ownsBackgroundRenderer = backgroundRenderer == null;
 
   final NotebookRepository notebookRepository;
   final PdfPageBackgroundRenderer _backgroundRenderer;
+  final bool _ownsBackgroundRenderer;
+  final Map<_BackgroundCacheKey, Future<RenderedPdfPageBackground?>>
+  _backgroundsByKey = {};
 
   Future<Uint8List> exportNotebook(
     Notebook notebook, {
     List<String>? pageIds,
   }) async {
-    final document = pw.Document(title: notebook.title);
-    final exportPageIds = pageIds ?? notebook.pageIds;
+    try {
+      final document = pw.Document(title: notebook.title);
+      final exportPageIds = pageIds ?? notebook.pageIds;
 
-    for (final pageId in exportPageIds) {
-      final page = await notebookRepository.loadPage(notebook, pageId);
-      final background = await _renderBackground(page);
+      for (final pageId in exportPageIds) {
+        final page = await notebookRepository.loadPage(notebook, pageId);
+        final background = await _renderBackground(page);
 
-      document.addPage(
-        pw.Page(
-          pageFormat: pdf.PdfPageFormat(page.width, page.height),
-          margin: pw.EdgeInsets.zero,
-          build: (context) => _buildPage(page, background),
-        ),
-      );
+        document.addPage(
+          pw.Page(
+            pageFormat: pdf.PdfPageFormat(page.width, page.height),
+            margin: pw.EdgeInsets.zero,
+            build: (context) => _buildPage(page, background),
+          ),
+        );
+      }
+
+      return await document.save();
+    } finally {
+      _backgroundsByKey.clear();
+      if (_ownsBackgroundRenderer) {
+        await _backgroundRenderer.dispose();
+      }
     }
-
-    return document.save();
   }
 
   Future<RenderedPdfPageBackground?> _renderBackground(NotePage page) {
@@ -53,7 +64,17 @@ class NotebookPdfExporter {
       return Future.value();
     }
 
-    return _backgroundRenderer.render(background, page);
+    final cacheKey = _BackgroundCacheKey(
+      filePath: background.filePath,
+      pageNumber: background.pageNumber,
+      width: page.width,
+      height: page.height,
+    );
+
+    return _backgroundsByKey.putIfAbsent(
+      cacheKey,
+      () => _backgroundRenderer.render(background, page),
+    );
   }
 
   pw.Widget _buildPage(NotePage page, RenderedPdfPageBackground? background) {
@@ -212,42 +233,68 @@ abstract class PdfPageBackgroundRenderer {
     PdfBackground background,
     NotePage page,
   );
+
+  Future<void> dispose() async {}
 }
 
 class PdfrxPageBackgroundRenderer implements PdfPageBackgroundRenderer {
-  const PdfrxPageBackgroundRenderer({this.maximumPixelDimension = 1600});
+  PdfrxPageBackgroundRenderer({
+    this.maximumPixelDimension = 2400,
+    this.targetPixelRatio = 2.0,
+  }) : assert(maximumPixelDimension > 0),
+       assert(targetPixelRatio > 0);
 
   final int maximumPixelDimension;
+  final double targetPixelRatio;
+  final Map<String, Future<pdfrx.PdfDocument>> _documentsByPath = {};
 
   @override
   Future<RenderedPdfPageBackground?> render(
     PdfBackground background,
     NotePage page,
   ) async {
-    final document = await pdfrx.PdfDocument.openFile(background.filePath);
+    final document = await _documentFor(background.filePath);
+    final pdfPage = await document.pages[background.pageNumber - 1]
+        .ensureLoaded();
+    final renderSize = _containedRenderSize(pdfPage, page);
+    final renderedImage = await pdfPage.render(
+      fullWidth: renderSize.width.toDouble(),
+      fullHeight: renderSize.height.toDouble(),
+      backgroundColor: 0xffffffff,
+    );
+
+    if (renderedImage == null) {
+      return null;
+    }
+
     try {
-      final pdfPage = await document.pages[background.pageNumber - 1]
-          .ensureLoaded();
-      final renderSize = _containedRenderSize(pdfPage, page);
-      final renderedImage = await pdfPage.render(
-        fullWidth: renderSize.width.toDouble(),
-        fullHeight: renderSize.height.toDouble(),
-        backgroundColor: 0xffffffff,
+      return RenderedPdfPageBackground(
+        pngBytes: _pngFromBgraPixels(renderedImage),
       );
-
-      if (renderedImage == null) {
-        return null;
-      }
-
-      try {
-        return RenderedPdfPageBackground(
-          pngBytes: _pngFromBgraPixels(renderedImage),
-        );
-      } finally {
-        renderedImage.dispose();
-      }
     } finally {
-      await document.dispose();
+      renderedImage.dispose();
+    }
+  }
+
+  Future<pdfrx.PdfDocument> _documentFor(String filePath) {
+    return _documentsByPath.putIfAbsent(
+      filePath,
+      () => pdfrx.PdfDocument.openFile(filePath),
+    );
+  }
+
+  @override
+  Future<void> dispose() async {
+    final documentFutures = _documentsByPath.values.toList();
+    _documentsByPath.clear();
+
+    for (final documentFuture in documentFutures) {
+      try {
+        final document = await documentFuture;
+        await document.dispose();
+      } catch (_) {
+        // Ignore cleanup failures for documents that failed to open.
+      }
     }
   }
 
@@ -259,7 +306,7 @@ class PdfrxPageBackgroundRenderer implements PdfPageBackgroundRenderer {
     final width = pdfPage.width * pageScale;
     final height = pdfPage.height * pageScale;
     final pixelScale = math.min(
-      1.0,
+      targetPixelRatio,
       maximumPixelDimension / math.max(width, height),
     );
 
@@ -285,6 +332,32 @@ class RenderedPdfPageBackground {
   const RenderedPdfPageBackground({required this.pngBytes});
 
   final Uint8List pngBytes;
+}
+
+class _BackgroundCacheKey {
+  const _BackgroundCacheKey({
+    required this.filePath,
+    required this.pageNumber,
+    required this.width,
+    required this.height,
+  });
+
+  final String filePath;
+  final int pageNumber;
+  final double width;
+  final double height;
+
+  @override
+  bool operator ==(Object other) {
+    return other is _BackgroundCacheKey &&
+        other.filePath == filePath &&
+        other.pageNumber == pageNumber &&
+        other.width == width &&
+        other.height == height;
+  }
+
+  @override
+  int get hashCode => Object.hash(filePath, pageNumber, width, height);
 }
 
 class _RenderSize {
