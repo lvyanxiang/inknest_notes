@@ -33,6 +33,8 @@ void main() {
     expect(find.byTooltip('Export PDF'), findsOneWidget);
     expect(find.byTooltip('Shape'), findsOneWidget);
     expect(find.byTooltip('Shape type'), findsOneWidget);
+    expect(find.byTooltip('Favorite black pen'), findsOneWidget);
+    expect(find.byTooltip('Favorite yellow highlighter'), findsOneWidget);
     expect(find.byTooltip('Insert image'), findsOneWidget);
     expect(find.byKey(const ValueKey('page-thumbnail-page-1')), findsOneWidget);
     expect(find.text('No notebooks yet'), findsNothing);

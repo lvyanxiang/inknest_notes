@@ -27,6 +27,33 @@ class EditorToolbar extends StatelessWidget {
 
   static const _widths = [3.0, 5.0, 8.0];
 
+  static const _favoritePresets = [
+    _FavoriteToolPreset(
+      label: 'Favorite black pen',
+      tool: DrawingTool(type: ToolType.pen, color: Color(0xFF1E2526), width: 3),
+      icon: Icons.edit,
+    ),
+    _FavoriteToolPreset(
+      label: 'Favorite teal pen',
+      tool: DrawingTool(type: ToolType.pen, color: Color(0xFF2F6F73), width: 5),
+      icon: Icons.edit,
+    ),
+    _FavoriteToolPreset(
+      label: 'Favorite red pen',
+      tool: DrawingTool(type: ToolType.pen, color: Color(0xFFC24B3A), width: 5),
+      icon: Icons.edit,
+    ),
+    _FavoriteToolPreset(
+      label: 'Favorite yellow highlighter',
+      tool: DrawingTool(
+        type: ToolType.highlighter,
+        color: Color(0xFFB98A16),
+        width: 12,
+      ),
+      icon: Icons.border_color,
+    ),
+  ];
+
   void _selectTool(ToolType type) {
     final width = switch (type) {
       ToolType.pen => tool.width,
@@ -140,6 +167,61 @@ class EditorToolbar extends StatelessWidget {
   }
 }
 
+class EditorFavoriteToolbar extends StatelessWidget {
+  const EditorFavoriteToolbar({
+    super.key,
+    required this.tool,
+    required this.onToolChanged,
+  });
+
+  final DrawingTool tool;
+  final ValueChanged<DrawingTool> onToolChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Material(
+      color: colorScheme.surface.withValues(alpha: 0.94),
+      elevation: 2,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final preset in EditorToolbar._favoritePresets)
+              _FavoriteToolButton(
+                preset: preset,
+                isSelected: _toolMatches(tool, preset.tool),
+                onPressed: () => onToolChanged(preset.tool),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+bool _toolMatches(DrawingTool a, DrawingTool b) {
+  return a.type == b.type &&
+      a.color == b.color &&
+      a.width == b.width &&
+      a.shapeType == b.shapeType;
+}
+
+class _FavoriteToolPreset {
+  const _FavoriteToolPreset({
+    required this.label,
+    required this.tool,
+    required this.icon,
+  });
+
+  final String label;
+  final DrawingTool tool;
+  final IconData icon;
+}
+
 IconData _shapeIcon(NoteShapeType shapeType) {
   return switch (shapeType) {
     NoteShapeType.line => Icons.horizontal_rule,
@@ -189,6 +271,98 @@ class _ToolButton extends StatelessWidget {
       ),
     );
   }
+}
+
+class _FavoriteToolButton extends StatelessWidget {
+  const _FavoriteToolButton({
+    required this.preset,
+    required this.isSelected,
+    required this.onPressed,
+  });
+
+  final _FavoriteToolPreset preset;
+  final bool isSelected;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: Tooltip(
+        message: preset.label,
+        child: IconButton.filledTonal(
+          isSelected: isSelected,
+          onPressed: onPressed,
+          icon: _FavoriteToolPreview(preset: preset, isSelected: isSelected),
+          selectedIcon: _FavoriteToolPreview(
+            preset: preset,
+            isSelected: isSelected,
+          ),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints.tightFor(width: 42, height: 36),
+          visualDensity: VisualDensity.compact,
+        ),
+      ),
+    );
+  }
+}
+
+class _FavoriteToolPreview extends StatelessWidget {
+  const _FavoriteToolPreview({required this.preset, required this.isSelected});
+
+  final _FavoriteToolPreset preset;
+  final bool isSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final iconColor = isSelected
+        ? colorScheme.primary
+        : colorScheme.onSecondaryContainer;
+
+    return SizedBox.square(
+      dimension: 30,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Center(child: Icon(preset.icon, size: 18, color: iconColor)),
+          Positioned(
+            right: 0,
+            bottom: 0,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: preset.tool.color,
+                shape: BoxShape.circle,
+                border: Border.all(color: colorScheme.surface, width: 1.5),
+              ),
+              child: const SizedBox.square(dimension: 11),
+            ),
+          ),
+          Positioned(
+            left: 4,
+            right: 13,
+            bottom: 2,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: preset.tool.color,
+                borderRadius: BorderRadius.circular(2),
+              ),
+              child: SizedBox(
+                height: _favoriteStrokePreviewHeight(preset.tool),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+double _favoriteStrokePreviewHeight(DrawingTool tool) {
+  return switch (tool.type) {
+    ToolType.highlighter => 5,
+    _ => tool.width.clamp(2, 5).toDouble(),
+  };
 }
 
 class _ModeButton extends StatelessWidget {

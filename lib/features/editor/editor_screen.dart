@@ -1010,11 +1010,20 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   Widget _buildPageCanvas(NotePage page) {
-    return _ZoomablePageViewport(
-      key: ValueKey('viewport-${page.id}'),
-      page: page,
-      fingerPanEnabled: _fingerPanEnabled,
-      child: _buildPageSurface(page),
+    return Stack(
+      children: [
+        _ZoomablePageViewport(
+          key: ValueKey('viewport-${page.id}'),
+          page: page,
+          fingerPanEnabled: _fingerPanEnabled,
+          child: _buildPageSurface(page),
+        ),
+        Positioned(
+          left: 16,
+          bottom: 16,
+          child: EditorFavoriteToolbar(tool: _tool, onToolChanged: _setTool),
+        ),
+      ],
     );
   }
 

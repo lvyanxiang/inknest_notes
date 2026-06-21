@@ -210,7 +210,7 @@ Goal: support mixed handwritten and typed notes.
   `docs/SMART_INK_PLAN.md`.
 - [x] Add image insertion.
 - [x] Add shape tool.
-- [ ] Add favorites toolbar.
+- [x] Add favorites toolbar.
 
 ### Post-MVP 5: Audio And Search
 

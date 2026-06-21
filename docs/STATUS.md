@@ -2,9 +2,9 @@
 
 ## Current
 
-- Milestone: Post-MVP 4 - Rich Notes
-- Next task: Add favorites toolbar.
-- Last completed: Added shape tool.
+- Milestone: Post-MVP 5 - Audio And Search
+- Next task: Add audio recording.
+- Last completed: Added favorites toolbar.
 
 ## Decisions
 
@@ -55,6 +55,7 @@
 - File-backed JSON writes use temporary-file replacement, and page saves are serialized to avoid transient empty JSON reads during high-frequency edits such as image dragging.
 - Store clean shape objects on `NotePage.shapes`; first shape tool supports line, arrow, rectangle, and ellipse with light line-angle snapping for cleaner line/arrow creation.
 - Shape rendering is shared across the editor, page thumbnails, library thumbnails, and PDF export.
+- Keep the first favorites toolbar as an in-editor floating preset strip instead of growing the main toolbar height; presets switch to common pen/highlighter combinations without changing page layout or canvas hit testing.
 
 ## Verification
 
@@ -129,6 +130,10 @@
 - `flutter test` passed after shape tool.
 - `flutter analyze` passed after shape tool.
 - `git diff --check` passed after shape tool.
+- `dart format lib test` passed after favorites toolbar.
+- `flutter test` passed after favorites toolbar.
+- `flutter analyze` passed after favorites toolbar.
+- `git diff --check` passed after favorites toolbar.
 
 ## Notes
 
@@ -159,6 +164,7 @@
 - Editor toolbar includes a Smart Ink tool that box-selects strokes, confirms text, and creates editable handwriting-style text from the selection.
 - Editor toolbar includes Insert image; selected images are copied into notebook assets, placed on the current page, movable, resizable, deletable, persisted, shown as thumbnail placeholders, and included in PDF export.
 - Editor toolbar includes a Shape tool with a shape-type menu for line, arrow, rectangle, and ellipse; created shapes persist, appear in thumbnails, and export to PDF.
+- Editor canvas includes a floating favorites toolbar with common black/teal/red pen and yellow highlighter presets.
 - Smart Ink planning lives in `docs/SMART_INK_PLAN.md`.
 - Post-MVP feature gaps and optimization areas are documented in `docs/POST_MVP_ROADMAP.md`.
 - Subscription packaging, platform behavior, and local/cloud merge rules are documented in `docs/SUBSCRIPTION_PLAN.md`.
