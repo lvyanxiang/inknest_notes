@@ -31,6 +31,7 @@ void main() {
 
     expect(find.text('Notebook 1'), findsOneWidget);
     expect(find.byTooltip('Export PDF'), findsOneWidget);
+    expect(find.byTooltip('Insert image'), findsOneWidget);
     expect(find.byKey(const ValueKey('page-thumbnail-page-1')), findsOneWidget);
     expect(find.text('No notebooks yet'), findsNothing);
   });

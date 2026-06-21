@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -5,6 +6,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/painting.dart' as painting;
 import 'package:image/image.dart' as image;
 import 'package:inknest_notes/features/editor/text/note_text_box_styles.dart';
+import 'package:inknest_notes/models/note_image.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/note_text_box.dart';
 import 'package:inknest_notes/models/notebook.dart';
@@ -42,13 +44,15 @@ class NotebookPdfExporter {
       for (final pageId in exportPageIds) {
         final page = await notebookRepository.loadPage(notebook, pageId);
         final background = await _renderBackground(page);
+        final pageImages = await _renderImages(page);
         final textBoxes = await _renderTextBoxes(page);
 
         document.addPage(
           pw.Page(
             pageFormat: pdf.PdfPageFormat(page.width, page.height),
             margin: pw.EdgeInsets.zero,
-            build: (context) => _buildPage(page, background, textBoxes),
+            build: (context) =>
+                _buildPage(page, background, pageImages, textBoxes),
           ),
         );
       }
@@ -84,6 +88,7 @@ class NotebookPdfExporter {
   pw.Widget _buildPage(
     NotePage page,
     RenderedPdfPageBackground? background,
+    List<_RenderedPageImage> pageImages,
     List<_RenderedTextBox> textBoxes,
   ) {
     return pw.Stack(
@@ -96,6 +101,7 @@ class NotebookPdfExporter {
               fit: pw.BoxFit.contain,
             ),
           ),
+        ..._buildImages(pageImages),
         pw.Positioned.fill(
           child: pw.CustomPaint(
             painter: (canvas, size) => _paintStrokes(canvas, size, page),
@@ -104,6 +110,22 @@ class NotebookPdfExporter {
         ..._buildTextBoxes(textBoxes),
       ],
     );
+  }
+
+  Iterable<pw.Widget> _buildImages(List<_RenderedPageImage> pageImages) {
+    return [
+      for (final pageImage in pageImages)
+        pw.Positioned(
+          left: pageImage.model.position.dx,
+          top: pageImage.model.position.dy,
+          child: pw.Image(
+            pw.MemoryImage(pageImage.pngBytes),
+            width: pageImage.model.width,
+            height: pageImage.model.height,
+            fit: pw.BoxFit.contain,
+          ),
+        ),
+    ];
   }
 
   Iterable<pw.Widget> _buildTextBoxes(List<_RenderedTextBox> textBoxes) {
@@ -135,6 +157,35 @@ class NotebookPdfExporter {
     }
 
     return renderedTextBoxes;
+  }
+
+  Future<List<_RenderedPageImage>> _renderImages(NotePage page) async {
+    final renderedImages = <_RenderedPageImage>[];
+    for (final noteImage in page.images) {
+      final renderedImage = await _renderImage(noteImage);
+      if (renderedImage != null) {
+        renderedImages.add(renderedImage);
+      }
+    }
+
+    return renderedImages;
+  }
+
+  Future<_RenderedPageImage?> _renderImage(NoteImage noteImage) async {
+    final file = File(noteImage.filePath);
+    if (!await file.exists()) {
+      return null;
+    }
+
+    final decodedImage = image.decodeImage(await file.readAsBytes());
+    if (decodedImage == null) {
+      return null;
+    }
+
+    return _RenderedPageImage(
+      model: noteImage,
+      pngBytes: Uint8List.fromList(image.encodePng(decodedImage)),
+    );
   }
 
   Future<_RenderedTextBox?> _renderTextBox(NoteTextBox textBox) async {
@@ -438,6 +489,13 @@ class _BackgroundCacheKey {
 
   @override
   int get hashCode => Object.hash(filePath, pageNumber, width, height);
+}
+
+class _RenderedPageImage {
+  const _RenderedPageImage({required this.model, required this.pngBytes});
+
+  final NoteImage model;
+  final Uint8List pngBytes;
 }
 
 class _RenderedTextBox {

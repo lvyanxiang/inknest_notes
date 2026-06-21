@@ -1,7 +1,10 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as image;
+import 'package:inknest_notes/models/note_image.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/note_text_box.dart';
 import 'package:inknest_notes/models/pdf_background.dart';
@@ -36,6 +39,15 @@ void main() {
       id: 'page-1',
       width: 768,
       height: 1024,
+      images: const [
+        NoteImage(
+          id: 'image-1',
+          position: Offset(240, 320),
+          width: 160,
+          height: 90,
+          assetPath: 'assets/images/photo.png',
+        ),
+      ],
       textBoxes: const [
         NoteTextBox(
           id: 'text-1',
@@ -80,6 +92,75 @@ void main() {
     expect(reloadedPage.textBoxes.single.text, 'Momentum');
     expect(reloadedPage.textBoxes.single.position, const Offset(80, 96));
     expect(reloadedPage.textBoxes.single.style, NoteTextBoxStyle.handwriting);
+    expect(reloadedPage.images.single.position, const Offset(240, 320));
+    expect(reloadedPage.images.single.assetPath, 'assets/images/photo.png');
+  });
+
+  test('imports page images as notebook-relative assets', () async {
+    final notebook = await repository.createNotebook(title: 'Moodboard');
+    final sourceFile = File('${tempDirectory.path}/source-image.png')
+      ..writeAsBytesSync(_tinyPngBytes());
+
+    final importedImage = await repository.importImage(
+      notebook,
+      sourceFile,
+      position: const Offset(40, 56),
+      width: 180,
+      height: 120,
+    );
+
+    expect(importedImage.assetPath, startsWith('assets/images/'));
+    expect(File(importedImage.filePath).existsSync(), isTrue);
+
+    await repository.savePage(
+      notebook,
+      NotePage(id: 'page-1', width: 768, height: 1024, images: [importedImage]),
+    );
+
+    final reloadedRepository = FileNotebookRepository(
+      rootDirectory: tempDirectory,
+    );
+    final reloadedPage = await reloadedRepository.loadPage(notebook, 'page-1');
+    final reloadedImage = reloadedPage.images.single;
+
+    expect(reloadedImage.assetPath, importedImage.assetPath);
+    expect(reloadedImage.filePath, isNot(importedImage.assetPath));
+    expect(File(reloadedImage.filePath).existsSync(), isTrue);
+    expect(reloadedImage.position, const Offset(40, 56));
+    expect(reloadedImage.width, 180);
+    expect(reloadedImage.height, 120);
+  });
+
+  test('serializes concurrent page saves without corrupting index', () async {
+    final notebook = await repository.createNotebook(title: 'Fast Edits');
+
+    await Future.wait([
+      for (var index = 0; index < 24; index++)
+        repository.savePage(
+          notebook,
+          NotePage(
+            id: 'page-1',
+            width: 768,
+            height: 1024,
+            textBoxes: [
+              NoteTextBox(
+                id: 'text-$index',
+                position: Offset(index.toDouble(), index.toDouble()),
+                text: 'Edit $index',
+              ),
+            ],
+          ),
+        ),
+    ]);
+
+    final indexFile = File('${tempDirectory.path}/notebooks/index.json');
+    final indexJson = jsonDecode(await indexFile.readAsString());
+    final notebooks = await repository.listNotebooks();
+    final page = await repository.loadPage(notebook, 'page-1');
+
+    expect(indexJson, isA<List<Object?>>());
+    expect(notebooks.single.title, 'Fast Edits');
+    expect(page.textBoxes.single.text, 'Edit 23');
   });
 
   test('persists page order and separate page content', () async {
@@ -146,6 +227,15 @@ void main() {
             text: 'Copied text',
           ),
         ],
+        images: const [
+          NoteImage(
+            id: 'image-1',
+            position: Offset(220, 280),
+            width: 144,
+            height: 96,
+            assetPath: 'assets/images/photo.png',
+          ),
+        ],
         strokes: [
           Stroke(
             id: 'stroke-1',
@@ -173,6 +263,7 @@ void main() {
     expect(duplicatedPage.strokes, hasLength(1));
     expect(duplicatedPage.strokes.single.id, 'stroke-1');
     expect(duplicatedPage.textBoxes.single.text, 'Copied text');
+    expect(duplicatedPage.images.single.id, 'image-1');
 
     notebook = await repository.movePage(notebook, 'page-2', 0);
 
@@ -423,4 +514,10 @@ void main() {
       );
     },
   );
+}
+
+List<int> _tinyPngBytes() {
+  final png = image.Image(width: 1, height: 1);
+  png.setPixelRgb(0, 0, 255, 255, 255);
+  return image.encodePng(png);
 }

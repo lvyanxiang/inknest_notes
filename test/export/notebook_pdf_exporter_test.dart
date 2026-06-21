@@ -1,9 +1,11 @@
+import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as image;
 import 'package:inknest_notes/export/notebook_pdf_exporter.dart';
+import 'package:inknest_notes/models/note_image.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/note_text_box.dart';
 import 'package:inknest_notes/models/notebook.dart';
@@ -17,6 +19,16 @@ void main() {
   test('exports blank-page notebook with strokes as PDF bytes', () async {
     final repository = InMemoryNotebookRepository();
     final notebook = await repository.createNotebook(title: 'Physics');
+    final tempDirectory = Directory.systemTemp.createTempSync(
+      'inknest-export-image-',
+    );
+    addTearDown(() {
+      if (tempDirectory.existsSync()) {
+        tempDirectory.deleteSync(recursive: true);
+      }
+    });
+    final imageFile = File('${tempDirectory.path}/photo.png')
+      ..writeAsBytesSync(_tinyPngBytes());
 
     await repository.savePage(
       notebook,
@@ -24,6 +36,16 @@ void main() {
         id: 'page-1',
         width: 768,
         height: 1024,
+        images: [
+          NoteImage(
+            id: 'image-1',
+            position: const Offset(220, 260),
+            width: 180,
+            height: 120,
+            assetPath: imageFile.path,
+            resolvedFilePath: imageFile.path,
+          ),
+        ],
         textBoxes: const [
           NoteTextBox(
             id: 'text-1',

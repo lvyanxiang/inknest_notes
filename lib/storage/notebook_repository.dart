@@ -1,7 +1,9 @@
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:inknest_notes/models/notebook.dart';
 import 'package:inknest_notes/models/notebook_folder.dart';
+import 'package:inknest_notes/models/note_image.dart';
 import 'package:inknest_notes/models/note_page.dart';
 
 abstract class NotebookRepository {
@@ -21,6 +23,14 @@ abstract class NotebookRepository {
   Future<Notebook> createNotebook({String? title});
 
   Future<Notebook> importPdf(File sourceFile);
+
+  Future<NoteImage> importImage(
+    Notebook notebook,
+    File sourceFile, {
+    required Offset position,
+    required double width,
+    required double height,
+  });
 
   Future<Notebook> renameNotebook(Notebook notebook, String title);
 

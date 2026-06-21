@@ -3,8 +3,8 @@
 ## Current
 
 - Milestone: Post-MVP 4 - Rich Notes
-- Next task: Add image insertion.
-- Last completed: Added Smart Ink beautify.
+- Next task: Add shape tool.
+- Last completed: Added image insertion.
 
 ## Decisions
 
@@ -49,6 +49,10 @@
 - Text-box PDF export rasterizes Flutter-rendered text into PNGs before embedding them, preserving Unicode/CJK text and handwriting-style rendering without relying on `pdf` package default fonts.
 - Smart Ink first version uses a `Smart Ink` editor tool to box-select rough strokes, asks the user to enter or correct recognized text, then inserts a handwriting-style text box and can replace the selected ink.
 - Automatic handwriting recognition is still future work; the current Smart Ink flow establishes the explicit selection and confirmation UX without sending handwriting off-device.
+- Store inserted images on `NotePage.images`; file-backed notebooks copy image files into notebook-relative `assets/images/` paths and resolve them at load time.
+- Render images below handwriting strokes, with move/delete/resize controls above the drawing canvas so users can write over inserted images.
+- PDF export embeds inserted page images as PNG-backed PDF image widgets before vector handwriting strokes and text boxes.
+- File-backed JSON writes use temporary-file replacement, and page saves are serialized to avoid transient empty JSON reads during high-frequency edits such as image dragging.
 
 ## Verification
 
@@ -111,6 +115,14 @@
 - `flutter test` passed after Smart Ink beautify.
 - `flutter analyze` passed after Smart Ink beautify.
 - `git diff --check` passed after Smart Ink beautify.
+- `dart format lib test` passed after image insertion.
+- `flutter test` passed after image insertion.
+- `flutter analyze` passed after image insertion.
+- `git diff --check` passed after image insertion.
+- `dart format lib test` passed after serializing file-backed page saves.
+- `flutter test` passed after serializing file-backed page saves.
+- `flutter analyze` passed after serializing file-backed page saves.
+- `git diff --check` passed after serializing file-backed page saves.
 
 ## Notes
 
@@ -139,6 +151,7 @@
 - Editor toolbar includes a Text tool that can add typed text boxes to the current page; text boxes can be edited, moved, deleted, persisted, shown in thumbnails, and exported to PDF.
 - Text boxes can toggle between regular text and handwriting-style rendering; thumbnails and PDF export use the same text style path.
 - Editor toolbar includes a Smart Ink tool that box-selects strokes, confirms text, and creates editable handwriting-style text from the selection.
+- Editor toolbar includes Insert image; selected images are copied into notebook assets, placed on the current page, movable, resizable, deletable, persisted, shown as thumbnail placeholders, and included in PDF export.
 - Smart Ink planning lives in `docs/SMART_INK_PLAN.md`.
 - Post-MVP feature gaps and optimization areas are documented in `docs/POST_MVP_ROADMAP.md`.
 - Subscription packaging, platform behavior, and local/cloud merge rules are documented in `docs/SUBSCRIPTION_PLAN.md`.

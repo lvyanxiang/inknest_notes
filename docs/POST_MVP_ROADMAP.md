@@ -208,7 +208,7 @@ Goal: support mixed handwritten and typed notes.
 - [x] Add Smart Ink beautify: lasso rough handwriting, recognize text, confirm, and
   replace with neat handwriting-style editable text. See
   `docs/SMART_INK_PLAN.md`.
-- [ ] Add image insertion.
+- [x] Add image insertion.
 - [ ] Add shape tool.
 - [ ] Add favorites toolbar.
 

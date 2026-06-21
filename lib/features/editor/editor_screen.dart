@@ -1,17 +1,21 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' show PointerDeviceKind;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image/image.dart' as image;
 import 'package:inknest_notes/export/notebook_pdf_exporter.dart';
 import 'package:inknest_notes/features/editor/canvas/drawing_canvas.dart';
 import 'package:inknest_notes/features/editor/canvas/pdf_page_background.dart';
+import 'package:inknest_notes/features/editor/images/image_layer.dart';
 import 'package:inknest_notes/features/editor/smart_ink/smart_ink_selection_layer.dart';
 import 'package:inknest_notes/features/editor/text/note_text_box_styles.dart';
 import 'package:inknest_notes/features/editor/text/text_box_layer.dart';
 import 'package:inknest_notes/features/editor/tools/editor_toolbar.dart';
+import 'package:inknest_notes/models/note_image.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/note_text_box.dart';
 import 'package:inknest_notes/models/notebook.dart';
@@ -45,6 +49,7 @@ class _EditorScreenState extends State<EditorScreen> {
   bool _isExporting = false;
   bool _fingerPanEnabled = false;
   String? _activeTextBoxId;
+  String? _activeImageId;
   NotePage? _page;
 
   @override
@@ -71,6 +76,7 @@ class _EditorScreenState extends State<EditorScreen> {
       _pagesById[page.id] = page;
       _redoStack.clear();
       _activeTextBoxId = null;
+      _activeImageId = null;
     });
   }
 
@@ -204,6 +210,195 @@ class _EditorScreenState extends State<EditorScreen> {
     });
 
     unawaited(_savePage(updatedPage));
+  }
+
+  Future<void> _insertImage() async {
+    final page = _page;
+    if (page == null) {
+      return;
+    }
+
+    final result = await FilePicker.pickFiles(
+      type: FileType.image,
+      allowMultiple: false,
+      withData: true,
+    );
+    if (!mounted || result == null) {
+      return;
+    }
+
+    final sourceFile = await _sourceFileForPickedImage(result.files.single);
+    if (!mounted || sourceFile == null) {
+      _showSnackBar('Image file is unavailable');
+      return;
+    }
+
+    try {
+      final pixelSize = await _imagePixelSize(sourceFile);
+      final displaySize = _displaySizeForImage(page, pixelSize);
+      final position = Offset(
+        (page.width - displaySize.width) / 2,
+        (page.height - displaySize.height) / 2,
+      );
+      final noteImage = await widget.notebookRepository.importImage(
+        _notebook,
+        sourceFile,
+        position: _clampImagePosition(
+          page: page,
+          position: position,
+          width: displaySize.width,
+          height: displaySize.height,
+        ),
+        width: displaySize.width,
+        height: displaySize.height,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      final latestPage = _page;
+      if (latestPage == null) {
+        return;
+      }
+
+      final updatedPage = latestPage.copyWith(
+        images: [...latestPage.images, noteImage],
+      );
+
+      setState(() {
+        _page = updatedPage;
+        _pagesById[updatedPage.id] = updatedPage;
+        _activeImageId = noteImage.id;
+        _redoStack.clear();
+      });
+
+      unawaited(_savePage(updatedPage));
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      _showSnackBar('Insert image failed: $error');
+    }
+  }
+
+  Future<File?> _sourceFileForPickedImage(PlatformFile pickedFile) async {
+    if (pickedFile.path case final path?) {
+      return File(path);
+    }
+
+    final bytes = pickedFile.bytes;
+    if (bytes == null) {
+      return null;
+    }
+
+    final extension = pickedFile.extension?.trim();
+    final suffix = extension == null || extension.isEmpty ? 'png' : extension;
+    final tempFile = File(
+      '${Directory.systemTemp.path}/inknest-picked-image-'
+      '${DateTime.now().microsecondsSinceEpoch}.$suffix',
+    );
+    await tempFile.writeAsBytes(bytes, flush: true);
+    return tempFile;
+  }
+
+  Future<Size> _imagePixelSize(File file) async {
+    final decodedImage = image.decodeImage(await file.readAsBytes());
+    if (decodedImage == null) {
+      return const Size(320, 240);
+    }
+
+    return Size(decodedImage.width.toDouble(), decodedImage.height.toDouble());
+  }
+
+  Size _displaySizeForImage(NotePage page, Size pixelSize) {
+    final intrinsicWidth = math.max(1.0, pixelSize.width);
+    final intrinsicHeight = math.max(1.0, pixelSize.height);
+    final maxWidth = math.max(120.0, page.width * 0.62);
+    final maxHeight = math.max(120.0, page.height * 0.46);
+    var scale = math.min(
+      maxWidth / intrinsicWidth,
+      maxHeight / intrinsicHeight,
+    );
+
+    if (scale > 1) {
+      final smallestSide = math.min(intrinsicWidth, intrinsicHeight);
+      scale = math.min(scale, 96 / smallestSide);
+      scale = math.max(1.0, scale);
+    }
+
+    return Size(intrinsicWidth * scale, intrinsicHeight * scale);
+  }
+
+  void _updateImage(NoteImage noteImage) {
+    final page = _page;
+    if (page == null) {
+      return;
+    }
+
+    final updatedImages = [
+      for (final existingImage in page.images)
+        if (existingImage.id == noteImage.id) noteImage else existingImage,
+    ];
+    final updatedPage = page.copyWith(images: updatedImages);
+
+    setState(() {
+      _page = updatedPage;
+      _pagesById[updatedPage.id] = updatedPage;
+      _activeImageId = noteImage.id;
+      _redoStack.clear();
+    });
+
+    unawaited(_savePage(updatedPage));
+  }
+
+  void _deleteImage(String imageId) {
+    final page = _page;
+    if (page == null) {
+      return;
+    }
+
+    final updatedImages = [
+      for (final image in page.images)
+        if (image.id != imageId) image,
+    ];
+    if (updatedImages.length == page.images.length) {
+      return;
+    }
+
+    final updatedPage = page.copyWith(images: updatedImages);
+
+    setState(() {
+      _page = updatedPage;
+      _pagesById[updatedPage.id] = updatedPage;
+      if (_activeImageId == imageId) {
+        _activeImageId = null;
+      }
+      _redoStack.clear();
+    });
+
+    unawaited(_savePage(updatedPage));
+  }
+
+  Offset _clampImagePosition({
+    required NotePage page,
+    required Offset position,
+    required double width,
+    required double height,
+  }) {
+    final maxX = math.max(0.0, page.width - width);
+    final maxY = math.max(0.0, page.height - height);
+    return Offset(
+      position.dx.clamp(0, maxX).toDouble(),
+      position.dy.clamp(0, maxY).toDouble(),
+    );
+  }
+
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Offset _clampTextBoxPosition({
@@ -770,6 +965,7 @@ class _EditorScreenState extends State<EditorScreen> {
             fingerPanEnabled: _fingerPanEnabled,
             onToolChanged: _setTool,
             onFingerPanChanged: _setFingerPanEnabled,
+            onInsertImage: () => unawaited(_insertImage()),
           ),
           Expanded(
             child: page == null
@@ -829,12 +1025,26 @@ class _EditorScreenState extends State<EditorScreen> {
                 ),
                 background: background,
               ),
+            ImageLayer(
+              page: page,
+              activeImageId: _activeImageId,
+              showControls: false,
+              onImageChanged: _updateImage,
+              onImageDeleted: _deleteImage,
+            ),
             DrawingCanvas(
               page: page,
               tool: _tool,
               fingerPanEnabled: _fingerPanEnabled,
               onStrokeComplete: _addStroke,
               onErase: _eraseAt,
+            ),
+            ImageLayer(
+              page: page,
+              activeImageId: _activeImageId,
+              showImage: false,
+              onImageChanged: _updateImage,
+              onImageDeleted: _deleteImage,
             ),
             TextBoxLayer(
               page: page,
@@ -2109,6 +2319,37 @@ class _PageThumbnailPainter extends CustomPainter {
       ..save()
       ..translate(offset.dx, offset.dy)
       ..scale(scale);
+
+    for (final noteImage in page.images) {
+      final rect = Rect.fromLTWH(
+        noteImage.position.dx,
+        noteImage.position.dy,
+        noteImage.width,
+        noteImage.height,
+      );
+      final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(6));
+      final fillPaint = Paint()
+        ..color = const Color(0xFFE7F0F0)
+        ..style = PaintingStyle.fill;
+      final borderPaint = Paint()
+        ..color = const Color(0x802F6F73)
+        ..strokeWidth = math.max(1.0, 1.2 / scale)
+        ..style = PaintingStyle.stroke;
+      final linePaint = Paint()
+        ..color = const Color(0x662F6F73)
+        ..strokeWidth = math.max(1.0, 1 / scale)
+        ..style = PaintingStyle.stroke;
+
+      canvas
+        ..drawRRect(rrect, fillPaint)
+        ..drawLine(rect.bottomLeft, rect.topRight, linePaint)
+        ..drawLine(
+          rect.bottomLeft + Offset(rect.width * 0.35, 0),
+          rect.topRight + Offset(0, rect.height * 0.35),
+          linePaint,
+        )
+        ..drawRRect(rrect, borderPaint);
+    }
 
     for (final stroke in page.strokes) {
       if (stroke.points.isEmpty) {

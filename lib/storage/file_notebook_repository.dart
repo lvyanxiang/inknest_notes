@@ -1,9 +1,11 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui';
 
-import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/notebook.dart';
 import 'package:inknest_notes/models/notebook_folder.dart';
+import 'package:inknest_notes/models/note_image.dart';
+import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/pdf_background.dart';
 import 'package:inknest_notes/models/pdf_outline_entry.dart';
 import 'package:inknest_notes/storage/notebook_repository.dart';
@@ -17,6 +19,8 @@ class FileNotebookRepository implements NotebookRepository {
   static const _pageHeight = 1024.0;
 
   final Directory _notebooksDirectory;
+  Future<void> _storageWriteQueue = Future.value();
+  int _temporaryFileCounter = 0;
 
   File get _indexFile => File('${_notebooksDirectory.path}/index.json');
   File get _foldersFile => File('${_notebooksDirectory.path}/folders.json');
@@ -155,6 +159,31 @@ class FileNotebookRepository implements NotebookRepository {
     }
 
     return notebook;
+  }
+
+  @override
+  Future<NoteImage> importImage(
+    Notebook notebook,
+    File sourceFile, {
+    required Offset position,
+    required double width,
+    required double height,
+  }) async {
+    final now = DateTime.now();
+    final assetPath = _imageAssetPath(sourceFile, now);
+    final assetFile = File('${_notebookDirectory(notebook).path}/$assetPath');
+
+    await assetFile.parent.create(recursive: true);
+    await sourceFile.copy(assetFile.path);
+
+    return NoteImage(
+      id: 'image-${now.microsecondsSinceEpoch}',
+      position: position,
+      width: width,
+      height: height,
+      assetPath: assetPath,
+      resolvedFilePath: assetFile.path,
+    );
   }
 
   @override
@@ -320,6 +349,7 @@ class FileNotebookRepository implements NotebookRepository {
       pdfBackground: sourcePage.pdfBackground,
       strokes: sourcePage.strokes,
       textBoxes: sourcePage.textBoxes,
+      images: sourcePage.images,
     );
 
     await _replaceNotebook(updatedNotebook);
@@ -395,21 +425,19 @@ class FileNotebookRepository implements NotebookRepository {
 
   @override
   Future<void> savePage(Notebook notebook, NotePage page) async {
-    final pageFile = _pageFile(notebook, page.id);
-    await pageFile.parent.create(recursive: true);
-    await pageFile.writeAsString(
-      const JsonEncoder.withIndent('  ').convert(page.toJson()),
-    );
+    await _runStorageWrite(() async {
+      await _writeJsonFile(_pageFile(notebook, page.id), page.toJson());
 
-    final notebooks = await _readIndex();
-    final updatedNotebook = notebook.copyWith(updatedAt: DateTime.now());
-    await _writeIndex([
-      for (final existingNotebook in notebooks)
-        if (existingNotebook.id == notebook.id)
-          updatedNotebook
-        else
-          existingNotebook,
-    ]);
+      final notebooks = await _readIndex();
+      final updatedNotebook = notebook.copyWith(updatedAt: DateTime.now());
+      await _writeIndex([
+        for (final existingNotebook in notebooks)
+          if (existingNotebook.id == notebook.id)
+            updatedNotebook
+          else
+            existingNotebook,
+      ]);
+    });
   }
 
   Future<List<Notebook>> _readIndex() async {
@@ -425,11 +453,9 @@ class FileNotebookRepository implements NotebookRepository {
   }
 
   Future<void> _writeIndex(List<Notebook> notebooks) async {
-    await _notebooksDirectory.create(recursive: true);
-    await _indexFile.writeAsString(
-      const JsonEncoder.withIndent(
-        '  ',
-      ).convert(notebooks.map((notebook) => notebook.toJson()).toList()),
+    await _writeJsonFile(
+      _indexFile,
+      notebooks.map((notebook) => notebook.toJson()).toList(),
     );
   }
 
@@ -446,12 +472,39 @@ class FileNotebookRepository implements NotebookRepository {
   }
 
   Future<void> _writeFolders(List<NotebookFolder> folders) async {
-    await _notebooksDirectory.create(recursive: true);
-    await _foldersFile.writeAsString(
-      const JsonEncoder.withIndent(
-        '  ',
-      ).convert(folders.map((folder) => folder.toJson()).toList()),
+    await _writeJsonFile(
+      _foldersFile,
+      folders.map((folder) => folder.toJson()).toList(),
     );
+  }
+
+  Future<T> _runStorageWrite<T>(Future<T> Function() write) {
+    final previousWrite = _storageWriteQueue;
+    final result = previousWrite.catchError((_) {}).then((_) => write());
+    _storageWriteQueue = result.then<void>((_) {}, onError: (_) {});
+    return result;
+  }
+
+  Future<void> _writeJsonFile(File file, Object? value) async {
+    await file.parent.create(recursive: true);
+    final temporaryFile = File(
+      '${file.path}.tmp-${DateTime.now().microsecondsSinceEpoch}-'
+      '${_temporaryFileCounter++}',
+    );
+
+    await temporaryFile.writeAsString(
+      const JsonEncoder.withIndent('  ').convert(value),
+      flush: true,
+    );
+
+    try {
+      await temporaryFile.rename(file.path);
+    } on FileSystemException {
+      if (await file.exists()) {
+        await file.delete();
+      }
+      await temporaryFile.rename(file.path);
+    }
   }
 
   Future<void> _replaceNotebook(Notebook notebook) async {
@@ -493,17 +546,37 @@ class FileNotebookRepository implements NotebookRepository {
 
   NotePage _resolvePageAssets(Notebook notebook, NotePage page) {
     final background = page.pdfBackground;
-    if (background == null) {
-      return page;
+    var resolvedPage = page;
+
+    if (background != null) {
+      final normalizedAssetPath = _normalizePdfAssetPath(background.assetPath);
+      resolvedPage = resolvedPage.copyWith(
+        pdfBackground: background.copyWith(
+          assetPath: normalizedAssetPath,
+          resolvedFilePath: _resolvePdfAssetPath(
+            notebook,
+            background.assetPath,
+          ),
+        ),
+      );
     }
 
-    final normalizedAssetPath = _normalizePdfAssetPath(background.assetPath);
-    return page.copyWith(
-      pdfBackground: background.copyWith(
-        assetPath: normalizedAssetPath,
-        resolvedFilePath: _resolvePdfAssetPath(notebook, background.assetPath),
-      ),
-    );
+    if (page.images.isNotEmpty) {
+      resolvedPage = resolvedPage.copyWith(
+        images: [
+          for (final image in page.images)
+            image.copyWith(
+              assetPath: _normalizeImageAssetPath(image.assetPath),
+              resolvedFilePath: _resolveImageAssetPath(
+                notebook,
+                image.assetPath,
+              ),
+            ),
+        ],
+      );
+    }
+
+    return resolvedPage;
   }
 
   List<PdfOutlineEntry> _pdfOutlineEntries(
@@ -555,6 +628,42 @@ class FileNotebookRepository implements NotebookRepository {
     }
 
     final normalizedAssetPath = _normalizePdfAssetPath(assetPath);
+    return File(
+      '${_notebooksDirectory.path}/${notebook.id}/$normalizedAssetPath',
+    ).path;
+  }
+
+  String _imageAssetPath(File sourceFile, DateTime now) {
+    final originalName = sourceFile.uri.pathSegments.isEmpty
+        ? 'image'
+        : sourceFile.uri.pathSegments.last;
+    final sanitizedName = originalName
+        .replaceAll(RegExp(r'[^A-Za-z0-9._-]+'), '-')
+        .replaceAll(RegExp(r'-+'), '-');
+    final name = sanitizedName.trim().isEmpty ? 'image' : sanitizedName;
+
+    return 'assets/images/${now.microsecondsSinceEpoch}-$name';
+  }
+
+  String _normalizeImageAssetPath(String assetPath) {
+    final file = File(assetPath);
+    if (!file.isAbsolute) {
+      return assetPath;
+    }
+
+    final fileName = file.uri.pathSegments.isEmpty
+        ? 'image'
+        : file.uri.pathSegments.last;
+    return 'assets/images/$fileName';
+  }
+
+  String _resolveImageAssetPath(Notebook notebook, String assetPath) {
+    final absoluteFile = File(assetPath);
+    if (absoluteFile.isAbsolute && absoluteFile.existsSync()) {
+      return absoluteFile.path;
+    }
+
+    final normalizedAssetPath = _normalizeImageAssetPath(assetPath);
     return File(
       '${_notebooksDirectory.path}/${notebook.id}/$normalizedAssetPath',
     ).path;

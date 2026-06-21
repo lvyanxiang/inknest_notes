@@ -1,7 +1,9 @@
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:inknest_notes/models/notebook.dart';
 import 'package:inknest_notes/models/notebook_folder.dart';
+import 'package:inknest_notes/models/note_image.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/storage/notebook_repository.dart';
 
@@ -99,6 +101,24 @@ class InMemoryNotebookRepository implements NotebookRepository {
   @override
   Future<Notebook> importPdf(File sourceFile) {
     return createNotebook(title: _titleFromFile(sourceFile));
+  }
+
+  @override
+  Future<NoteImage> importImage(
+    Notebook notebook,
+    File sourceFile, {
+    required Offset position,
+    required double width,
+    required double height,
+  }) async {
+    return NoteImage(
+      id: 'image-${DateTime.now().microsecondsSinceEpoch}',
+      position: position,
+      width: width,
+      height: height,
+      assetPath: sourceFile.path,
+      resolvedFilePath: sourceFile.path,
+    );
   }
 
   @override
@@ -250,6 +270,7 @@ class InMemoryNotebookRepository implements NotebookRepository {
       pdfBackground: sourcePage.pdfBackground,
       strokes: sourcePage.strokes,
       textBoxes: sourcePage.textBoxes,
+      images: sourcePage.images,
     );
 
     return updatedNotebook;

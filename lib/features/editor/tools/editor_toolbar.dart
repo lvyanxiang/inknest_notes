@@ -8,12 +8,14 @@ class EditorToolbar extends StatelessWidget {
     required this.fingerPanEnabled,
     required this.onToolChanged,
     required this.onFingerPanChanged,
+    required this.onInsertImage,
   });
 
   final DrawingTool tool;
   final bool fingerPanEnabled;
   final ValueChanged<DrawingTool> onToolChanged;
   final ValueChanged<bool> onFingerPanChanged;
+  final VoidCallback onInsertImage;
 
   static const _colors = [
     Color(0xFF1E2526),
@@ -108,6 +110,11 @@ class EditorToolbar extends StatelessWidget {
                 isSelected: fingerPanEnabled,
                 onPressed: () => onFingerPanChanged(!fingerPanEnabled),
               ),
+              _CommandButton(
+                icon: Icons.add_photo_alternate_outlined,
+                label: 'Insert image',
+                onPressed: onInsertImage,
+              ),
             ],
           ),
         ),
@@ -171,6 +178,29 @@ class _ModeButton extends StatelessWidget {
           icon: Icon(icon),
           selectedIcon: Icon(icon),
         ),
+      ),
+    );
+  }
+}
+
+class _CommandButton extends StatelessWidget {
+  const _CommandButton({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: Tooltip(
+        message: label,
+        child: IconButton.filledTonal(onPressed: onPressed, icon: Icon(icon)),
       ),
     );
   }
