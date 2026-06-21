@@ -3,8 +3,8 @@
 ## Current
 
 - Milestone: Post-MVP 4 - Rich Notes
-- Next task: Add Smart Ink beautify.
-- Last completed: Added handwriting-style text rendering.
+- Next task: Add image insertion.
+- Last completed: Added Smart Ink beautify.
 
 ## Decisions
 
@@ -47,6 +47,8 @@
 - Text boxes first support add, edit, move, delete, persistence, page duplication, thumbnails, and PDF export.
 - Store text rendering style on `NoteTextBox.style`; support regular and handwriting-style text boxes.
 - Text-box PDF export rasterizes Flutter-rendered text into PNGs before embedding them, preserving Unicode/CJK text and handwriting-style rendering without relying on `pdf` package default fonts.
+- Smart Ink first version uses a `Smart Ink` editor tool to box-select rough strokes, asks the user to enter or correct recognized text, then inserts a handwriting-style text box and can replace the selected ink.
+- Automatic handwriting recognition is still future work; the current Smart Ink flow establishes the explicit selection and confirmation UX without sending handwriting off-device.
 
 ## Verification
 
@@ -105,6 +107,10 @@
 - `flutter test` passed after handwriting-style text rendering.
 - `flutter analyze` passed after handwriting-style text rendering.
 - `git diff --check` passed after handwriting-style text rendering.
+- `dart format lib test` passed after Smart Ink beautify.
+- `flutter test` passed after Smart Ink beautify.
+- `flutter analyze` passed after Smart Ink beautify.
+- `git diff --check` passed after Smart Ink beautify.
 
 ## Notes
 
@@ -132,6 +138,7 @@
 - PDF export now avoids rerendering duplicate backgrounds in the same export and renders imported PDF backgrounds at a higher default pixel density.
 - Editor toolbar includes a Text tool that can add typed text boxes to the current page; text boxes can be edited, moved, deleted, persisted, shown in thumbnails, and exported to PDF.
 - Text boxes can toggle between regular text and handwriting-style rendering; thumbnails and PDF export use the same text style path.
+- Editor toolbar includes a Smart Ink tool that box-selects strokes, confirms text, and creates editable handwriting-style text from the selection.
 - Smart Ink planning lives in `docs/SMART_INK_PLAN.md`.
 - Post-MVP feature gaps and optimization areas are documented in `docs/POST_MVP_ROADMAP.md`.
 - Subscription packaging, platform behavior, and local/cloud merge rules are documented in `docs/SUBSCRIPTION_PLAN.md`.

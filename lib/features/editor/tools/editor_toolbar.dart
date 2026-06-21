@@ -30,6 +30,7 @@ class EditorToolbar extends StatelessWidget {
       ToolType.highlighter => tool.width < 8 ? 12.0 : tool.width,
       ToolType.eraser => tool.width < 16 ? 24.0 : tool.width,
       ToolType.text => tool.width,
+      ToolType.smartInk => tool.width,
     };
 
     onToolChanged(tool.copyWith(type: type, width: width));
@@ -79,6 +80,12 @@ class EditorToolbar extends StatelessWidget {
                 label: 'Text',
                 isSelected: tool.type == ToolType.text,
                 onPressed: () => _selectTool(ToolType.text),
+              ),
+              _ToolButton(
+                icon: Icons.auto_fix_high,
+                label: 'Smart Ink',
+                isSelected: tool.type == ToolType.smartInk,
+                onPressed: () => _selectTool(ToolType.smartInk),
               ),
               const _ToolbarDivider(),
               for (final color in _colors)

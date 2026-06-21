@@ -2,7 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 
-enum ToolType { pen, highlighter, eraser, text }
+enum ToolType { pen, highlighter, eraser, text, smartInk }
 
 @immutable
 class DrawingTool {

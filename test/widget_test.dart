@@ -74,6 +74,45 @@ void main() {
     expect(find.text('Typed note'), findsNothing);
   });
 
+  testWidgets('beautifies selected handwriting with Smart Ink', (
+    WidgetTester tester,
+  ) async {
+    await pumpInkNestApp(tester);
+
+    await tester.tap(find.text('New notebook'));
+    await tester.pumpAndSettle();
+
+    final canvas = find.byType(DrawingCanvas);
+    final center = tester.getCenter(canvas);
+    final strokeGesture = await tester.startGesture(
+      center - const Offset(32, 8),
+    );
+    await strokeGesture.moveBy(const Offset(64, 16));
+    await strokeGesture.up();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Smart Ink'));
+    await tester.pumpAndSettle();
+
+    final selectionGesture = await tester.startGesture(
+      center - const Offset(96, 64),
+    );
+    await selectionGesture.moveBy(const Offset(192, 128));
+    await selectionGesture.up();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Smart Ink'), findsOneWidget);
+    expect(find.text('Selected 1 strokes'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), 'Neat note');
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Beautify'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Neat note'), findsOneWidget);
+    expect(find.byTooltip('Plain text'), findsOneWidget);
+  });
+
   testWidgets('shows export options and validates page ranges', (
     WidgetTester tester,
   ) async {

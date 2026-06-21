@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:inknest_notes/export/notebook_pdf_exporter.dart';
 import 'package:inknest_notes/features/editor/canvas/drawing_canvas.dart';
 import 'package:inknest_notes/features/editor/canvas/pdf_page_background.dart';
+import 'package:inknest_notes/features/editor/smart_ink/smart_ink_selection_layer.dart';
 import 'package:inknest_notes/features/editor/text/note_text_box_styles.dart';
 import 'package:inknest_notes/features/editor/text/text_box_layer.dart';
 import 'package:inknest_notes/features/editor/tools/editor_toolbar.dart';
@@ -290,6 +291,119 @@ class _EditorScreenState extends State<EditorScreen> {
     });
 
     unawaited(_savePage(updatedPage));
+  }
+
+  Future<void> _runSmartInk(Rect selectionRect) async {
+    final page = _page;
+    if (page == null) {
+      return;
+    }
+
+    final selectedStrokes = [
+      for (final stroke in page.strokes)
+        if (_strokeOverlapsRect(stroke, selectionRect)) stroke,
+    ];
+
+    if (selectedStrokes.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('No handwriting selected')));
+      return;
+    }
+
+    final result = await showDialog<_SmartInkConfirmation>(
+      context: context,
+      builder: (context) => _SmartInkConfirmationDialog(
+        selectedStrokeCount: selectedStrokes.length,
+      ),
+    );
+
+    if (!mounted || result == null) {
+      return;
+    }
+
+    final text = result.text.trim();
+    if (text.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Smart Ink text is empty')));
+      return;
+    }
+
+    final selectedStrokeIds = selectedStrokes
+        .map((stroke) => stroke.id)
+        .toSet();
+    final selectedBounds = _boundsForStrokes(selectedStrokes).inflate(8);
+    final textWidth = math.min(
+      math.max(180.0, selectedBounds.width + 48),
+      page.width,
+    );
+    final textBox = NoteTextBox(
+      id: 'smart-ink-${DateTime.now().microsecondsSinceEpoch}',
+      position: _clampTextBoxPosition(
+        page: page,
+        position: selectedBounds.topLeft,
+        width: textWidth,
+      ),
+      text: text,
+      width: textWidth,
+      color: selectedStrokes.first.color,
+      fontSize: math.min(math.max(22.0, selectedBounds.height * 0.45), 34.0),
+      style: NoteTextBoxStyle.handwriting,
+    );
+    final updatedPage = page.copyWith(
+      strokes: result.replaceSelectedInk
+          ? [
+              for (final stroke in page.strokes)
+                if (!selectedStrokeIds.contains(stroke.id)) stroke,
+            ]
+          : page.strokes,
+      textBoxes: [...page.textBoxes, textBox],
+    );
+
+    setState(() {
+      _page = updatedPage;
+      _pagesById[updatedPage.id] = updatedPage;
+      _activeTextBoxId = textBox.id;
+      _redoStack.clear();
+    });
+
+    unawaited(_savePage(updatedPage));
+  }
+
+  bool _strokeOverlapsRect(Stroke stroke, Rect rect) {
+    final bounds = _boundsForStroke(stroke);
+    if (bounds == null) {
+      return false;
+    }
+
+    return bounds.overlaps(rect) || rect.contains(bounds.center);
+  }
+
+  Rect _boundsForStrokes(List<Stroke> strokes) {
+    final bounds = [for (final stroke in strokes) ?_boundsForStroke(stroke)];
+
+    return bounds.reduce((value, element) => value.expandToInclude(element));
+  }
+
+  Rect? _boundsForStroke(Stroke stroke) {
+    if (stroke.points.isEmpty) {
+      return null;
+    }
+
+    var left = stroke.points.first.offset.dx;
+    var top = stroke.points.first.offset.dy;
+    var right = left;
+    var bottom = top;
+    for (final point in stroke.points.skip(1)) {
+      left = math.min(left, point.offset.dx);
+      top = math.min(top, point.offset.dy);
+      right = math.max(right, point.offset.dx);
+      bottom = math.max(bottom, point.offset.dy);
+    }
+
+    final padding = math.max(stroke.width / 2, 4.0);
+    return Rect.fromLTRB(left, top, right, bottom).inflate(padding);
   }
 
   Future<void> _savePage([NotePage? page]) async {
@@ -731,9 +845,106 @@ class _EditorScreenState extends State<EditorScreen> {
               onTextBoxChanged: _updateTextBox,
               onTextBoxDeleted: _deleteTextBox,
             ),
+            if (_tool.type == ToolType.smartInk)
+              SmartInkSelectionLayer(
+                onSelectionComplete: (rect) => unawaited(_runSmartInk(rect)),
+              ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _SmartInkConfirmation {
+  const _SmartInkConfirmation({
+    required this.text,
+    required this.replaceSelectedInk,
+  });
+
+  final String text;
+  final bool replaceSelectedInk;
+}
+
+class _SmartInkConfirmationDialog extends StatefulWidget {
+  const _SmartInkConfirmationDialog({required this.selectedStrokeCount});
+
+  final int selectedStrokeCount;
+
+  @override
+  State<_SmartInkConfirmationDialog> createState() =>
+      _SmartInkConfirmationDialogState();
+}
+
+class _SmartInkConfirmationDialogState
+    extends State<_SmartInkConfirmationDialog> {
+  final TextEditingController _controller = TextEditingController();
+  bool _replaceSelectedInk = true;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = _controller.text.trim();
+
+    return AlertDialog(
+      title: const Text('Smart Ink'),
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Selected ${widget.selectedStrokeCount} strokes'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _controller,
+              autofocus: true,
+              minLines: 2,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                labelText: 'Recognized text',
+                border: OutlineInputBorder(),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 8),
+            CheckboxListTile(
+              value: _replaceSelectedInk,
+              onChanged: (value) {
+                setState(() {
+                  _replaceSelectedInk = value ?? true;
+                });
+              },
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              title: const Text('Replace selected ink'),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton.icon(
+          onPressed: text.isEmpty
+              ? null
+              : () => Navigator.of(context).pop(
+                  _SmartInkConfirmation(
+                    text: text,
+                    replaceSelectedInk: _replaceSelectedInk,
+                  ),
+                ),
+          icon: const Icon(Icons.auto_fix_high),
+          label: const Text('Beautify'),
+        ),
+      ],
     );
   }
 }

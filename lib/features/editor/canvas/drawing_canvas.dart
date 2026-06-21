@@ -133,7 +133,8 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
   }
 
   bool _shouldIgnorePointer(PointerEvent event) {
-    if (widget.tool.type == ToolType.text) {
+    if (widget.tool.type == ToolType.text ||
+        widget.tool.type == ToolType.smartInk) {
       return true;
     }
 
