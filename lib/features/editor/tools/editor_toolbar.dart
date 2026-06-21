@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:inknest_notes/models/note_shape.dart';
 import 'package:inknest_notes/models/tool.dart';
 
 class EditorToolbar extends StatelessWidget {
@@ -33,6 +34,7 @@ class EditorToolbar extends StatelessWidget {
       ToolType.eraser => tool.width < 16 ? 24.0 : tool.width,
       ToolType.text => tool.width,
       ToolType.smartInk => tool.width,
+      ToolType.shape => tool.width,
     };
 
     onToolChanged(tool.copyWith(type: type, width: width));
@@ -89,6 +91,27 @@ class EditorToolbar extends StatelessWidget {
                 isSelected: tool.type == ToolType.smartInk,
                 onPressed: () => _selectTool(ToolType.smartInk),
               ),
+              _ToolButton(
+                icon: _shapeIcon(tool.shapeType),
+                label: 'Shape',
+                isSelected: tool.type == ToolType.shape,
+                onPressed: () => _selectTool(ToolType.shape),
+              ),
+              _ShapeMenuButton(
+                shapeType: tool.shapeType,
+                onSelected: (shapeType) {
+                  onToolChanged(
+                    tool.copyWith(type: ToolType.shape, shapeType: shapeType),
+                  );
+                },
+              ),
+              const _ToolbarDivider(),
+              _ModeButton(
+                icon: Icons.pan_tool_alt,
+                label: 'Finger pan',
+                isSelected: fingerPanEnabled,
+                onPressed: () => onFingerPanChanged(!fingerPanEnabled),
+              ),
               const _ToolbarDivider(),
               for (final color in _colors)
                 _ColorButton(
@@ -104,12 +127,6 @@ class EditorToolbar extends StatelessWidget {
                   onPressed: () => _selectWidth(width),
                 ),
               const _ToolbarDivider(),
-              _ModeButton(
-                icon: Icons.pan_tool_alt,
-                label: 'Finger pan',
-                isSelected: fingerPanEnabled,
-                onPressed: () => onFingerPanChanged(!fingerPanEnabled),
-              ),
               _CommandButton(
                 icon: Icons.add_photo_alternate_outlined,
                 label: 'Insert image',
@@ -121,6 +138,24 @@ class EditorToolbar extends StatelessWidget {
       ),
     );
   }
+}
+
+IconData _shapeIcon(NoteShapeType shapeType) {
+  return switch (shapeType) {
+    NoteShapeType.line => Icons.horizontal_rule,
+    NoteShapeType.arrow => Icons.north_east,
+    NoteShapeType.rectangle => Icons.check_box_outline_blank,
+    NoteShapeType.ellipse => Icons.radio_button_unchecked,
+  };
+}
+
+String _shapeLabel(NoteShapeType shapeType) {
+  return switch (shapeType) {
+    NoteShapeType.line => 'Line',
+    NoteShapeType.arrow => 'Arrow',
+    NoteShapeType.rectangle => 'Rectangle',
+    NoteShapeType.ellipse => 'Ellipse',
+  };
 }
 
 class _ToolButton extends StatelessWidget {
@@ -139,7 +174,7 @@ class _ToolButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(right: 8),
+      padding: const EdgeInsets.only(right: 6),
       child: Tooltip(
         message: label,
         child: IconButton.filledTonal(
@@ -147,6 +182,9 @@ class _ToolButton extends StatelessWidget {
           onPressed: onPressed,
           icon: Icon(icon),
           selectedIcon: Icon(icon),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+          visualDensity: VisualDensity.compact,
         ),
       ),
     );
@@ -169,7 +207,7 @@ class _ModeButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(right: 8),
+      padding: const EdgeInsets.only(right: 6),
       child: Tooltip(
         message: label,
         child: IconButton.filledTonal(
@@ -177,6 +215,9 @@ class _ModeButton extends StatelessWidget {
           onPressed: onPressed,
           icon: Icon(icon),
           selectedIcon: Icon(icon),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+          visualDensity: VisualDensity.compact,
         ),
       ),
     );
@@ -197,10 +238,60 @@ class _CommandButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(right: 8),
+      padding: const EdgeInsets.only(right: 6),
       child: Tooltip(
         message: label,
-        child: IconButton.filledTonal(onPressed: onPressed, icon: Icon(icon)),
+        child: IconButton.filledTonal(
+          onPressed: onPressed,
+          icon: Icon(icon),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+          visualDensity: VisualDensity.compact,
+        ),
+      ),
+    );
+  }
+}
+
+class _ShapeMenuButton extends StatelessWidget {
+  const _ShapeMenuButton({required this.shapeType, required this.onSelected});
+
+  final NoteShapeType shapeType;
+  final ValueChanged<NoteShapeType> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: PopupMenuButton<NoteShapeType>(
+        tooltip: 'Shape type',
+        initialValue: shapeType,
+        onSelected: onSelected,
+        itemBuilder: (context) {
+          return [
+            for (final value in NoteShapeType.values)
+              PopupMenuItem(
+                value: value,
+                child: Row(
+                  children: [
+                    Icon(_shapeIcon(value), size: 18),
+                    const SizedBox(width: 12),
+                    Expanded(child: Text(_shapeLabel(value))),
+                  ],
+                ),
+              ),
+          ];
+        },
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.secondaryContainer,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: SizedBox.square(
+            dimension: 40,
+            child: Icon(_shapeIcon(shapeType)),
+          ),
+        ),
       ),
     );
   }
@@ -220,7 +311,7 @@ class _ColorButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(right: 8),
+      padding: const EdgeInsets.only(right: 6),
       child: Tooltip(
         message: 'Color',
         child: IconButton(
@@ -228,6 +319,9 @@ class _ColorButton extends StatelessWidget {
           onPressed: onPressed,
           icon: _ColorDot(color: color, isSelected: isSelected),
           selectedIcon: _ColorDot(color: color, isSelected: isSelected),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+          visualDensity: VisualDensity.compact,
         ),
       ),
     );
@@ -248,7 +342,7 @@ class _WidthButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(right: 8),
+      padding: const EdgeInsets.only(right: 6),
       child: Tooltip(
         message: 'Width ${width.toInt()}',
         child: IconButton(
@@ -256,6 +350,9 @@ class _WidthButton extends StatelessWidget {
           onPressed: onPressed,
           icon: _WidthPreview(width: width, isSelected: isSelected),
           selectedIcon: _WidthPreview(width: width, isSelected: isSelected),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+          visualDensity: VisualDensity.compact,
         ),
       ),
     );
@@ -323,7 +420,7 @@ class _ToolbarDivider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Padding(
-      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      padding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
       child: VerticalDivider(width: 1),
     );
   }

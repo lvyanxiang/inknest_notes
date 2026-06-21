@@ -3,8 +3,8 @@
 ## Current
 
 - Milestone: Post-MVP 4 - Rich Notes
-- Next task: Add shape tool.
-- Last completed: Added image insertion.
+- Next task: Add favorites toolbar.
+- Last completed: Added shape tool.
 
 ## Decisions
 
@@ -53,6 +53,8 @@
 - Render images below handwriting strokes, with move/delete/resize controls above the drawing canvas so users can write over inserted images.
 - PDF export embeds inserted page images as PNG-backed PDF image widgets before vector handwriting strokes and text boxes.
 - File-backed JSON writes use temporary-file replacement, and page saves are serialized to avoid transient empty JSON reads during high-frequency edits such as image dragging.
+- Store clean shape objects on `NotePage.shapes`; first shape tool supports line, arrow, rectangle, and ellipse with light line-angle snapping for cleaner line/arrow creation.
+- Shape rendering is shared across the editor, page thumbnails, library thumbnails, and PDF export.
 
 ## Verification
 
@@ -123,6 +125,10 @@
 - `flutter test` passed after serializing file-backed page saves.
 - `flutter analyze` passed after serializing file-backed page saves.
 - `git diff --check` passed after serializing file-backed page saves.
+- `dart format lib test` passed after shape tool.
+- `flutter test` passed after shape tool.
+- `flutter analyze` passed after shape tool.
+- `git diff --check` passed after shape tool.
 
 ## Notes
 
@@ -152,6 +158,7 @@
 - Text boxes can toggle between regular text and handwriting-style rendering; thumbnails and PDF export use the same text style path.
 - Editor toolbar includes a Smart Ink tool that box-selects strokes, confirms text, and creates editable handwriting-style text from the selection.
 - Editor toolbar includes Insert image; selected images are copied into notebook assets, placed on the current page, movable, resizable, deletable, persisted, shown as thumbnail placeholders, and included in PDF export.
+- Editor toolbar includes a Shape tool with a shape-type menu for line, arrow, rectangle, and ellipse; created shapes persist, appear in thumbnails, and export to PDF.
 - Smart Ink planning lives in `docs/SMART_INK_PLAN.md`.
 - Post-MVP feature gaps and optimization areas are documented in `docs/POST_MVP_ROADMAP.md`.
 - Subscription packaging, platform behavior, and local/cloud merge rules are documented in `docs/SUBSCRIPTION_PLAN.md`.

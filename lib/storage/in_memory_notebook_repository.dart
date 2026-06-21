@@ -271,6 +271,7 @@ class InMemoryNotebookRepository implements NotebookRepository {
       strokes: sourcePage.strokes,
       textBoxes: sourcePage.textBoxes,
       images: sourcePage.images,
+      shapes: sourcePage.shapes,
     );
 
     return updatedNotebook;

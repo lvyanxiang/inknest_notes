@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as image;
 import 'package:inknest_notes/models/note_image.dart';
 import 'package:inknest_notes/models/note_page.dart';
+import 'package:inknest_notes/models/note_shape.dart';
 import 'package:inknest_notes/models/note_text_box.dart';
 import 'package:inknest_notes/models/pdf_background.dart';
 import 'package:inknest_notes/models/stroke.dart';
@@ -46,6 +47,15 @@ void main() {
           width: 160,
           height: 90,
           assetPath: 'assets/images/photo.png',
+        ),
+      ],
+      shapes: const [
+        NoteShape(
+          id: 'shape-1',
+          type: NoteShapeType.rectangle,
+          start: Offset(120, 160),
+          end: Offset(280, 240),
+          width: 5,
         ),
       ],
       textBoxes: const [
@@ -94,6 +104,9 @@ void main() {
     expect(reloadedPage.textBoxes.single.style, NoteTextBoxStyle.handwriting);
     expect(reloadedPage.images.single.position, const Offset(240, 320));
     expect(reloadedPage.images.single.assetPath, 'assets/images/photo.png');
+    expect(reloadedPage.shapes.single.type, NoteShapeType.rectangle);
+    expect(reloadedPage.shapes.single.start, const Offset(120, 160));
+    expect(reloadedPage.shapes.single.end, const Offset(280, 240));
   });
 
   test('imports page images as notebook-relative assets', () async {
@@ -236,6 +249,14 @@ void main() {
             assetPath: 'assets/images/photo.png',
           ),
         ],
+        shapes: const [
+          NoteShape(
+            id: 'shape-1',
+            type: NoteShapeType.arrow,
+            start: Offset(220, 280),
+            end: Offset(360, 320),
+          ),
+        ],
         strokes: [
           Stroke(
             id: 'stroke-1',
@@ -264,6 +285,7 @@ void main() {
     expect(duplicatedPage.strokes.single.id, 'stroke-1');
     expect(duplicatedPage.textBoxes.single.text, 'Copied text');
     expect(duplicatedPage.images.single.id, 'image-1');
+    expect(duplicatedPage.shapes.single.id, 'shape-1');
 
     notebook = await repository.movePage(notebook, 'page-2', 0);
 

@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:inknest_notes/features/editor/editor_screen.dart';
+import 'package:inknest_notes/features/editor/shapes/shape_layer.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/notebook.dart';
 import 'package:inknest_notes/models/notebook_folder.dart';
@@ -1224,6 +1225,10 @@ class _NotebookThumbnailPainter extends CustomPainter {
       } else {
         canvas.drawPath(StrokeGeometry.buildSmoothPath(stroke.points), paint);
       }
+    }
+
+    for (final shape in page.shapes) {
+      paintNoteShape(canvas, shape, minimumStrokeWidth: 1.4 / scale);
     }
 
     canvas.restore();

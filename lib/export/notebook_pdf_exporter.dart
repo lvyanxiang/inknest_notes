@@ -8,6 +8,7 @@ import 'package:image/image.dart' as image;
 import 'package:inknest_notes/features/editor/text/note_text_box_styles.dart';
 import 'package:inknest_notes/models/note_image.dart';
 import 'package:inknest_notes/models/note_page.dart';
+import 'package:inknest_notes/models/note_shape.dart';
 import 'package:inknest_notes/models/note_text_box.dart';
 import 'package:inknest_notes/models/notebook.dart';
 import 'package:inknest_notes/models/pdf_background.dart';
@@ -104,7 +105,10 @@ class NotebookPdfExporter {
         ..._buildImages(pageImages),
         pw.Positioned.fill(
           child: pw.CustomPaint(
-            painter: (canvas, size) => _paintStrokes(canvas, size, page),
+            painter: (canvas, size) {
+              _paintStrokes(canvas, size, page);
+              _paintShapes(canvas, size, page);
+            },
           ),
         ),
         ..._buildTextBoxes(textBoxes),
@@ -228,6 +232,136 @@ class NotebookPdfExporter {
     }
   }
 
+  void _paintShapes(pdf.PdfGraphics canvas, pdf.PdfPoint size, NotePage page) {
+    final scaleX = size.x / page.width;
+    final scaleY = size.y / page.height;
+    final strokeScale = (scaleX + scaleY) / 2;
+
+    for (final shape in page.shapes) {
+      final color = pdf.PdfColor.fromInt(_opaqueArgb(shape.color.toARGB32()));
+      canvas
+        ..saveContext()
+        ..setStrokeColor(color)
+        ..setLineCap(pdf.PdfLineCap.round)
+        ..setLineJoin(pdf.PdfLineJoin.round)
+        ..setLineWidth(shape.width * strokeScale);
+
+      switch (shape.type) {
+        case NoteShapeType.line:
+          _paintShapeLine(canvas, shape.start, shape.end, page, scaleX, scaleY);
+          break;
+        case NoteShapeType.arrow:
+          _paintShapeLine(canvas, shape.start, shape.end, page, scaleX, scaleY);
+          _paintShapeArrowHead(
+            canvas,
+            shape.start,
+            shape.end,
+            page,
+            scaleX,
+            scaleY,
+            shape.width * strokeScale,
+          );
+          break;
+        case NoteShapeType.rectangle:
+          _paintShapeRect(canvas, shape, page, scaleX, scaleY);
+          break;
+        case NoteShapeType.ellipse:
+          _paintShapeEllipse(canvas, shape, page, scaleX, scaleY);
+          break;
+      }
+
+      canvas
+        ..strokePath()
+        ..restoreContext();
+    }
+  }
+
+  void _paintShapeLine(
+    pdf.PdfGraphics canvas,
+    ui.Offset start,
+    ui.Offset end,
+    NotePage page,
+    double scaleX,
+    double scaleY,
+  ) {
+    final mappedStart = _mapOffset(start, page, scaleX, scaleY);
+    final mappedEnd = _mapOffset(end, page, scaleX, scaleY);
+    canvas
+      ..moveTo(mappedStart.dx, mappedStart.dy)
+      ..lineTo(mappedEnd.dx, mappedEnd.dy);
+  }
+
+  void _paintShapeArrowHead(
+    pdf.PdfGraphics canvas,
+    ui.Offset start,
+    ui.Offset end,
+    NotePage page,
+    double scaleX,
+    double scaleY,
+    double strokeWidth,
+  ) {
+    final mappedStart = _mapOffset(start, page, scaleX, scaleY);
+    final mappedEnd = _mapOffset(end, page, scaleX, scaleY);
+    final delta = mappedEnd - mappedStart;
+    if (delta.distance <= 0) {
+      return;
+    }
+
+    final angle = math.atan2(delta.dy, delta.dx);
+    final headLength = math.max(14.0, strokeWidth * 4);
+    const spread = math.pi / 7;
+    final left =
+        mappedEnd -
+        ui.Offset(
+          math.cos(angle - spread) * headLength,
+          math.sin(angle - spread) * headLength,
+        );
+    final right =
+        mappedEnd -
+        ui.Offset(
+          math.cos(angle + spread) * headLength,
+          math.sin(angle + spread) * headLength,
+        );
+
+    canvas
+      ..moveTo(mappedEnd.dx, mappedEnd.dy)
+      ..lineTo(left.dx, left.dy)
+      ..moveTo(mappedEnd.dx, mappedEnd.dy)
+      ..lineTo(right.dx, right.dy);
+  }
+
+  void _paintShapeRect(
+    pdf.PdfGraphics canvas,
+    NoteShape shape,
+    NotePage page,
+    double scaleX,
+    double scaleY,
+  ) {
+    final rect = shape.bounds;
+    canvas.drawRect(
+      rect.left * scaleX,
+      (page.height - rect.bottom) * scaleY,
+      rect.width * scaleX,
+      rect.height * scaleY,
+    );
+  }
+
+  void _paintShapeEllipse(
+    pdf.PdfGraphics canvas,
+    NoteShape shape,
+    NotePage page,
+    double scaleX,
+    double scaleY,
+  ) {
+    final rect = shape.bounds;
+    canvas.drawEllipse(
+      rect.center.dx * scaleX,
+      (page.height - rect.center.dy) * scaleY,
+      rect.width * scaleX / 2,
+      rect.height * scaleY / 2,
+    );
+  }
+
   void _paintStrokes(pdf.PdfGraphics canvas, pdf.PdfPoint size, NotePage page) {
     final scaleX = size.x / page.width;
     final scaleY = size.y / page.height;
@@ -348,6 +482,15 @@ class NotebookPdfExporter {
       point.offset.dx * scaleX,
       (page.height - point.offset.dy) * scaleY,
     );
+  }
+
+  ui.Offset _mapOffset(
+    ui.Offset offset,
+    NotePage page,
+    double scaleX,
+    double scaleY,
+  ) {
+    return ui.Offset(offset.dx * scaleX, (page.height - offset.dy) * scaleY);
   }
 
   double _alphaFromArgb(int argb) {

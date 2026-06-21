@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:inknest_notes/models/note_image.dart';
+import 'package:inknest_notes/models/note_shape.dart';
 import 'package:inknest_notes/models/note_text_box.dart';
 import 'package:inknest_notes/models/pdf_background.dart';
 import 'package:inknest_notes/models/stroke.dart';
@@ -14,6 +15,7 @@ class NotePage {
     this.strokes = const [],
     this.textBoxes = const [],
     this.images = const [],
+    this.shapes = const [],
   });
 
   final String id;
@@ -23,6 +25,7 @@ class NotePage {
   final List<Stroke> strokes;
   final List<NoteTextBox> textBoxes;
   final List<NoteImage> images;
+  final List<NoteShape> shapes;
 
   factory NotePage.fromJson(Map<String, Object?> json) {
     return NotePage(
@@ -46,6 +49,10 @@ class NotePage {
           .cast<Map<String, Object?>>()
           .map(NoteImage.fromJson)
           .toList(),
+      shapes: ((json['shapes'] as List<Object?>?) ?? const [])
+          .cast<Map<String, Object?>>()
+          .map(NoteShape.fromJson)
+          .toList(),
     );
   }
 
@@ -58,6 +65,7 @@ class NotePage {
       'strokes': strokes.map((stroke) => stroke.toJson()).toList(),
       'textBoxes': textBoxes.map((textBox) => textBox.toJson()).toList(),
       'images': images.map((image) => image.toJson()).toList(),
+      'shapes': shapes.map((shape) => shape.toJson()).toList(),
     };
   }
 
@@ -66,6 +74,7 @@ class NotePage {
     List<Stroke>? strokes,
     List<NoteTextBox>? textBoxes,
     List<NoteImage>? images,
+    List<NoteShape>? shapes,
   }) {
     return NotePage(
       id: id,
@@ -75,6 +84,7 @@ class NotePage {
       strokes: strokes ?? this.strokes,
       textBoxes: textBoxes ?? this.textBoxes,
       images: images ?? this.images,
+      shapes: shapes ?? this.shapes,
     );
   }
 }

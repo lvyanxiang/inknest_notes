@@ -7,6 +7,7 @@ import 'package:image/image.dart' as image;
 import 'package:inknest_notes/export/notebook_pdf_exporter.dart';
 import 'package:inknest_notes/models/note_image.dart';
 import 'package:inknest_notes/models/note_page.dart';
+import 'package:inknest_notes/models/note_shape.dart';
 import 'package:inknest_notes/models/note_text_box.dart';
 import 'package:inknest_notes/models/notebook.dart';
 import 'package:inknest_notes/models/pdf_background.dart';
@@ -44,6 +45,15 @@ void main() {
             height: 120,
             assetPath: imageFile.path,
             resolvedFilePath: imageFile.path,
+          ),
+        ],
+        shapes: const [
+          NoteShape(
+            id: 'shape-1',
+            type: NoteShapeType.arrow,
+            start: Offset(96, 240),
+            end: Offset(360, 280),
+            width: 5,
           ),
         ],
         textBoxes: const [

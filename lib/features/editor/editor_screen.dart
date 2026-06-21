@@ -11,12 +11,14 @@ import 'package:inknest_notes/export/notebook_pdf_exporter.dart';
 import 'package:inknest_notes/features/editor/canvas/drawing_canvas.dart';
 import 'package:inknest_notes/features/editor/canvas/pdf_page_background.dart';
 import 'package:inknest_notes/features/editor/images/image_layer.dart';
+import 'package:inknest_notes/features/editor/shapes/shape_layer.dart';
 import 'package:inknest_notes/features/editor/smart_ink/smart_ink_selection_layer.dart';
 import 'package:inknest_notes/features/editor/text/note_text_box_styles.dart';
 import 'package:inknest_notes/features/editor/text/text_box_layer.dart';
 import 'package:inknest_notes/features/editor/tools/editor_toolbar.dart';
 import 'package:inknest_notes/models/note_image.dart';
 import 'package:inknest_notes/models/note_page.dart';
+import 'package:inknest_notes/models/note_shape.dart';
 import 'package:inknest_notes/models/note_text_box.dart';
 import 'package:inknest_notes/models/notebook.dart';
 import 'package:inknest_notes/models/pdf_outline_entry.dart';
@@ -123,6 +125,23 @@ class _EditorScreenState extends State<EditorScreen> {
     }
 
     final updatedPage = page.copyWith(strokes: [...page.strokes, stroke]);
+
+    setState(() {
+      _page = updatedPage;
+      _pagesById[updatedPage.id] = updatedPage;
+      _redoStack.clear();
+    });
+
+    unawaited(_savePage(updatedPage));
+  }
+
+  void _addShape(NoteShape shape) {
+    final page = _page;
+    if (page == null) {
+      return;
+    }
+
+    final updatedPage = page.copyWith(shapes: [...page.shapes, shape]);
 
     setState(() {
       _page = updatedPage;
@@ -1038,6 +1057,12 @@ class _EditorScreenState extends State<EditorScreen> {
               fingerPanEnabled: _fingerPanEnabled,
               onStrokeComplete: _addStroke,
               onErase: _eraseAt,
+            ),
+            ShapeLayer(
+              page: page,
+              tool: _tool,
+              fingerPanEnabled: _fingerPanEnabled,
+              onShapeComplete: _tool.type == ToolType.shape ? _addShape : null,
             ),
             ImageLayer(
               page: page,
@@ -2376,6 +2401,10 @@ class _PageThumbnailPainter extends CustomPainter {
       }
 
       canvas.drawPath(StrokeGeometry.buildSmoothPath(stroke.points), paint);
+    }
+
+    for (final shape in page.shapes) {
+      paintNoteShape(canvas, shape, minimumStrokeWidth: 1.4 / scale);
     }
 
     for (final textBox in page.textBoxes) {
