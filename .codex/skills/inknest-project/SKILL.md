@@ -1,6 +1,6 @@
 ---
 name: inknest-project
-description: Project workflow for continuing the InkNest Notes Flutter app across many sessions. Use when Codex is asked to resume, plan, implement, verify, or mark roadmap tasks for this repository, including MVP milestones in docs/ROADMAP.md and post-MVP GoodNotes/Notability-style work in docs/POST_MVP_ROADMAP.md, while avoiding rereading the whole project.
+description: Project workflow for continuing the InkNest Notes Flutter app across many sessions. Use when Codex is asked to resume, plan, implement, verify, or mark roadmap tasks for this repository, including MVP milestones in docs/development/ROADMAP.md and post-MVP GoodNotes/Notability-style work in docs/development/POST_MVP_ROADMAP.md, while avoiding rereading the whole project.
 ---
 
 # InkNest Project
@@ -12,20 +12,21 @@ Treat the repository documents as the source of truth, not prior conversation.
 
 Start each substantial task by reading only:
 
-1. `docs/STATUS.md`
+1. `docs/development/STATUS.md`
 2. The active planning document:
-   - Read `docs/POST_MVP_ROADMAP.md` when `docs/STATUS.md` says the project is in post-MVP planning, polish, or a `Post-MVP` milestone.
-   - Read the relevant section of `docs/ROADMAP.md` for MVP milestones or if the user explicitly asks about paused sync/backup work.
+   - Read `docs/development/POST_MVP_ROADMAP.md` when `docs/development/STATUS.md` says the project is in post-MVP planning, polish, or a `Post-MVP` milestone.
+   - Read the relevant section of `docs/development/ROADMAP.md` for MVP milestones or if the user explicitly asks about paused sync/backup work.
 3. The files directly named by the current task
 
 Avoid scanning the whole repository unless the status file is missing, stale, or
 the current task crosses unknown boundaries.
 
-Treat `docs/STATUS.md` as the active pointer. Treat `docs/ROADMAP.md` as the
-source of truth for MVP milestones and paused Milestone 8 state. Treat
-`docs/POST_MVP_ROADMAP.md` as the source of truth for post-MVP feature work.
+Treat `docs/development/STATUS.md` as the active pointer. Treat
+`docs/development/ROADMAP.md` as the source of truth for MVP milestones and
+paused Milestone 8 state. Treat `docs/development/POST_MVP_ROADMAP.md` as the
+source of truth for post-MVP feature work.
 If documents disagree, use the active planning document for checklist state and
-update `docs/STATUS.md` after verifying the code.
+update `docs/development/STATUS.md` after verifying the code.
 
 Do not resume Milestone 8 sync and backup by default. It is paused unless the
 user explicitly asks to work on sync, backup, restore, conflicts, iCloud,
@@ -39,8 +40,8 @@ For each user request:
 2. Read only the smallest useful set of code files.
 3. Implement the requested task or the next roadmap task.
 4. Run focused validation, normally `flutter test` and `flutter analyze` after code changes.
-5. Mark completed active-plan items with `[x]` when they are checklist items. If the active post-MVP section uses plain bullets, either convert only the immediate task list to checkboxes before executing it or record concise progress in `docs/STATUS.md`.
-6. Update `docs/STATUS.md` with current milestone, next task, decisions, and verification.
+5. Mark completed active-plan items with `[x]` when they are checklist items. If the active post-MVP section uses plain bullets, either convert only the immediate task list to checkboxes before executing it or record concise progress in `docs/development/STATUS.md`.
+6. Update `docs/development/STATUS.md` with current milestone, next task, decisions, and verification.
 
 If validation cannot run, record the reason in the final response. Do not mark a
 roadmap task complete unless the implementation is present and at least a
@@ -62,7 +63,7 @@ reasonable check has been attempted.
 
 ## Status File Format
 
-Keep `docs/STATUS.md` short and easy to rewrite:
+Keep `docs/development/STATUS.md` short and easy to rewrite:
 
 ```markdown
 # InkNest Notes Status

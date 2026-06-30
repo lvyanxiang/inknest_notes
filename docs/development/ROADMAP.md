@@ -215,5 +215,5 @@ documents/
 ## Current Focus
 
 Milestone 8 is paused. Continue with the post-MVP improvement plan in
-`docs/POST_MVP_ROADMAP.md`, starting with editor usability and current MVP
+`docs/development/POST_MVP_ROADMAP.md`, starting with editor usability and current MVP
 polish before returning to sync and backup.

@@ -35,7 +35,7 @@ structured knowledge.
 For users without a stylus, InkNest should also offer a Smart Ink path:
 rough finger handwriting can be recognized as text, confirmed by the user, and
 re-rendered as neat handwriting-style editable text.
-The detailed plan lives in `docs/SMART_INK_PLAN.md`.
+The detailed plan lives in `docs/development/SMART_INK_PLAN.md`.
 
 ## New Features To Add
 
@@ -53,7 +53,7 @@ The detailed plan lives in `docs/SMART_INK_PLAN.md`.
 - Handwriting-style text rendering for typed or recognized text.
 - Smart Ink beautify flow: select rough handwriting, recognize it as text,
   confirm the result, then replace or insert a neat handwriting-style version
-  (`docs/SMART_INK_PLAN.md`).
+  (`docs/development/SMART_INK_PLAN.md`).
 - Image insertion from Photos or Files.
 - Shape tool for lines, arrows, rectangles, circles, and auto-shape cleanup.
 - Favorites toolbar for common pens, highlighters, and colors.
@@ -207,7 +207,7 @@ Goal: support mixed handwritten and typed notes.
 - [x] Add handwriting-style text rendering.
 - [x] Add Smart Ink beautify: lasso rough handwriting, recognize text, confirm, and
   replace with neat handwriting-style editable text. See
-  `docs/SMART_INK_PLAN.md`.
+  `docs/development/SMART_INK_PLAN.md`.
 - [x] Add image insertion.
 - [x] Add shape tool.
 - [x] Add favorites toolbar.

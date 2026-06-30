@@ -8,10 +8,13 @@
 
 ## Decisions
 
-- Use `docs/ROADMAP.md` as the main checklist for project execution.
+- Use `docs/development/ROADMAP.md` as the main checklist for project execution.
 - Use this file as the short resume point for future sessions.
 - Keep the first product direction iPadOS/iOS-first, handwriting-first, and paged-notebook based.
 - Use project skill `.codex/skills/inknest-project` to recover context without rereading the whole repo.
+- Maintain `docs/academic/GRADUATION_TASK_BOOK.md` and `docs/academic/OPENING_REPORT.md` with roadmap, scope, and technical-plan changes.
+- Follow `docs/academic/ACADEMIC_WRITING_REQUIREMENTS.md` before updating academic graduation documents.
+- Graduation topic is `基于 Flutter 与 Python 的跨平台数字笔记系统的设计与实现`; keep current Flutter frontend docs here and add Python project details later.
 - Keep the first app shell dependency-free; add state management and routing when notebook creation/navigation needs them.
 - Use an in-memory notebook repository until local persistence begins.
 - Keep first handwriting state in editor memory until local persistence begins.
@@ -22,8 +25,8 @@
 - Use the `pdf` package for PDF export, `image` for rendered PDF background encoding, and `file_picker.saveFile` for the first save/share action.
 - Exported annotated PDFs rasterize imported PDF backgrounds and overlay editable strokes as vector paths in the generated output.
 - Pause sync and backup until the editor, PDF, and library workflows are more polished.
-- Use `docs/POST_MVP_ROADMAP.md` for GoodNotes / Notability-style post-MVP planning.
-- Use `docs/SUBSCRIPTION_PLAN.md` as the product reference for Free, InkNest Cloud, and future Pro monetization.
+- Use `docs/development/POST_MVP_ROADMAP.md` for GoodNotes / Notability-style post-MVP planning.
+- Use `docs/development/SUBSCRIPTION_PLAN.md` as the product reference for Free, InkNest Cloud, and future Pro monetization.
 - Long-term product direction: iPad handwriting/PDF study, phone capture/review, and Web Yuque-like knowledge base.
 - Use a custom two-finger zoom/pan viewport instead of `InteractiveViewer` so single-pointer drawing remains reliable.
 - Keep finger drawing available by default; use an explicit Finger pan mode to make touch drag the page while stylus/mouse input writes.
@@ -39,7 +42,7 @@
 - Store user page bookmarks on `Notebook.bookmarkedPageIds` and persist them through the repository layer.
 - Let PDF import continue when outline loading fails; the Outline tab simply starts empty.
 - Track Smart Ink in the existing post-MVP roadmap rather than a separate plan for now: rough finger handwriting -> recognition -> user confirmation -> neat handwriting-style editable text.
-- Use `docs/SMART_INK_PLAN.md` as the dedicated Smart Ink planning document while keeping implementation after the current PDF workflow and Rich Notes prerequisites.
+- Use `docs/development/SMART_INK_PLAN.md` as the dedicated Smart Ink planning document while keeping implementation after the current PDF workflow and Rich Notes prerequisites.
 - Export PDF opens a scope dialog before the save flow and can export the full notebook, current page, or a contiguous page range.
 - PDF export caches rendered PDF backgrounds during a single export, reuses opened PDF documents per file path, and targets 2x background rendering up to a 2400px longest edge.
 - Editor PDF background views reuse document references by file path and isolate background repainting with `RepaintBoundary`.
@@ -97,7 +100,7 @@
 - `flutter analyze` passed after PDF thumbnails, outlines, and bookmarks.
 - `git diff --check` passed after PDF thumbnails, outlines, and bookmarks.
 - `git diff --check` passed after adding Smart Ink to the roadmap.
-- `git diff --check` passed after adding `docs/SMART_INK_PLAN.md`.
+- `git diff --check` passed after adding `docs/development/SMART_INK_PLAN.md`.
 - `dart format lib test` passed after page-range export.
 - `flutter test` passed after page-range export.
 - `flutter analyze` passed after page-range export.
@@ -134,6 +137,11 @@
 - `flutter test` passed after favorites toolbar.
 - `flutter analyze` passed after favorites toolbar.
 - `git diff --check` passed after favorites toolbar.
+- `git diff --check` passed after adding graduation task book and opening report drafts.
+- `git diff --check` passed after retitling graduation docs for Flutter and Python.
+- `git diff --check` passed after improving graduation task book and opening report quality.
+- `git diff --check` passed after reorganizing docs into development, academic, and learning directories.
+- `git diff --check` passed after extracting academic writing requirements.
 
 ## Notes
 
@@ -143,7 +151,7 @@
 - Library can create `Notebook 1` and navigate to an editor placeholder.
 - Editor has a fixed white page canvas, captures pointer strokes, renders with `CustomPainter`, and supports undo/redo.
 - Editor toolbar supports pen, highlighter, eraser, color choices, and width choices.
-- File storage layout is documented in `docs/STORAGE.md`.
+- File storage layout is documented in `docs/development/STORAGE.md`.
 - Editor can add pages, switch pages, and persist each page independently.
 - Library can import a PDF, copy it into notebook assets, create one note page per PDF page, and render the PDF page behind editable strokes.
 - Editor can export the current notebook as a PDF, including blank pages, imported PDF page backgrounds, and handwriting strokes.
@@ -165,7 +173,12 @@
 - Editor toolbar includes Insert image; selected images are copied into notebook assets, placed on the current page, movable, resizable, deletable, persisted, shown as thumbnail placeholders, and included in PDF export.
 - Editor toolbar includes a Shape tool with a shape-type menu for line, arrow, rectangle, and ellipse; created shapes persist, appear in thumbnails, and export to PDF.
 - Editor canvas includes a floating favorites toolbar with common black/teal/red pen and yellow highlighter presets.
-- Smart Ink planning lives in `docs/SMART_INK_PLAN.md`.
-- Post-MVP feature gaps and optimization areas are documented in `docs/POST_MVP_ROADMAP.md`.
-- Subscription packaging, platform behavior, and local/cloud merge rules are documented in `docs/SUBSCRIPTION_PLAN.md`.
+- Smart Ink planning lives in `docs/development/SMART_INK_PLAN.md`.
+- Post-MVP feature gaps and optimization areas are documented in `docs/development/POST_MVP_ROADMAP.md`.
+- Subscription packaging, platform behavior, and local/cloud merge rules are documented in `docs/development/SUBSCRIPTION_PLAN.md`.
 - Web knowledge-base, mobile companion, collaboration, and AI directions are captured as later post-MVP milestones.
+- Graduation task book and opening report Markdown drafts live in `docs/academic/GRADUATION_TASK_BOOK.md` and `docs/academic/OPENING_REPORT.md`; keep both synchronized with future project-plan changes.
+- Python project details are intentionally marked as future TODOs in the graduation docs until the companion Python project is added.
+- Graduation docs now include clearer scope boundaries, acceptance indicators, technical route, feasibility analysis, expected deliverables, and Python extension placeholders.
+- Docs are organized by purpose: `docs/development/` for project execution, `docs/academic/` for graduation materials, and `docs/learning/flutter/` for Flutter study notes.
+- Academic writing requirements extracted from the task book and opening report guidance PDFs live in `docs/academic/ACADEMIC_WRITING_REQUIREMENTS.md`.
