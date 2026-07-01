@@ -6,6 +6,8 @@ Graduation-related materials live here.
 - `OPENING_REPORT.md`: opening report maintenance draft.
 - `ACADEMIC_WRITING_REQUIREMENTS.md`: extracted writing requirements and
   maintenance checklist from the task book and opening report guidance PDFs.
+- `assets/2026_summer_graduation_schedule.png`: 2026 届暑期（成教）毕设
+  进程规划 image used by the task book and opening report progress plans.
 
 Before updating the task book or opening report, check
 `ACADEMIC_WRITING_REQUIREMENTS.md`. Keep these files synchronized with

@@ -1,0 +1,4 @@
+interface:
+  display_name: "InkNest Academic Docs"
+  short_description: "Maintain graduation docs and references"
+  default_prompt: "Use $inknest-academic-docs to update the graduation task book and opening report according to the writing requirements."

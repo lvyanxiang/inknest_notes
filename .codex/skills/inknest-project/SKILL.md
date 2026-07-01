@@ -8,6 +8,12 @@ description: Project workflow for continuing the InkNest Notes Flutter app acros
 Use this skill to continue the InkNest Notes project with minimal context reload.
 Treat the repository documents as the source of truth, not prior conversation.
 
+This is a development-only skill. Do not update
+`docs/academic/GRADUATION_TASK_BOOK.md`,
+`docs/academic/OPENING_REPORT.md`, or academic reference lists as a routine
+side effect of code or roadmap work. Use `$inknest-academic-docs` only when the
+user explicitly asks to maintain graduation academic documents.
+
 ## Context Recovery
 
 Start each substantial task by reading only:
@@ -20,6 +26,9 @@ Start each substantial task by reading only:
 
 Avoid scanning the whole repository unless the status file is missing, stale, or
 the current task crosses unknown boundaries.
+
+Ignore `docs/academic/` during normal development context recovery unless the
+user's current request is specifically about academic documents.
 
 Treat `docs/development/STATUS.md` as the active pointer. Treat
 `docs/development/ROADMAP.md` as the source of truth for MVP milestones and

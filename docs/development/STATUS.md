@@ -12,8 +12,9 @@
 - Use this file as the short resume point for future sessions.
 - Keep the first product direction iPadOS/iOS-first, handwriting-first, and paged-notebook based.
 - Use project skill `.codex/skills/inknest-project` to recover context without rereading the whole repo.
-- Maintain `docs/academic/GRADUATION_TASK_BOOK.md` and `docs/academic/OPENING_REPORT.md` with roadmap, scope, and technical-plan changes.
-- Follow `docs/academic/ACADEMIC_WRITING_REQUIREMENTS.md` before updating academic graduation documents.
+- Keep normal `$inknest-project` work focused on code, roadmap, and product implementation; do not automatically update task book or opening report during development tasks.
+- Use `$inknest-academic-docs` for `docs/academic/GRADUATION_TASK_BOOK.md`, `docs/academic/OPENING_REPORT.md`, academic writing requirements, graduation schedule, and formal reference maintenance.
+- Follow `docs/academic/ACADEMIC_WRITING_REQUIREMENTS.md` before updating academic graduation documents through `$inknest-academic-docs`.
 - Graduation topic is `基于 Flutter 与 Python 的跨平台数字笔记系统的设计与实现`; keep current Flutter frontend docs here and add Python project details later.
 - Keep the first app shell dependency-free; add state management and routing when notebook creation/navigation needs them.
 - Use an in-memory notebook repository until local persistence begins.
@@ -142,6 +143,16 @@
 - `git diff --check` passed after improving graduation task book and opening report quality.
 - `git diff --check` passed after reorganizing docs into development, academic, and learning directories.
 - `git diff --check` passed after extracting academic writing requirements.
+- `git diff --check` passed after optimizing the graduation task book and opening report for supervisor review.
+- `git diff --check` passed after syncing academic progress plans to the 2026 summer adult-education graduation schedule.
+- `git diff --check` passed after rechecking the task book against the downloaded task-book writing notes PDF.
+- `git diff --check` passed after rechecking the opening report against the downloaded opening-report writing notes PDF.
+- `git diff --check` passed after formalizing Python module wording in the graduation task book and opening report.
+- `git diff --check` passed after removing submit-inappropriate maintenance wording from the graduation task book and opening report.
+- `git diff --check` passed after replacing graduation document references with journal-title sources verified through the school library journal navigation page.
+- `git diff --check` passed after re-screening graduation document references against school library journal coverage years.
+- `git diff --check` passed after splitting academic document maintenance into `$inknest-academic-docs`.
+- `git diff --check` passed after replacing graduation references with 2022-2025 journal papers and adding one-to-one body citations.
 
 ## Notes
 
@@ -177,8 +188,17 @@
 - Post-MVP feature gaps and optimization areas are documented in `docs/development/POST_MVP_ROADMAP.md`.
 - Subscription packaging, platform behavior, and local/cloud merge rules are documented in `docs/development/SUBSCRIPTION_PLAN.md`.
 - Web knowledge-base, mobile companion, collaboration, and AI directions are captured as later post-MVP milestones.
-- Graduation task book and opening report Markdown drafts live in `docs/academic/GRADUATION_TASK_BOOK.md` and `docs/academic/OPENING_REPORT.md`; keep both synchronized with future project-plan changes.
-- Python project details are intentionally marked as future TODOs in the graduation docs until the companion Python project is added.
+- Graduation task book and opening report Markdown drafts live in `docs/academic/GRADUATION_TASK_BOOK.md` and `docs/academic/OPENING_REPORT.md`; maintain them with `$inknest-academic-docs`, not as an automatic side effect of development tasks.
+- Python details in the graduation docs are described as formal module design, interface planning, and extension scope; implementation-specific project details should be added when available.
 - Graduation docs now include clearer scope boundaries, acceptance indicators, technical route, feasibility analysis, expected deliverables, and Python extension placeholders.
 - Docs are organized by purpose: `docs/development/` for project execution, `docs/academic/` for graduation materials, and `docs/learning/flutter/` for Flutter study notes.
 - Academic writing requirements extracted from the task book and opening report guidance PDFs live in `docs/academic/ACADEMIC_WRITING_REQUIREMENTS.md`.
+- Graduation task book and opening report now separate required Flutter deliverables, conditional audio/search enhancements, and Python extension design to reduce review-scope risk.
+- 2026 summer adult-education graduation schedule image lives in `docs/academic/assets/2026_summer_graduation_schedule.png` and is embedded in both academic progress plans.
+- Task book writing requirements in `docs/academic/ACADEMIC_WRITING_REQUIREMENTS.md` were rechecked against `/Users/lvyanxiang/Downloads/任务书撰写注意点.pdf`.
+- Opening report writing requirements in `docs/academic/ACADEMIC_WRITING_REQUIREMENTS.md` were rechecked against `/Users/lvyanxiang/Downloads/开题报告撰写注意点.pdf`.
+- Graduation task book and opening report should use formal wording such as Python module design, interface planning, and extension design, while avoiding internal phrases like "project not yet supplemented" or "retain topic rationality" in the submit-ready text.
+- Formal graduation references should prioritize academic journal papers whose journal titles can be found through the school library journal navigation page; arXiv and official framework docs are auxiliary materials, not main formal references.
+- Formal graduation references now require both journal-title availability and citation-year coverage in the school library journal navigation holdings; entries outside the covered years should be replaced or kept only as backup materials.
+- Graduation references were refreshed on 2026-07-01: the task book uses 6 papers from 2024-2025, the opening report uses 10 papers from 2022-2025, and every listed paper has a corresponding body citation.
+- Reference verification records, DOI values, school-library detail identifiers, and holdings coverage years are maintained in `docs/academic/ACADEMIC_WRITING_REQUIREMENTS.md`.
