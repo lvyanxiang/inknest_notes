@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as image;
 import 'package:inknest_notes/export/notebook_pdf_exporter.dart';
+import 'package:inknest_notes/features/editor/audio/notebook_audio_player.dart';
 import 'package:inknest_notes/features/editor/audio/notebook_audio_recorder.dart';
 import 'package:inknest_notes/features/editor/canvas/drawing_canvas.dart';
 import 'package:inknest_notes/features/editor/canvas/pdf_page_background.dart';
@@ -25,6 +26,7 @@ import 'package:inknest_notes/models/note_text_box.dart';
 import 'package:inknest_notes/models/notebook.dart';
 import 'package:inknest_notes/models/pdf_outline_entry.dart';
 import 'package:inknest_notes/models/stroke.dart';
+import 'package:inknest_notes/models/stroke_audio_timeline.dart';
 import 'package:inknest_notes/models/stroke_geometry.dart';
 import 'package:inknest_notes/models/stroke_point.dart';
 import 'package:inknest_notes/models/tool.dart';
@@ -35,11 +37,13 @@ class EditorScreen extends StatefulWidget {
     super.key,
     required this.notebook,
     required this.notebookRepository,
+    this.audioPlayer,
     this.audioRecorder,
   });
 
   final Notebook notebook;
   final NotebookRepository notebookRepository;
+  final NotebookAudioPlayer? audioPlayer;
   final NotebookAudioRecorder? audioRecorder;
 
   @override
@@ -51,15 +55,25 @@ class _EditorScreenState extends State<EditorScreen> {
   final Map<String, NotePage> _pagesById = {};
   final Stopwatch _audioStopwatch = Stopwatch();
   DrawingTool _tool = const DrawingTool();
-  late final NotebookAudioRecorder _audioRecorder;
+  NotebookAudioPlayer? _audioPlayer;
+  NotebookAudioRecorder? _audioRecorder;
   late Notebook _notebook;
   late String _currentPageId;
   Timer? _audioTimer;
+  StreamSubscription<void>? _audioCompletionSubscription;
+  StreamSubscription<Duration>? _audioDurationSubscription;
+  StreamSubscription<bool>? _audioPlayingSubscription;
+  StreamSubscription<Duration>? _audioPositionSubscription;
+  NoteAudioRecording? _activePlaybackRecording;
   NoteAudioRecording? _pendingAudioRecording;
   Duration _audioElapsed = Duration.zero;
+  Duration _audioPlaybackDuration = Duration.zero;
+  Duration _audioPlaybackPosition = Duration.zero;
   bool _isAudioBusy = false;
   bool _isAudioPaused = false;
+  bool _isAudioPlaying = false;
   bool _isAudioRecording = false;
+  bool _isPlaybackBusy = false;
   bool _isExporting = false;
   bool _fingerPanEnabled = false;
   String? _activeTextBoxId;
@@ -69,7 +83,7 @@ class _EditorScreenState extends State<EditorScreen> {
   @override
   void initState() {
     super.initState();
-    _audioRecorder = widget.audioRecorder ?? DeviceNotebookAudioRecorder();
+    _audioRecorder = widget.audioRecorder;
     _notebook = widget.notebook;
     _currentPageId = _notebook.pageIds.first;
     _loadPage();
@@ -79,15 +93,29 @@ class _EditorScreenState extends State<EditorScreen> {
   @override
   void dispose() {
     _audioTimer?.cancel();
+    unawaited(_audioCompletionSubscription?.cancel());
+    unawaited(_audioDurationSubscription?.cancel());
+    unawaited(_audioPlayingSubscription?.cancel());
+    unawaited(_audioPositionSubscription?.cancel());
+    unawaited(_audioPlayer?.dispose());
     unawaited(_disposeAudioRecorder());
     super.dispose();
   }
 
   Future<void> _disposeAudioRecorder() async {
-    if (_isAudioRecording) {
-      await _audioRecorder.cancel();
+    final audioRecorder = _audioRecorder;
+    if (audioRecorder == null) {
+      return;
     }
-    await _audioRecorder.dispose();
+
+    if (_isAudioRecording) {
+      await audioRecorder.cancel();
+    }
+    await audioRecorder.dispose();
+  }
+
+  NotebookAudioRecorder get _effectiveAudioRecorder {
+    return _audioRecorder ??= DeviceNotebookAudioRecorder();
   }
 
   Future<void> _loadPage() async {
@@ -664,6 +692,10 @@ class _EditorScreenState extends State<EditorScreen> {
         return _AudioRecordingsSheet(
           recordings: _notebook.audioRecordings,
           isRecording: _isAudioRecording,
+          onPlayRecording: (recording) {
+            Navigator.of(sheetContext).pop();
+            unawaited(_playAudioRecording(recording));
+          },
           onStartRecording: () {
             Navigator.of(sheetContext).pop();
             unawaited(_startAudioRecording());
@@ -677,6 +709,205 @@ class _EditorScreenState extends State<EditorScreen> {
     );
   }
 
+  NotebookAudioPlayer _ensureAudioPlayer() {
+    final existingPlayer = _audioPlayer;
+    if (existingPlayer != null) {
+      return existingPlayer;
+    }
+
+    final player = widget.audioPlayer ?? DeviceNotebookAudioPlayer();
+    _audioPlayer = player;
+    _audioPositionSubscription = player.positionChanges.listen((position) {
+      if (!mounted || _activePlaybackRecording == null) {
+        return;
+      }
+
+      setState(() {
+        _audioPlaybackPosition = _clampAudioPosition(
+          position,
+          _audioPlaybackDuration,
+        );
+      });
+    });
+    _audioDurationSubscription = player.durationChanges.listen((duration) {
+      if (!mounted || _activePlaybackRecording == null) {
+        return;
+      }
+
+      setState(() {
+        _audioPlaybackDuration = duration;
+        _audioPlaybackPosition = _clampAudioPosition(
+          _audioPlaybackPosition,
+          duration,
+        );
+      });
+    });
+    _audioPlayingSubscription = player.playingChanges.listen((isPlaying) {
+      if (!mounted || _activePlaybackRecording == null) {
+        return;
+      }
+
+      setState(() {
+        _isAudioPlaying = isPlaying;
+      });
+    });
+    _audioCompletionSubscription = player.completions.listen((_) {
+      if (!mounted || _activePlaybackRecording == null) {
+        return;
+      }
+
+      setState(() {
+        _audioPlaybackPosition = _audioPlaybackDuration;
+        _isAudioPlaying = false;
+      });
+    });
+    return player;
+  }
+
+  Future<void> _playAudioRecording(NoteAudioRecording recording) async {
+    if (_isAudioRecording || _isPlaybackBusy) {
+      return;
+    }
+
+    if (_activePlaybackRecording?.id == recording.id) {
+      await _toggleAudioPlayback();
+      return;
+    }
+
+    setState(() {
+      _activePlaybackRecording = recording;
+      _audioPlaybackDuration = recording.duration;
+      _audioPlaybackPosition = Duration.zero;
+      _isAudioPlaying = false;
+      _isPlaybackBusy = true;
+    });
+
+    try {
+      await _ensureAudioPlayer().playFile(recording.filePath);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isAudioPlaying = true;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _activePlaybackRecording = null;
+        _audioPlaybackDuration = Duration.zero;
+        _audioPlaybackPosition = Duration.zero;
+        _isAudioPlaying = false;
+      });
+      _showAudioMessage('Could not play recording: $error');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isPlaybackBusy = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _toggleAudioPlayback() async {
+    final player = _audioPlayer;
+    if (player == null || _activePlaybackRecording == null || _isPlaybackBusy) {
+      return;
+    }
+
+    setState(() {
+      _isPlaybackBusy = true;
+    });
+    try {
+      if (_isAudioPlaying) {
+        await player.pause();
+      } else {
+        if (_audioPlaybackDuration > Duration.zero &&
+            _audioPlaybackPosition >= _audioPlaybackDuration) {
+          await player.seek(Duration.zero);
+          if (mounted) {
+            setState(() {
+              _audioPlaybackPosition = Duration.zero;
+            });
+          }
+        }
+        await player.resume();
+      }
+    } catch (error) {
+      if (mounted) {
+        _showAudioMessage('Could not control playback: $error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isPlaybackBusy = false;
+        });
+      }
+    }
+  }
+
+  void _previewAudioSeek(Duration position) {
+    if (_activePlaybackRecording == null) {
+      return;
+    }
+
+    setState(() {
+      _audioPlaybackPosition = _clampAudioPosition(
+        position,
+        _audioPlaybackDuration,
+      );
+    });
+  }
+
+  Future<void> _seekAudioPlayback(Duration position) async {
+    final player = _audioPlayer;
+    if (player == null || _activePlaybackRecording == null) {
+      return;
+    }
+
+    final clampedPosition = _clampAudioPosition(
+      position,
+      _audioPlaybackDuration,
+    );
+    try {
+      await player.seek(clampedPosition);
+      if (mounted) {
+        setState(() {
+          _audioPlaybackPosition = clampedPosition;
+        });
+      }
+    } catch (error) {
+      if (mounted) {
+        _showAudioMessage('Could not seek recording: $error');
+      }
+    }
+  }
+
+  Future<void> _closeAudioPlayback() async {
+    final player = _audioPlayer;
+    if (player != null) {
+      try {
+        await player.stop();
+      } catch (error) {
+        if (mounted) {
+          _showAudioMessage('Could not stop playback: $error');
+        }
+      }
+    }
+
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _activePlaybackRecording = null;
+      _audioPlaybackDuration = Duration.zero;
+      _audioPlaybackPosition = Duration.zero;
+      _isAudioPlaying = false;
+      _isPlaybackBusy = false;
+    });
+  }
+
   Future<void> _startAudioRecording() async {
     if (_isAudioBusy || _isAudioRecording) {
       return;
@@ -688,7 +919,9 @@ class _EditorScreenState extends State<EditorScreen> {
 
     NoteAudioRecording? preparedRecording;
     try {
-      final hasPermission = await _audioRecorder.requestPermission();
+      await _closeAudioPlayback();
+      final audioRecorder = _effectiveAudioRecorder;
+      final hasPermission = await audioRecorder.requestPermission();
       if (!hasPermission) {
         if (mounted) {
           _showAudioMessage(
@@ -701,10 +934,10 @@ class _EditorScreenState extends State<EditorScreen> {
       preparedRecording = await widget.notebookRepository.prepareAudioRecording(
         _notebook,
       );
-      await _audioRecorder.start(preparedRecording.filePath);
+      await audioRecorder.start(preparedRecording.filePath);
 
       if (!mounted) {
-        await _audioRecorder.cancel();
+        await audioRecorder.cancel();
         return;
       }
 
@@ -719,7 +952,7 @@ class _EditorScreenState extends State<EditorScreen> {
         _isAudioRecording = true;
       });
     } catch (error) {
-      await _audioRecorder.cancel();
+      await _audioRecorder?.cancel();
       if (mounted) {
         _showAudioMessage('Could not start recording: $error');
       }
@@ -753,7 +986,7 @@ class _EditorScreenState extends State<EditorScreen> {
       _isAudioBusy = true;
     });
     try {
-      await _audioRecorder.pause();
+      await _effectiveAudioRecorder.pause();
       _audioStopwatch.stop();
       _audioTimer?.cancel();
       if (mounted) {
@@ -784,7 +1017,7 @@ class _EditorScreenState extends State<EditorScreen> {
       _isAudioBusy = true;
     });
     try {
-      await _audioRecorder.resume();
+      await _effectiveAudioRecorder.resume();
       _audioStopwatch.start();
       _startAudioTimer();
       if (mounted) {
@@ -819,7 +1052,7 @@ class _EditorScreenState extends State<EditorScreen> {
     final duration = _audioStopwatch.elapsed;
 
     try {
-      final recordedPath = await _audioRecorder.stop();
+      final recordedPath = await _effectiveAudioRecorder.stop();
       if (recordedPath == null) {
         throw StateError('The recorder did not return a saved audio file.');
       }
@@ -841,7 +1074,7 @@ class _EditorScreenState extends State<EditorScreen> {
       _resetAudioSession();
       _showAudioMessage('${savedRecording.title} saved.');
     } catch (error) {
-      await _audioRecorder.cancel();
+      await _audioRecorder?.cancel();
       if (!mounted) {
         return;
       }
@@ -859,7 +1092,7 @@ class _EditorScreenState extends State<EditorScreen> {
       _isAudioBusy = true;
     });
     try {
-      await _audioRecorder.cancel();
+      await _effectiveAudioRecorder.cancel();
       if (!mounted) {
         return;
       }
@@ -915,6 +1148,10 @@ class _EditorScreenState extends State<EditorScreen> {
     );
     if (shouldDelete != true || !mounted) {
       return;
+    }
+
+    if (_activePlaybackRecording?.id == recording.id) {
+      await _closeAudioPlayback();
     }
 
     final updatedNotebook = await widget.notebookRepository
@@ -1311,6 +1548,24 @@ class _EditorScreenState extends State<EditorScreen> {
               onResume: () => unawaited(_resumeAudioRecording()),
               onStop: () => unawaited(_stopAudioRecording()),
               onCancel: () => unawaited(_cancelAudioRecording()),
+            )
+          else if (_activePlaybackRecording case final recording?)
+            _AudioPlaybackBanner(
+              recording: recording,
+              position: _audioPlaybackPosition,
+              duration: _audioPlaybackDuration,
+              isPlaying: _isAudioPlaying,
+              isBusy: _isPlaybackBusy,
+              linkedStrokeCount: page == null
+                  ? 0
+                  : StrokeAudioTimeline.linkedStrokeCount(
+                      strokes: page.strokes,
+                      recording: recording,
+                    ),
+              onPlayPause: () => unawaited(_toggleAudioPlayback()),
+              onSeekPreview: _previewAudioSeek,
+              onSeek: (position) => unawaited(_seekAudioPlayback(position)),
+              onClose: () => unawaited(_closeAudioPlayback()),
             ),
           Expanded(
             child: page == null
@@ -1390,6 +1645,9 @@ class _EditorScreenState extends State<EditorScreen> {
               page: page,
               tool: _tool,
               fingerPanEnabled: _fingerPanEnabled,
+              playbackRecording: _activePlaybackRecording,
+              playbackPosition: _audioPlaybackPosition,
+              playbackHighlightColor: Theme.of(context).colorScheme.primary,
               onStrokeComplete: _addStroke,
               onErase: _eraseAt,
             ),
@@ -1499,16 +1757,132 @@ class _AudioRecordingBanner extends StatelessWidget {
   }
 }
 
+class _AudioPlaybackBanner extends StatelessWidget {
+  const _AudioPlaybackBanner({
+    required this.recording,
+    required this.position,
+    required this.duration,
+    required this.isPlaying,
+    required this.isBusy,
+    required this.linkedStrokeCount,
+    required this.onPlayPause,
+    required this.onSeekPreview,
+    required this.onSeek,
+    required this.onClose,
+  });
+
+  final NoteAudioRecording recording;
+  final Duration position;
+  final Duration duration;
+  final bool isPlaying;
+  final bool isBusy;
+  final int linkedStrokeCount;
+  final VoidCallback onPlayPause;
+  final ValueChanged<Duration> onSeekPreview;
+  final ValueChanged<Duration> onSeek;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final durationMilliseconds = duration.inMilliseconds;
+    final sliderMaximum = math.max(durationMilliseconds, 1).toDouble();
+    final sliderValue = math
+        .min(position.inMilliseconds, sliderMaximum)
+        .toDouble();
+    final linkedStrokeLabel = linkedStrokeCount == 1
+        ? '1 linked stroke on this page'
+        : '$linkedStrokeCount linked strokes on this page';
+
+    return Material(
+      key: const ValueKey('audio-playback-banner'),
+      color: colorScheme.secondaryContainer,
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
+          child: Row(
+            children: [
+              IconButton.filledTonal(
+                onPressed: isBusy ? null : onPlayPause,
+                tooltip: isPlaying ? 'Pause playback' : 'Resume playback',
+                icon: isBusy
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(isPlaying ? Icons.pause : Icons.play_arrow),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            recording.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.labelLarge,
+                          ),
+                        ),
+                        Text(
+                          '${_formatAudioDuration(position)} / '
+                          '${_formatAudioDuration(duration)}',
+                          key: const ValueKey('audio-playback-position'),
+                          style: Theme.of(context).textTheme.labelMedium,
+                        ),
+                      ],
+                    ),
+                    Slider(
+                      key: const ValueKey('audio-playback-slider'),
+                      min: 0,
+                      max: sliderMaximum,
+                      value: sliderValue,
+                      onChanged: durationMilliseconds <= 0 || isBusy
+                          ? null
+                          : (value) => onSeekPreview(
+                              Duration(milliseconds: value.round()),
+                            ),
+                      onChangeEnd: durationMilliseconds <= 0 || isBusy
+                          ? null
+                          : (value) =>
+                                onSeek(Duration(milliseconds: value.round())),
+                    ),
+                    Text(
+                      linkedStrokeLabel,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                onPressed: isBusy ? null : onClose,
+                tooltip: 'Close playback',
+                icon: const Icon(Icons.close),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _AudioRecordingsSheet extends StatelessWidget {
   const _AudioRecordingsSheet({
     required this.recordings,
     required this.isRecording,
+    required this.onPlayRecording,
     required this.onStartRecording,
     required this.onDeleteRecording,
   });
 
   final List<NoteAudioRecording> recordings;
   final bool isRecording;
+  final ValueChanged<NoteAudioRecording> onPlayRecording;
   final VoidCallback onStartRecording;
   final ValueChanged<NoteAudioRecording> onDeleteRecording;
 
@@ -1544,7 +1918,10 @@ class _AudioRecordingsSheet extends StatelessWidget {
                     final recording = recordings[index];
                     return ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.graphic_eq),
+                      onTap: isRecording
+                          ? null
+                          : () => onPlayRecording(recording),
+                      leading: const Icon(Icons.play_circle_outline),
                       title: Text(recording.title),
                       subtitle: Text(
                         '${_formatAudioDuration(recording.duration)} · '
@@ -1574,6 +1951,16 @@ class _AudioRecordingsSheet extends StatelessWidget {
       ),
     );
   }
+}
+
+Duration _clampAudioPosition(Duration position, Duration duration) {
+  if (position < Duration.zero) {
+    return Duration.zero;
+  }
+  if (duration > Duration.zero && position > duration) {
+    return duration;
+  }
+  return position;
 }
 
 String _formatAudioDuration(Duration duration) {

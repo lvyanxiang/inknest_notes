@@ -3,8 +3,8 @@
 ## Current
 
 - Milestone: Post-MVP 5 - Audio And Search
-- Next task: Link playback timeline with strokes.
-- Last completed: Added notebook audio recording.
+- Next task: Add PDF text search.
+- Last completed: Linked audio playback timeline with strokes.
 
 ## Decisions
 
@@ -63,14 +63,16 @@
 - Keep future AI integrations provider-independent: run recognition on-device where practical, route cloud models through a Python AI gateway, preserve original content, and require sources or user confirmation for generated results.
 - Evaluate MyScript iink handwriting generation for personalized handwriting beautification before committing to a custom stroke-generation model.
 - Keep the current library-first startup during active development, but evolve the long-term home into a capability-first launcher: choosing a task such as live transcription creates a standard notebook and opens the matching workspace.
-- Store notebook audio as AAC/M4A files under notebook-relative `assets/audio/` paths, with recording metadata on `Notebook`; keep playback and stroke timeline linking as the next task.
+- Store notebook audio as AAC/M4A files under notebook-relative `assets/audio/` paths, with recording metadata on `Notebook`; use existing stroke timestamps for backward-compatible playback linking without a page-data migration.
+- Keep native audio recorder and player objects lazy so opening an editor does not initialize platform channels before the user starts recording or playback.
 
 ## Verification
 
-- `dart format lib test` passed.
-- `flutter test` passed.
+- Targeted Dart formatting passed for the audio playback implementation and tests.
+- Focused audio timeline and playback widget tests passed.
+- Full `flutter test` passed with 39 tests.
 - `flutter analyze` passed.
-- `git diff --check` passed after the post-MVP documentation update.
+- `git diff --check` passed after the audio timeline documentation update.
 - `dart format lib test` passed after editor zoom/pan.
 - `flutter test` passed after editor zoom/pan.
 - `flutter analyze` passed after editor zoom/pan.
@@ -162,6 +164,9 @@
 - `dart format lib test` passed after notebook audio recording.
 - `flutter test` passed after notebook audio recording.
 - `flutter analyze` passed after notebook audio recording.
+- Focused stroke-audio timeline and recording playback widget tests passed.
+- Full `flutter test` passed with 39 tests after linking playback to strokes.
+- `flutter analyze` passed after linking playback to strokes.
 
 ## Notes
 
@@ -193,7 +198,7 @@
 - Editor toolbar includes Insert image; selected images are copied into notebook assets, placed on the current page, movable, resizable, deletable, persisted, shown as thumbnail placeholders, and included in PDF export.
 - Editor toolbar includes a Shape tool with a shape-type menu for line, arrow, rectangle, and ellipse; created shapes persist, appear in thumbnails, and export to PDF.
 - Editor canvas includes a floating favorites toolbar with common black/teal/red pen and yellow highlighter presets.
-- Editor can record notebook audio, pause and resume an active recording, stop and persist it, discard it, list saved recordings, and delete recordings; microphone permissions are configured for Android, iOS, and macOS.
+- Editor can record notebook audio, pause and resume an active recording, stop and persist it, discard it, list saved recordings, play or seek recordings, and delete recordings; playback fades upcoming linked strokes and highlights the current stroke, and microphone permissions are configured for Android, iOS, and macOS.
 - Smart Ink planning lives in `docs/development/SMART_INK_PLAN.md`.
 - Post-MVP feature gaps and optimization areas are documented in `docs/development/POST_MVP_ROADMAP.md`.
 - Subscription packaging, platform behavior, and local/cloud merge rules are documented in `docs/development/SUBSCRIPTION_PLAN.md`.

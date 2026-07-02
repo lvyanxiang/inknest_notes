@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:ui' show PointerDeviceKind;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:inknest_notes/app/app.dart';
+import 'package:inknest_notes/features/editor/audio/notebook_audio_player.dart';
 import 'package:inknest_notes/features/editor/audio/notebook_audio_recorder.dart';
 import 'package:inknest_notes/features/editor/canvas/drawing_canvas.dart';
 import 'package:inknest_notes/features/editor/editor_screen.dart';
@@ -48,6 +50,7 @@ void main() {
   ) async {
     final repository = InMemoryNotebookRepository();
     final notebook = await repository.createNotebook(title: 'Lecture');
+    final audioPlayer = _FakeNotebookAudioPlayer();
     final audioRecorder = _FakeNotebookAudioRecorder();
 
     await tester.pumpWidget(
@@ -55,6 +58,7 @@ void main() {
         home: EditorScreen(
           notebook: notebook,
           notebookRepository: repository,
+          audioPlayer: audioPlayer,
           audioRecorder: audioRecorder,
         ),
       ),
@@ -98,6 +102,25 @@ void main() {
     await tester.tap(find.byTooltip('Audio recordings'));
     await tester.pumpAndSettle();
     expect(find.text('Recording 1'), findsOneWidget);
+
+    await tester.tap(find.text('Recording 1'));
+    await tester.pumpAndSettle();
+
+    expect(
+      audioPlayer.playedPath,
+      savedNotebook.audioRecordings.single.filePath,
+    );
+    expect(find.byKey(const ValueKey('audio-playback-banner')), findsOneWidget);
+    expect(find.text('0 linked strokes on this page'), findsOneWidget);
+
+    audioPlayer.durationController.add(const Duration(seconds: 10));
+    audioPlayer.positionController.add(const Duration(seconds: 2));
+    await tester.pumpAndSettle();
+    expect(find.text('00:02 / 00:10'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Pause playback'));
+    await tester.pumpAndSettle();
+    expect(audioPlayer.pauseCount, 1);
   });
 
   testWidgets('adds edits persists and deletes editor text boxes', (
@@ -726,4 +749,52 @@ class _FakeNotebookAudioRecorder implements NotebookAudioRecorder {
     stopCount += 1;
     return startedPath;
   }
+}
+
+class _FakeNotebookAudioPlayer implements NotebookAudioPlayer {
+  final StreamController<void> completionController =
+      StreamController<void>.broadcast();
+  final StreamController<Duration> durationController =
+      StreamController<Duration>.broadcast();
+  final StreamController<bool> playingController =
+      StreamController<bool>.broadcast();
+  final StreamController<Duration> positionController =
+      StreamController<Duration>.broadcast();
+
+  String? playedPath;
+  int pauseCount = 0;
+
+  @override
+  Stream<void> get completions => completionController.stream;
+
+  @override
+  Stream<Duration> get durationChanges => durationController.stream;
+
+  @override
+  Stream<bool> get playingChanges => playingController.stream;
+
+  @override
+  Stream<Duration> get positionChanges => positionController.stream;
+
+  @override
+  Future<void> dispose() async {}
+
+  @override
+  Future<void> pause() async {
+    pauseCount += 1;
+  }
+
+  @override
+  Future<void> playFile(String path) async {
+    playedPath = path;
+  }
+
+  @override
+  Future<void> resume() async {}
+
+  @override
+  Future<void> seek(Duration position) async {}
+
+  @override
+  Future<void> stop() async {}
 }
