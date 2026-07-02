@@ -1,18 +1,9 @@
-import 'dart:async';
-import 'dart:ui' show PointerDeviceKind, Rect, Size;
+import 'dart:ui' show PointerDeviceKind;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:inknest_notes/app/app.dart';
-import 'package:inknest_notes/features/editor/audio/notebook_audio_player.dart';
-import 'package:inknest_notes/features/editor/audio/notebook_audio_recorder.dart';
 import 'package:inknest_notes/features/editor/canvas/drawing_canvas.dart';
-import 'package:inknest_notes/features/editor/editor_screen.dart';
-import 'package:inknest_notes/features/editor/pdf_search/notebook_pdf_search_panel.dart';
-import 'package:inknest_notes/features/editor/pdf_search/notebook_pdf_text_searcher.dart';
-import 'package:inknest_notes/features/editor/pdf_search/pdf_text_search_highlight.dart';
-import 'package:inknest_notes/models/note_page.dart';
-import 'package:inknest_notes/models/pdf_background.dart';
 import 'package:inknest_notes/storage/in_memory_notebook_repository.dart';
 
 void main() {
@@ -45,87 +36,8 @@ void main() {
     expect(find.byTooltip('Favorite black pen'), findsOneWidget);
     expect(find.byTooltip('Favorite yellow highlighter'), findsOneWidget);
     expect(find.byTooltip('Insert image'), findsOneWidget);
-    expect(find.byTooltip('Audio recordings'), findsOneWidget);
     expect(find.byKey(const ValueKey('page-thumbnail-page-1')), findsOneWidget);
     expect(find.text('No notebooks yet'), findsNothing);
-  });
-
-  testWidgets('records pauses resumes and saves notebook audio', (
-    WidgetTester tester,
-  ) async {
-    final repository = InMemoryNotebookRepository();
-    final notebook = await repository.createNotebook(title: 'Lecture');
-    final audioPlayer = _FakeNotebookAudioPlayer();
-    final audioRecorder = _FakeNotebookAudioRecorder();
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: EditorScreen(
-          notebook: notebook,
-          notebookRepository: repository,
-          audioPlayer: audioPlayer,
-          audioRecorder: audioRecorder,
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byTooltip('Audio recordings'));
-    await tester.pumpAndSettle();
-    expect(
-      find.text(
-        'No recordings yet. Record a lecture, meeting, or voice note without leaving the notebook.',
-      ),
-      findsOneWidget,
-    );
-
-    await tester.tap(find.text('Start recording'));
-    await tester.pumpAndSettle();
-
-    expect(audioRecorder.startedPath, isNotNull);
-    expect(find.text('Recording'), findsOneWidget);
-    expect(find.byTooltip('Pause recording'), findsOneWidget);
-
-    await tester.tap(find.byTooltip('Pause recording'));
-    await tester.pumpAndSettle();
-    expect(audioRecorder.pauseCount, 1);
-    expect(find.text('Recording paused'), findsOneWidget);
-
-    await tester.tap(find.byTooltip('Resume recording'));
-    await tester.pumpAndSettle();
-    expect(audioRecorder.resumeCount, 1);
-    expect(find.text('Recording'), findsOneWidget);
-
-    await tester.tap(find.byTooltip('Stop recording'));
-    await tester.pumpAndSettle();
-
-    final savedNotebook = (await repository.listNotebooks()).single;
-    expect(audioRecorder.stopCount, 1);
-    expect(savedNotebook.audioRecordings, hasLength(1));
-    expect(savedNotebook.audioRecordings.single.title, 'Recording 1');
-
-    await tester.tap(find.byTooltip('Audio recordings'));
-    await tester.pumpAndSettle();
-    expect(find.text('Recording 1'), findsOneWidget);
-
-    await tester.tap(find.text('Recording 1'));
-    await tester.pumpAndSettle();
-
-    expect(
-      audioPlayer.playedPath,
-      savedNotebook.audioRecordings.single.filePath,
-    );
-    expect(find.byKey(const ValueKey('audio-playback-banner')), findsOneWidget);
-    expect(find.text('0 linked strokes on this page'), findsOneWidget);
-
-    audioPlayer.durationController.add(const Duration(seconds: 10));
-    audioPlayer.positionController.add(const Duration(seconds: 2));
-    await tester.pumpAndSettle();
-    expect(find.text('00:02 / 00:10'), findsOneWidget);
-
-    await tester.tap(find.byTooltip('Pause playback'));
-    await tester.pumpAndSettle();
-    expect(audioPlayer.pauseCount, 1);
   });
 
   testWidgets('adds edits persists and deletes editor text boxes', (
@@ -639,88 +551,6 @@ void main() {
     expect(find.byTooltip('Bookmark page'), findsOneWidget);
   });
 
-  testWidgets('searches PDF text and highlights a selected result', (
-    WidgetTester tester,
-  ) async {
-    final repository = InMemoryNotebookRepository();
-    final notebook = await repository.createNotebook(title: 'PDF Study');
-    const pages = [
-      NotePage(
-        id: 'page-1',
-        width: 595,
-        height: 842,
-        pdfBackground: PdfBackground(
-          assetPath: 'assets/searchable.pdf',
-          pageNumber: 1,
-        ),
-      ),
-    ];
-    final textSearcher = _FakeNotebookPdfTextSearcher(
-      const PdfTextSearchResult(
-        pageId: 'page-1',
-        pdfPageNumber: 1,
-        matchText: 'important',
-        snippet: 'An important result appears here.',
-        normalizedBounds: Rect.fromLTWH(0.2, 0.3, 0.25, 0.04),
-        pdfPageSize: Size(595, 842),
-      ),
-    );
-    PdfTextSearchResult? selectedResult;
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: StatefulBuilder(
-          builder: (context, setState) {
-            return Scaffold(
-              body: Column(
-                children: [
-                  Expanded(
-                    child: NotebookPdfSearchPanel(
-                      notebook: notebook,
-                      pages: pages,
-                      textSearcher: textSearcher,
-                      onSelectResult: (result) {
-                        setState(() {
-                          selectedResult = result;
-                        });
-                      },
-                    ),
-                  ),
-                  if (selectedResult case final result?)
-                    SizedBox(
-                      width: 200,
-                      height: 200,
-                      child: PdfTextSearchHighlight(
-                        result: result,
-                        color: Colors.orange,
-                      ),
-                    ),
-                ],
-              ),
-            );
-          },
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.enterText(
-      find.byKey(const ValueKey('pdf-search-field')),
-      'important',
-    );
-    await tester.tap(find.byTooltip('Search PDF text'));
-    await tester.pumpAndSettle();
-
-    expect(textSearcher.lastQuery, 'important');
-    expect(find.text('1 match'), findsOneWidget);
-    expect(find.text('An important result appears here.'), findsOneWidget);
-
-    await tester.tap(find.byKey(const ValueKey('pdf-search-result-0')));
-    await tester.pumpAndSettle();
-
-    expect(find.byType(PdfTextSearchHighlight), findsOneWidget);
-  });
-
   testWidgets('inserts blank pages before and after selected pages', (
     WidgetTester tester,
   ) async {
@@ -797,110 +627,4 @@ void main() {
     expect(find.byKey(const ValueKey('page-thumbnail-page-1')), findsOneWidget);
     expect(find.byKey(const ValueKey('page-thumbnail-page-2')), findsNothing);
   });
-}
-
-class _FakeNotebookAudioRecorder implements NotebookAudioRecorder {
-  String? startedPath;
-  int pauseCount = 0;
-  int resumeCount = 0;
-  int stopCount = 0;
-
-  @override
-  Future<void> cancel() async {}
-
-  @override
-  Future<void> dispose() async {}
-
-  @override
-  Future<void> pause() async {
-    pauseCount += 1;
-  }
-
-  @override
-  Future<bool> requestPermission() async {
-    return true;
-  }
-
-  @override
-  Future<void> resume() async {
-    resumeCount += 1;
-  }
-
-  @override
-  Future<void> start(String path) async {
-    startedPath = path;
-  }
-
-  @override
-  Future<String?> stop() async {
-    stopCount += 1;
-    return startedPath;
-  }
-}
-
-class _FakeNotebookAudioPlayer implements NotebookAudioPlayer {
-  final StreamController<void> completionController =
-      StreamController<void>.broadcast();
-  final StreamController<Duration> durationController =
-      StreamController<Duration>.broadcast();
-  final StreamController<bool> playingController =
-      StreamController<bool>.broadcast();
-  final StreamController<Duration> positionController =
-      StreamController<Duration>.broadcast();
-
-  String? playedPath;
-  int pauseCount = 0;
-
-  @override
-  Stream<void> get completions => completionController.stream;
-
-  @override
-  Stream<Duration> get durationChanges => durationController.stream;
-
-  @override
-  Stream<bool> get playingChanges => playingController.stream;
-
-  @override
-  Stream<Duration> get positionChanges => positionController.stream;
-
-  @override
-  Future<void> dispose() async {}
-
-  @override
-  Future<void> pause() async {
-    pauseCount += 1;
-  }
-
-  @override
-  Future<void> playFile(String path) async {
-    playedPath = path;
-  }
-
-  @override
-  Future<void> resume() async {}
-
-  @override
-  Future<void> seek(Duration position) async {}
-
-  @override
-  Future<void> stop() async {}
-}
-
-class _FakeNotebookPdfTextSearcher implements NotebookPdfTextSearcher {
-  _FakeNotebookPdfTextSearcher(this.result);
-
-  final PdfTextSearchResult result;
-  String? lastQuery;
-
-  @override
-  Future<void> dispose() async {}
-
-  @override
-  Future<List<PdfTextSearchResult>> search({
-    required Iterable<NotePage> pages,
-    required String query,
-  }) async {
-    lastQuery = query;
-    return [result];
-  }
 }

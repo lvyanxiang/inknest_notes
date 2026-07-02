@@ -8,4 +8,3 @@ Project execution documents live here.
 - `STORAGE.md`: local file storage layout.
 - `SMART_INK_PLAN.md`: Smart Ink product and technical plan.
 - `SUBSCRIPTION_PLAN.md`: future packaging and monetization plan.
-- `FUTURE_IDEAS.md`: longer-term product ideas that are not yet scheduled.

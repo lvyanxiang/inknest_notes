@@ -1,10 +1,8 @@
 import 'dart:ui' show PointerDeviceKind;
 
 import 'package:flutter/material.dart';
-import 'package:inknest_notes/models/note_audio_recording.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/stroke.dart';
-import 'package:inknest_notes/models/stroke_audio_timeline.dart';
 import 'package:inknest_notes/models/stroke_geometry.dart';
 import 'package:inknest_notes/models/stroke_point.dart';
 import 'package:inknest_notes/models/tool.dart';
@@ -15,9 +13,6 @@ class DrawingCanvas extends StatefulWidget {
     required this.page,
     required this.tool,
     required this.fingerPanEnabled,
-    this.playbackRecording,
-    this.playbackPosition = Duration.zero,
-    this.playbackHighlightColor = const Color(0xFF2F6F73),
     required this.onStrokeComplete,
     required this.onErase,
   });
@@ -25,9 +20,6 @@ class DrawingCanvas extends StatefulWidget {
   final NotePage page;
   final DrawingTool tool;
   final bool fingerPanEnabled;
-  final NoteAudioRecording? playbackRecording;
-  final Duration playbackPosition;
-  final Color playbackHighlightColor;
   final ValueChanged<Stroke> onStrokeComplete;
   final ValueChanged<List<StrokePoint>> onErase;
 
@@ -183,9 +175,6 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
         child: CustomPaint(
           painter: _StrokePainter(
             strokes: [...widget.page.strokes, ?_activeStroke],
-            playbackRecording: widget.playbackRecording,
-            playbackPosition: widget.playbackPosition,
-            playbackHighlightColor: widget.playbackHighlightColor,
           ),
           child: const SizedBox.expand(),
         ),
@@ -195,17 +184,9 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
 }
 
 class _StrokePainter extends CustomPainter {
-  const _StrokePainter({
-    required this.strokes,
-    required this.playbackRecording,
-    required this.playbackPosition,
-    required this.playbackHighlightColor,
-  });
+  const _StrokePainter({required this.strokes});
 
   final List<Stroke> strokes;
-  final NoteAudioRecording? playbackRecording;
-  final Duration playbackPosition;
-  final Color playbackHighlightColor;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -214,31 +195,8 @@ class _StrokePainter extends CustomPainter {
         continue;
       }
 
-      final playbackState = playbackRecording == null
-          ? StrokeAudioPlaybackState.unlinked
-          : StrokeAudioTimeline.stateFor(
-              stroke: stroke,
-              recording: playbackRecording!,
-              playbackPosition: playbackPosition,
-            );
-      if (playbackState == StrokeAudioPlaybackState.current) {
-        _drawStroke(
-          canvas,
-          stroke,
-          Paint()
-            ..color = playbackHighlightColor.withValues(alpha: 0.28)
-            ..strokeWidth = stroke.width + 8
-            ..strokeCap = StrokeCap.round
-            ..strokeJoin = StrokeJoin.round
-            ..blendMode = BlendMode.srcOver
-            ..style = PaintingStyle.stroke,
-        );
-      }
-
       final paint = Paint()
-        ..color = playbackState == StrokeAudioPlaybackState.upcoming
-            ? stroke.color.withValues(alpha: 0.18)
-            : stroke.color
+        ..color = stroke.color
         ..strokeWidth = stroke.width
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round
@@ -247,28 +205,21 @@ class _StrokePainter extends CustomPainter {
             : BlendMode.srcOver
         ..style = PaintingStyle.stroke;
 
-      _drawStroke(canvas, stroke, paint);
-    }
-  }
+      if (stroke.points.length == 1) {
+        canvas.drawCircle(
+          stroke.points.first.offset,
+          stroke.width / 2,
+          paint..style = PaintingStyle.fill,
+        );
+        continue;
+      }
 
-  void _drawStroke(Canvas canvas, Stroke stroke, Paint paint) {
-    if (stroke.points.length == 1) {
-      canvas.drawCircle(
-        stroke.points.first.offset,
-        paint.strokeWidth / 2,
-        paint..style = PaintingStyle.fill,
-      );
-      return;
+      canvas.drawPath(StrokeGeometry.buildSmoothPath(stroke.points), paint);
     }
-
-    canvas.drawPath(StrokeGeometry.buildSmoothPath(stroke.points), paint);
   }
 
   @override
   bool shouldRepaint(covariant _StrokePainter oldDelegate) {
-    return oldDelegate.strokes != strokes ||
-        oldDelegate.playbackRecording?.id != playbackRecording?.id ||
-        oldDelegate.playbackPosition != playbackPosition ||
-        oldDelegate.playbackHighlightColor != playbackHighlightColor;
+    return oldDelegate.strokes != strokes;
   }
 }

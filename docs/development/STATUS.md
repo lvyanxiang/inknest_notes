@@ -3,8 +3,8 @@
 ## Current
 
 - Milestone: Post-MVP 5 - Audio And Search
-- Next task: Explore handwriting recognition and OCR for search and Smart Ink.
-- Last completed: Added PDF text search with page navigation and match highlighting.
+- Next task: Add audio recording.
+- Last completed: Added favorites toolbar.
 
 ## Decisions
 
@@ -60,21 +60,13 @@
 - Store clean shape objects on `NotePage.shapes`; first shape tool supports line, arrow, rectangle, and ellipse with light line-angle snapping for cleaner line/arrow creation.
 - Shape rendering is shared across the editor, page thumbnails, library thumbnails, and PDF export.
 - Keep the first favorites toolbar as an in-editor floating preset strip instead of growing the main toolbar height; presets switch to common pen/highlighter combinations without changing page layout or canvas hit testing.
-- Keep future AI integrations provider-independent: run recognition on-device where practical, route cloud models through a Python AI gateway, preserve original content, and require sources or user confirmation for generated results.
-- Evaluate MyScript iink handwriting generation for personalized handwriting beautification before committing to a custom stroke-generation model.
-- Keep the current library-first startup during active development, but evolve the long-term home into a capability-first launcher: choosing a task such as live transcription creates a standard notebook and opens the matching workspace.
-- Store notebook audio as AAC/M4A files under notebook-relative `assets/audio/` paths, with recording metadata on `Notebook`; use existing stroke timestamps for backward-compatible playback linking without a page-data migration.
-- Keep native audio recorder and player objects lazy so opening an editor does not initialize platform channels before the user starts recording or playback.
-- Search the existing PDF text layer locally with `pdfrx`, cache opened documents and extracted page text for the editor session, and keep scanned-document OCR as the next task.
-- Put PDF search beside Outline and Bookmarks; selecting a result opens its notebook page and highlights the matching PDF region.
 
 ## Verification
 
-- Targeted Dart formatting passed for the PDF search implementation and tests.
-- Focused PDF search snippet and interaction tests passed.
-- Full `flutter test` passed with 41 tests.
-- `flutter analyze` passed after the final style fix.
-- `git diff --check` passed after the PDF search documentation update.
+- `dart format lib test` passed.
+- `flutter test` passed.
+- `flutter analyze` passed.
+- `git diff --check` passed after the post-MVP documentation update.
 - `dart format lib test` passed after editor zoom/pan.
 - `flutter test` passed after editor zoom/pan.
 - `flutter analyze` passed after editor zoom/pan.
@@ -161,17 +153,6 @@
 - `git diff --check` passed after re-screening graduation document references against school library journal coverage years.
 - `git diff --check` passed after splitting academic document maintenance into `$inknest-academic-docs`.
 - `git diff --check` passed after replacing graduation references with 2022-2025 journal papers and adding one-to-one body citations.
-- `git diff --check` passed after documenting future AI capabilities and provider choices.
-- `git diff --check` passed after documenting the capability-first product vision.
-- `dart format lib test` passed after notebook audio recording.
-- `flutter test` passed after notebook audio recording.
-- `flutter analyze` passed after notebook audio recording.
-- Focused stroke-audio timeline and recording playback widget tests passed.
-- Full `flutter test` passed with 39 tests after linking playback to strokes.
-- `flutter analyze` passed after linking playback to strokes.
-- Focused PDF search snippet and result-selection widget tests passed.
-- Full `flutter test` passed with 41 tests after adding PDF text search.
-- `flutter analyze` passed after adding PDF text search.
 
 ## Notes
 
@@ -203,12 +184,9 @@
 - Editor toolbar includes Insert image; selected images are copied into notebook assets, placed on the current page, movable, resizable, deletable, persisted, shown as thumbnail placeholders, and included in PDF export.
 - Editor toolbar includes a Shape tool with a shape-type menu for line, arrow, rectangle, and ellipse; created shapes persist, appear in thumbnails, and export to PDF.
 - Editor canvas includes a floating favorites toolbar with common black/teal/red pen and yellow highlighter presets.
-- Editor can record notebook audio, pause and resume an active recording, stop and persist it, discard it, list saved recordings, play or seek recordings, and delete recordings; playback fades upcoming linked strokes and highlights the current stroke, and microphone permissions are configured for Android, iOS, and macOS.
-- Editor PDF navigation now includes local text-layer search; results show context and page numbers, jump to the matching notebook page, and highlight the selected PDF region. Image-only scanned PDFs still require future OCR.
 - Smart Ink planning lives in `docs/development/SMART_INK_PLAN.md`.
 - Post-MVP feature gaps and optimization areas are documented in `docs/development/POST_MVP_ROADMAP.md`.
 - Subscription packaging, platform behavior, and local/cloud merge rules are documented in `docs/development/SUBSCRIPTION_PLAN.md`.
-- Personalized handwriting beautification and the AI capability roadmap are documented in `docs/development/FUTURE_IDEAS.md`.
 - Web knowledge-base, mobile companion, collaboration, and AI directions are captured as later post-MVP milestones.
 - Graduation task book and opening report Markdown drafts live in `docs/academic/GRADUATION_TASK_BOOK.md` and `docs/academic/OPENING_REPORT.md`; maintain them with `$inknest-academic-docs`, not as an automatic side effect of development tasks.
 - Python details in the graduation docs are described as formal module design, interface planning, and extension scope; implementation-specific project details should be added when available.

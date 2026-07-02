@@ -48,14 +48,7 @@ For each user request:
 1. Identify the current phase and first unfinished task from the active planning document.
 2. Read only the smallest useful set of code files.
 3. Implement the requested task or the next roadmap task.
-4. Validate economically:
-   - During implementation, run only the smallest directly related test.
-   - After a failure, rerun only the failed test until it passes.
-   - Near completion, run the full `flutter test` suite and `flutter analyze`
-     at most once each unless the final fix changes production code.
-   - Do not rerun Flutter validation after documentation-only changes.
-   - Do not run native platform builds by default. Run one only when the user
-     requests it or a platform-specific failure cannot be resolved otherwise.
+4. Run focused validation, normally `flutter test` and `flutter analyze` after code changes.
 5. Mark completed active-plan items with `[x]` when they are checklist items. If the active post-MVP section uses plain bullets, either convert only the immediate task list to checkboxes before executing it or record concise progress in `docs/development/STATUS.md`.
 6. Update `docs/development/STATUS.md` with current milestone, next task, decisions, and verification.
 

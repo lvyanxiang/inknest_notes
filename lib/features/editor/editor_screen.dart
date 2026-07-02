@@ -8,20 +8,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as image;
 import 'package:inknest_notes/export/notebook_pdf_exporter.dart';
-import 'package:inknest_notes/features/editor/audio/notebook_audio_player.dart';
-import 'package:inknest_notes/features/editor/audio/notebook_audio_recorder.dart';
 import 'package:inknest_notes/features/editor/canvas/drawing_canvas.dart';
 import 'package:inknest_notes/features/editor/canvas/pdf_page_background.dart';
 import 'package:inknest_notes/features/editor/images/image_layer.dart';
-import 'package:inknest_notes/features/editor/pdf_search/notebook_pdf_search_panel.dart';
-import 'package:inknest_notes/features/editor/pdf_search/notebook_pdf_text_searcher.dart';
-import 'package:inknest_notes/features/editor/pdf_search/pdf_text_search_highlight.dart';
 import 'package:inknest_notes/features/editor/shapes/shape_layer.dart';
 import 'package:inknest_notes/features/editor/smart_ink/smart_ink_selection_layer.dart';
 import 'package:inknest_notes/features/editor/text/note_text_box_styles.dart';
 import 'package:inknest_notes/features/editor/text/text_box_layer.dart';
 import 'package:inknest_notes/features/editor/tools/editor_toolbar.dart';
-import 'package:inknest_notes/models/note_audio_recording.dart';
 import 'package:inknest_notes/models/note_image.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/note_shape.dart';
@@ -29,7 +23,6 @@ import 'package:inknest_notes/models/note_text_box.dart';
 import 'package:inknest_notes/models/notebook.dart';
 import 'package:inknest_notes/models/pdf_outline_entry.dart';
 import 'package:inknest_notes/models/stroke.dart';
-import 'package:inknest_notes/models/stroke_audio_timeline.dart';
 import 'package:inknest_notes/models/stroke_geometry.dart';
 import 'package:inknest_notes/models/stroke_point.dart';
 import 'package:inknest_notes/models/tool.dart';
@@ -40,16 +33,10 @@ class EditorScreen extends StatefulWidget {
     super.key,
     required this.notebook,
     required this.notebookRepository,
-    this.audioPlayer,
-    this.audioRecorder,
-    this.pdfTextSearcher,
   });
 
   final Notebook notebook;
   final NotebookRepository notebookRepository;
-  final NotebookAudioPlayer? audioPlayer;
-  final NotebookAudioRecorder? audioRecorder;
-  final NotebookPdfTextSearcher? pdfTextSearcher;
 
   @override
   State<EditorScreen> createState() => _EditorScreenState();
@@ -58,31 +45,11 @@ class EditorScreen extends StatefulWidget {
 class _EditorScreenState extends State<EditorScreen> {
   final List<Stroke> _redoStack = [];
   final Map<String, NotePage> _pagesById = {};
-  final Stopwatch _audioStopwatch = Stopwatch();
   DrawingTool _tool = const DrawingTool();
-  NotebookAudioPlayer? _audioPlayer;
-  NotebookAudioRecorder? _audioRecorder;
   late Notebook _notebook;
   late String _currentPageId;
-  Timer? _audioTimer;
-  StreamSubscription<void>? _audioCompletionSubscription;
-  StreamSubscription<Duration>? _audioDurationSubscription;
-  StreamSubscription<bool>? _audioPlayingSubscription;
-  StreamSubscription<Duration>? _audioPositionSubscription;
-  NoteAudioRecording? _activePlaybackRecording;
-  PdfTextSearchResult? _activePdfSearchResult;
-  NoteAudioRecording? _pendingAudioRecording;
-  Duration _audioElapsed = Duration.zero;
-  Duration _audioPlaybackDuration = Duration.zero;
-  Duration _audioPlaybackPosition = Duration.zero;
-  bool _isAudioBusy = false;
-  bool _isAudioPaused = false;
-  bool _isAudioPlaying = false;
-  bool _isAudioRecording = false;
-  bool _isPlaybackBusy = false;
   bool _isExporting = false;
   bool _fingerPanEnabled = false;
-  NotebookPdfTextSearcher? _pdfTextSearcher;
   String? _activeTextBoxId;
   String? _activeImageId;
   NotePage? _page;
@@ -90,45 +57,10 @@ class _EditorScreenState extends State<EditorScreen> {
   @override
   void initState() {
     super.initState();
-    _audioRecorder = widget.audioRecorder;
-    _pdfTextSearcher = widget.pdfTextSearcher;
     _notebook = widget.notebook;
     _currentPageId = _notebook.pageIds.first;
     _loadPage();
     unawaited(_loadPageThumbnails());
-  }
-
-  @override
-  void dispose() {
-    _audioTimer?.cancel();
-    unawaited(_audioCompletionSubscription?.cancel());
-    unawaited(_audioDurationSubscription?.cancel());
-    unawaited(_audioPlayingSubscription?.cancel());
-    unawaited(_audioPositionSubscription?.cancel());
-    unawaited(_audioPlayer?.dispose());
-    unawaited(_disposeAudioRecorder());
-    unawaited(_pdfTextSearcher?.dispose());
-    super.dispose();
-  }
-
-  Future<void> _disposeAudioRecorder() async {
-    final audioRecorder = _audioRecorder;
-    if (audioRecorder == null) {
-      return;
-    }
-
-    if (_isAudioRecording) {
-      await audioRecorder.cancel();
-    }
-    await audioRecorder.dispose();
-  }
-
-  NotebookAudioRecorder get _effectiveAudioRecorder {
-    return _audioRecorder ??= DeviceNotebookAudioRecorder();
-  }
-
-  NotebookPdfTextSearcher get _effectivePdfTextSearcher {
-    return _pdfTextSearcher ??= PdfrxNotebookPdfTextSearcher();
   }
 
   Future<void> _loadPage() async {
@@ -697,494 +629,6 @@ class _EditorScreenState extends State<EditorScreen> {
     await widget.notebookRepository.savePage(_notebook, pageToSave);
   }
 
-  void _showAudioRecordingsSheet() {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) {
-        return _AudioRecordingsSheet(
-          recordings: _notebook.audioRecordings,
-          isRecording: _isAudioRecording,
-          onPlayRecording: (recording) {
-            Navigator.of(sheetContext).pop();
-            unawaited(_playAudioRecording(recording));
-          },
-          onStartRecording: () {
-            Navigator.of(sheetContext).pop();
-            unawaited(_startAudioRecording());
-          },
-          onDeleteRecording: (recording) {
-            Navigator.of(sheetContext).pop();
-            unawaited(_deleteAudioRecording(recording));
-          },
-        );
-      },
-    );
-  }
-
-  NotebookAudioPlayer _ensureAudioPlayer() {
-    final existingPlayer = _audioPlayer;
-    if (existingPlayer != null) {
-      return existingPlayer;
-    }
-
-    final player = widget.audioPlayer ?? DeviceNotebookAudioPlayer();
-    _audioPlayer = player;
-    _audioPositionSubscription = player.positionChanges.listen((position) {
-      if (!mounted || _activePlaybackRecording == null) {
-        return;
-      }
-
-      setState(() {
-        _audioPlaybackPosition = _clampAudioPosition(
-          position,
-          _audioPlaybackDuration,
-        );
-      });
-    });
-    _audioDurationSubscription = player.durationChanges.listen((duration) {
-      if (!mounted || _activePlaybackRecording == null) {
-        return;
-      }
-
-      setState(() {
-        _audioPlaybackDuration = duration;
-        _audioPlaybackPosition = _clampAudioPosition(
-          _audioPlaybackPosition,
-          duration,
-        );
-      });
-    });
-    _audioPlayingSubscription = player.playingChanges.listen((isPlaying) {
-      if (!mounted || _activePlaybackRecording == null) {
-        return;
-      }
-
-      setState(() {
-        _isAudioPlaying = isPlaying;
-      });
-    });
-    _audioCompletionSubscription = player.completions.listen((_) {
-      if (!mounted || _activePlaybackRecording == null) {
-        return;
-      }
-
-      setState(() {
-        _audioPlaybackPosition = _audioPlaybackDuration;
-        _isAudioPlaying = false;
-      });
-    });
-    return player;
-  }
-
-  Future<void> _playAudioRecording(NoteAudioRecording recording) async {
-    if (_isAudioRecording || _isPlaybackBusy) {
-      return;
-    }
-
-    if (_activePlaybackRecording?.id == recording.id) {
-      await _toggleAudioPlayback();
-      return;
-    }
-
-    setState(() {
-      _activePlaybackRecording = recording;
-      _audioPlaybackDuration = recording.duration;
-      _audioPlaybackPosition = Duration.zero;
-      _isAudioPlaying = false;
-      _isPlaybackBusy = true;
-    });
-
-    try {
-      await _ensureAudioPlayer().playFile(recording.filePath);
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _isAudioPlaying = true;
-      });
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _activePlaybackRecording = null;
-        _audioPlaybackDuration = Duration.zero;
-        _audioPlaybackPosition = Duration.zero;
-        _isAudioPlaying = false;
-      });
-      _showAudioMessage('Could not play recording: $error');
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isPlaybackBusy = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _toggleAudioPlayback() async {
-    final player = _audioPlayer;
-    if (player == null || _activePlaybackRecording == null || _isPlaybackBusy) {
-      return;
-    }
-
-    setState(() {
-      _isPlaybackBusy = true;
-    });
-    try {
-      if (_isAudioPlaying) {
-        await player.pause();
-      } else {
-        if (_audioPlaybackDuration > Duration.zero &&
-            _audioPlaybackPosition >= _audioPlaybackDuration) {
-          await player.seek(Duration.zero);
-          if (mounted) {
-            setState(() {
-              _audioPlaybackPosition = Duration.zero;
-            });
-          }
-        }
-        await player.resume();
-      }
-    } catch (error) {
-      if (mounted) {
-        _showAudioMessage('Could not control playback: $error');
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isPlaybackBusy = false;
-        });
-      }
-    }
-  }
-
-  void _previewAudioSeek(Duration position) {
-    if (_activePlaybackRecording == null) {
-      return;
-    }
-
-    setState(() {
-      _audioPlaybackPosition = _clampAudioPosition(
-        position,
-        _audioPlaybackDuration,
-      );
-    });
-  }
-
-  Future<void> _seekAudioPlayback(Duration position) async {
-    final player = _audioPlayer;
-    if (player == null || _activePlaybackRecording == null) {
-      return;
-    }
-
-    final clampedPosition = _clampAudioPosition(
-      position,
-      _audioPlaybackDuration,
-    );
-    try {
-      await player.seek(clampedPosition);
-      if (mounted) {
-        setState(() {
-          _audioPlaybackPosition = clampedPosition;
-        });
-      }
-    } catch (error) {
-      if (mounted) {
-        _showAudioMessage('Could not seek recording: $error');
-      }
-    }
-  }
-
-  Future<void> _closeAudioPlayback() async {
-    final player = _audioPlayer;
-    if (player != null) {
-      try {
-        await player.stop();
-      } catch (error) {
-        if (mounted) {
-          _showAudioMessage('Could not stop playback: $error');
-        }
-      }
-    }
-
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _activePlaybackRecording = null;
-      _audioPlaybackDuration = Duration.zero;
-      _audioPlaybackPosition = Duration.zero;
-      _isAudioPlaying = false;
-      _isPlaybackBusy = false;
-    });
-  }
-
-  Future<void> _startAudioRecording() async {
-    if (_isAudioBusy || _isAudioRecording) {
-      return;
-    }
-
-    setState(() {
-      _isAudioBusy = true;
-    });
-
-    NoteAudioRecording? preparedRecording;
-    try {
-      await _closeAudioPlayback();
-      final audioRecorder = _effectiveAudioRecorder;
-      final hasPermission = await audioRecorder.requestPermission();
-      if (!hasPermission) {
-        if (mounted) {
-          _showAudioMessage(
-            'Microphone access is required to record notebook audio.',
-          );
-        }
-        return;
-      }
-
-      preparedRecording = await widget.notebookRepository.prepareAudioRecording(
-        _notebook,
-      );
-      await audioRecorder.start(preparedRecording.filePath);
-
-      if (!mounted) {
-        await audioRecorder.cancel();
-        return;
-      }
-
-      _audioStopwatch
-        ..reset()
-        ..start();
-      _startAudioTimer();
-      setState(() {
-        _pendingAudioRecording = preparedRecording;
-        _audioElapsed = Duration.zero;
-        _isAudioPaused = false;
-        _isAudioRecording = true;
-      });
-    } catch (error) {
-      await _audioRecorder?.cancel();
-      if (mounted) {
-        _showAudioMessage('Could not start recording: $error');
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isAudioBusy = false;
-        });
-      }
-    }
-  }
-
-  void _startAudioTimer() {
-    _audioTimer?.cancel();
-    _audioTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _audioElapsed = _audioStopwatch.elapsed;
-      });
-    });
-  }
-
-  Future<void> _pauseAudioRecording() async {
-    if (!_isAudioRecording || _isAudioPaused || _isAudioBusy) {
-      return;
-    }
-
-    setState(() {
-      _isAudioBusy = true;
-    });
-    try {
-      await _effectiveAudioRecorder.pause();
-      _audioStopwatch.stop();
-      _audioTimer?.cancel();
-      if (mounted) {
-        setState(() {
-          _audioElapsed = _audioStopwatch.elapsed;
-          _isAudioPaused = true;
-        });
-      }
-    } catch (error) {
-      if (mounted) {
-        _showAudioMessage('Could not pause recording: $error');
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isAudioBusy = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _resumeAudioRecording() async {
-    if (!_isAudioRecording || !_isAudioPaused || _isAudioBusy) {
-      return;
-    }
-
-    setState(() {
-      _isAudioBusy = true;
-    });
-    try {
-      await _effectiveAudioRecorder.resume();
-      _audioStopwatch.start();
-      _startAudioTimer();
-      if (mounted) {
-        setState(() {
-          _isAudioPaused = false;
-        });
-      }
-    } catch (error) {
-      if (mounted) {
-        _showAudioMessage('Could not resume recording: $error');
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isAudioBusy = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _stopAudioRecording() async {
-    final pendingRecording = _pendingAudioRecording;
-    if (!_isAudioRecording || pendingRecording == null || _isAudioBusy) {
-      return;
-    }
-
-    setState(() {
-      _isAudioBusy = true;
-    });
-    _audioStopwatch.stop();
-    _audioTimer?.cancel();
-    final duration = _audioStopwatch.elapsed;
-
-    try {
-      final recordedPath = await _effectiveAudioRecorder.stop();
-      if (recordedPath == null) {
-        throw StateError('The recorder did not return a saved audio file.');
-      }
-
-      final savedRecording = pendingRecording.copyWith(
-        durationMilliseconds: duration.inMilliseconds,
-        resolvedFilePath: recordedPath,
-      );
-      final updatedNotebook = await widget.notebookRepository
-          .saveAudioRecording(_notebook, savedRecording);
-
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _notebook = updatedNotebook;
-      });
-      _resetAudioSession();
-      _showAudioMessage('${savedRecording.title} saved.');
-    } catch (error) {
-      await _audioRecorder?.cancel();
-      if (!mounted) {
-        return;
-      }
-      _resetAudioSession();
-      _showAudioMessage('Could not save recording: $error');
-    }
-  }
-
-  Future<void> _cancelAudioRecording() async {
-    if (!_isAudioRecording || _isAudioBusy) {
-      return;
-    }
-
-    setState(() {
-      _isAudioBusy = true;
-    });
-    try {
-      await _effectiveAudioRecorder.cancel();
-      if (!mounted) {
-        return;
-      }
-      _resetAudioSession();
-      _showAudioMessage('Recording discarded.');
-    } catch (error) {
-      if (mounted) {
-        _showAudioMessage('Could not discard recording: $error');
-      }
-    } finally {
-      if (mounted && _isAudioRecording) {
-        setState(() {
-          _isAudioBusy = false;
-        });
-      }
-    }
-  }
-
-  void _resetAudioSession() {
-    _audioTimer?.cancel();
-    _audioStopwatch
-      ..stop()
-      ..reset();
-    setState(() {
-      _pendingAudioRecording = null;
-      _audioElapsed = Duration.zero;
-      _isAudioBusy = false;
-      _isAudioPaused = false;
-      _isAudioRecording = false;
-    });
-  }
-
-  Future<void> _deleteAudioRecording(NoteAudioRecording recording) async {
-    final shouldDelete = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Delete recording?'),
-          content: Text('${recording.title} will be removed permanently.'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton.icon(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              icon: const Icon(Icons.delete_outline),
-              label: const Text('Delete'),
-            ),
-          ],
-        );
-      },
-    );
-    if (shouldDelete != true || !mounted) {
-      return;
-    }
-
-    if (_activePlaybackRecording?.id == recording.id) {
-      await _closeAudioPlayback();
-    }
-
-    final updatedNotebook = await widget.notebookRepository
-        .deleteAudioRecording(_notebook, recording.id);
-    if (!mounted) {
-      return;
-    }
-
-    setState(() {
-      _notebook = updatedNotebook;
-    });
-    _showAudioMessage('${recording.title} deleted.');
-  }
-
-  void _showAudioMessage(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
-  }
-
   Future<void> _setCurrentPageBookmarked(bool isBookmarked) async {
     final updatedNotebook = await widget.notebookRepository.setPageBookmarked(
       _notebook,
@@ -1201,15 +645,7 @@ class _EditorScreenState extends State<EditorScreen> {
     });
   }
 
-  Future<void> _showNavigationSheet() async {
-    await _loadPageThumbnails();
-    if (!mounted) {
-      return;
-    }
-
-    final pages = [
-      for (final pageId in _notebook.pageIds) ?_pagesById[pageId],
-    ];
+  void _showNavigationSheet() {
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -1217,20 +653,9 @@ class _EditorScreenState extends State<EditorScreen> {
         return _PdfNavigationSheet(
           notebook: _notebook,
           currentPageId: _currentPageId,
-          pages: pages,
-          textSearcher: _effectivePdfTextSearcher,
           onSelectPage: (pageId) {
             Navigator.of(sheetContext).pop();
             unawaited(_selectPage(pageId));
-          },
-          onSelectSearchResult: (result) {
-            Navigator.of(sheetContext).pop();
-            setState(() {
-              _activePdfSearchResult = result;
-            });
-            unawaited(
-              _selectPage(result.pageId, preserveSearchHighlight: true),
-            );
           },
         );
       },
@@ -1485,16 +910,8 @@ class _EditorScreenState extends State<EditorScreen> {
     return '$baseName${selection.fileNameSuffix}.pdf';
   }
 
-  Future<void> _selectPage(
-    String pageId, {
-    bool preserveSearchHighlight = false,
-  }) async {
+  Future<void> _selectPage(String pageId) async {
     if (pageId == _currentPageId) {
-      if (!preserveSearchHighlight && _activePdfSearchResult != null) {
-        setState(() {
-          _activePdfSearchResult = null;
-        });
-      }
       return;
     }
 
@@ -1502,9 +919,6 @@ class _EditorScreenState extends State<EditorScreen> {
       _currentPageId = pageId;
       _page = null;
       _redoStack.clear();
-      if (!preserveSearchHighlight) {
-        _activePdfSearchResult = null;
-      }
     });
 
     await _loadPage();
@@ -1521,16 +935,6 @@ class _EditorScreenState extends State<EditorScreen> {
       appBar: AppBar(
         title: Text(_notebook.title),
         actions: [
-          IconButton(
-            onPressed: _isAudioBusy ? null : _showAudioRecordingsSheet,
-            tooltip: 'Audio recordings',
-            icon: Icon(
-              _isAudioRecording ? Icons.mic : Icons.mic_none_outlined,
-              color: _isAudioRecording
-                  ? Theme.of(context).colorScheme.error
-                  : null,
-            ),
-          ),
           IconButton(
             onPressed: _showNavigationSheet,
             tooltip: 'Outline and bookmarks',
@@ -1582,34 +986,6 @@ class _EditorScreenState extends State<EditorScreen> {
             onFingerPanChanged: _setFingerPanEnabled,
             onInsertImage: () => unawaited(_insertImage()),
           ),
-          if (_isAudioRecording)
-            _AudioRecordingBanner(
-              elapsed: _audioElapsed,
-              isBusy: _isAudioBusy,
-              isPaused: _isAudioPaused,
-              onPause: () => unawaited(_pauseAudioRecording()),
-              onResume: () => unawaited(_resumeAudioRecording()),
-              onStop: () => unawaited(_stopAudioRecording()),
-              onCancel: () => unawaited(_cancelAudioRecording()),
-            )
-          else if (_activePlaybackRecording case final recording?)
-            _AudioPlaybackBanner(
-              recording: recording,
-              position: _audioPlaybackPosition,
-              duration: _audioPlaybackDuration,
-              isPlaying: _isAudioPlaying,
-              isBusy: _isPlaybackBusy,
-              linkedStrokeCount: page == null
-                  ? 0
-                  : StrokeAudioTimeline.linkedStrokeCount(
-                      strokes: page.strokes,
-                      recording: recording,
-                    ),
-              onPlayPause: () => unawaited(_toggleAudioPlayback()),
-              onSeekPreview: _previewAudioSeek,
-              onSeek: (position) => unawaited(_seekAudioPlayback(position)),
-              onClose: () => unawaited(_closeAudioPlayback()),
-            ),
           Expanded(
             child: page == null
                 ? const Center(child: CircularProgressIndicator())
@@ -1677,16 +1053,6 @@ class _EditorScreenState extends State<EditorScreen> {
                 ),
                 background: background,
               ),
-            if (_activePdfSearchResult case final searchResult?
-                when searchResult.pageId == page.id)
-              PdfTextSearchHighlight(
-                key: ValueKey(
-                  'pdf-search-highlight-${searchResult.pageId}-'
-                  '${searchResult.normalizedBounds}',
-                ),
-                result: searchResult,
-                color: Theme.of(context).colorScheme.tertiary,
-              ),
             ImageLayer(
               page: page,
               activeImageId: _activeImageId,
@@ -1698,9 +1064,6 @@ class _EditorScreenState extends State<EditorScreen> {
               page: page,
               tool: _tool,
               fingerPanEnabled: _fingerPanEnabled,
-              playbackRecording: _activePlaybackRecording,
-              playbackPosition: _audioPlaybackPosition,
-              playbackHighlightColor: Theme.of(context).colorScheme.primary,
               onStrokeComplete: _addStroke,
               onErase: _eraseAt,
             ),
@@ -1735,308 +1098,6 @@ class _EditorScreenState extends State<EditorScreen> {
       ),
     );
   }
-}
-
-class _AudioRecordingBanner extends StatelessWidget {
-  const _AudioRecordingBanner({
-    required this.elapsed,
-    required this.isBusy,
-    required this.isPaused,
-    required this.onPause,
-    required this.onResume,
-    required this.onStop,
-    required this.onCancel,
-  });
-
-  final Duration elapsed;
-  final bool isBusy;
-  final bool isPaused;
-  final VoidCallback onPause;
-  final VoidCallback onResume;
-  final VoidCallback onStop;
-  final VoidCallback onCancel;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Material(
-      color: colorScheme.errorContainer,
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Row(
-            children: [
-              Icon(
-                isPaused
-                    ? Icons.pause_circle_outline
-                    : Icons.fiber_manual_record,
-                color: colorScheme.error,
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                isPaused ? 'Recording paused' : 'Recording',
-                style: Theme.of(context).textTheme.labelLarge,
-              ),
-              const SizedBox(width: 12),
-              Text(
-                _formatAudioDuration(elapsed),
-                key: const ValueKey('audio-recording-elapsed'),
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const Spacer(),
-              IconButton(
-                onPressed: isBusy ? null : (isPaused ? onResume : onPause),
-                tooltip: isPaused ? 'Resume recording' : 'Pause recording',
-                icon: Icon(isPaused ? Icons.play_arrow : Icons.pause),
-              ),
-              IconButton(
-                onPressed: isBusy ? null : onStop,
-                tooltip: 'Stop recording',
-                icon: const Icon(Icons.stop),
-              ),
-              IconButton(
-                onPressed: isBusy ? null : onCancel,
-                tooltip: 'Discard recording',
-                icon: const Icon(Icons.delete_outline),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _AudioPlaybackBanner extends StatelessWidget {
-  const _AudioPlaybackBanner({
-    required this.recording,
-    required this.position,
-    required this.duration,
-    required this.isPlaying,
-    required this.isBusy,
-    required this.linkedStrokeCount,
-    required this.onPlayPause,
-    required this.onSeekPreview,
-    required this.onSeek,
-    required this.onClose,
-  });
-
-  final NoteAudioRecording recording;
-  final Duration position;
-  final Duration duration;
-  final bool isPlaying;
-  final bool isBusy;
-  final int linkedStrokeCount;
-  final VoidCallback onPlayPause;
-  final ValueChanged<Duration> onSeekPreview;
-  final ValueChanged<Duration> onSeek;
-  final VoidCallback onClose;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final durationMilliseconds = duration.inMilliseconds;
-    final sliderMaximum = math.max(durationMilliseconds, 1).toDouble();
-    final sliderValue = math
-        .min(position.inMilliseconds, sliderMaximum)
-        .toDouble();
-    final linkedStrokeLabel = linkedStrokeCount == 1
-        ? '1 linked stroke on this page'
-        : '$linkedStrokeCount linked strokes on this page';
-
-    return Material(
-      key: const ValueKey('audio-playback-banner'),
-      color: colorScheme.secondaryContainer,
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
-          child: Row(
-            children: [
-              IconButton.filledTonal(
-                onPressed: isBusy ? null : onPlayPause,
-                tooltip: isPlaying ? 'Pause playback' : 'Resume playback',
-                icon: isBusy
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Icon(isPlaying ? Icons.pause : Icons.play_arrow),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            recording.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.labelLarge,
-                          ),
-                        ),
-                        Text(
-                          '${_formatAudioDuration(position)} / '
-                          '${_formatAudioDuration(duration)}',
-                          key: const ValueKey('audio-playback-position'),
-                          style: Theme.of(context).textTheme.labelMedium,
-                        ),
-                      ],
-                    ),
-                    Slider(
-                      key: const ValueKey('audio-playback-slider'),
-                      min: 0,
-                      max: sliderMaximum,
-                      value: sliderValue,
-                      onChanged: durationMilliseconds <= 0 || isBusy
-                          ? null
-                          : (value) => onSeekPreview(
-                              Duration(milliseconds: value.round()),
-                            ),
-                      onChangeEnd: durationMilliseconds <= 0 || isBusy
-                          ? null
-                          : (value) =>
-                                onSeek(Duration(milliseconds: value.round())),
-                    ),
-                    Text(
-                      linkedStrokeLabel,
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                onPressed: isBusy ? null : onClose,
-                tooltip: 'Close playback',
-                icon: const Icon(Icons.close),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _AudioRecordingsSheet extends StatelessWidget {
-  const _AudioRecordingsSheet({
-    required this.recordings,
-    required this.isRecording,
-    required this.onPlayRecording,
-    required this.onStartRecording,
-    required this.onDeleteRecording,
-  });
-
-  final List<NoteAudioRecording> recordings;
-  final bool isRecording;
-  final ValueChanged<NoteAudioRecording> onPlayRecording;
-  final VoidCallback onStartRecording;
-  final ValueChanged<NoteAudioRecording> onDeleteRecording;
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'Audio recordings',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 8),
-            if (recordings.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 20),
-                child: Text(
-                  'No recordings yet. Record a lecture, meeting, or voice note '
-                  'without leaving the notebook.',
-                ),
-              )
-            else
-              Flexible(
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: recordings.length,
-                  separatorBuilder: (_, _) => const Divider(height: 1),
-                  itemBuilder: (context, index) {
-                    final recording = recordings[index];
-                    return ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      onTap: isRecording
-                          ? null
-                          : () => onPlayRecording(recording),
-                      leading: const Icon(Icons.play_circle_outline),
-                      title: Text(recording.title),
-                      subtitle: Text(
-                        '${_formatAudioDuration(recording.duration)} · '
-                        '${_formatAudioDate(recording.createdAt)}',
-                      ),
-                      trailing: IconButton(
-                        onPressed: isRecording
-                            ? null
-                            : () => onDeleteRecording(recording),
-                        tooltip: 'Delete ${recording.title}',
-                        icon: const Icon(Icons.delete_outline),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: isRecording ? null : onStartRecording,
-              icon: const Icon(Icons.mic),
-              label: Text(
-                isRecording ? 'Recording in progress' : 'Start recording',
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-Duration _clampAudioPosition(Duration position, Duration duration) {
-  if (position < Duration.zero) {
-    return Duration.zero;
-  }
-  if (duration > Duration.zero && position > duration) {
-    return duration;
-  }
-  return position;
-}
-
-String _formatAudioDuration(Duration duration) {
-  final hours = duration.inHours;
-  final minutes = duration.inMinutes.remainder(60);
-  final seconds = duration.inSeconds.remainder(60);
-  if (hours > 0) {
-    return '${hours.toString().padLeft(2, '0')}:'
-        '${minutes.toString().padLeft(2, '0')}:'
-        '${seconds.toString().padLeft(2, '0')}';
-  }
-
-  return '${minutes.toString().padLeft(2, '0')}:'
-      '${seconds.toString().padLeft(2, '0')}';
-}
-
-String _formatAudioDate(DateTime dateTime) {
-  final local = dateTime.toLocal();
-  return '${local.year.toString().padLeft(4, '0')}-'
-      '${local.month.toString().padLeft(2, '0')}-'
-      '${local.day.toString().padLeft(2, '0')} '
-      '${local.hour.toString().padLeft(2, '0')}:'
-      '${local.minute.toString().padLeft(2, '0')}';
 }
 
 class _SmartInkConfirmation {
@@ -2366,18 +1427,12 @@ class _PdfNavigationSheet extends StatelessWidget {
   const _PdfNavigationSheet({
     required this.notebook,
     required this.currentPageId,
-    required this.pages,
-    required this.textSearcher,
     required this.onSelectPage,
-    required this.onSelectSearchResult,
   });
 
   final Notebook notebook;
   final String currentPageId;
-  final List<NotePage> pages;
-  final NotebookPdfTextSearcher textSearcher;
   final ValueChanged<String> onSelectPage;
-  final ValueChanged<PdfTextSearchResult> onSelectSearchResult;
 
   @override
   Widget build(BuildContext context) {
@@ -2387,7 +1442,7 @@ class _PdfNavigationSheet extends StatelessWidget {
         : 0;
 
     return DefaultTabController(
-      length: 3,
+      length: 2,
       initialIndex: initialIndex,
       child: SafeArea(
         top: false,
@@ -2399,7 +1454,6 @@ class _PdfNavigationSheet extends StatelessWidget {
                 tabs: [
                   Tab(icon: Icon(Icons.format_list_bulleted), text: 'Outline'),
                   Tab(icon: Icon(Icons.bookmark_border), text: 'Bookmarks'),
-                  Tab(icon: Icon(Icons.search), text: 'Search'),
                 ],
               ),
               Expanded(
@@ -2414,12 +1468,6 @@ class _PdfNavigationSheet extends StatelessWidget {
                       notebook: notebook,
                       currentPageId: currentPageId,
                       onSelectPage: onSelectPage,
-                    ),
-                    NotebookPdfSearchPanel(
-                      notebook: notebook,
-                      pages: pages,
-                      textSearcher: textSearcher,
-                      onSelectResult: onSelectSearchResult,
                     ),
                   ],
                 ),

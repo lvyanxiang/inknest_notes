@@ -4,7 +4,6 @@ import 'dart:ui';
 
 import 'package:inknest_notes/models/notebook.dart';
 import 'package:inknest_notes/models/notebook_folder.dart';
-import 'package:inknest_notes/models/note_audio_recording.dart';
 import 'package:inknest_notes/models/note_image.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/pdf_background.dart';
@@ -32,14 +31,16 @@ class FileNotebookRepository implements NotebookRepository {
     String? folderId,
   }) async {
     final notebooks = await _readIndex();
-    return [
-      for (final notebook in notebooks)
-        if (notebook.isArchived == archived &&
-            (archived
-                ? folderId == null || notebook.folderId == folderId
-                : notebook.folderId == folderId))
-          _resolveNotebookAssets(notebook),
-    ];
+    return notebooks.where((notebook) {
+      if (notebook.isArchived != archived) {
+        return false;
+      }
+      if (archived) {
+        return folderId == null || notebook.folderId == folderId;
+      }
+
+      return notebook.folderId == folderId;
+    }).toList();
   }
 
   @override
@@ -186,68 +187,6 @@ class FileNotebookRepository implements NotebookRepository {
   }
 
   @override
-  Future<NoteAudioRecording> prepareAudioRecording(Notebook notebook) async {
-    final now = DateTime.now();
-    final recordingId = 'audio-${now.microsecondsSinceEpoch}';
-    final assetPath = 'assets/audio/$recordingId.m4a';
-    final audioFile = File('${_notebookDirectory(notebook).path}/$assetPath');
-    await audioFile.parent.create(recursive: true);
-
-    return NoteAudioRecording(
-      id: recordingId,
-      title: 'Recording ${notebook.audioRecordings.length + 1}',
-      assetPath: assetPath,
-      resolvedFilePath: audioFile.path,
-      createdAt: now,
-      durationMilliseconds: 0,
-    );
-  }
-
-  @override
-  Future<Notebook> saveAudioRecording(
-    Notebook notebook,
-    NoteAudioRecording recording,
-  ) async {
-    final updatedNotebook = notebook.copyWith(
-      updatedAt: DateTime.now(),
-      audioRecordings: [
-        for (final existingRecording in notebook.audioRecordings)
-          if (existingRecording.id != recording.id) existingRecording,
-        recording,
-      ],
-    );
-
-    await _replaceNotebook(updatedNotebook);
-    return _resolveNotebookAssets(updatedNotebook);
-  }
-
-  @override
-  Future<Notebook> deleteAudioRecording(
-    Notebook notebook,
-    String recordingId,
-  ) async {
-    final recording = notebook.audioRecordings
-        .where((candidate) => candidate.id == recordingId)
-        .firstOrNull;
-    final updatedNotebook = notebook.copyWith(
-      updatedAt: DateTime.now(),
-      audioRecordings: [
-        for (final existingRecording in notebook.audioRecordings)
-          if (existingRecording.id != recordingId) existingRecording,
-      ],
-    );
-
-    await _replaceNotebook(updatedNotebook);
-    if (recording != null) {
-      final audioFile = File(_resolveAudioAssetPath(notebook, recording));
-      if (await audioFile.exists()) {
-        await audioFile.delete();
-      }
-    }
-    return _resolveNotebookAssets(updatedNotebook);
-  }
-
-  @override
   Future<Notebook> renameNotebook(Notebook notebook, String title) async {
     final updatedNotebook = notebook.copyWith(
       title: title.trim().isEmpty ? notebook.title : title.trim(),
@@ -270,10 +209,6 @@ class FileNotebookRepository implements NotebookRepository {
       folderId: notebook.isArchived ? null : notebook.folderId,
       pdfOutlines: notebook.pdfOutlines,
       bookmarkedPageIds: notebook.bookmarkedPageIds,
-      audioRecordings: [
-        for (final recording in notebook.audioRecordings)
-          recording.copyWith(resolvedFilePath: null),
-      ],
     );
     final sourceDirectory = _notebookDirectory(notebook);
     final destinationDirectory = _notebookDirectory(duplicatedNotebook);
@@ -290,7 +225,7 @@ class FileNotebookRepository implements NotebookRepository {
 
     final notebooks = await _readIndex();
     await _writeIndex([...notebooks, duplicatedNotebook]);
-    return _resolveNotebookAssets(duplicatedNotebook);
+    return duplicatedNotebook;
   }
 
   @override
@@ -589,35 +524,6 @@ class FileNotebookRepository implements NotebookRepository {
 
   Directory _notebookDirectory(Notebook notebook) {
     return Directory('${_notebooksDirectory.path}/${notebook.id}');
-  }
-
-  Notebook _resolveNotebookAssets(Notebook notebook) {
-    if (notebook.audioRecordings.isEmpty) {
-      return notebook;
-    }
-
-    return notebook.copyWith(
-      audioRecordings: [
-        for (final recording in notebook.audioRecordings)
-          recording.copyWith(
-            resolvedFilePath: _resolveAudioAssetPath(notebook, recording),
-          ),
-      ],
-    );
-  }
-
-  String _resolveAudioAssetPath(
-    Notebook notebook,
-    NoteAudioRecording recording,
-  ) {
-    final absoluteFile = File(recording.assetPath);
-    if (absoluteFile.isAbsolute && absoluteFile.existsSync()) {
-      return absoluteFile.path;
-    }
-
-    return File(
-      '${_notebookDirectory(notebook).path}/${recording.assetPath}',
-    ).path;
   }
 
   File _pdfAssetFile(Notebook notebook) {
