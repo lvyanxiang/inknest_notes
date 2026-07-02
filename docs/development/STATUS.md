@@ -3,8 +3,8 @@
 ## Current
 
 - Milestone: Post-MVP 5 - Audio And Search
-- Next task: Add PDF text search.
-- Last completed: Linked audio playback timeline with strokes.
+- Next task: Explore handwriting recognition and OCR for search and Smart Ink.
+- Last completed: Added PDF text search with page navigation and match highlighting.
 
 ## Decisions
 
@@ -65,14 +65,16 @@
 - Keep the current library-first startup during active development, but evolve the long-term home into a capability-first launcher: choosing a task such as live transcription creates a standard notebook and opens the matching workspace.
 - Store notebook audio as AAC/M4A files under notebook-relative `assets/audio/` paths, with recording metadata on `Notebook`; use existing stroke timestamps for backward-compatible playback linking without a page-data migration.
 - Keep native audio recorder and player objects lazy so opening an editor does not initialize platform channels before the user starts recording or playback.
+- Search the existing PDF text layer locally with `pdfrx`, cache opened documents and extracted page text for the editor session, and keep scanned-document OCR as the next task.
+- Put PDF search beside Outline and Bookmarks; selecting a result opens its notebook page and highlights the matching PDF region.
 
 ## Verification
 
-- Targeted Dart formatting passed for the audio playback implementation and tests.
-- Focused audio timeline and playback widget tests passed.
-- Full `flutter test` passed with 39 tests.
-- `flutter analyze` passed.
-- `git diff --check` passed after the audio timeline documentation update.
+- Targeted Dart formatting passed for the PDF search implementation and tests.
+- Focused PDF search snippet and interaction tests passed.
+- Full `flutter test` passed with 41 tests.
+- `flutter analyze` passed after the final style fix.
+- `git diff --check` passed after the PDF search documentation update.
 - `dart format lib test` passed after editor zoom/pan.
 - `flutter test` passed after editor zoom/pan.
 - `flutter analyze` passed after editor zoom/pan.
@@ -167,6 +169,9 @@
 - Focused stroke-audio timeline and recording playback widget tests passed.
 - Full `flutter test` passed with 39 tests after linking playback to strokes.
 - `flutter analyze` passed after linking playback to strokes.
+- Focused PDF search snippet and result-selection widget tests passed.
+- Full `flutter test` passed with 41 tests after adding PDF text search.
+- `flutter analyze` passed after adding PDF text search.
 
 ## Notes
 
@@ -199,6 +204,7 @@
 - Editor toolbar includes a Shape tool with a shape-type menu for line, arrow, rectangle, and ellipse; created shapes persist, appear in thumbnails, and export to PDF.
 - Editor canvas includes a floating favorites toolbar with common black/teal/red pen and yellow highlighter presets.
 - Editor can record notebook audio, pause and resume an active recording, stop and persist it, discard it, list saved recordings, play or seek recordings, and delete recordings; playback fades upcoming linked strokes and highlights the current stroke, and microphone permissions are configured for Android, iOS, and macOS.
+- Editor PDF navigation now includes local text-layer search; results show context and page numbers, jump to the matching notebook page, and highlight the selected PDF region. Image-only scanned PDFs still require future OCR.
 - Smart Ink planning lives in `docs/development/SMART_INK_PLAN.md`.
 - Post-MVP feature gaps and optimization areas are documented in `docs/development/POST_MVP_ROADMAP.md`.
 - Subscription packaging, platform behavior, and local/cloud merge rules are documented in `docs/development/SUBSCRIPTION_PLAN.md`.

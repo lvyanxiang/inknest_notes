@@ -13,6 +13,9 @@ import 'package:inknest_notes/features/editor/audio/notebook_audio_recorder.dart
 import 'package:inknest_notes/features/editor/canvas/drawing_canvas.dart';
 import 'package:inknest_notes/features/editor/canvas/pdf_page_background.dart';
 import 'package:inknest_notes/features/editor/images/image_layer.dart';
+import 'package:inknest_notes/features/editor/pdf_search/notebook_pdf_search_panel.dart';
+import 'package:inknest_notes/features/editor/pdf_search/notebook_pdf_text_searcher.dart';
+import 'package:inknest_notes/features/editor/pdf_search/pdf_text_search_highlight.dart';
 import 'package:inknest_notes/features/editor/shapes/shape_layer.dart';
 import 'package:inknest_notes/features/editor/smart_ink/smart_ink_selection_layer.dart';
 import 'package:inknest_notes/features/editor/text/note_text_box_styles.dart';
@@ -39,12 +42,14 @@ class EditorScreen extends StatefulWidget {
     required this.notebookRepository,
     this.audioPlayer,
     this.audioRecorder,
+    this.pdfTextSearcher,
   });
 
   final Notebook notebook;
   final NotebookRepository notebookRepository;
   final NotebookAudioPlayer? audioPlayer;
   final NotebookAudioRecorder? audioRecorder;
+  final NotebookPdfTextSearcher? pdfTextSearcher;
 
   @override
   State<EditorScreen> createState() => _EditorScreenState();
@@ -65,6 +70,7 @@ class _EditorScreenState extends State<EditorScreen> {
   StreamSubscription<bool>? _audioPlayingSubscription;
   StreamSubscription<Duration>? _audioPositionSubscription;
   NoteAudioRecording? _activePlaybackRecording;
+  PdfTextSearchResult? _activePdfSearchResult;
   NoteAudioRecording? _pendingAudioRecording;
   Duration _audioElapsed = Duration.zero;
   Duration _audioPlaybackDuration = Duration.zero;
@@ -76,6 +82,7 @@ class _EditorScreenState extends State<EditorScreen> {
   bool _isPlaybackBusy = false;
   bool _isExporting = false;
   bool _fingerPanEnabled = false;
+  NotebookPdfTextSearcher? _pdfTextSearcher;
   String? _activeTextBoxId;
   String? _activeImageId;
   NotePage? _page;
@@ -84,6 +91,7 @@ class _EditorScreenState extends State<EditorScreen> {
   void initState() {
     super.initState();
     _audioRecorder = widget.audioRecorder;
+    _pdfTextSearcher = widget.pdfTextSearcher;
     _notebook = widget.notebook;
     _currentPageId = _notebook.pageIds.first;
     _loadPage();
@@ -99,6 +107,7 @@ class _EditorScreenState extends State<EditorScreen> {
     unawaited(_audioPositionSubscription?.cancel());
     unawaited(_audioPlayer?.dispose());
     unawaited(_disposeAudioRecorder());
+    unawaited(_pdfTextSearcher?.dispose());
     super.dispose();
   }
 
@@ -116,6 +125,10 @@ class _EditorScreenState extends State<EditorScreen> {
 
   NotebookAudioRecorder get _effectiveAudioRecorder {
     return _audioRecorder ??= DeviceNotebookAudioRecorder();
+  }
+
+  NotebookPdfTextSearcher get _effectivePdfTextSearcher {
+    return _pdfTextSearcher ??= PdfrxNotebookPdfTextSearcher();
   }
 
   Future<void> _loadPage() async {
@@ -1188,7 +1201,15 @@ class _EditorScreenState extends State<EditorScreen> {
     });
   }
 
-  void _showNavigationSheet() {
+  Future<void> _showNavigationSheet() async {
+    await _loadPageThumbnails();
+    if (!mounted) {
+      return;
+    }
+
+    final pages = [
+      for (final pageId in _notebook.pageIds) ?_pagesById[pageId],
+    ];
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -1196,9 +1217,20 @@ class _EditorScreenState extends State<EditorScreen> {
         return _PdfNavigationSheet(
           notebook: _notebook,
           currentPageId: _currentPageId,
+          pages: pages,
+          textSearcher: _effectivePdfTextSearcher,
           onSelectPage: (pageId) {
             Navigator.of(sheetContext).pop();
             unawaited(_selectPage(pageId));
+          },
+          onSelectSearchResult: (result) {
+            Navigator.of(sheetContext).pop();
+            setState(() {
+              _activePdfSearchResult = result;
+            });
+            unawaited(
+              _selectPage(result.pageId, preserveSearchHighlight: true),
+            );
           },
         );
       },
@@ -1453,8 +1485,16 @@ class _EditorScreenState extends State<EditorScreen> {
     return '$baseName${selection.fileNameSuffix}.pdf';
   }
 
-  Future<void> _selectPage(String pageId) async {
+  Future<void> _selectPage(
+    String pageId, {
+    bool preserveSearchHighlight = false,
+  }) async {
     if (pageId == _currentPageId) {
+      if (!preserveSearchHighlight && _activePdfSearchResult != null) {
+        setState(() {
+          _activePdfSearchResult = null;
+        });
+      }
       return;
     }
 
@@ -1462,6 +1502,9 @@ class _EditorScreenState extends State<EditorScreen> {
       _currentPageId = pageId;
       _page = null;
       _redoStack.clear();
+      if (!preserveSearchHighlight) {
+        _activePdfSearchResult = null;
+      }
     });
 
     await _loadPage();
@@ -1633,6 +1676,16 @@ class _EditorScreenState extends State<EditorScreen> {
                   '${background.filePath}-${background.pageNumber}',
                 ),
                 background: background,
+              ),
+            if (_activePdfSearchResult case final searchResult?
+                when searchResult.pageId == page.id)
+              PdfTextSearchHighlight(
+                key: ValueKey(
+                  'pdf-search-highlight-${searchResult.pageId}-'
+                  '${searchResult.normalizedBounds}',
+                ),
+                result: searchResult,
+                color: Theme.of(context).colorScheme.tertiary,
               ),
             ImageLayer(
               page: page,
@@ -2313,12 +2366,18 @@ class _PdfNavigationSheet extends StatelessWidget {
   const _PdfNavigationSheet({
     required this.notebook,
     required this.currentPageId,
+    required this.pages,
+    required this.textSearcher,
     required this.onSelectPage,
+    required this.onSelectSearchResult,
   });
 
   final Notebook notebook;
   final String currentPageId;
+  final List<NotePage> pages;
+  final NotebookPdfTextSearcher textSearcher;
   final ValueChanged<String> onSelectPage;
+  final ValueChanged<PdfTextSearchResult> onSelectSearchResult;
 
   @override
   Widget build(BuildContext context) {
@@ -2328,7 +2387,7 @@ class _PdfNavigationSheet extends StatelessWidget {
         : 0;
 
     return DefaultTabController(
-      length: 2,
+      length: 3,
       initialIndex: initialIndex,
       child: SafeArea(
         top: false,
@@ -2340,6 +2399,7 @@ class _PdfNavigationSheet extends StatelessWidget {
                 tabs: [
                   Tab(icon: Icon(Icons.format_list_bulleted), text: 'Outline'),
                   Tab(icon: Icon(Icons.bookmark_border), text: 'Bookmarks'),
+                  Tab(icon: Icon(Icons.search), text: 'Search'),
                 ],
               ),
               Expanded(
@@ -2354,6 +2414,12 @@ class _PdfNavigationSheet extends StatelessWidget {
                       notebook: notebook,
                       currentPageId: currentPageId,
                       onSelectPage: onSelectPage,
+                    ),
+                    NotebookPdfSearchPanel(
+                      notebook: notebook,
+                      pages: pages,
+                      textSearcher: textSearcher,
+                      onSelectResult: onSelectSearchResult,
                     ),
                   ],
                 ),

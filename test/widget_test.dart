@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:ui' show PointerDeviceKind;
+import 'dart:ui' show PointerDeviceKind, Rect, Size;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,6 +8,11 @@ import 'package:inknest_notes/features/editor/audio/notebook_audio_player.dart';
 import 'package:inknest_notes/features/editor/audio/notebook_audio_recorder.dart';
 import 'package:inknest_notes/features/editor/canvas/drawing_canvas.dart';
 import 'package:inknest_notes/features/editor/editor_screen.dart';
+import 'package:inknest_notes/features/editor/pdf_search/notebook_pdf_search_panel.dart';
+import 'package:inknest_notes/features/editor/pdf_search/notebook_pdf_text_searcher.dart';
+import 'package:inknest_notes/features/editor/pdf_search/pdf_text_search_highlight.dart';
+import 'package:inknest_notes/models/note_page.dart';
+import 'package:inknest_notes/models/pdf_background.dart';
 import 'package:inknest_notes/storage/in_memory_notebook_repository.dart';
 
 void main() {
@@ -634,6 +639,88 @@ void main() {
     expect(find.byTooltip('Bookmark page'), findsOneWidget);
   });
 
+  testWidgets('searches PDF text and highlights a selected result', (
+    WidgetTester tester,
+  ) async {
+    final repository = InMemoryNotebookRepository();
+    final notebook = await repository.createNotebook(title: 'PDF Study');
+    const pages = [
+      NotePage(
+        id: 'page-1',
+        width: 595,
+        height: 842,
+        pdfBackground: PdfBackground(
+          assetPath: 'assets/searchable.pdf',
+          pageNumber: 1,
+        ),
+      ),
+    ];
+    final textSearcher = _FakeNotebookPdfTextSearcher(
+      const PdfTextSearchResult(
+        pageId: 'page-1',
+        pdfPageNumber: 1,
+        matchText: 'important',
+        snippet: 'An important result appears here.',
+        normalizedBounds: Rect.fromLTWH(0.2, 0.3, 0.25, 0.04),
+        pdfPageSize: Size(595, 842),
+      ),
+    );
+    PdfTextSearchResult? selectedResult;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StatefulBuilder(
+          builder: (context, setState) {
+            return Scaffold(
+              body: Column(
+                children: [
+                  Expanded(
+                    child: NotebookPdfSearchPanel(
+                      notebook: notebook,
+                      pages: pages,
+                      textSearcher: textSearcher,
+                      onSelectResult: (result) {
+                        setState(() {
+                          selectedResult = result;
+                        });
+                      },
+                    ),
+                  ),
+                  if (selectedResult case final result?)
+                    SizedBox(
+                      width: 200,
+                      height: 200,
+                      child: PdfTextSearchHighlight(
+                        result: result,
+                        color: Colors.orange,
+                      ),
+                    ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const ValueKey('pdf-search-field')),
+      'important',
+    );
+    await tester.tap(find.byTooltip('Search PDF text'));
+    await tester.pumpAndSettle();
+
+    expect(textSearcher.lastQuery, 'important');
+    expect(find.text('1 match'), findsOneWidget);
+    expect(find.text('An important result appears here.'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('pdf-search-result-0')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(PdfTextSearchHighlight), findsOneWidget);
+  });
+
   testWidgets('inserts blank pages before and after selected pages', (
     WidgetTester tester,
   ) async {
@@ -797,4 +884,23 @@ class _FakeNotebookAudioPlayer implements NotebookAudioPlayer {
 
   @override
   Future<void> stop() async {}
+}
+
+class _FakeNotebookPdfTextSearcher implements NotebookPdfTextSearcher {
+  _FakeNotebookPdfTextSearcher(this.result);
+
+  final PdfTextSearchResult result;
+  String? lastQuery;
+
+  @override
+  Future<void> dispose() async {}
+
+  @override
+  Future<List<PdfTextSearchResult>> search({
+    required Iterable<NotePage> pages,
+    required String query,
+  }) async {
+    lastQuery = query;
+    return [result];
+  }
 }
