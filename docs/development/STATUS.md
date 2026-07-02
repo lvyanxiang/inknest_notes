@@ -60,6 +60,9 @@
 - Store clean shape objects on `NotePage.shapes`; first shape tool supports line, arrow, rectangle, and ellipse with light line-angle snapping for cleaner line/arrow creation.
 - Shape rendering is shared across the editor, page thumbnails, library thumbnails, and PDF export.
 - Keep the first favorites toolbar as an in-editor floating preset strip instead of growing the main toolbar height; presets switch to common pen/highlighter combinations without changing page layout or canvas hit testing.
+- Keep future AI integrations provider-independent: run recognition on-device where practical, route cloud models through a Python AI gateway, preserve original content, and require sources or user confirmation for generated results.
+- Evaluate MyScript iink handwriting generation for personalized handwriting beautification before committing to a custom stroke-generation model.
+- Keep the current library-first startup during active development, but evolve the long-term home into a capability-first launcher: choosing a task such as live transcription creates a standard notebook and opens the matching workspace.
 
 ## Verification
 
@@ -153,6 +156,8 @@
 - `git diff --check` passed after re-screening graduation document references against school library journal coverage years.
 - `git diff --check` passed after splitting academic document maintenance into `$inknest-academic-docs`.
 - `git diff --check` passed after replacing graduation references with 2022-2025 journal papers and adding one-to-one body citations.
+- `git diff --check` passed after documenting future AI capabilities and provider choices.
+- `git diff --check` passed after documenting the capability-first product vision.
 
 ## Notes
 
@@ -187,6 +192,7 @@
 - Smart Ink planning lives in `docs/development/SMART_INK_PLAN.md`.
 - Post-MVP feature gaps and optimization areas are documented in `docs/development/POST_MVP_ROADMAP.md`.
 - Subscription packaging, platform behavior, and local/cloud merge rules are documented in `docs/development/SUBSCRIPTION_PLAN.md`.
+- Personalized handwriting beautification and the AI capability roadmap are documented in `docs/development/FUTURE_IDEAS.md`.
 - Web knowledge-base, mobile companion, collaboration, and AI directions are captured as later post-MVP milestones.
 - Graduation task book and opening report Markdown drafts live in `docs/academic/GRADUATION_TASK_BOOK.md` and `docs/academic/OPENING_REPORT.md`; maintain them with `$inknest-academic-docs`, not as an automatic side effect of development tasks.
 - Python details in the graduation docs are described as formal module design, interface planning, and extension scope; implementation-specific project details should be added when available.
