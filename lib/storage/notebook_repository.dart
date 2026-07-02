@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:inknest_notes/models/notebook.dart';
 import 'package:inknest_notes/models/notebook_folder.dart';
+import 'package:inknest_notes/models/note_audio_recording.dart';
 import 'package:inknest_notes/models/note_image.dart';
 import 'package:inknest_notes/models/note_page.dart';
 
@@ -47,6 +48,15 @@ abstract class NotebookRepository {
     String pageId,
     bool isBookmarked,
   );
+
+  Future<NoteAudioRecording> prepareAudioRecording(Notebook notebook);
+
+  Future<Notebook> saveAudioRecording(
+    Notebook notebook,
+    NoteAudioRecording recording,
+  );
+
+  Future<Notebook> deleteAudioRecording(Notebook notebook, String recordingId);
 
   Future<Notebook> addPage(Notebook notebook);
 

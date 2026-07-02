@@ -1,3 +1,4 @@
+import 'package:inknest_notes/models/note_audio_recording.dart';
 import 'package:inknest_notes/models/pdf_outline_entry.dart';
 
 class Notebook {
@@ -11,6 +12,7 @@ class Notebook {
     this.folderId,
     this.pdfOutlines = const [],
     this.bookmarkedPageIds = const [],
+    this.audioRecordings = const [],
   });
 
   final String id;
@@ -22,6 +24,7 @@ class Notebook {
   final String? folderId;
   final List<PdfOutlineEntry> pdfOutlines;
   final List<String> bookmarkedPageIds;
+  final List<NoteAudioRecording> audioRecordings;
 
   factory Notebook.fromJson(Map<String, Object?> json) {
     return Notebook(
@@ -43,6 +46,12 @@ class Notebook {
       bookmarkedPageIds:
           (json['bookmarkedPageIds'] as List<Object?>?)?.cast<String>() ??
           const [],
+      audioRecordings:
+          (json['audioRecordings'] as List<Object?>?)
+              ?.cast<Map<String, Object?>>()
+              .map(NoteAudioRecording.fromJson)
+              .toList() ??
+          const [],
     );
   }
 
@@ -58,6 +67,10 @@ class Notebook {
       if (pdfOutlines.isNotEmpty)
         'pdfOutlines': pdfOutlines.map((entry) => entry.toJson()).toList(),
       if (bookmarkedPageIds.isNotEmpty) 'bookmarkedPageIds': bookmarkedPageIds,
+      if (audioRecordings.isNotEmpty)
+        'audioRecordings': audioRecordings
+            .map((recording) => recording.toJson())
+            .toList(),
     };
   }
 
@@ -69,6 +82,7 @@ class Notebook {
     Object? folderId = _folderIdNotChanged,
     List<PdfOutlineEntry>? pdfOutlines,
     List<String>? bookmarkedPageIds,
+    List<NoteAudioRecording>? audioRecordings,
   }) {
     return Notebook(
       id: id,
@@ -82,6 +96,7 @@ class Notebook {
           : folderId as String?,
       pdfOutlines: pdfOutlines ?? this.pdfOutlines,
       bookmarkedPageIds: bookmarkedPageIds ?? this.bookmarkedPageIds,
+      audioRecordings: audioRecordings ?? this.audioRecordings,
     );
   }
 }

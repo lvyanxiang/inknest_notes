@@ -216,7 +216,7 @@ Goal: support mixed handwritten and typed notes.
 
 Goal: add Notability-style study features.
 
-- Add audio recording.
+- [x] Add audio recording.
 - Link playback timeline with strokes.
 - Add PDF text search.
 - Explore handwriting recognition and OCR for search and Smart Ink.

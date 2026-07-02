@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as image;
 import 'package:inknest_notes/export/notebook_pdf_exporter.dart';
+import 'package:inknest_notes/features/editor/audio/notebook_audio_recorder.dart';
 import 'package:inknest_notes/features/editor/canvas/drawing_canvas.dart';
 import 'package:inknest_notes/features/editor/canvas/pdf_page_background.dart';
 import 'package:inknest_notes/features/editor/images/image_layer.dart';
@@ -16,6 +17,7 @@ import 'package:inknest_notes/features/editor/smart_ink/smart_ink_selection_laye
 import 'package:inknest_notes/features/editor/text/note_text_box_styles.dart';
 import 'package:inknest_notes/features/editor/text/text_box_layer.dart';
 import 'package:inknest_notes/features/editor/tools/editor_toolbar.dart';
+import 'package:inknest_notes/models/note_audio_recording.dart';
 import 'package:inknest_notes/models/note_image.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/note_shape.dart';
@@ -33,10 +35,12 @@ class EditorScreen extends StatefulWidget {
     super.key,
     required this.notebook,
     required this.notebookRepository,
+    this.audioRecorder,
   });
 
   final Notebook notebook;
   final NotebookRepository notebookRepository;
+  final NotebookAudioRecorder? audioRecorder;
 
   @override
   State<EditorScreen> createState() => _EditorScreenState();
@@ -45,9 +49,17 @@ class EditorScreen extends StatefulWidget {
 class _EditorScreenState extends State<EditorScreen> {
   final List<Stroke> _redoStack = [];
   final Map<String, NotePage> _pagesById = {};
+  final Stopwatch _audioStopwatch = Stopwatch();
   DrawingTool _tool = const DrawingTool();
+  late final NotebookAudioRecorder _audioRecorder;
   late Notebook _notebook;
   late String _currentPageId;
+  Timer? _audioTimer;
+  NoteAudioRecording? _pendingAudioRecording;
+  Duration _audioElapsed = Duration.zero;
+  bool _isAudioBusy = false;
+  bool _isAudioPaused = false;
+  bool _isAudioRecording = false;
   bool _isExporting = false;
   bool _fingerPanEnabled = false;
   String? _activeTextBoxId;
@@ -57,10 +69,25 @@ class _EditorScreenState extends State<EditorScreen> {
   @override
   void initState() {
     super.initState();
+    _audioRecorder = widget.audioRecorder ?? DeviceNotebookAudioRecorder();
     _notebook = widget.notebook;
     _currentPageId = _notebook.pageIds.first;
     _loadPage();
     unawaited(_loadPageThumbnails());
+  }
+
+  @override
+  void dispose() {
+    _audioTimer?.cancel();
+    unawaited(_disposeAudioRecorder());
+    super.dispose();
+  }
+
+  Future<void> _disposeAudioRecorder() async {
+    if (_isAudioRecording) {
+      await _audioRecorder.cancel();
+    }
+    await _audioRecorder.dispose();
   }
 
   Future<void> _loadPage() async {
@@ -629,6 +656,285 @@ class _EditorScreenState extends State<EditorScreen> {
     await widget.notebookRepository.savePage(_notebook, pageToSave);
   }
 
+  void _showAudioRecordingsSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return _AudioRecordingsSheet(
+          recordings: _notebook.audioRecordings,
+          isRecording: _isAudioRecording,
+          onStartRecording: () {
+            Navigator.of(sheetContext).pop();
+            unawaited(_startAudioRecording());
+          },
+          onDeleteRecording: (recording) {
+            Navigator.of(sheetContext).pop();
+            unawaited(_deleteAudioRecording(recording));
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _startAudioRecording() async {
+    if (_isAudioBusy || _isAudioRecording) {
+      return;
+    }
+
+    setState(() {
+      _isAudioBusy = true;
+    });
+
+    NoteAudioRecording? preparedRecording;
+    try {
+      final hasPermission = await _audioRecorder.requestPermission();
+      if (!hasPermission) {
+        if (mounted) {
+          _showAudioMessage(
+            'Microphone access is required to record notebook audio.',
+          );
+        }
+        return;
+      }
+
+      preparedRecording = await widget.notebookRepository.prepareAudioRecording(
+        _notebook,
+      );
+      await _audioRecorder.start(preparedRecording.filePath);
+
+      if (!mounted) {
+        await _audioRecorder.cancel();
+        return;
+      }
+
+      _audioStopwatch
+        ..reset()
+        ..start();
+      _startAudioTimer();
+      setState(() {
+        _pendingAudioRecording = preparedRecording;
+        _audioElapsed = Duration.zero;
+        _isAudioPaused = false;
+        _isAudioRecording = true;
+      });
+    } catch (error) {
+      await _audioRecorder.cancel();
+      if (mounted) {
+        _showAudioMessage('Could not start recording: $error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isAudioBusy = false;
+        });
+      }
+    }
+  }
+
+  void _startAudioTimer() {
+    _audioTimer?.cancel();
+    _audioTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _audioElapsed = _audioStopwatch.elapsed;
+      });
+    });
+  }
+
+  Future<void> _pauseAudioRecording() async {
+    if (!_isAudioRecording || _isAudioPaused || _isAudioBusy) {
+      return;
+    }
+
+    setState(() {
+      _isAudioBusy = true;
+    });
+    try {
+      await _audioRecorder.pause();
+      _audioStopwatch.stop();
+      _audioTimer?.cancel();
+      if (mounted) {
+        setState(() {
+          _audioElapsed = _audioStopwatch.elapsed;
+          _isAudioPaused = true;
+        });
+      }
+    } catch (error) {
+      if (mounted) {
+        _showAudioMessage('Could not pause recording: $error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isAudioBusy = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _resumeAudioRecording() async {
+    if (!_isAudioRecording || !_isAudioPaused || _isAudioBusy) {
+      return;
+    }
+
+    setState(() {
+      _isAudioBusy = true;
+    });
+    try {
+      await _audioRecorder.resume();
+      _audioStopwatch.start();
+      _startAudioTimer();
+      if (mounted) {
+        setState(() {
+          _isAudioPaused = false;
+        });
+      }
+    } catch (error) {
+      if (mounted) {
+        _showAudioMessage('Could not resume recording: $error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isAudioBusy = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _stopAudioRecording() async {
+    final pendingRecording = _pendingAudioRecording;
+    if (!_isAudioRecording || pendingRecording == null || _isAudioBusy) {
+      return;
+    }
+
+    setState(() {
+      _isAudioBusy = true;
+    });
+    _audioStopwatch.stop();
+    _audioTimer?.cancel();
+    final duration = _audioStopwatch.elapsed;
+
+    try {
+      final recordedPath = await _audioRecorder.stop();
+      if (recordedPath == null) {
+        throw StateError('The recorder did not return a saved audio file.');
+      }
+
+      final savedRecording = pendingRecording.copyWith(
+        durationMilliseconds: duration.inMilliseconds,
+        resolvedFilePath: recordedPath,
+      );
+      final updatedNotebook = await widget.notebookRepository
+          .saveAudioRecording(_notebook, savedRecording);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _notebook = updatedNotebook;
+      });
+      _resetAudioSession();
+      _showAudioMessage('${savedRecording.title} saved.');
+    } catch (error) {
+      await _audioRecorder.cancel();
+      if (!mounted) {
+        return;
+      }
+      _resetAudioSession();
+      _showAudioMessage('Could not save recording: $error');
+    }
+  }
+
+  Future<void> _cancelAudioRecording() async {
+    if (!_isAudioRecording || _isAudioBusy) {
+      return;
+    }
+
+    setState(() {
+      _isAudioBusy = true;
+    });
+    try {
+      await _audioRecorder.cancel();
+      if (!mounted) {
+        return;
+      }
+      _resetAudioSession();
+      _showAudioMessage('Recording discarded.');
+    } catch (error) {
+      if (mounted) {
+        _showAudioMessage('Could not discard recording: $error');
+      }
+    } finally {
+      if (mounted && _isAudioRecording) {
+        setState(() {
+          _isAudioBusy = false;
+        });
+      }
+    }
+  }
+
+  void _resetAudioSession() {
+    _audioTimer?.cancel();
+    _audioStopwatch
+      ..stop()
+      ..reset();
+    setState(() {
+      _pendingAudioRecording = null;
+      _audioElapsed = Duration.zero;
+      _isAudioBusy = false;
+      _isAudioPaused = false;
+      _isAudioRecording = false;
+    });
+  }
+
+  Future<void> _deleteAudioRecording(NoteAudioRecording recording) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Delete recording?'),
+          content: Text('${recording.title} will be removed permanently.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              icon: const Icon(Icons.delete_outline),
+              label: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+    if (shouldDelete != true || !mounted) {
+      return;
+    }
+
+    final updatedNotebook = await widget.notebookRepository
+        .deleteAudioRecording(_notebook, recording.id);
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _notebook = updatedNotebook;
+    });
+    _showAudioMessage('${recording.title} deleted.');
+  }
+
+  void _showAudioMessage(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
   Future<void> _setCurrentPageBookmarked(bool isBookmarked) async {
     final updatedNotebook = await widget.notebookRepository.setPageBookmarked(
       _notebook,
@@ -936,6 +1242,16 @@ class _EditorScreenState extends State<EditorScreen> {
         title: Text(_notebook.title),
         actions: [
           IconButton(
+            onPressed: _isAudioBusy ? null : _showAudioRecordingsSheet,
+            tooltip: 'Audio recordings',
+            icon: Icon(
+              _isAudioRecording ? Icons.mic : Icons.mic_none_outlined,
+              color: _isAudioRecording
+                  ? Theme.of(context).colorScheme.error
+                  : null,
+            ),
+          ),
+          IconButton(
             onPressed: _showNavigationSheet,
             tooltip: 'Outline and bookmarks',
             icon: const Icon(Icons.menu_book_outlined),
@@ -986,6 +1302,16 @@ class _EditorScreenState extends State<EditorScreen> {
             onFingerPanChanged: _setFingerPanEnabled,
             onInsertImage: () => unawaited(_insertImage()),
           ),
+          if (_isAudioRecording)
+            _AudioRecordingBanner(
+              elapsed: _audioElapsed,
+              isBusy: _isAudioBusy,
+              isPaused: _isAudioPaused,
+              onPause: () => unawaited(_pauseAudioRecording()),
+              onResume: () => unawaited(_resumeAudioRecording()),
+              onStop: () => unawaited(_stopAudioRecording()),
+              onCancel: () => unawaited(_cancelAudioRecording()),
+            ),
           Expanded(
             child: page == null
                 ? const Center(child: CircularProgressIndicator())
@@ -1098,6 +1424,179 @@ class _EditorScreenState extends State<EditorScreen> {
       ),
     );
   }
+}
+
+class _AudioRecordingBanner extends StatelessWidget {
+  const _AudioRecordingBanner({
+    required this.elapsed,
+    required this.isBusy,
+    required this.isPaused,
+    required this.onPause,
+    required this.onResume,
+    required this.onStop,
+    required this.onCancel,
+  });
+
+  final Duration elapsed;
+  final bool isBusy;
+  final bool isPaused;
+  final VoidCallback onPause;
+  final VoidCallback onResume;
+  final VoidCallback onStop;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Material(
+      color: colorScheme.errorContainer,
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            children: [
+              Icon(
+                isPaused
+                    ? Icons.pause_circle_outline
+                    : Icons.fiber_manual_record,
+                color: colorScheme.error,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                isPaused ? 'Recording paused' : 'Recording',
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
+              const SizedBox(width: 12),
+              Text(
+                _formatAudioDuration(elapsed),
+                key: const ValueKey('audio-recording-elapsed'),
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const Spacer(),
+              IconButton(
+                onPressed: isBusy ? null : (isPaused ? onResume : onPause),
+                tooltip: isPaused ? 'Resume recording' : 'Pause recording',
+                icon: Icon(isPaused ? Icons.play_arrow : Icons.pause),
+              ),
+              IconButton(
+                onPressed: isBusy ? null : onStop,
+                tooltip: 'Stop recording',
+                icon: const Icon(Icons.stop),
+              ),
+              IconButton(
+                onPressed: isBusy ? null : onCancel,
+                tooltip: 'Discard recording',
+                icon: const Icon(Icons.delete_outline),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AudioRecordingsSheet extends StatelessWidget {
+  const _AudioRecordingsSheet({
+    required this.recordings,
+    required this.isRecording,
+    required this.onStartRecording,
+    required this.onDeleteRecording,
+  });
+
+  final List<NoteAudioRecording> recordings;
+  final bool isRecording;
+  final VoidCallback onStartRecording;
+  final ValueChanged<NoteAudioRecording> onDeleteRecording;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Audio recordings',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 8),
+            if (recordings.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 20),
+                child: Text(
+                  'No recordings yet. Record a lecture, meeting, or voice note '
+                  'without leaving the notebook.',
+                ),
+              )
+            else
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: recordings.length,
+                  separatorBuilder: (_, _) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final recording = recordings[index];
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.graphic_eq),
+                      title: Text(recording.title),
+                      subtitle: Text(
+                        '${_formatAudioDuration(recording.duration)} · '
+                        '${_formatAudioDate(recording.createdAt)}',
+                      ),
+                      trailing: IconButton(
+                        onPressed: isRecording
+                            ? null
+                            : () => onDeleteRecording(recording),
+                        tooltip: 'Delete ${recording.title}',
+                        icon: const Icon(Icons.delete_outline),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: isRecording ? null : onStartRecording,
+              icon: const Icon(Icons.mic),
+              label: Text(
+                isRecording ? 'Recording in progress' : 'Start recording',
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _formatAudioDuration(Duration duration) {
+  final hours = duration.inHours;
+  final minutes = duration.inMinutes.remainder(60);
+  final seconds = duration.inSeconds.remainder(60);
+  if (hours > 0) {
+    return '${hours.toString().padLeft(2, '0')}:'
+        '${minutes.toString().padLeft(2, '0')}:'
+        '${seconds.toString().padLeft(2, '0')}';
+  }
+
+  return '${minutes.toString().padLeft(2, '0')}:'
+      '${seconds.toString().padLeft(2, '0')}';
+}
+
+String _formatAudioDate(DateTime dateTime) {
+  final local = dateTime.toLocal();
+  return '${local.year.toString().padLeft(4, '0')}-'
+      '${local.month.toString().padLeft(2, '0')}-'
+      '${local.day.toString().padLeft(2, '0')} '
+      '${local.hour.toString().padLeft(2, '0')}:'
+      '${local.minute.toString().padLeft(2, '0')}';
 }
 
 class _SmartInkConfirmation {

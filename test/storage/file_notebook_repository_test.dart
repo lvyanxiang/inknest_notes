@@ -144,6 +144,44 @@ void main() {
     expect(reloadedImage.height, 120);
   });
 
+  test('persists and deletes notebook audio recordings', () async {
+    final notebook = await repository.createNotebook(title: 'Lecture');
+    final preparedRecording = await repository.prepareAudioRecording(notebook);
+    await File(preparedRecording.filePath).writeAsBytes([1, 2, 3, 4]);
+
+    final savedNotebook = await repository.saveAudioRecording(
+      notebook,
+      preparedRecording.copyWith(durationMilliseconds: 65000),
+    );
+    final reloadedRepository = FileNotebookRepository(
+      rootDirectory: tempDirectory,
+    );
+    final reloadedNotebook = (await reloadedRepository.listNotebooks()).single;
+    final reloadedRecording = reloadedNotebook.audioRecordings.single;
+
+    expect(savedNotebook.audioRecordings.single.title, 'Recording 1');
+    expect(reloadedRecording.assetPath, startsWith('assets/audio/'));
+    expect(reloadedRecording.duration, const Duration(minutes: 1, seconds: 5));
+    expect(File(reloadedRecording.filePath).existsSync(), isTrue);
+
+    final duplicatedNotebook = await reloadedRepository.duplicateNotebook(
+      reloadedNotebook,
+    );
+    final duplicatedRecording = duplicatedNotebook.audioRecordings.single;
+
+    expect(duplicatedRecording.assetPath, reloadedRecording.assetPath);
+    expect(duplicatedRecording.filePath, isNot(reloadedRecording.filePath));
+    expect(File(duplicatedRecording.filePath).existsSync(), isTrue);
+
+    final updatedNotebook = await reloadedRepository.deleteAudioRecording(
+      reloadedNotebook,
+      reloadedRecording.id,
+    );
+
+    expect(updatedNotebook.audioRecordings, isEmpty);
+    expect(File(reloadedRecording.filePath).existsSync(), isFalse);
+  });
+
   test('serializes concurrent page saves without corrupting index', () async {
     final notebook = await repository.createNotebook(title: 'Fast Edits');
 

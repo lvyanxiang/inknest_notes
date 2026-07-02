@@ -3,8 +3,8 @@
 ## Current
 
 - Milestone: Post-MVP 5 - Audio And Search
-- Next task: Add audio recording.
-- Last completed: Added favorites toolbar.
+- Next task: Link playback timeline with strokes.
+- Last completed: Added notebook audio recording.
 
 ## Decisions
 
@@ -63,6 +63,7 @@
 - Keep future AI integrations provider-independent: run recognition on-device where practical, route cloud models through a Python AI gateway, preserve original content, and require sources or user confirmation for generated results.
 - Evaluate MyScript iink handwriting generation for personalized handwriting beautification before committing to a custom stroke-generation model.
 - Keep the current library-first startup during active development, but evolve the long-term home into a capability-first launcher: choosing a task such as live transcription creates a standard notebook and opens the matching workspace.
+- Store notebook audio as AAC/M4A files under notebook-relative `assets/audio/` paths, with recording metadata on `Notebook`; keep playback and stroke timeline linking as the next task.
 
 ## Verification
 
@@ -158,6 +159,9 @@
 - `git diff --check` passed after replacing graduation references with 2022-2025 journal papers and adding one-to-one body citations.
 - `git diff --check` passed after documenting future AI capabilities and provider choices.
 - `git diff --check` passed after documenting the capability-first product vision.
+- `dart format lib test` passed after notebook audio recording.
+- `flutter test` passed after notebook audio recording.
+- `flutter analyze` passed after notebook audio recording.
 
 ## Notes
 
@@ -189,6 +193,7 @@
 - Editor toolbar includes Insert image; selected images are copied into notebook assets, placed on the current page, movable, resizable, deletable, persisted, shown as thumbnail placeholders, and included in PDF export.
 - Editor toolbar includes a Shape tool with a shape-type menu for line, arrow, rectangle, and ellipse; created shapes persist, appear in thumbnails, and export to PDF.
 - Editor canvas includes a floating favorites toolbar with common black/teal/red pen and yellow highlighter presets.
+- Editor can record notebook audio, pause and resume an active recording, stop and persist it, discard it, list saved recordings, and delete recordings; microphone permissions are configured for Android, iOS, and macOS.
 - Smart Ink planning lives in `docs/development/SMART_INK_PLAN.md`.
 - Post-MVP feature gaps and optimization areas are documented in `docs/development/POST_MVP_ROADMAP.md`.
 - Subscription packaging, platform behavior, and local/cloud merge rules are documented in `docs/development/SUBSCRIPTION_PLAN.md`.

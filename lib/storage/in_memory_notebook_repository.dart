@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:inknest_notes/models/notebook.dart';
 import 'package:inknest_notes/models/notebook_folder.dart';
+import 'package:inknest_notes/models/note_audio_recording.dart';
 import 'package:inknest_notes/models/note_image.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/storage/notebook_repository.dart';
@@ -122,6 +123,66 @@ class InMemoryNotebookRepository implements NotebookRepository {
   }
 
   @override
+  Future<NoteAudioRecording> prepareAudioRecording(Notebook notebook) async {
+    final now = DateTime.now();
+    final recordingId = 'audio-${now.microsecondsSinceEpoch}';
+    final directoryPath =
+        '${Directory.systemTemp.path}/inknest-notes-audio/${notebook.id}';
+
+    return NoteAudioRecording(
+      id: recordingId,
+      title: 'Recording ${notebook.audioRecordings.length + 1}',
+      assetPath: 'assets/audio/$recordingId.m4a',
+      resolvedFilePath: '$directoryPath/$recordingId.m4a',
+      createdAt: now,
+      durationMilliseconds: 0,
+    );
+  }
+
+  @override
+  Future<Notebook> saveAudioRecording(
+    Notebook notebook,
+    NoteAudioRecording recording,
+  ) async {
+    final updatedNotebook = notebook.copyWith(
+      updatedAt: DateTime.now(),
+      audioRecordings: [
+        for (final existingRecording in notebook.audioRecordings)
+          if (existingRecording.id != recording.id) existingRecording,
+        recording,
+      ],
+    );
+    _replaceNotebook(updatedNotebook);
+    return updatedNotebook;
+  }
+
+  @override
+  Future<Notebook> deleteAudioRecording(
+    Notebook notebook,
+    String recordingId,
+  ) async {
+    final recording = notebook.audioRecordings
+        .where((candidate) => candidate.id == recordingId)
+        .firstOrNull;
+    final updatedNotebook = notebook.copyWith(
+      updatedAt: DateTime.now(),
+      audioRecordings: [
+        for (final existingRecording in notebook.audioRecordings)
+          if (existingRecording.id != recordingId) existingRecording,
+      ],
+    );
+    _replaceNotebook(updatedNotebook);
+
+    if (recording != null) {
+      final file = File(recording.filePath);
+      if (await file.exists()) {
+        await file.delete();
+      }
+    }
+    return updatedNotebook;
+  }
+
+  @override
   Future<Notebook> renameNotebook(Notebook notebook, String title) async {
     final updatedNotebook = notebook.copyWith(
       title: title.trim().isEmpty ? notebook.title : title.trim(),
@@ -144,6 +205,7 @@ class InMemoryNotebookRepository implements NotebookRepository {
       folderId: notebook.isArchived ? null : notebook.folderId,
       pdfOutlines: notebook.pdfOutlines,
       bookmarkedPageIds: notebook.bookmarkedPageIds,
+      audioRecordings: notebook.audioRecordings,
     );
 
     _notebooks.add(duplicatedNotebook);

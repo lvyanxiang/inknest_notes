@@ -3,7 +3,9 @@ import 'dart:ui' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:inknest_notes/app/app.dart';
+import 'package:inknest_notes/features/editor/audio/notebook_audio_recorder.dart';
 import 'package:inknest_notes/features/editor/canvas/drawing_canvas.dart';
+import 'package:inknest_notes/features/editor/editor_screen.dart';
 import 'package:inknest_notes/storage/in_memory_notebook_repository.dart';
 
 void main() {
@@ -36,8 +38,66 @@ void main() {
     expect(find.byTooltip('Favorite black pen'), findsOneWidget);
     expect(find.byTooltip('Favorite yellow highlighter'), findsOneWidget);
     expect(find.byTooltip('Insert image'), findsOneWidget);
+    expect(find.byTooltip('Audio recordings'), findsOneWidget);
     expect(find.byKey(const ValueKey('page-thumbnail-page-1')), findsOneWidget);
     expect(find.text('No notebooks yet'), findsNothing);
+  });
+
+  testWidgets('records pauses resumes and saves notebook audio', (
+    WidgetTester tester,
+  ) async {
+    final repository = InMemoryNotebookRepository();
+    final notebook = await repository.createNotebook(title: 'Lecture');
+    final audioRecorder = _FakeNotebookAudioRecorder();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: EditorScreen(
+          notebook: notebook,
+          notebookRepository: repository,
+          audioRecorder: audioRecorder,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Audio recordings'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text(
+        'No recordings yet. Record a lecture, meeting, or voice note without leaving the notebook.',
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('Start recording'));
+    await tester.pumpAndSettle();
+
+    expect(audioRecorder.startedPath, isNotNull);
+    expect(find.text('Recording'), findsOneWidget);
+    expect(find.byTooltip('Pause recording'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Pause recording'));
+    await tester.pumpAndSettle();
+    expect(audioRecorder.pauseCount, 1);
+    expect(find.text('Recording paused'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Resume recording'));
+    await tester.pumpAndSettle();
+    expect(audioRecorder.resumeCount, 1);
+    expect(find.text('Recording'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Stop recording'));
+    await tester.pumpAndSettle();
+
+    final savedNotebook = (await repository.listNotebooks()).single;
+    expect(audioRecorder.stopCount, 1);
+    expect(savedNotebook.audioRecordings, hasLength(1));
+    expect(savedNotebook.audioRecordings.single.title, 'Recording 1');
+
+    await tester.tap(find.byTooltip('Audio recordings'));
+    await tester.pumpAndSettle();
+    expect(find.text('Recording 1'), findsOneWidget);
   });
 
   testWidgets('adds edits persists and deletes editor text boxes', (
@@ -627,4 +687,43 @@ void main() {
     expect(find.byKey(const ValueKey('page-thumbnail-page-1')), findsOneWidget);
     expect(find.byKey(const ValueKey('page-thumbnail-page-2')), findsNothing);
   });
+}
+
+class _FakeNotebookAudioRecorder implements NotebookAudioRecorder {
+  String? startedPath;
+  int pauseCount = 0;
+  int resumeCount = 0;
+  int stopCount = 0;
+
+  @override
+  Future<void> cancel() async {}
+
+  @override
+  Future<void> dispose() async {}
+
+  @override
+  Future<void> pause() async {
+    pauseCount += 1;
+  }
+
+  @override
+  Future<bool> requestPermission() async {
+    return true;
+  }
+
+  @override
+  Future<void> resume() async {
+    resumeCount += 1;
+  }
+
+  @override
+  Future<void> start(String path) async {
+    startedPath = path;
+  }
+
+  @override
+  Future<String?> stop() async {
+    stopCount += 1;
+    return startedPath;
+  }
 }
