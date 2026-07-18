@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -19,6 +20,49 @@ void main() {
     expect(segments.first.end, const Offset(15, 5));
     expect(segments.last.control, isNull);
     expect(segments.last.end, const Offset(20, 0));
+  });
+
+  test(
+    'smooths finger jitter while preserving endpoints and point metadata',
+    () {
+      final points = [
+        _point(0, 0, pressure: 0.4, millisecond: 0),
+        _point(10, 2, pressure: 0.5, millisecond: 10),
+        _point(20, -2, pressure: 0.6, millisecond: 20),
+        _point(30, 2, pressure: 0.7, millisecond: 30),
+        _point(40, 0, pressure: 0.8, millisecond: 40),
+      ];
+
+      final smoothed = StrokeGeometry.smoothFingerPoints(points);
+
+      expect(smoothed, hasLength(points.length));
+      expect(smoothed.first.offset, points.first.offset);
+      expect(smoothed.last.offset, points.last.offset);
+      expect(
+        smoothed
+            .skip(1)
+            .take(3)
+            .map((point) => point.offset.dy.abs())
+            .reduce(math.max),
+        lessThan(2),
+      );
+      expect(
+        smoothed.map((point) => point.pressure),
+        points.map((point) => point.pressure),
+      );
+      expect(
+        smoothed.map((point) => point.time),
+        points.map((point) => point.time),
+      );
+    },
+  );
+
+  test('keeps intentional sharp finger corners stable', () {
+    final points = [_point(0, 0), _point(20, 0), _point(20, 20)];
+
+    final smoothed = StrokeGeometry.smoothFingerPoints(points);
+
+    expect((smoothed[1].offset - points[1].offset).distance, lessThan(1.5));
   });
 
   test(
@@ -95,10 +139,15 @@ void main() {
   });
 }
 
-StrokePoint _point(double x, double y) {
+StrokePoint _point(
+  double x,
+  double y, {
+  double pressure = 1,
+  int millisecond = 0,
+}) {
   return StrokePoint(
     offset: Offset(x, y),
-    pressure: 1,
-    time: DateTime.utc(2026, 6, 14),
+    pressure: pressure,
+    time: DateTime.utc(2026, 6, 14).add(Duration(milliseconds: millisecond)),
   );
 }

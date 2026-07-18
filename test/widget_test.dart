@@ -189,6 +189,7 @@ void main() {
               page: page,
               tool: const DrawingTool(),
               fingerPanEnabled: false,
+              fingerWritingAssistEnabled: true,
               onStrokeComplete: (_) {},
               onErase: (_) {},
               replayRecordingId: 'audio-1',
@@ -666,10 +667,20 @@ void main() {
     expect(find.byTooltip('Pen'), findsOneWidget);
     expect(find.byTooltip('Highlighter'), findsOneWidget);
     expect(find.byTooltip('Eraser'), findsOneWidget);
+    expect(find.byTooltip('Finger assist'), findsOneWidget);
     expect(find.byTooltip('Finger pan'), findsOneWidget);
     expect(find.byTooltip('Width 3'), findsOneWidget);
     expect(find.byTooltip('Width 5'), findsOneWidget);
     expect(find.byTooltip('Width 8'), findsOneWidget);
+
+    final fingerAssistButton = find.descendant(
+      of: find.byTooltip('Finger assist'),
+      matching: find.byType(IconButton),
+    );
+    expect(tester.widget<IconButton>(fingerAssistButton).isSelected, isTrue);
+    await tester.tap(fingerAssistButton);
+    await tester.pump();
+    expect(tester.widget<IconButton>(fingerAssistButton).isSelected, isFalse);
 
     await tester.tap(find.byTooltip('Highlighter'));
     await tester.pump();

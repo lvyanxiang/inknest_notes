@@ -9,6 +9,58 @@ class StrokeGeometry {
 
   static const defaultMinimumPointDistance = 1.4;
 
+  static List<StrokePoint> smoothFingerPoints(
+    List<StrokePoint> points, {
+    int passes = 2,
+    double strength = 0.78,
+  }) {
+    if (points.length < 3 || passes <= 0 || strength <= 0) {
+      return points;
+    }
+
+    var smoothed = points.toList(growable: false);
+    final clampedStrength = strength.clamp(0.0, 1.0);
+    for (var pass = 0; pass < passes; pass += 1) {
+      final next = <StrokePoint>[smoothed.first];
+      for (var index = 1; index < smoothed.length - 1; index += 1) {
+        final previous = smoothed[index - 1];
+        final point = smoothed[index];
+        final following = smoothed[index + 1];
+        final incoming = point.offset - previous.offset;
+        final outgoing = following.offset - point.offset;
+        final lengthProduct = incoming.distance * outgoing.distance;
+        final cosine = lengthProduct == 0
+            ? -1.0
+            : ((incoming.dx * outgoing.dx + incoming.dy * outgoing.dy) /
+                      lengthProduct)
+                  .clamp(-1.0, 1.0);
+        final straightness = (cosine + 1) / 2;
+        final cornerAwareStrength =
+            clampedStrength * math.pow(straightness, 3).toDouble();
+        final localAverage = Offset(
+          (previous.offset.dx + point.offset.dx * 2 + following.offset.dx) / 4,
+          (previous.offset.dy + point.offset.dy * 2 + following.offset.dy) / 4,
+        );
+
+        next.add(
+          StrokePoint(
+            offset: Offset.lerp(
+              point.offset,
+              localAverage,
+              cornerAwareStrength,
+            )!,
+            pressure: point.pressure,
+            time: point.time,
+          ),
+        );
+      }
+      next.add(smoothed.last);
+      smoothed = next;
+    }
+
+    return List.unmodifiable(smoothed);
+  }
+
   static bool shouldAppendPoint(
     List<StrokePoint> points,
     StrokePoint point, {

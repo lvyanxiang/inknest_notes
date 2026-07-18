@@ -14,6 +14,7 @@ class DrawingCanvas extends StatefulWidget {
     required this.page,
     required this.tool,
     required this.fingerPanEnabled,
+    required this.fingerWritingAssistEnabled,
     required this.onStrokeComplete,
     required this.onErase,
     this.replayRecordingId,
@@ -24,6 +25,7 @@ class DrawingCanvas extends StatefulWidget {
   final NotePage page;
   final DrawingTool tool;
   final bool fingerPanEnabled;
+  final bool fingerWritingAssistEnabled;
   final ValueChanged<Stroke> onStrokeComplete;
   final ValueChanged<List<StrokePoint>> onErase;
   final String? replayRecordingId;
@@ -37,6 +39,7 @@ class DrawingCanvas extends StatefulWidget {
 class _DrawingCanvasState extends State<DrawingCanvas> {
   final Set<int> _activePointers = {};
   int? _drawingPointer;
+  PointerDeviceKind? _drawingPointerKind;
   Stroke? _activeStroke;
   bool _isMultitouch = false;
 
@@ -57,6 +60,7 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
 
     final point = _pointFromEvent(event.localPosition, event.pressure);
     _drawingPointer = event.pointer;
+    _drawingPointerKind = event.kind;
 
     if (widget.tool.type == ToolType.eraser) {
       widget.onErase([point]);
@@ -125,7 +129,9 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
     }
 
     final activeStroke = _activeStroke;
+    final pointerKind = _drawingPointerKind;
     _drawingPointer = null;
+    _drawingPointerKind = null;
     if (activeStroke == null) {
       return;
     }
@@ -135,7 +141,13 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
     });
 
     if (activeStroke.points.isNotEmpty) {
-      widget.onStrokeComplete(activeStroke);
+      widget.onStrokeComplete(
+        applyFingerWritingAssist(
+          stroke: activeStroke,
+          pointerKind: pointerKind,
+          enabled: widget.fingerWritingAssistEnabled,
+        ),
+      );
     }
   }
 
@@ -151,6 +163,7 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
 
   void _cancelActiveStroke() {
     _drawingPointer = null;
+    _drawingPointerKind = null;
     _isMultitouch = true;
 
     if (_activeStroke == null) {
@@ -192,6 +205,23 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
       ),
     );
   }
+}
+
+@visibleForTesting
+Stroke applyFingerWritingAssist({
+  required Stroke stroke,
+  required PointerDeviceKind? pointerKind,
+  required bool enabled,
+}) {
+  if (!enabled || pointerKind != PointerDeviceKind.touch) {
+    return stroke;
+  }
+
+  final smoothedPoints = StrokeGeometry.smoothFingerPoints(stroke.points);
+  if (identical(smoothedPoints, stroke.points)) {
+    return stroke;
+  }
+  return stroke.copyWith(points: smoothedPoints);
 }
 
 class _StrokePainter extends CustomPainter {

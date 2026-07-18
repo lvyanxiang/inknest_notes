@@ -43,7 +43,7 @@ The detailed plan lives in `docs/development/SMART_INK_PLAN.md`.
 
 - Zoom and pan with two-finger gestures.
 - Apple Pencil-focused input mode with finger pan and Pencil draw behavior.
-- Finger Writing Assist for smoothing rough finger handwriting before any
+- [x] Finger Writing Assist for smoothing rough finger handwriting before any
   recognition step.
 - Page thumbnail strip or sidebar for faster page navigation.
 - Page templates: blank, ruled, dotted, grid, Cornell, planner.

@@ -7,15 +7,19 @@ class EditorToolbar extends StatelessWidget {
     super.key,
     required this.tool,
     required this.fingerPanEnabled,
+    required this.fingerWritingAssistEnabled,
     required this.onToolChanged,
     required this.onFingerPanChanged,
+    required this.onFingerWritingAssistChanged,
     required this.onInsertImage,
   });
 
   final DrawingTool tool;
   final bool fingerPanEnabled;
+  final bool fingerWritingAssistEnabled;
   final ValueChanged<DrawingTool> onToolChanged;
   final ValueChanged<bool> onFingerPanChanged;
+  final ValueChanged<bool> onFingerWritingAssistChanged;
   final VoidCallback onInsertImage;
 
   static const _colors = [
@@ -133,6 +137,13 @@ class EditorToolbar extends StatelessWidget {
                 },
               ),
               const _ToolbarDivider(),
+              _ModeButton(
+                icon: Icons.gesture,
+                label: 'Finger assist',
+                isSelected: fingerWritingAssistEnabled,
+                onPressed: () =>
+                    onFingerWritingAssistChanged(!fingerWritingAssistEnabled),
+              ),
               _ModeButton(
                 icon: Icons.pan_tool_alt,
                 label: 'Finger pan',

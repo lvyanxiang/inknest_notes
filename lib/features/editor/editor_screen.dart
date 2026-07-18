@@ -65,6 +65,7 @@ class _EditorScreenState extends State<EditorScreen> {
   late String _currentPageId;
   bool _isExporting = false;
   bool _fingerPanEnabled = false;
+  bool _fingerWritingAssistEnabled = true;
   String? _activeTextBoxId;
   String? _activeImageId;
   bool _isAudioBusy = false;
@@ -968,6 +969,12 @@ class _EditorScreenState extends State<EditorScreen> {
     });
   }
 
+  void _setFingerWritingAssistEnabled(bool value) {
+    setState(() {
+      _fingerWritingAssistEnabled = value;
+    });
+  }
+
   void _eraseAt(List<StrokePoint> points) {
     final page = _page;
     if (page == null) {
@@ -1609,8 +1616,10 @@ class _EditorScreenState extends State<EditorScreen> {
           EditorToolbar(
             tool: _tool,
             fingerPanEnabled: _fingerPanEnabled,
+            fingerWritingAssistEnabled: _fingerWritingAssistEnabled,
             onToolChanged: _setTool,
             onFingerPanChanged: _setFingerPanEnabled,
+            onFingerWritingAssistChanged: _setFingerWritingAssistEnabled,
             onInsertImage: () => unawaited(_insertImage()),
           ),
           Expanded(
@@ -1698,6 +1707,7 @@ class _EditorScreenState extends State<EditorScreen> {
               page: page,
               tool: _tool,
               fingerPanEnabled: _fingerPanEnabled,
+              fingerWritingAssistEnabled: _fingerWritingAssistEnabled,
               onStrokeComplete: _addStroke,
               onErase: _eraseAt,
               replayRecordingId: _audioPlaybackRecording?.id,

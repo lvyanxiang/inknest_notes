@@ -2,9 +2,9 @@
 
 ## Current
 
-- Milestone: Post-MVP 5A - Notebook Search Polish (complete)
-- Next task: Select the next non-sync editor or PDF workflow polish item; Post-MVP 6 remains paused.
-- Last completed: Unified editor search across embedded PDF text, typed text boxes, and confirmed Smart Ink text.
+- Milestone: Post-MVP Editor Experience - Finger Writing Assist (complete)
+- Next task: Add first-pass page templates; Post-MVP 6 sync and backup remains paused.
+- Last completed: Added default-on, touch-only Finger Writing Assist with an editor toolbar toggle.
 
 ## Decisions
 
@@ -31,6 +31,9 @@
 - Long-term product direction: iPad handwriting/PDF study, phone capture/review, and Web Yuque-like knowledge base.
 - Use a custom two-finger zoom/pan viewport instead of `InteractiveViewer` so single-pointer drawing remains reliable.
 - Keep finger drawing available by default; use an explicit Finger pan mode to make touch drag the page while stylus/mouse input writes.
+- Apply Finger Writing Assist only after a touch stroke completes; preserve its endpoints, pressure samples, and timestamps so persistence, audio replay, export, and recognition continue to share the same stroke model.
+- Keep Finger Writing Assist enabled by default with an editor toolbar toggle, and never apply it to Apple Pencil/stylus or mouse strokes.
+- Use corner-aware smoothing for Finger Writing Assist so small sampling jitter is reduced without rounding intentional handwriting corners aggressively.
 - Keep the first page thumbnail strip lightweight: show page shape, selection state, handwriting preview, and a PDF marker before adding full PDF thumbnail caching.
 - Store page operations in the repository layer: duplicate inserts after the source page, delete keeps at least one page, and reorder starts with thumbnail menu move-left/move-right actions.
 - Use shared stroke geometry helpers for smoothed screen drawing, thumbnail drawing, PDF export paths, and partial eraser stroke splitting.
@@ -184,6 +187,10 @@
 - `flutter test` passed with 54 tests after unified notebook search.
 - `flutter analyze` passed after unified notebook search.
 - `git diff --check` passed after unified notebook search.
+- `dart format lib test` passed after Finger Writing Assist.
+- `flutter test` passed with 57 tests after Finger Writing Assist.
+- `flutter analyze` passed after Finger Writing Assist.
+- `git diff --check` passed after Finger Writing Assist.
 - `git diff --check` passed after favorites toolbar.
 - `git diff --check` passed after adding graduation task book and opening report drafts.
 - `git diff --check` passed after retitling graduation docs for Flutter and Python.
@@ -215,6 +222,7 @@
 - Editor can export the current notebook as a PDF, including blank pages, imported PDF page backgrounds, and handwriting strokes.
 - Editor page viewport supports zoom controls and two-finger pinch/pan without saving accidental strokes.
 - Editor toolbar includes Finger pan mode; when enabled, touch drags the page and stylus input still writes.
+- Editor toolbar includes default-on Finger assist; completed touch strokes are smoothed before saving while stylus and mouse strokes remain unchanged.
 - Editor bottom navigator now shows page thumbnails with selection state, page numbers, handwriting previews, and PDF page markers.
 - Editor page thumbnails include actions to duplicate, delete with confirmation, and move pages left or right.
 - Editor strokes render with smoothed paths on canvas, thumbnails, and exported PDFs; the eraser can split strokes instead of only deleting whole strokes.
