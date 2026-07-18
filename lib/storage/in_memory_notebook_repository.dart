@@ -6,6 +6,7 @@ import 'package:inknest_notes/models/notebook_audio_recording.dart';
 import 'package:inknest_notes/models/notebook_folder.dart';
 import 'package:inknest_notes/models/note_image.dart';
 import 'package:inknest_notes/models/note_page.dart';
+import 'package:inknest_notes/models/note_page_template.dart';
 import 'package:inknest_notes/storage/notebook_repository.dart';
 
 class InMemoryNotebookRepository implements NotebookRepository {
@@ -253,6 +254,9 @@ class InMemoryNotebookRepository implements NotebookRepository {
   @override
   Future<Notebook> addPage(Notebook notebook) async {
     final pageId = _nextPageId(notebook.pageIds);
+    final referencePage = notebook.pageIds.isEmpty
+        ? null
+        : await loadPage(notebook, notebook.pageIds.last);
     final updatedNotebook = notebook.copyWith(
       updatedAt: DateTime.now(),
       pageIds: [...notebook.pageIds, pageId],
@@ -262,6 +266,7 @@ class InMemoryNotebookRepository implements NotebookRepository {
       id: pageId,
       width: _pageWidth,
       height: _pageHeight,
+      template: _templateForNewBlankPage(referencePage),
     );
     return updatedNotebook;
   }
@@ -283,6 +288,7 @@ class InMemoryNotebookRepository implements NotebookRepository {
       id: pageId,
       width: referencePage.width,
       height: referencePage.height,
+      template: _templateForNewBlankPage(referencePage),
     );
     return updatedNotebook;
   }
@@ -308,6 +314,7 @@ class InMemoryNotebookRepository implements NotebookRepository {
       id: newPageId,
       width: sourcePage.width,
       height: sourcePage.height,
+      template: sourcePage.template,
       pdfBackground: sourcePage.pdfBackground,
       strokes: sourcePage.strokes,
       textBoxes: sourcePage.textBoxes,
@@ -413,6 +420,13 @@ class InMemoryNotebookRepository implements NotebookRepository {
 
     final referenceIndex = index == 0 ? 0 : index - 1;
     return loadPage(notebook, notebook.pageIds[referenceIndex]);
+  }
+
+  NotePageTemplate _templateForNewBlankPage(NotePage? referencePage) {
+    if (referencePage == null || referencePage.pdfBackground != null) {
+      return NotePageTemplate.blank;
+    }
+    return referencePage.template;
   }
 
   String _nextPageId(List<String> pageIds) {

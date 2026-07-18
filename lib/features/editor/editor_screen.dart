@@ -18,11 +18,14 @@ import 'package:inknest_notes/features/editor/search/notebook_text_search_sheet.
 import 'package:inknest_notes/features/editor/search/pdf_search_highlight_layer.dart';
 import 'package:inknest_notes/features/editor/shapes/shape_layer.dart';
 import 'package:inknest_notes/features/editor/smart_ink/smart_ink_selection_layer.dart';
+import 'package:inknest_notes/features/editor/templates/page_template_layer.dart';
+import 'package:inknest_notes/features/editor/templates/page_template_sheet.dart';
 import 'package:inknest_notes/features/editor/text/note_text_box_styles.dart';
 import 'package:inknest_notes/features/editor/text/text_box_layer.dart';
 import 'package:inknest_notes/features/editor/tools/editor_toolbar.dart';
 import 'package:inknest_notes/models/note_image.dart';
 import 'package:inknest_notes/models/note_page.dart';
+import 'package:inknest_notes/models/note_page_template.dart';
 import 'package:inknest_notes/models/note_shape.dart';
 import 'package:inknest_notes/models/note_text_box.dart';
 import 'package:inknest_notes/models/notebook.dart';
@@ -1450,6 +1453,28 @@ class _EditorScreenState extends State<EditorScreen> {
     await _selectPage(result.pageId);
   }
 
+  Future<void> _showPageTemplatePicker() async {
+    final page = _page;
+    if (page == null || page.pdfBackground != null) {
+      return;
+    }
+
+    final template = await showPageTemplateSheet(
+      context: context,
+      selectedTemplate: page.template,
+    );
+    if (!mounted || template == null || template == page.template) {
+      return;
+    }
+
+    final updatedPage = page.copyWith(template: template);
+    setState(() {
+      _page = updatedPage;
+      _pagesById[updatedPage.id] = updatedPage;
+    });
+    await _savePage(updatedPage);
+  }
+
   void _handleNotebookSearchQueryChanged(String query) {
     final queryChanged = query != _notebookSearchQuery;
     _notebookSearchQuery = query;
@@ -1551,6 +1576,15 @@ class _EditorScreenState extends State<EditorScreen> {
                   ? null
                   : Theme.of(context).colorScheme.primary,
             ),
+          ),
+          IconButton(
+            onPressed: page == null || page.pdfBackground != null
+                ? null
+                : () => unawaited(_showPageTemplatePicker()),
+            tooltip: page?.pdfBackground == null
+                ? 'Page template'
+                : 'Page template unavailable on PDF pages',
+            icon: const Icon(Icons.dashboard_customize_outlined),
           ),
           IconButton(
             onPressed: page == null
@@ -1682,6 +1716,14 @@ class _EditorScreenState extends State<EditorScreen> {
         child: Stack(
           fit: StackFit.expand,
           children: [
+            if (page.pdfBackground == null &&
+                page.template != NotePageTemplate.blank)
+              PageTemplateLayer(
+                key: ValueKey(
+                  'page-template-layer-${page.id}-${page.template.name}',
+                ),
+                template: page.template,
+              ),
             if (page.pdfBackground case final background?)
               PdfPageBackgroundView(
                 key: ValueKey(
@@ -3369,6 +3411,15 @@ class _PageThumbnailPainter extends CustomPainter {
       ..save()
       ..translate(offset.dx, offset.dy)
       ..scale(scale);
+
+    if (page.pdfBackground == null) {
+      paintPageTemplate(
+        canvas,
+        Size(page.width, page.height),
+        page.template,
+        minimumStrokeWidth: 1 / scale,
+      );
+    }
 
     for (final noteImage in page.images) {
       final rect = Rect.fromLTWH(

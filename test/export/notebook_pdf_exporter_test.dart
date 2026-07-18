@@ -7,6 +7,7 @@ import 'package:image/image.dart' as image;
 import 'package:inknest_notes/export/notebook_pdf_exporter.dart';
 import 'package:inknest_notes/models/note_image.dart';
 import 'package:inknest_notes/models/note_page.dart';
+import 'package:inknest_notes/models/note_page_template.dart';
 import 'package:inknest_notes/models/note_shape.dart';
 import 'package:inknest_notes/models/note_text_box.dart';
 import 'package:inknest_notes/models/notebook.dart';
@@ -37,6 +38,7 @@ void main() {
         id: 'page-1',
         width: 768,
         height: 1024,
+        template: NotePageTemplate.grid,
         images: [
           NoteImage(
             id: 'image-1',
@@ -147,6 +149,7 @@ void main() {
       final repository = _TrackingNotebookRepository();
       var notebook = await repository.createNotebook(title: 'Selected Pages');
       notebook = await repository.addPage(notebook);
+      repository.loadedPageIds.clear();
 
       final bytes = await NotebookPdfExporter(
         notebookRepository: repository,

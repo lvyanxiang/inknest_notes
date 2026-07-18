@@ -2,9 +2,9 @@
 
 ## Current
 
-- Milestone: Post-MVP Editor Experience - Finger Writing Assist (complete)
-- Next task: Add first-pass page templates; Post-MVP 6 sync and backup remains paused.
-- Last completed: Added default-on, touch-only Finger Writing Assist with an editor toolbar toggle.
+- Milestone: Post-MVP Editor Experience - Page Templates (complete)
+- Next task: Add page rotation; Post-MVP 6 sync and backup remains paused.
+- Last completed: Added six persistent page templates with editor, thumbnail, and PDF export rendering.
 
 ## Decisions
 
@@ -35,6 +35,9 @@
 - Keep Finger Writing Assist enabled by default with an editor toolbar toggle, and never apply it to Apple Pencil/stylus or mouse strokes.
 - Use corner-aware smoothing for Finger Writing Assist so small sampling jitter is reduced without rounding intentional handwriting corners aggressively.
 - Keep the first page thumbnail strip lightweight: show page shape, selection state, handwriting preview, and a PDF marker before adding full PDF thumbnail caching.
+- Store a backward-compatible template enum on `NotePage`; older or unknown JSON values fall back to blank.
+- Support Blank, Ruled, Dotted, Grid, Cornell, and Planner templates through one shared geometry layout used by the editor, page thumbnails, notebook thumbnails, and PDF export.
+- Let added and inserted non-PDF pages inherit the nearest prior template, preserve templates when duplicating pages, and keep PDF background pages template-free.
 - Store page operations in the repository layer: duplicate inserts after the source page, delete keeps at least one page, and reorder starts with thumbnail menu move-left/move-right actions.
 - Use shared stroke geometry helpers for smoothed screen drawing, thumbnail drawing, PDF export paths, and partial eraser stroke splitting.
 - Keep archived notebooks out of the default library list; show them through an explicit archived view where they can be restored or deleted.
@@ -191,6 +194,10 @@
 - `flutter test` passed with 57 tests after Finger Writing Assist.
 - `flutter analyze` passed after Finger Writing Assist.
 - `git diff --check` passed after Finger Writing Assist.
+- `dart format lib test` passed after page templates.
+- `flutter test` passed with 62 tests after page templates.
+- `flutter analyze` passed after page templates.
+- `git diff --check` passed after page templates.
 - `git diff --check` passed after favorites toolbar.
 - `git diff --check` passed after adding graduation task book and opening report drafts.
 - `git diff --check` passed after retitling graduation docs for Flutter and Python.
@@ -223,6 +230,7 @@
 - Editor page viewport supports zoom controls and two-finger pinch/pan without saving accidental strokes.
 - Editor toolbar includes Finger pan mode; when enabled, touch drags the page and stylus input still writes.
 - Editor toolbar includes default-on Finger assist; completed touch strokes are smoothed before saving while stylus and mouse strokes remain unchanged.
+- Editor app bar includes a Page template picker for Blank, Ruled, Dotted, Grid, Cornell, and Planner pages; the selected template persists and appears in previews and PDF exports.
 - Editor bottom navigator now shows page thumbnails with selection state, page numbers, handwriting previews, and PDF page markers.
 - Editor page thumbnails include actions to duplicate, delete with confirmation, and move pages left or right.
 - Editor strokes render with smoothed paths on canvas, thumbnails, and exported PDFs; the eraser can split strokes instead of only deleting whole strokes.

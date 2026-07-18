@@ -46,8 +46,9 @@ The detailed plan lives in `docs/development/SMART_INK_PLAN.md`.
 - [x] Finger Writing Assist for smoothing rough finger handwriting before any
   recognition step.
 - Page thumbnail strip or sidebar for faster page navigation.
-- Page templates: blank, ruled, dotted, grid, Cornell, planner.
-- Page actions: duplicate, delete, reorder, rotate, and insert before/after.
+- [x] Page templates: blank, ruled, dotted, grid, Cornell, planner.
+- [x] Page actions: duplicate, delete, reorder, and insert before/after.
+- Page rotation.
 - Lasso selection for moving, resizing, recoloring, and deleting strokes.
 - Text boxes for typed notes.
 - Handwriting-style text rendering for typed or recognized text.

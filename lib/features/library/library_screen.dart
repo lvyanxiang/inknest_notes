@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:inknest_notes/features/editor/editor_screen.dart';
 import 'package:inknest_notes/features/editor/shapes/shape_layer.dart';
+import 'package:inknest_notes/features/editor/templates/page_template_layer.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/notebook.dart';
 import 'package:inknest_notes/models/notebook_folder.dart';
@@ -1201,6 +1202,15 @@ class _NotebookThumbnailPainter extends CustomPainter {
     canvas.clipRect(previewRect);
     canvas.translate(previewOffset.dx, previewOffset.dy);
     canvas.scale(scale);
+
+    if (page.pdfBackground == null) {
+      paintPageTemplate(
+        canvas,
+        Size(pageWidth, pageHeight),
+        page.template,
+        minimumStrokeWidth: 1 / scale,
+      );
+    }
 
     for (final stroke in page.strokes) {
       if (stroke.points.isEmpty) {

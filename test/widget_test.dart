@@ -8,6 +8,7 @@ import 'package:inknest_notes/app/app.dart';
 import 'package:inknest_notes/features/editor/canvas/drawing_canvas.dart';
 import 'package:inknest_notes/features/editor/recognition/text_recognition_provider.dart';
 import 'package:inknest_notes/models/note_page.dart';
+import 'package:inknest_notes/models/note_page_template.dart';
 import 'package:inknest_notes/models/note_text_box.dart';
 import 'package:inknest_notes/models/notebook_audio_recording.dart';
 import 'package:inknest_notes/models/stroke.dart';
@@ -70,6 +71,44 @@ void main() {
       findsOneWidget,
     );
     expect(find.byTooltip('Close notebook search'), findsOneWidget);
+  });
+
+  testWidgets('selects persists and inherits page templates', (
+    WidgetTester tester,
+  ) async {
+    final repository = InMemoryNotebookRepository();
+    final notebook = await repository.createNotebook(title: 'Template notes');
+
+    await tester.pumpWidget(InkNestApp(notebookRepository: repository));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(notebook.title));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Page template'));
+    await tester.pumpAndSettle();
+
+    for (final template in NotePageTemplate.values) {
+      expect(find.text(template.label), findsOneWidget);
+    }
+    await tester.tap(find.byKey(const ValueKey('page-template-grid')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('page-template-layer-page-1-grid')),
+      findsOneWidget,
+    );
+    expect(
+      (await repository.loadPage(notebook, 'page-1')).template,
+      NotePageTemplate.grid,
+    );
+
+    await tester.tap(find.byTooltip('Add page'));
+    await tester.pumpAndSettle();
+
+    expect(
+      (await repository.loadPage(notebook, 'page-2')).template,
+      NotePageTemplate.grid,
+    );
   });
 
   testWidgets('searches Smart Ink text and highlights it after a page jump', (

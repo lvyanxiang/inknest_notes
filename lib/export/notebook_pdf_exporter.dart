@@ -5,9 +5,11 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/painting.dart' as painting;
 import 'package:image/image.dart' as image;
+import 'package:inknest_notes/features/editor/templates/page_template_layout.dart';
 import 'package:inknest_notes/features/editor/text/note_text_box_styles.dart';
 import 'package:inknest_notes/models/note_image.dart';
 import 'package:inknest_notes/models/note_page.dart';
+import 'package:inknest_notes/models/note_page_template.dart';
 import 'package:inknest_notes/models/note_shape.dart';
 import 'package:inknest_notes/models/note_text_box.dart';
 import 'package:inknest_notes/models/notebook.dart';
@@ -95,6 +97,14 @@ class NotebookPdfExporter {
     return pw.Stack(
       children: [
         pw.Positioned.fill(child: pw.Container(color: pdf.PdfColors.white)),
+        if (background == null && page.template != NotePageTemplate.blank)
+          pw.Positioned.fill(
+            child: pw.CustomPaint(
+              painter: (canvas, size) {
+                _paintPageTemplate(canvas, size, page);
+              },
+            ),
+          ),
         if (background != null)
           pw.Positioned.fill(
             child: pw.Image(
@@ -130,6 +140,64 @@ class NotebookPdfExporter {
           ),
         ),
     ];
+  }
+
+  void _paintPageTemplate(
+    pdf.PdfGraphics canvas,
+    pdf.PdfPoint size,
+    NotePage page,
+  ) {
+    final layout = buildPageTemplateLayout(
+      page.template,
+      ui.Size(page.width, page.height),
+    );
+    final scaleX = size.x / page.width;
+    final scaleY = size.y / page.height;
+    final strokeScale = (scaleX + scaleY) / 2;
+
+    void paintLines(PageTemplateLineStyle style, pdf.PdfColor color) {
+      final lines = layout.lines.where((line) => line.style == style);
+      if (lines.isEmpty) {
+        return;
+      }
+      canvas
+        ..setStrokeColor(color)
+        ..setLineCap(pdf.PdfLineCap.round)
+        ..setLineWidth(
+          (style == PageTemplateLineStyle.major ? 1.4 : 0.9) * strokeScale,
+        );
+      for (final line in lines) {
+        final start = _mapTemplateOffset(line.start, page, scaleX, scaleY);
+        final end = _mapTemplateOffset(line.end, page, scaleX, scaleY);
+        canvas
+          ..moveTo(start.x, start.y)
+          ..lineTo(end.x, end.y);
+      }
+      canvas.strokePath();
+    }
+
+    canvas.saveContext();
+    paintLines(PageTemplateLineStyle.minor, pdf.PdfColor.fromInt(0xFFD9E5E8));
+    paintLines(PageTemplateLineStyle.major, pdf.PdfColor.fromInt(0xFFA8C1C6));
+    if (layout.dots.isNotEmpty) {
+      canvas.setFillColor(pdf.PdfColor.fromInt(0xFFB8CDD1));
+      final radius = 1.15 * strokeScale;
+      for (final dot in layout.dots) {
+        final center = _mapTemplateOffset(dot, page, scaleX, scaleY);
+        canvas.drawEllipse(center.x, center.y, radius, radius);
+      }
+      canvas.fillPath();
+    }
+    canvas.restoreContext();
+  }
+
+  pdf.PdfPoint _mapTemplateOffset(
+    ui.Offset offset,
+    NotePage page,
+    double scaleX,
+    double scaleY,
+  ) {
+    return pdf.PdfPoint(offset.dx * scaleX, (page.height - offset.dy) * scaleY);
   }
 
   Iterable<pw.Widget> _buildTextBoxes(List<_RenderedTextBox> textBoxes) {

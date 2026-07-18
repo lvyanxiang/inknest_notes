@@ -7,6 +7,7 @@ import 'package:image/image.dart' as image;
 import 'package:inknest_notes/models/notebook_audio_recording.dart';
 import 'package:inknest_notes/models/note_image.dart';
 import 'package:inknest_notes/models/note_page.dart';
+import 'package:inknest_notes/models/note_page_template.dart';
 import 'package:inknest_notes/models/note_shape.dart';
 import 'package:inknest_notes/models/note_text_box.dart';
 import 'package:inknest_notes/models/pdf_background.dart';
@@ -41,6 +42,7 @@ void main() {
       id: 'page-1',
       width: 768,
       height: 1024,
+      template: NotePageTemplate.planner,
       images: const [
         NoteImage(
           id: 'image-1',
@@ -95,6 +97,7 @@ void main() {
     final reloadedPage = await reloadedRepository.loadPage(notebook, 'page-1');
 
     expect(reloadedNotebooks.single.title, 'Physics');
+    expect(reloadedPage.template, NotePageTemplate.planner);
     expect(reloadedPage.strokes, hasLength(1));
     expect(
       reloadedPage.strokes.single.points.single.offset,
@@ -307,6 +310,7 @@ void main() {
         id: 'page-1',
         width: 768,
         height: 1024,
+        template: NotePageTemplate.grid,
         textBoxes: const [
           NoteTextBox(
             id: 'text-1',
@@ -360,6 +364,7 @@ void main() {
     expect(duplicatedPage.textBoxes.single.text, 'Copied text');
     expect(duplicatedPage.images.single.id, 'image-1');
     expect(duplicatedPage.shapes.single.id, 'shape-1');
+    expect(duplicatedPage.template, NotePageTemplate.grid);
 
     notebook = await repository.movePage(notebook, 'page-2', 0);
 
@@ -403,6 +408,7 @@ void main() {
     expect(pageAfterPdf.width, 612);
     expect(pageAfterPdf.height, 792);
     expect(pageAfterPdf.pdfBackground, isNull);
+    expect(pageAfterPdf.template, NotePageTemplate.blank);
     expect(pageAfterPdf.strokes, isEmpty);
 
     notebook = await repository.insertPage(notebook, 0);
@@ -413,9 +419,45 @@ void main() {
     expect(pageBeforePdf.width, 612);
     expect(pageBeforePdf.height, 792);
     expect(pageBeforePdf.pdfBackground, isNull);
+    expect(pageBeforePdf.template, NotePageTemplate.blank);
 
     final reloadedNotebook = (await repository.listNotebooks()).single;
     expect(reloadedNotebook.pageIds, ['page-3', 'page-1', 'page-2']);
+  });
+
+  test('inherits templates when adding and inserting non-PDF pages', () async {
+    var notebook = await repository.createNotebook(title: 'Template Notes');
+    await repository.savePage(
+      notebook,
+      const NotePage(
+        id: 'page-1',
+        width: 768,
+        height: 1024,
+        template: NotePageTemplate.ruled,
+      ),
+    );
+
+    notebook = await repository.addPage(notebook);
+    expect(
+      (await repository.loadPage(notebook, 'page-2')).template,
+      NotePageTemplate.ruled,
+    );
+
+    await repository.savePage(
+      notebook,
+      const NotePage(
+        id: 'page-2',
+        width: 768,
+        height: 1024,
+        template: NotePageTemplate.dotted,
+      ),
+    );
+    notebook = await repository.insertPage(notebook, 2);
+
+    expect(
+      (await repository.loadPage(notebook, 'page-3')).template,
+      NotePageTemplate.dotted,
+    );
   });
 
   test('persists page bookmarks', () async {

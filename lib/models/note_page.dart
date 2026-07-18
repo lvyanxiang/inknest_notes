@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:inknest_notes/models/note_image.dart';
+import 'package:inknest_notes/models/note_page_template.dart';
 import 'package:inknest_notes/models/note_shape.dart';
 import 'package:inknest_notes/models/note_text_box.dart';
 import 'package:inknest_notes/models/pdf_background.dart';
@@ -11,6 +12,7 @@ class NotePage {
     required this.id,
     required this.width,
     required this.height,
+    this.template = NotePageTemplate.blank,
     this.pdfBackground,
     this.strokes = const [],
     this.textBoxes = const [],
@@ -21,6 +23,7 @@ class NotePage {
   final String id;
   final double width;
   final double height;
+  final NotePageTemplate template;
   final PdfBackground? pdfBackground;
   final List<Stroke> strokes;
   final List<NoteTextBox> textBoxes;
@@ -32,6 +35,7 @@ class NotePage {
       id: json['id']! as String,
       width: (json['width']! as num).toDouble(),
       height: (json['height']! as num).toDouble(),
+      template: notePageTemplateFromJson(json['template']),
       pdfBackground: json['pdfBackground'] == null
           ? null
           : PdfBackground.fromJson(
@@ -61,6 +65,7 @@ class NotePage {
       'id': id,
       'width': width,
       'height': height,
+      if (template != NotePageTemplate.blank) 'template': template.name,
       if (pdfBackground != null) 'pdfBackground': pdfBackground!.toJson(),
       'strokes': strokes.map((stroke) => stroke.toJson()).toList(),
       'textBoxes': textBoxes.map((textBox) => textBox.toJson()).toList(),
@@ -70,6 +75,7 @@ class NotePage {
   }
 
   NotePage copyWith({
+    NotePageTemplate? template,
     PdfBackground? pdfBackground,
     List<Stroke>? strokes,
     List<NoteTextBox>? textBoxes,
@@ -80,6 +86,7 @@ class NotePage {
       id: id,
       width: width,
       height: height,
+      template: template ?? this.template,
       pdfBackground: pdfBackground ?? this.pdfBackground,
       strokes: strokes ?? this.strokes,
       textBoxes: textBoxes ?? this.textBoxes,
