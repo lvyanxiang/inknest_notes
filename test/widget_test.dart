@@ -674,7 +674,7 @@ void main() {
     expect(find.text('Export PDF'), findsNothing);
   });
 
-  testWidgets('manages notebooks from the library card menu', (
+  testWidgets('manages notebooks from the library spine menu', (
     WidgetTester tester,
   ) async {
     await pumpInkNestApp(tester);
@@ -688,7 +688,13 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Rename notebook'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), 'Project Notes');
+    await tester.enterText(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(TextField),
+      ),
+      'Project Notes',
+    );
     await tester.tap(find.widgetWithText(FilledButton, 'Save'));
     await tester.pumpAndSettle();
 
@@ -753,7 +759,13 @@ void main() {
 
     await tester.tap(find.byTooltip('New folder'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), 'Class Notes');
+    await tester.enterText(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(TextField),
+      ),
+      'Class Notes',
+    );
     await tester.tap(find.widgetWithText(FilledButton, 'Save'));
     await tester.pumpAndSettle();
 
@@ -778,7 +790,7 @@ void main() {
     expect(find.byTooltip('Show library'), findsOneWidget);
   });
 
-  testWidgets('searches sorts and previews bookshelf notebooks', (
+  testWidgets('searches sorts and displays adjacent notebook spines', (
     WidgetTester tester,
   ) async {
     await pumpInkNestApp(tester);
@@ -794,24 +806,45 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Recent notebooks'), findsNothing);
+    expect(find.text('My Library'), findsOneWidget);
+    expect(find.byKey(const ValueKey('library-command-bar')), findsOneWidget);
+    expect(find.byKey(const ValueKey('library-search-field')), findsOneWidget);
+    expect(find.bySemanticsLabel('Sort notebooks: Recent'), findsOneWidget);
     expect(find.byKey(const ValueKey('library-bookshelf')), findsOneWidget);
     expect(
       find.byKey(const ValueKey('library-bookshelf-row-0')),
       findsOneWidget,
     );
     expect(find.bySemanticsLabel('Open notebook Notebook 1'), findsOneWidget);
-    expect(
-      find.byWidgetPredicate((widget) {
-        final key = widget.key;
-        return key is ValueKey<String> &&
-            key.value.startsWith('notebook-thumbnail-card-');
-      }),
-      findsNWidgets(2),
-    );
+    final notebookSpines = find.byWidgetPredicate((widget) {
+      final key = widget.key;
+      return key is ValueKey<String> && key.value.startsWith('notebook-spine-');
+    });
+    expect(notebookSpines, findsNWidgets(2));
+    final firstSpineRect = tester.getRect(notebookSpines.at(0));
+    final secondSpineRect = tester.getRect(notebookSpines.at(1));
+    expect(secondSpineRect.left - firstSpineRect.right, closeTo(0, 0.01));
+    expect(secondSpineRect.bottom, closeTo(firstSpineRect.bottom, 0.01));
+    final spineLeanEntries = <double>[];
+    for (var index = 0; index < 2; index++) {
+      final spineLean = tester.widget<Transform>(
+        find
+            .descendant(
+              of: notebookSpines.at(index),
+              matching: find.byType(Transform),
+            )
+            .first,
+      );
+      final leanEntry = spineLean.transform.entry(1, 0);
+      spineLeanEntries.add(leanEntry);
+      expect(leanEntry, lessThan(-0.05));
+    }
+    expect(spineLeanEntries[1], closeTo(spineLeanEntries[0], 0.000001));
 
-    await tester.tap(find.byTooltip('Search notebooks'));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), '2');
+    await tester.enterText(
+      find.byKey(const ValueKey('library-search-field')),
+      '2',
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('Notebook 2'), findsOneWidget);
@@ -836,6 +869,63 @@ void main() {
     expect(firstNotebookPosition.dx, lessThan(secondNotebookPosition.dx));
   });
 
+  testWidgets('widens notebook spines as page count grows', (
+    WidgetTester tester,
+  ) async {
+    final repository = InMemoryNotebookRepository();
+    final thinNotebook = await repository.createNotebook(title: 'Thin notes');
+    var thickNotebook = await repository.createNotebook(title: 'Thick notes');
+    for (var index = 1; index < 50; index++) {
+      thickNotebook = await repository.addPage(thickNotebook);
+    }
+
+    await tester.pumpWidget(InkNestApp(notebookRepository: repository));
+    await tester.pumpAndSettle();
+
+    final thinSpine = find.byKey(ValueKey('notebook-spine-${thinNotebook.id}'));
+    final thickSpine = find.byKey(
+      ValueKey('notebook-spine-${thickNotebook.id}'),
+    );
+
+    expect(
+      tester.getSize(thickSpine).width,
+      greaterThan(tester.getSize(thinSpine).width),
+    );
+    expect(find.text('50p'), findsOneWidget);
+  });
+
+  testWidgets('refreshes shelf metadata after adding editor pages', (
+    WidgetTester tester,
+  ) async {
+    final repository = InMemoryNotebookRepository();
+    final notebook = await repository.createNotebook(title: 'Growing notes');
+
+    await tester.pumpWidget(InkNestApp(notebookRepository: repository));
+    await tester.pumpAndSettle();
+
+    final notebookSpine = find.byKey(ValueKey('notebook-spine-${notebook.id}'));
+    final initialSpineWidth = tester.getSize(notebookSpine).width;
+    expect(find.text('1p'), findsOneWidget);
+
+    await tester.tap(find.bySemanticsLabel('Open notebook Growing notes'));
+    await tester.pumpAndSettle();
+    for (var index = 0; index < 5; index++) {
+      await tester.tap(find.byTooltip('Add page'));
+      await tester.pumpAndSettle();
+    }
+    expect(find.byKey(const ValueKey('page-thumbnail-page-6')), findsOneWidget);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    expect(find.text('6p'), findsOneWidget);
+    expect(tester.getSize(notebookSpine).width, greaterThan(initialSpineWidth));
+
+    await tester.tap(find.bySemanticsLabel('Open notebook Growing notes'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('page-thumbnail-page-6')), findsOneWidget);
+  });
+
   testWidgets('wraps bookshelf rows at iPad split-view width', (
     WidgetTester tester,
   ) async {
@@ -845,7 +935,7 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
 
     final repository = InMemoryNotebookRepository();
-    for (var index = 1; index <= 4; index++) {
+    for (var index = 1; index <= 10; index++) {
       await repository.createNotebook(title: 'Shelf book $index');
     }
 

@@ -4,12 +4,8 @@ import 'dart:math' as math;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:inknest_notes/features/editor/editor_screen.dart';
-import 'package:inknest_notes/features/editor/shapes/shape_layer.dart';
-import 'package:inknest_notes/features/editor/templates/page_template_layer.dart';
-import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/notebook.dart';
 import 'package:inknest_notes/models/notebook_folder.dart';
-import 'package:inknest_notes/models/stroke_geometry.dart';
 import 'package:inknest_notes/storage/notebook_repository.dart';
 
 class LibraryScreen extends StatefulWidget {
@@ -44,7 +40,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
   late List<NotebookFolder> _folders;
   bool _isLoading = true;
   bool _showArchived = false;
-  bool _isSearchVisible = false;
   String _searchQuery = '';
   _LibrarySortMode _sortMode = _LibrarySortMode.recent;
   String? _currentFolderId;
@@ -122,16 +117,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
     }
   }
 
-  void _toggleSearch() {
-    setState(() {
-      _isSearchVisible = !_isSearchVisible;
-      if (!_isSearchVisible) {
-        _searchController.clear();
-        _searchQuery = '';
-      }
-    });
-  }
-
   void _updateSearchQuery(String value) {
     setState(() {
       _searchQuery = value;
@@ -166,7 +151,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       return;
     }
 
-    _openNotebook(notebook);
+    await _openNotebook(notebook);
   }
 
   Future<void> _importPdf() async {
@@ -195,11 +180,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
       return;
     }
 
-    _openNotebook(importedNotebook);
+    await _openNotebook(importedNotebook);
   }
 
-  void _openNotebook(Notebook notebook) {
-    Navigator.of(context).push(
+  Future<void> _openNotebook(Notebook notebook) async {
+    await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         builder: (context) => EditorScreen(
           notebook: notebook,
@@ -207,6 +192,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
         ),
       ),
     );
+
+    if (!mounted) {
+      return;
+    }
+
+    await _loadNotebooks();
   }
 
   void _toggleArchivedView() {
@@ -447,113 +438,388 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final visibleFolders = _visibleFolders;
     final visibleNotebooks = _visibleNotebooks;
     final colorScheme = Theme.of(context).colorScheme;
+    final libraryTitle = _showArchived
+        ? 'Archived'
+        : _currentFolder?.name ?? 'My Library';
+    final itemCount = visibleFolders.length + visibleNotebooks.length;
+    final librarySummary = _isLoading
+        ? 'Loading library…'
+        : _searchQuery.isNotEmpty
+        ? '$itemCount match${itemCount == 1 ? '' : 'es'}'
+        : _showArchived
+        ? '${visibleNotebooks.length} archived notebook${visibleNotebooks.length == 1 ? '' : 's'}'
+        : _currentFolderId != null
+        ? '${visibleNotebooks.length} notebook${visibleNotebooks.length == 1 ? '' : 's'}'
+        : '${visibleFolders.length} folder${visibleFolders.length == 1 ? '' : 's'} · ${visibleNotebooks.length} notebook${visibleNotebooks.length == 1 ? '' : 's'}';
 
     return Scaffold(
       backgroundColor: colorScheme.surfaceContainerLowest,
-      appBar: AppBar(
-        leading: _showArchived || _currentFolderId != null
-            ? IconButton(
-                onPressed: _showRootLibrary,
-                tooltip: 'Show library',
-                icon: const Icon(Icons.arrow_back),
-              )
-            : null,
-        title: Text(
-          _showArchived ? 'Archived' : _currentFolder?.name ?? 'InkNest Notes',
-        ),
-        actions: [
-          IconButton(
-            onPressed: _toggleSearch,
-            tooltip: _isSearchVisible ? 'Close search' : 'Search notebooks',
-            icon: Icon(_isSearchVisible ? Icons.search_off : Icons.search),
-          ),
-          PopupMenuButton<_LibrarySortMode>(
-            tooltip: 'Sort notebooks',
-            icon: const Icon(Icons.sort),
-            initialValue: _sortMode,
-            onSelected: _setSortMode,
-            itemBuilder: (context) {
-              return [
-                for (final mode in _LibrarySortMode.values)
-                  CheckedPopupMenuItem<_LibrarySortMode>(
-                    value: mode,
-                    checked: mode == _sortMode,
-                    child: Text(mode.label),
-                  ),
-              ];
-            },
-          ),
-          IconButton(
-            onPressed: _toggleArchivedView,
-            tooltip: _showArchived ? 'Show notebooks' : 'Show archived',
-            icon: Icon(
-              _showArchived ? Icons.inventory_2 : Icons.inventory_2_outlined,
-            ),
-          ),
-          if (!_showArchived && _currentFolderId == null)
-            IconButton(
-              onPressed: _createFolder,
-              tooltip: 'New folder',
-              icon: const Icon(Icons.create_new_folder_outlined),
-            ),
-          IconButton(
-            onPressed: _importPdf,
-            tooltip: 'Import PDF',
-            icon: const Icon(Icons.picture_as_pdf_outlined),
-          ),
-          IconButton(
-            onPressed: _createNotebook,
-            tooltip: 'New notebook',
-            icon: const Icon(Icons.add_circle_outline),
-          ),
-        ],
-      ),
       body: SafeArea(
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : Column(
-                children: [
-                  if (_isSearchVisible || _searchQuery.isNotEmpty)
-                    _LibrarySearchBar(
-                      controller: _searchController,
-                      onChanged: _updateSearchQuery,
-                      onClear: _clearSearch,
-                    ),
-                  Expanded(
-                    child: visibleNotebooks.isEmpty && visibleFolders.isEmpty
-                        ? _searchQuery.isEmpty
-                              ? _EmptyLibrary(
-                                  showArchived: _showArchived,
-                                  folderName: _currentFolder?.name,
-                                  onCreateNotebook: _createNotebook,
-                                  onImportPdf: _importPdf,
-                                )
-                              : _NoSearchResults(query: _searchQuery)
-                        : _LibraryBookshelf(
-                            folders: visibleFolders,
-                            notebooks: visibleNotebooks,
+        child: Column(
+          children: [
+            _LibraryHeader(
+              title: libraryTitle,
+              summary: librarySummary,
+              showBack: _showArchived || _currentFolderId != null,
+              showNewFolder: !_showArchived && _currentFolderId == null,
+              showArchived: _showArchived,
+              searchController: _searchController,
+              sortMode: _sortMode,
+              onShowLibrary: _showRootLibrary,
+              onSearchChanged: _updateSearchQuery,
+              onClearSearch: _clearSearch,
+              onSortChanged: _setSortMode,
+              onToggleArchived: _toggleArchivedView,
+              onCreateFolder: _createFolder,
+              onImportPdf: _importPdf,
+              onCreateNotebook: _createNotebook,
+            ),
+            Expanded(
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : visibleNotebooks.isEmpty && visibleFolders.isEmpty
+                  ? _searchQuery.isEmpty
+                        ? _EmptyLibrary(
                             showArchived: _showArchived,
-                            notebookRepository: widget.notebookRepository,
-                            onOpenFolder: _openFolder,
-                            onRenameFolder: (folder) => _renameFolder(folder),
-                            onDeleteFolder: (folder) => _deleteFolder(folder),
-                            onOpenNotebook: _openNotebook,
-                            onRenameNotebook: (notebook) =>
-                                _renameNotebook(notebook),
-                            onDuplicateNotebook: (notebook) =>
-                                _duplicateNotebook(notebook),
-                            onMoveNotebook: (notebook) =>
-                                _moveNotebook(notebook),
-                            onArchiveNotebook: (notebook) =>
-                                _setNotebookArchived(notebook, true),
-                            onRestoreNotebook: (notebook) =>
-                                _setNotebookArchived(notebook, false),
-                            onDeleteNotebook: (notebook) =>
-                                _deleteNotebook(notebook),
+                            folderName: _currentFolder?.name,
+                            onCreateNotebook: _createNotebook,
+                            onImportPdf: _importPdf,
+                          )
+                        : _NoSearchResults(query: _searchQuery)
+                  : _LibraryBookshelf(
+                      folders: visibleFolders,
+                      notebooks: visibleNotebooks,
+                      showArchived: _showArchived,
+                      onOpenFolder: _openFolder,
+                      onRenameFolder: (folder) => _renameFolder(folder),
+                      onDeleteFolder: (folder) => _deleteFolder(folder),
+                      onOpenNotebook: _openNotebook,
+                      onRenameNotebook: (notebook) => _renameNotebook(notebook),
+                      onDuplicateNotebook: (notebook) =>
+                          _duplicateNotebook(notebook),
+                      onMoveNotebook: (notebook) => _moveNotebook(notebook),
+                      onArchiveNotebook: (notebook) =>
+                          _setNotebookArchived(notebook, true),
+                      onRestoreNotebook: (notebook) =>
+                          _setNotebookArchived(notebook, false),
+                      onDeleteNotebook: (notebook) => _deleteNotebook(notebook),
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+Color _libraryFurnitureColor(ColorScheme colorScheme) {
+  return Color.alphaBlend(
+    colorScheme.primary.withValues(alpha: 0.14),
+    colorScheme.surfaceContainerHigh,
+  );
+}
+
+class _LibraryHeader extends StatelessWidget {
+  const _LibraryHeader({
+    required this.title,
+    required this.summary,
+    required this.showBack,
+    required this.showNewFolder,
+    required this.showArchived,
+    required this.searchController,
+    required this.sortMode,
+    required this.onShowLibrary,
+    required this.onSearchChanged,
+    required this.onClearSearch,
+    required this.onSortChanged,
+    required this.onToggleArchived,
+    required this.onCreateFolder,
+    required this.onImportPdf,
+    required this.onCreateNotebook,
+  });
+
+  final String title;
+  final String summary;
+  final bool showBack;
+  final bool showNewFolder;
+  final bool showArchived;
+  final TextEditingController searchController;
+  final _LibrarySortMode sortMode;
+  final VoidCallback onShowLibrary;
+  final ValueChanged<String> onSearchChanged;
+  final VoidCallback onClearSearch;
+  final ValueChanged<_LibrarySortMode> onSortChanged;
+  final VoidCallback onToggleArchived;
+  final VoidCallback onCreateFolder;
+  final VoidCallback onImportPdf;
+  final VoidCallback onCreateNotebook;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Material(
+      color: colorScheme.surfaceContainerLowest,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: colorScheme.outlineVariant)),
+          boxShadow: [
+            BoxShadow(
+              color: colorScheme.shadow.withValues(alpha: 0.06),
+              blurRadius: 12,
+              offset: const Offset(0, 5),
+            ),
+          ],
+        ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final horizontalPadding = constraints.maxWidth < 600 ? 16.0 : 24.0;
+            final compactControls = constraints.maxWidth < 700;
+
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                horizontalPadding,
+                14,
+                horizontalPadding,
+                16,
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      if (showBack) ...[
+                        IconButton(
+                          onPressed: onShowLibrary,
+                          tooltip: 'Show library',
+                          icon: const Icon(Icons.arrow_back_rounded),
+                        ),
+                        const SizedBox(width: 4),
+                      ],
+                      ExcludeSemantics(
+                        child: Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: _libraryFurnitureColor(colorScheme),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: colorScheme.outlineVariant,
+                            ),
                           ),
+                          child: Icon(
+                            Icons.local_library_outlined,
+                            color: colorScheme.primary,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'InkNest Notes',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: textTheme.labelMedium?.copyWith(
+                                color: colorScheme.primary,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.6,
+                              ),
+                            ),
+                            Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                height: 1.05,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              summary,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: textTheme.bodySmall?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton.filledTonal(
+                        onPressed: onImportPdf,
+                        tooltip: 'Import PDF',
+                        icon: const Icon(Icons.picture_as_pdf_outlined),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton.filled(
+                        onPressed: onCreateNotebook,
+                        tooltip: 'New notebook',
+                        icon: const Icon(Icons.add_rounded),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  _LibraryCommandBar(
+                    compact: compactControls,
+                    searchController: searchController,
+                    sortMode: sortMode,
+                    showNewFolder: showNewFolder,
+                    showArchived: showArchived,
+                    onSearchChanged: onSearchChanged,
+                    onClearSearch: onClearSearch,
+                    onSortChanged: onSortChanged,
+                    onToggleArchived: onToggleArchived,
+                    onCreateFolder: onCreateFolder,
                   ),
                 ],
               ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _LibraryCommandBar extends StatelessWidget {
+  const _LibraryCommandBar({
+    required this.compact,
+    required this.searchController,
+    required this.sortMode,
+    required this.showNewFolder,
+    required this.showArchived,
+    required this.onSearchChanged,
+    required this.onClearSearch,
+    required this.onSortChanged,
+    required this.onToggleArchived,
+    required this.onCreateFolder,
+  });
+
+  final bool compact;
+  final TextEditingController searchController;
+  final _LibrarySortMode sortMode;
+  final bool showNewFolder;
+  final bool showArchived;
+  final ValueChanged<String> onSearchChanged;
+  final VoidCallback onClearSearch;
+  final ValueChanged<_LibrarySortMode> onSortChanged;
+  final VoidCallback onToggleArchived;
+  final VoidCallback onCreateFolder;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final search = _LibrarySearchBar(
+      controller: searchController,
+      onChanged: onSearchChanged,
+      onClear: onClearSearch,
+    );
+    final controls = <Widget>[
+      _LibrarySortControl(mode: sortMode, onSelected: onSortChanged),
+      if (showNewFolder) ...[
+        const SizedBox(width: 6),
+        IconButton(
+          onPressed: onCreateFolder,
+          tooltip: 'New folder',
+          style: IconButton.styleFrom(backgroundColor: colorScheme.surface),
+          icon: const Icon(Icons.create_new_folder_outlined),
+        ),
+      ],
+      const SizedBox(width: 6),
+      IconButton(
+        onPressed: onToggleArchived,
+        tooltip: showArchived ? 'Show notebooks' : 'Show archived',
+        style: IconButton.styleFrom(backgroundColor: colorScheme.surface),
+        icon: Icon(
+          showArchived ? Icons.inventory_2 : Icons.inventory_2_outlined,
+        ),
+      ),
+    ];
+
+    return Container(
+      key: const ValueKey('library-command-bar'),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: _libraryFurnitureColor(colorScheme),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: compact
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                search,
+                const SizedBox(height: 8),
+                Row(children: controls),
+              ],
+            )
+          : Row(
+              children: [
+                Expanded(child: search),
+                const SizedBox(width: 8),
+                ...controls,
+              ],
+            ),
+    );
+  }
+}
+
+class _LibrarySortControl extends StatelessWidget {
+  const _LibrarySortControl({required this.mode, required this.onSelected});
+
+  final _LibrarySortMode mode;
+  final ValueChanged<_LibrarySortMode> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Semantics(
+      container: true,
+      explicitChildNodes: true,
+      button: true,
+      label: 'Sort notebooks: ${mode.label}',
+      child: PopupMenuButton<_LibrarySortMode>(
+        tooltip: 'Sort notebooks',
+        initialValue: mode,
+        onSelected: onSelected,
+        itemBuilder: (context) {
+          return [
+            for (final option in _LibrarySortMode.values)
+              CheckedPopupMenuItem<_LibrarySortMode>(
+                value: option,
+                checked: option == mode,
+                child: Text(option.label),
+              ),
+          ];
+        },
+        child: ExcludeSemantics(
+          child: Container(
+            height: 48,
+            constraints: const BoxConstraints(minWidth: 116),
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            decoration: BoxDecoration(
+              color: colorScheme.surface,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: colorScheme.outlineVariant),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.sort_rounded, size: 20),
+                const SizedBox(width: 8),
+                Text(mode.label),
+                const SizedBox(width: 4),
+                const Icon(Icons.expand_more_rounded, size: 18),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -572,25 +838,38 @@ class _LibrarySearchBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 12, 24, 4),
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return SizedBox(
+      height: 48,
       child: TextField(
+        key: const ValueKey('library-search-field'),
         controller: controller,
-        autofocus: true,
         decoration: InputDecoration(
           hintText: 'Search notebooks',
-          prefixIcon: const Icon(Icons.search),
+          prefixIcon: const Icon(Icons.search_rounded),
           suffixIcon: controller.text.isEmpty
               ? null
               : IconButton(
                   onPressed: onClear,
                   tooltip: 'Clear search',
-                  icon: const Icon(Icons.close),
+                  icon: const Icon(Icons.close_rounded),
                 ),
-          border: const OutlineInputBorder(),
+          filled: true,
+          fillColor: colorScheme.surface,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: colorScheme.outlineVariant),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: colorScheme.primary, width: 1.5),
+          ),
         ),
         textInputAction: TextInputAction.search,
         onChanged: onChanged,
+        onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
       ),
     );
   }
@@ -788,7 +1067,6 @@ class _LibraryBookshelf extends StatelessWidget {
     required this.folders,
     required this.notebooks,
     required this.showArchived,
-    required this.notebookRepository,
     required this.onOpenFolder,
     required this.onRenameFolder,
     required this.onDeleteFolder,
@@ -804,7 +1082,6 @@ class _LibraryBookshelf extends StatelessWidget {
   final List<NotebookFolder> folders;
   final List<Notebook> notebooks;
   final bool showArchived;
-  final NotebookRepository notebookRepository;
   final ValueChanged<NotebookFolder> onOpenFolder;
   final ValueChanged<NotebookFolder> onRenameFolder;
   final ValueChanged<NotebookFolder> onDeleteFolder;
@@ -822,10 +1099,15 @@ class _LibraryBookshelf extends StatelessWidget {
       builder: (context, constraints) {
         final horizontalPadding = constraints.maxWidth < 600 ? 16.0 : 24.0;
         final boundedWidth = math.min(constraints.maxWidth, 1280.0).toDouble();
-        final contentWidth = boundedWidth - horizontalPadding * 2;
-        final columnCount = _columnCountForWidth(contentWidth);
+        final contentWidth = math
+            .max(1.0, boundedWidth - horizontalPadding * 2)
+            .toDouble();
         final itemCount = folders.length + notebooks.length;
-        final rowCount = (itemCount / columnCount).ceil();
+        final itemWidths = [
+          for (var index = 0; index < itemCount; index++)
+            _itemWidth(index, contentWidth),
+        ];
+        final rows = _packRows(itemWidths, contentWidth);
 
         return ListView.builder(
           key: const ValueKey('library-bookshelf'),
@@ -845,23 +1127,19 @@ class _LibraryBookshelf extends StatelessWidget {
                 .toDouble(),
             32,
           ),
-          itemCount: rowCount,
+          itemCount: rows.length,
           itemBuilder: (context, rowIndex) {
-            final firstItemIndex = rowIndex * columnCount;
-            final rowItemCount = math
-                .min(columnCount, itemCount - firstItemIndex)
-                .toInt();
+            final rowItems = rows[rowIndex];
 
             return Padding(
               padding: EdgeInsets.only(
-                bottom: rowIndex == rowCount - 1 ? 0 : 24,
+                bottom: rowIndex == rows.length - 1 ? 0 : 24,
               ),
               child: _BookshelfRow(
                 rowIndex: rowIndex,
-                columnCount: columnCount,
-                itemCount: rowItemCount,
-                itemBuilder: (columnIndex) {
-                  return _buildItem(firstItemIndex + columnIndex);
+                itemWidths: [for (final item in rowItems) itemWidths[item]],
+                itemBuilder: (rowItemIndex) {
+                  return _buildItem(rowItems[rowItemIndex]);
                 },
               ),
             );
@@ -871,20 +1149,50 @@ class _LibraryBookshelf extends StatelessWidget {
     );
   }
 
-  int _columnCountForWidth(double width) {
-    if (width < 328) {
-      return 1;
+  double _itemWidth(int index, double contentWidth) {
+    final minimumWidth = contentWidth < 420
+        ? 52.0
+        : contentWidth < 720
+        ? 54.0
+        : 56.0;
+    final maximumWidth = contentWidth < 420
+        ? 74.0
+        : contentWidth < 720
+        ? 82.0
+        : 88.0;
+
+    if (index < folders.length) {
+      return math.min(maximumWidth, minimumWidth + 14).toDouble();
     }
-    if (width < 520) {
-      return 2;
+
+    final notebook = notebooks[index - folders.length];
+    final pageCount = math.max(1, notebook.pageIds.length);
+    final width = minimumWidth + math.log(pageCount + 1) / math.ln10 * 10;
+    return width.clamp(minimumWidth, maximumWidth).toDouble();
+  }
+
+  List<List<int>> _packRows(List<double> itemWidths, double contentWidth) {
+    final rows = <List<int>>[];
+    var currentRow = <int>[];
+    var currentWidth = 0.0;
+
+    for (var index = 0; index < itemWidths.length; index++) {
+      final itemWidth = itemWidths[index];
+      if (currentRow.isNotEmpty && currentWidth + itemWidth > contentWidth) {
+        rows.add(currentRow);
+        currentRow = <int>[];
+        currentWidth = 0;
+      }
+
+      currentRow.add(index);
+      currentWidth += itemWidth;
     }
-    if (width < 760) {
-      return 3;
+
+    if (currentRow.isNotEmpty) {
+      rows.add(currentRow);
     }
-    if (width < 1000) {
-      return 4;
-    }
-    return 5;
+
+    return rows;
   }
 
   Widget _buildItem(int index) {
@@ -902,7 +1210,6 @@ class _LibraryBookshelf extends StatelessWidget {
     return _NotebookCard(
       notebook: notebook,
       showArchived: showArchived,
-      notebookRepository: notebookRepository,
       onTap: () => onOpenNotebook(notebook),
       onRename: () => onRenameNotebook(notebook),
       onDuplicate: () => onDuplicateNotebook(notebook),
@@ -917,23 +1224,19 @@ class _LibraryBookshelf extends StatelessWidget {
 class _BookshelfRow extends StatelessWidget {
   const _BookshelfRow({
     required this.rowIndex,
-    required this.columnCount,
-    required this.itemCount,
+    required this.itemWidths,
     required this.itemBuilder,
   });
 
   final int rowIndex;
-  final int columnCount;
-  final int itemCount;
+  final List<double> itemWidths;
   final Widget Function(int index) itemBuilder;
 
   @override
   Widget build(BuildContext context) {
-    const gap = 16.0;
-
     return SizedBox(
       key: ValueKey('library-bookshelf-row-$rowIndex'),
-      height: 274,
+      height: 270,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
@@ -946,32 +1249,22 @@ class _BookshelfRow extends StatelessWidget {
           ),
           Positioned.fill(
             bottom: 20,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (
-                  var columnIndex = 0;
-                  columnIndex < columnCount;
-                  columnIndex++
-                ) ...[
-                  if (columnIndex > 0) const SizedBox(width: gap),
-                  Expanded(
-                    child: columnIndex < itemCount
-                        ? Align(
-                            alignment: Alignment.bottomCenter,
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 220),
-                              child: SizedBox(
-                                width: double.infinity,
-                                height: 254,
-                                child: itemBuilder(columnIndex),
-                              ),
-                            ),
-                          )
-                        : const SizedBox.shrink(),
-                  ),
+            child: Align(
+              alignment: Alignment.bottomLeft,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  for (
+                    var columnIndex = 0;
+                    columnIndex < itemWidths.length;
+                    columnIndex++
+                  )
+                    SizedBox(
+                      width: itemWidths[columnIndex],
+                      child: itemBuilder(columnIndex),
+                    ),
                 ],
-              ],
+              ),
             ),
           ),
         ],
@@ -986,10 +1279,7 @@ class _ShelfRail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final shelfColor = Color.alphaBlend(
-      colorScheme.primary.withValues(alpha: 0.14),
-      colorScheme.surfaceContainerHigh,
-    );
+    final shelfColor = _libraryFurnitureColor(colorScheme);
 
     return ExcludeSemantics(
       child: DecoratedBox(
@@ -1053,274 +1343,22 @@ class _FolderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return _LibraryBookCover(
+    return _LibrarySpine(
+      key: ValueKey('folder-spine-${folder.id}'),
       semanticsLabel: 'Open folder ${folder.name}',
       onTap: onTap,
-      accentColor: colorScheme.tertiary,
+      backgroundColor: const Color(0xFF6D5845),
+      height: 246,
+      leanAngle: _spineLeanAngle,
+      leadingIcon: Icons.folder_copy_outlined,
       title: folder.name,
-      metadata: 'Collection',
-      preview: DecoratedBox(
-        decoration: BoxDecoration(
-          color: Color.alphaBlend(
-            colorScheme.tertiary.withValues(alpha: 0.08),
-            colorScheme.surface,
-          ),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: colorScheme.outlineVariant),
-        ),
-        child: Center(
-          child: Icon(
-            Icons.folder_copy_outlined,
-            size: 66,
-            color: colorScheme.tertiary,
-          ),
-        ),
-      ),
+      metadata: 'Folder',
       action: _FolderActionMenu(
         folderName: folder.name,
+        foregroundColor: Colors.white,
         onSelected: _handleAction,
       ),
     );
-  }
-}
-
-class _NotebookThumbnail extends StatelessWidget {
-  const _NotebookThumbnail({
-    required this.notebook,
-    required this.notebookRepository,
-    required this.keyPrefix,
-    this.showArchived = false,
-  });
-
-  final Notebook notebook;
-  final NotebookRepository notebookRepository;
-  final String keyPrefix;
-  final bool showArchived;
-
-  @override
-  Widget build(BuildContext context) {
-    final pageId = notebook.pageIds.isEmpty ? null : notebook.pageIds.first;
-
-    return SizedBox(
-      key: ValueKey('$keyPrefix-${notebook.id}'),
-      width: 92,
-      height: 124,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(5),
-          border: Border.all(color: const Color(0xFFE4DED1)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 8,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(4),
-          child: pageId == null
-              ? _NotebookThumbnailPlaceholder(showArchived: showArchived)
-              : FutureBuilder<NotePage>(
-                  future: notebookRepository.loadPage(notebook, pageId),
-                  builder: (context, snapshot) {
-                    final page = snapshot.data;
-                    if (page == null) {
-                      return _NotebookThumbnailPlaceholder(
-                        showArchived: showArchived,
-                      );
-                    }
-
-                    return Stack(
-                      children: [
-                        Positioned.fill(
-                          child: CustomPaint(
-                            painter: _NotebookThumbnailPainter(page: page),
-                          ),
-                        ),
-                        if (page.pdfBackground != null)
-                          const Positioned(
-                            left: 5,
-                            bottom: 5,
-                            child: _ThumbnailBadge(
-                              icon: Icons.picture_as_pdf_outlined,
-                            ),
-                          ),
-                        if (showArchived)
-                          const Positioned(
-                            right: 5,
-                            bottom: 5,
-                            child: _ThumbnailBadge(
-                              icon: Icons.inventory_2_outlined,
-                            ),
-                          ),
-                      ],
-                    );
-                  },
-                ),
-        ),
-      ),
-    );
-  }
-}
-
-class _NotebookThumbnailPlaceholder extends StatelessWidget {
-  const _NotebookThumbnailPlaceholder({required this.showArchived});
-
-  final bool showArchived;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return DecoratedBox(
-      decoration: const BoxDecoration(color: Colors.white),
-      child: Center(
-        child: Icon(
-          showArchived ? Icons.inventory_2_outlined : Icons.article_outlined,
-          color: colorScheme.primary,
-          size: 32,
-        ),
-      ),
-    );
-  }
-}
-
-class _ThumbnailBadge extends StatelessWidget {
-  const _ThumbnailBadge({required this.icon});
-
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colorScheme.surface.withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: colorScheme.outlineVariant),
-      ),
-      child: SizedBox.square(
-        dimension: 22,
-        child: Icon(icon, size: 14, color: colorScheme.primary),
-      ),
-    );
-  }
-}
-
-class _NotebookThumbnailPainter extends CustomPainter {
-  const _NotebookThumbnailPainter({required this.page});
-
-  final NotePage page;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final pageWidth = page.width <= 0 ? size.width : page.width;
-    final pageHeight = page.height <= 0 ? size.height : page.height;
-    final displayWidth = page.isSideways ? pageHeight : pageWidth;
-    final displayHeight = page.isSideways ? pageWidth : pageHeight;
-    final scale = math.min(
-      size.width / displayWidth,
-      size.height / displayHeight,
-    );
-    final previewSize = Size(displayWidth * scale, displayHeight * scale);
-    final previewOffset = Offset(
-      (size.width - previewSize.width) / 2,
-      (size.height - previewSize.height) / 2,
-    );
-    final previewRect = previewOffset & previewSize;
-
-    canvas.drawRect(Offset.zero & size, Paint()..color = Colors.white);
-
-    canvas.save();
-    canvas.clipRect(previewRect);
-    canvas.translate(previewOffset.dx, previewOffset.dy);
-    canvas.scale(scale);
-    _applyPageRotation(canvas, page, pageWidth, pageHeight);
-
-    if (page.pdfBackground != null) {
-      final pdfPaint = Paint()..color = const Color(0xFFFFF6E2);
-      canvas.drawRect(Offset.zero & Size(pageWidth, pageHeight), pdfPaint);
-
-      final linePaint = Paint()
-        ..color = const Color(0xFFE7DCC4)
-        ..strokeWidth = 1 / scale;
-      for (var y = 14.0; y < pageHeight; y += 14) {
-        canvas.drawLine(Offset(8, y), Offset(pageWidth - 8, y), linePaint);
-      }
-    } else {
-      paintPageTemplate(
-        canvas,
-        Size(pageWidth, pageHeight),
-        page.template,
-        minimumStrokeWidth: 1 / scale,
-      );
-    }
-
-    for (final stroke in page.strokes) {
-      if (stroke.points.isEmpty) {
-        continue;
-      }
-
-      final paint = Paint()
-        ..color = stroke.isHighlighter
-            ? stroke.color.withValues(alpha: 0.36)
-            : stroke.color
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = stroke.width
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round;
-
-      if (stroke.points.length == 1) {
-        canvas.drawCircle(
-          stroke.points.single.offset,
-          stroke.width / 2,
-          paint..style = PaintingStyle.fill,
-        );
-      } else {
-        canvas.drawPath(StrokeGeometry.buildSmoothPath(stroke.points), paint);
-      }
-    }
-
-    for (final shape in page.shapes) {
-      paintNoteShape(canvas, shape, minimumStrokeWidth: 1.4 / scale);
-    }
-
-    canvas.restore();
-  }
-
-  void _applyPageRotation(
-    Canvas canvas,
-    NotePage page,
-    double pageWidth,
-    double pageHeight,
-  ) {
-    switch (page.rotationQuarterTurns) {
-      case 1:
-        canvas
-          ..translate(pageHeight, 0)
-          ..rotate(math.pi / 2);
-        break;
-      case 2:
-        canvas
-          ..translate(pageWidth, pageHeight)
-          ..rotate(math.pi);
-        break;
-      case 3:
-        canvas
-          ..translate(0, pageWidth)
-          ..rotate(math.pi * 3 / 2);
-        break;
-    }
-  }
-
-  @override
-  bool shouldRepaint(_NotebookThumbnailPainter oldDelegate) {
-    return oldDelegate.page != page;
   }
 }
 
@@ -1328,7 +1366,6 @@ class _NotebookCard extends StatelessWidget {
   const _NotebookCard({
     required this.notebook,
     required this.showArchived,
-    required this.notebookRepository,
     required this.onTap,
     required this.onRename,
     required this.onDuplicate,
@@ -1340,7 +1377,6 @@ class _NotebookCard extends StatelessWidget {
 
   final Notebook notebook;
   final bool showArchived;
-  final NotebookRepository notebookRepository;
   final VoidCallback onTap;
   final VoidCallback onRename;
   final VoidCallback onDuplicate;
@@ -1374,177 +1410,188 @@ class _NotebookCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final visualSeed = _stableVisualSeed(notebook.id);
+    final backgroundColor =
+        _notebookSpinePalette[visualSeed % _notebookSpinePalette.length];
+    const heights = [224.0, 232.0, 240.0, 246.0, 236.0];
 
-    return _LibraryBookCover(
+    return _LibrarySpine(
+      key: ValueKey('notebook-spine-${notebook.id}'),
       semanticsLabel: 'Open notebook ${notebook.title}',
       onTap: onTap,
-      accentColor: colorScheme.primary,
+      backgroundColor: backgroundColor,
+      height: heights[visualSeed % heights.length],
+      leanAngle: _spineLeanAngle,
+      leadingIcon: showArchived
+          ? Icons.inventory_2_outlined
+          : Icons.auto_stories_outlined,
       title: notebook.title,
-      metadata:
-          '${notebook.pageIds.length} page${notebook.pageIds.length == 1 ? '' : 's'}',
-      preview: DecoratedBox(
-        decoration: BoxDecoration(
-          color: colorScheme.surface.withValues(alpha: 0.82),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: colorScheme.outlineVariant),
-        ),
-        child: Center(
-          child: _NotebookThumbnail(
-            notebook: notebook,
-            notebookRepository: notebookRepository,
-            keyPrefix: 'notebook-thumbnail-card',
-            showArchived: showArchived,
-          ),
-        ),
-      ),
+      metadata: '${notebook.pageIds.length}p',
       action: _NotebookActionMenu(
         notebookTitle: notebook.title,
         showArchived: showArchived,
+        foregroundColor: Colors.white,
         onSelected: _handleAction,
       ),
     );
   }
 }
 
-class _LibraryBookCover extends StatelessWidget {
-  const _LibraryBookCover({
+const _notebookSpinePalette = <Color>[
+  Color(0xFF2F6F73),
+  Color(0xFF8A5D4A),
+  Color(0xFF58688E),
+  Color(0xFF5E7354),
+  Color(0xFF795D76),
+  Color(0xFF946A47),
+];
+
+const _spineLeanAngle = -math.pi / 60;
+
+int _stableVisualSeed(String value) {
+  var result = 0;
+  for (final codeUnit in value.codeUnits) {
+    result = (result * 31 + codeUnit) & 0x7fffffff;
+  }
+  return result;
+}
+
+class _LibrarySpine extends StatelessWidget {
+  const _LibrarySpine({
+    super.key,
     required this.semanticsLabel,
     required this.onTap,
-    required this.accentColor,
+    required this.backgroundColor,
+    required this.height,
+    required this.leanAngle,
+    required this.leadingIcon,
     required this.title,
     required this.metadata,
-    required this.preview,
     required this.action,
   });
 
   final String semanticsLabel;
   final VoidCallback onTap;
-  final Color accentColor;
+  final Color backgroundColor;
+  final double height;
+  final double leanAngle;
+  final IconData leadingIcon;
   final String title;
   final String metadata;
-  final Widget preview;
   final Widget action;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    final borderRadius = BorderRadius.circular(12);
-    final coverColor = Color.alphaBlend(
-      accentColor.withValues(alpha: 0.07),
-      colorScheme.surface,
+    const foregroundColor = Colors.white;
+    const borderRadius = BorderRadius.vertical(
+      top: Radius.circular(6),
+      bottom: Radius.circular(2),
     );
 
-    return Semantics(
-      container: true,
-      explicitChildNodes: true,
-      button: true,
-      label: semanticsLabel,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: borderRadius,
-          boxShadow: [
-            BoxShadow(
-              color: colorScheme.shadow.withValues(alpha: 0.14),
-              blurRadius: 12,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
-        child: Material(
-          color: coverColor,
-          shape: RoundedRectangleBorder(
-            borderRadius: borderRadius,
-            side: BorderSide(color: colorScheme.outlineVariant),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            excludeFromSemantics: true,
-            onTap: onTap,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(left: 10),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
+    return SizedBox(
+      height: height,
+      child: Tooltip(
+        message: title,
+        excludeFromSemantics: true,
+        child: Semantics(
+          container: true,
+          explicitChildNodes: true,
+          button: true,
+          label: semanticsLabel,
+          child: Transform.rotate(
+            key: ValueKey('spine-lean-$semanticsLabel'),
+            angle: leanAngle,
+            alignment: Alignment.bottomCenter,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: borderRadius,
+                boxShadow: [
+                  BoxShadow(
+                    color: colorScheme.shadow.withValues(alpha: 0.18),
+                    blurRadius: 7,
+                    offset: const Offset(2, 4),
+                  ),
+                ],
+              ),
+              child: Material(
+                color: backgroundColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: borderRadius,
+                  side: BorderSide(color: Colors.black.withValues(alpha: 0.16)),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  excludeFromSemantics: true,
+                  onTap: onTap,
+                  child: Stack(
+                    fit: StackFit.expand,
                     children: [
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
-                          child: preview,
+                      Positioned(
+                        left: 4,
+                        top: 0,
+                        bottom: 0,
+                        width: 2,
+                        child: ColoredBox(
+                          color: foregroundColor.withValues(alpha: 0.18),
                         ),
                       ),
-                      DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: colorScheme.surface.withValues(alpha: 0.72),
-                          border: Border(
-                            top: BorderSide(color: colorScheme.outlineVariant),
+                      Column(
+                        children: [
+                          SizedBox(
+                            height: 27,
+                            child: Center(
+                              child: Icon(
+                                leadingIcon,
+                                size: 16,
+                                color: foregroundColor.withValues(alpha: 0.9),
+                              ),
+                            ),
                           ),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(12, 7, 4, 7),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      title,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: textTheme.titleSmall?.copyWith(
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      metadata,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: textTheme.bodySmall?.copyWith(
-                                        color: colorScheme.onSurfaceVariant,
-                                      ),
-                                    ),
-                                  ],
+                          Container(
+                            height: 1,
+                            margin: const EdgeInsets.symmetric(horizontal: 10),
+                            color: foregroundColor.withValues(alpha: 0.28),
+                          ),
+                          Expanded(
+                            child: Center(
+                              child: RotatedBox(
+                                quarterTurns: 1,
+                                child: Text(
+                                  title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: textTheme.labelLarge?.copyWith(
+                                    color: foregroundColor,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 0.2,
+                                  ),
                                 ),
                               ),
-                              const SizedBox(width: 4),
-                              action,
-                            ],
+                            ),
                           ),
-                        ),
+                          Container(
+                            height: 23,
+                            alignment: Alignment.center,
+                            color: Colors.black.withValues(alpha: 0.08),
+                            child: Text(
+                              metadata,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: textTheme.labelSmall?.copyWith(
+                                color: foregroundColor.withValues(alpha: 0.88),
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          action,
+                        ],
                       ),
                     ],
                   ),
                 ),
-                Positioned(
-                  left: 0,
-                  top: 0,
-                  bottom: 0,
-                  width: 10,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                        colors: [
-                          accentColor.withValues(alpha: 0.92),
-                          accentColor.withValues(alpha: 0.58),
-                        ],
-                      ),
-                      border: Border(
-                        right: BorderSide(
-                          color: colorScheme.shadow.withValues(alpha: 0.12),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -1556,15 +1603,18 @@ class _LibraryBookCover extends StatelessWidget {
 enum _FolderAction { rename, delete }
 
 class _FolderActionMenu extends StatelessWidget {
-  const _FolderActionMenu({required this.folderName, required this.onSelected});
+  const _FolderActionMenu({
+    required this.folderName,
+    required this.foregroundColor,
+    required this.onSelected,
+  });
 
   final String folderName;
+  final Color foregroundColor;
   final ValueChanged<_FolderAction> onSelected;
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
     return PopupMenuButton<_FolderAction>(
       tooltip: '$folderName actions',
       padding: EdgeInsets.zero,
@@ -1583,16 +1633,9 @@ class _FolderActionMenu extends StatelessWidget {
           ),
         ];
       },
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: colorScheme.surface.withValues(alpha: 0.92),
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: colorScheme.outlineVariant),
-        ),
-        child: const SizedBox.square(
-          dimension: 44,
-          child: Icon(Icons.more_horiz, size: 20),
-        ),
+      child: SizedBox.square(
+        dimension: 44,
+        child: Icon(Icons.more_horiz_rounded, size: 20, color: foregroundColor),
       ),
     );
   }
@@ -1621,17 +1664,17 @@ class _NotebookActionMenu extends StatelessWidget {
   const _NotebookActionMenu({
     required this.notebookTitle,
     required this.showArchived,
+    required this.foregroundColor,
     required this.onSelected,
   });
 
   final String notebookTitle;
   final bool showArchived;
+  final Color foregroundColor;
   final ValueChanged<_NotebookAction> onSelected;
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
     return PopupMenuButton<_NotebookAction>(
       tooltip: '$notebookTitle actions',
       padding: EdgeInsets.zero,
@@ -1673,16 +1716,9 @@ class _NotebookActionMenu extends StatelessWidget {
           ),
         ];
       },
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: colorScheme.surface.withValues(alpha: 0.92),
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: colorScheme.outlineVariant),
-        ),
-        child: const SizedBox.square(
-          dimension: 44,
-          child: Icon(Icons.more_horiz, size: 20),
-        ),
+      child: SizedBox.square(
+        dimension: 44,
+        child: Icon(Icons.more_horiz_rounded, size: 20, color: foregroundColor),
       ),
     );
   }

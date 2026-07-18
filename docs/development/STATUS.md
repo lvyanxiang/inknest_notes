@@ -2,9 +2,9 @@
 
 ## Current
 
-- Milestone: Library Bookshelf Home (complete)
+- Milestone: Library Bookshelf Home Visual Unification (complete)
 - Next task: No additional implementation task is selected; choose the next concrete priority before entering Post-MVP 6-9, and keep sync and backup paused.
-- Last completed: Removed the duplicate Recent notebooks strip and replaced the flat library grid with an accessible responsive bookshelf while preserving Recent sorting, search, folders, archive, and notebook actions.
+- Last completed: Changed every shelf spine to the same 3-degree leftward lean while preserving the editor-return metadata refresh for page counts, widths, sorting, and subsequent opens.
 
 ## Decisions
 
@@ -39,7 +39,7 @@
 - Use corner-aware smoothing for Finger Writing Assist so small sampling jitter is reduced without rounding intentional handwriting corners aggressively.
 - Keep the first page thumbnail strip lightweight: show page shape, selection state, handwriting preview, and a PDF marker before adding full PDF thumbnail caching.
 - Store a backward-compatible template enum on `NotePage`; older or unknown JSON values fall back to blank.
-- Support Blank, Ruled, Dotted, Grid, Cornell, and Planner templates through one shared geometry layout used by the editor, page thumbnails, notebook thumbnails, and PDF export.
+- Support Blank, Ruled, Dotted, Grid, Cornell, and Planner templates through one shared geometry layout used by the editor, page thumbnails, and PDF export.
 - Let added and inserted non-PDF pages inherit the nearest prior template, preserve templates when duplicating pages, and keep PDF background pages template-free.
 - Store page operations in the repository layer: duplicate inserts after the source page, delete keeps at least one page, and reorder starts with thumbnail menu move-left/move-right actions.
 - Store page orientation as a backward-compatible `rotationQuarterTurns` value while preserving the original page size and all content coordinates, avoiding cumulative geometry drift across repeated rotations.
@@ -59,9 +59,10 @@
 - Keep archived notebooks out of the default library list; show them through an explicit archived view where they can be restored or deleted.
 - Store folders as first-class repository metadata; keep folders one level deep for now, and use `Notebook.folderId` to move notebooks between the root library and a folder.
 - Keep library search and sort as UI-level derived state over repository results for now.
-- Render first-pass notebook thumbnails from the first page's saved strokes plus lightweight PDF/page markers before adding cached PDF bitmap thumbnails.
+- Do not load first-page notebook thumbnails on the spine-based home shelf; identify books through stable spine color, title, page count, and state icons while retaining editor page thumbnails.
 - Keep Recent as a library sort mode, but do not duplicate recently updated notebooks in a separate home-screen strip.
-- Use one lazy responsive bookshelf for folders and notebooks, with whole-cover open targets and distinct accessible overflow actions.
+- Use one integrated library header and visible command bar above a lazy responsive shelf of gapless outward-facing spines; derive bounded spine width from page count, give every spine the same 3-degree leftward bottom-pivot lean, and retain whole-spine open targets plus accessible overflow actions.
+- Reload repository-derived library metadata whenever the editor route closes so page count, page-derived width, recent sorting, and the next editor session never reuse a stale notebook snapshot.
 - Store blank-page insertion in the repository layer; inserted pages inherit the nearest page size but start without PDF background or strokes.
 - Store imported PDF outlines on `Notebook.pdfOutlines`, keyed to notebook page IDs so page insertion and reordering do not break outline navigation.
 - Store user page bookmarks on `Notebook.bookmarkedPageIds` and persist them through the repository layer.
@@ -86,7 +87,7 @@
 - PDF export embeds inserted page images as PNG-backed PDF image widgets before vector handwriting strokes and text boxes.
 - File-backed JSON writes use temporary-file replacement, and page saves are serialized to avoid transient empty JSON reads during high-frequency edits such as image dragging.
 - Store clean shape objects on `NotePage.shapes`; first shape tool supports line, arrow, rectangle, and ellipse with light line-angle snapping for cleaner line/arrow creation.
-- Shape rendering is shared across the editor, page thumbnails, library thumbnails, and PDF export.
+- Shape rendering is shared across the editor, page thumbnails, and PDF export.
 - Keep the first favorites toolbar as an in-editor floating preset strip instead of growing the main toolbar height; presets switch to common pen/highlighter combinations without changing page layout or canvas hit testing.
 - Use the `record` Flutter package for first-pass cross-platform microphone capture.
 - Store audio recordings as notebook-level attachments under notebook-relative `assets/audio/` paths; keep the starting page on the recording and timeline linkage on `Stroke.audioRecordingId`.
@@ -264,6 +265,30 @@
 - `flutter test` passed with 82 tests after the responsive library bookshelf redesign.
 - `flutter analyze` passed after the responsive library bookshelf redesign.
 - `git diff --check` passed after the responsive library bookshelf redesign.
+- `dart format lib test` passed after unifying the library header and spine shelf.
+- `flutter test` passed with 82 tests after unifying the library header and spine shelf.
+- `flutter analyze` passed after unifying the library header and spine shelf.
+- `git diff --check` passed after unifying the library header and spine shelf.
+- `dart format lib test` passed after adding gapless, leaning, page-weighted spines.
+- `flutter test` passed with 83 tests after adding gapless, leaning, page-weighted spines.
+- `flutter analyze` passed after adding gapless, leaning, page-weighted spines.
+- `git diff --check` passed after adding gapless, leaning, page-weighted spines.
+- `dart format lib test` passed after making every shelf spine lean right from its bottom contact point.
+- The focused adjacent-spine widget test passed after checking every rendered notebook leans in the same rightward direction.
+- `flutter test` passed with 83 tests after the rightward-lean refinement and home-code cleanup.
+- `flutter analyze` passed after the rightward-lean refinement and home-code cleanup.
+- Static scans found no old Recent/grid/cover/search-toggle symbols, library thumbnail references, `Card`, or `CardTheme` usage in active code and tests.
+- `git diff --check` passed after the rightward-lean refinement and home-code cleanup.
+- `dart format lib test` passed after the fixed 3-degree spine lean and editor-return refresh.
+- Focused widget tests passed for equal spine angles and the add-pages -> return -> reopen metadata flow.
+- `flutter test` passed with 84 tests after the fixed 3-degree spine lean and editor-return refresh.
+- `flutter analyze` passed after the fixed 3-degree spine lean and editor-return refresh.
+- `git diff --check` passed after the fixed 3-degree spine lean and editor-return refresh.
+- `dart format lib test` passed after switching the shared spine lean to 3 degrees leftward.
+- The focused adjacent-spine widget test passed after verifying equal leftward rotation for every rendered notebook.
+- `flutter test` passed with 84 tests after switching the shared spine lean to 3 degrees leftward.
+- `flutter analyze` passed after switching the shared spine lean to 3 degrees leftward.
+- `git diff --check` passed after switching the shared spine lean to 3 degrees leftward.
 - `git diff --check` passed after re-screening graduation document references against school library journal coverage years.
 - `git diff --check` passed after splitting academic document maintenance into `$inknest-academic-docs`.
 - `git diff --check` passed after replacing graduation references with 2022-2025 journal papers and adding one-to-one body citations.
@@ -286,14 +311,14 @@
 - Editor app bar includes a Page template picker for Blank, Ruled, Dotted, Grid, Cornell, and Planner pages; the selected template persists and appears in previews and PDF exports.
 - Editor bottom navigator now shows page thumbnails with selection state, page numbers, handwriting previews, and PDF page markers.
 - Editor page thumbnails include actions to duplicate, delete with confirmation, and move pages left or right.
-- Editor page thumbnail actions include clockwise page rotation; orientation persists, updates editor and library previews, keeps drawing hit testing aligned, and is preserved in PDF export.
+- Editor page thumbnail actions include clockwise page rotation; orientation persists, updates editor and page previews, keeps drawing hit testing aligned, and is preserved in PDF export.
 - Editor toolbar includes Lasso; draw around strokes to select them, drag the selection to move it, drag its corner handle to resize proportionally, or use the upright floating toolbar to recolor, delete, and clear the selection.
 - Editor app bar includes Import PDFs into notebook; it accepts multiple files, appends every imported page, preserves separate source assets and outlines, and opens the first new page when complete.
 - Imported PDF pages retain their per-page source dimensions and orientation ratio through editor display, thumbnails, persistence, rotation, and PDF export.
 - Editor strokes render with smoothed paths on canvas, thumbnails, and exported PDFs; the eraser can split strokes instead of only deleting whole strokes.
-- Library notebook cards include rename, duplicate, archive/restore, and delete actions backed by repository persistence.
+- Library notebook spines include rename, duplicate, archive/restore, and delete actions backed by repository persistence.
 - Library supports creating root-level folders, moving notebooks into folders, entering folders, and deleting folders while moving contained notebooks back to the root library.
-- Library supports searching notebooks and folders, sorting notebooks, opening recent notebooks, and showing first-page notebook thumbnails with handwriting/PDF/archive markers.
+- Library supports visible search, notebook and folder sorting, folder/archive navigation, and gapless page-weighted spine rows without loading first-page cover previews.
 - Editor page thumbnails can insert blank pages before or after any page, including between imported PDF pages.
 - Editor page thumbnails render PDF page backgrounds, and the editor has an Outline/Bookmarks panel plus per-page bookmark toggling.
 - Editor export can save the full notebook, current page, or an ordered page/range expression such as `1,3,5-7`, with filenames suffixed by exported scope.
