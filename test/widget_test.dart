@@ -379,8 +379,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(find.text(notebook.title));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Audio recordings'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
@@ -831,7 +830,12 @@ void main() {
         find
             .descendant(
               of: notebookSpines.at(index),
-              matching: find.byType(Transform),
+              matching: find.byWidgetPredicate((widget) {
+                final key = widget.key;
+                return widget is Transform &&
+                    key is ValueKey<String> &&
+                    key.value.startsWith('spine-lean-');
+              }),
             )
             .first,
       );
@@ -867,6 +871,137 @@ void main() {
     final firstNotebookPosition = tester.getTopLeft(find.text('Notebook 1'));
     final secondNotebookPosition = tester.getTopLeft(find.text('Notebook 2'));
     expect(firstNotebookPosition.dx, lessThan(secondNotebookPosition.dx));
+  });
+
+  testWidgets('pulls a notebook forward before opening without straightening', (
+    WidgetTester tester,
+  ) async {
+    final repository = InMemoryNotebookRepository();
+    await repository.createNotebook(title: 'Animation notes');
+
+    await tester.pumpWidget(InkNestApp(notebookRepository: repository));
+    await tester.pumpAndSettle();
+
+    final notebook = find.bySemanticsLabel('Open notebook Animation notes');
+    final scale = find.byKey(
+      const ValueKey('spine-scale-Open notebook Animation notes'),
+    );
+    final lean = find.byKey(
+      const ValueKey('spine-lean-Open notebook Animation notes'),
+    );
+
+    expect(tester.widget<AnimatedScale>(scale).scale, 1);
+    await tester.tap(notebook);
+    await tester.pump();
+
+    expect(tester.widget<AnimatedScale>(scale).scale, 1.04);
+    expect(
+      tester.widget<Transform>(lean).transform.entry(1, 0),
+      lessThan(-0.05),
+    );
+    expect(find.byTooltip('Audio recordings'), findsNothing);
+
+    await tester.pump(const Duration(milliseconds: 199));
+    expect(find.byTooltip('Audio recordings'), findsNothing);
+    await tester.pump(const Duration(milliseconds: 1));
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Audio recordings'), findsOneWidget);
+  });
+
+  testWidgets('inspects spines and tips only truncated notebook titles', (
+    WidgetTester tester,
+  ) async {
+    final repository = InMemoryNotebookRepository();
+    const shortTitle = 'Short';
+    const longTitle =
+        'A very long notebook title that cannot fit on a single narrow spine';
+    await repository.createNotebook(title: shortTitle);
+    await repository.createNotebook(title: longTitle);
+
+    await tester.pumpWidget(InkNestApp(notebookRepository: repository));
+    await tester.pumpAndSettle();
+
+    final longNotebook = find.bySemanticsLabel('Open notebook $longTitle');
+    final longScale = find.byKey(
+      const ValueKey(
+        'spine-scale-Open notebook A very long notebook title that cannot fit on a single narrow spine',
+      ),
+    );
+
+    expect(find.byTooltip(longTitle), findsNothing);
+    await tester.longPress(longNotebook);
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<AnimatedScale>(longScale).scale, 1.04);
+    expect(find.byTooltip(longTitle), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('library-command-bar')));
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<AnimatedScale>(longScale).scale, 1);
+    expect(find.byTooltip(longTitle), findsNothing);
+
+    final mouse = await tester.createGesture(kind: ui.PointerDeviceKind.mouse);
+    await mouse.addPointer(
+      location: tester.getCenter(
+        find.byKey(const ValueKey('library-command-bar')),
+      ),
+    );
+    addTearDown(() => mouse.removePointer());
+    await mouse.moveTo(tester.getCenter(longNotebook));
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<AnimatedScale>(longScale).scale, 1.04);
+    expect(find.byTooltip(longTitle), findsOneWidget);
+
+    await mouse.moveTo(
+      tester.getCenter(find.byKey(const ValueKey('library-command-bar'))),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<AnimatedScale>(longScale).scale, 1);
+    expect(find.byTooltip(longTitle), findsNothing);
+
+    final shortNotebook = find.bySemanticsLabel('Open notebook $shortTitle');
+    final shortScale = find.byKey(
+      const ValueKey('spine-scale-Open notebook Short'),
+    );
+    await tester.longPress(shortNotebook);
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<AnimatedScale>(shortScale).scale, 1.04);
+    expect(find.byTooltip(shortTitle), findsNothing);
+
+    await tester.tap(shortNotebook);
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Audio recordings'), findsOneWidget);
+  });
+
+  testWidgets('opens immediately when reduced motion is enabled', (
+    WidgetTester tester,
+  ) async {
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(disableAnimations: true);
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    final repository = InMemoryNotebookRepository();
+    await repository.createNotebook(title: 'Reduced motion notes');
+
+    await tester.pumpWidget(InkNestApp(notebookRepository: repository));
+    await tester.pumpAndSettle();
+
+    final notebook = find.bySemanticsLabel(
+      'Open notebook Reduced motion notes',
+    );
+    final scale = find.byKey(
+      const ValueKey('spine-scale-Open notebook Reduced motion notes'),
+    );
+
+    await tester.tap(notebook);
+    expect(tester.widget<AnimatedScale>(scale).scale, 1);
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Audio recordings'), findsOneWidget);
   });
 
   testWidgets('widens notebook spines as page count grows', (

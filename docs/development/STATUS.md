@@ -2,9 +2,9 @@
 
 ## Current
 
-- Milestone: Library Bookshelf Home Visual Unification (complete)
+- Milestone: Library Bookshelf Pull-Forward Interaction (complete)
 - Next task: No additional implementation task is selected; choose the next concrete priority before entering Post-MVP 6-9, and keep sync and backup paused.
-- Last completed: Changed every shelf spine to the same 3-degree leftward lean while preserving the editor-return metadata refresh for page counts, widths, sorting, and subsequent opens.
+- Last completed: Added a 200ms notebook pull-forward/scale response before opening, optional long-press/hover/focus inspection, and full-title tips only for rendered truncation while preserving the fixed left lean.
 
 ## Decisions
 
@@ -63,6 +63,8 @@
 - Keep Recent as a library sort mode, but do not duplicate recently updated notebooks in a separate home-screen strip.
 - Use one integrated library header and visible command bar above a lazy responsive shelf of gapless outward-facing spines; derive bounded spine width from page count, give every spine the same 3-degree leftward bottom-pivot lean, and retain whole-spine open targets plus accessible overflow actions.
 - Reload repository-derived library metadata whenever the editor route closes so page count, page-derived width, recent sorting, and the next editor session never reuse a stale notebook snapshot.
+- Keep normal notebook opening as one tap: animate forward at 1.04x for 200ms, retain the 3-degree left lean, then open; long press, pointer hover, or keyboard focus may hold inspection without requiring two taps.
+- Measure rendered spine titles before creating a title tip, keep complete titles tip-free, and skip the wait and spatial motion when platform animation is disabled.
 - Store blank-page insertion in the repository layer; inserted pages inherit the nearest page size but start without PDF background or strokes.
 - Store imported PDF outlines on `Notebook.pdfOutlines`, keyed to notebook page IDs so page insertion and reordering do not break outline navigation.
 - Store user page bookmarks on `Notebook.bookmarkedPageIds` and persist them through the repository layer.
@@ -289,6 +291,11 @@
 - `flutter test` passed with 84 tests after switching the shared spine lean to 3 degrees leftward.
 - `flutter analyze` passed after switching the shared spine lean to 3 degrees leftward.
 - `git diff --check` passed after switching the shared spine lean to 3 degrees leftward.
+- `dart format lib test` passed after the notebook pull-forward interaction.
+- Focused widget tests passed for opening delay, unchanged lean, long-press/hover inspection, outside retraction, conditional title tips, and reduced motion.
+- `flutter test` passed with 87 tests after the notebook pull-forward interaction.
+- `flutter analyze` passed after the notebook pull-forward interaction.
+- `git diff --check` passed after the notebook pull-forward interaction.
 - `git diff --check` passed after re-screening graduation document references against school library journal coverage years.
 - `git diff --check` passed after splitting academic document maintenance into `$inknest-academic-docs`.
 - `git diff --check` passed after replacing graduation references with 2022-2025 journal papers and adding one-to-one body citations.
@@ -319,6 +326,7 @@
 - Library notebook spines include rename, duplicate, archive/restore, and delete actions backed by repository persistence.
 - Library supports creating root-level folders, moving notebooks into folders, entering folders, and deleting folders while moving contained notebooks back to the root library.
 - Library supports visible search, notebook and folder sorting, folder/archive navigation, and gapless page-weighted spine rows without loading first-page cover previews.
+- Library notebook spines briefly pull forward and scale before opening; long press, hover, or focus can hold inspection, and only truncated titles receive a full-title tip.
 - Editor page thumbnails can insert blank pages before or after any page, including between imported PDF pages.
 - Editor page thumbnails render PDF page backgrounds, and the editor has an Outline/Bookmarks panel plus per-page bookmark toggling.
 - Editor export can save the full notebook, current page, or an ordered page/range expression such as `1,3,5-7`, with filenames suffixed by exported scope.

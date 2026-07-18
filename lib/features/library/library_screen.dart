@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -1362,7 +1363,7 @@ class _FolderCard extends StatelessWidget {
   }
 }
 
-class _NotebookCard extends StatelessWidget {
+class _NotebookCard extends StatefulWidget {
   const _NotebookCard({
     required this.notebook,
     required this.showArchived,
@@ -1385,53 +1386,145 @@ class _NotebookCard extends StatelessWidget {
   final VoidCallback onRestore;
   final VoidCallback onDelete;
 
+  @override
+  State<_NotebookCard> createState() => _NotebookCardState();
+}
+
+class _NotebookCardState extends State<_NotebookCard> {
+  bool _isOpening = false;
+  bool _isPinnedForInspection = false;
+  bool _isHovered = false;
+  bool _isFocused = false;
+
+  bool get _isInspecting => _isPinnedForInspection || _isHovered || _isFocused;
+
+  bool get _isPulledOut => _isOpening || _isInspecting;
+
+  Future<void> _handleTap() async {
+    if (_isOpening) {
+      return;
+    }
+
+    final opensImmediately =
+        _isInspecting || MediaQuery.of(context).disableAnimations;
+    if (!opensImmediately) {
+      setState(() {
+        _isOpening = true;
+      });
+      await Future<void>.delayed(_spinePullDuration);
+      if (!mounted || !_isOpening) {
+        return;
+      }
+    }
+
+    widget.onTap();
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _isOpening = false;
+      _isPinnedForInspection = false;
+      _isHovered = false;
+      _isFocused = false;
+    });
+  }
+
+  void _inspect() {
+    if (_isOpening || _isPinnedForInspection) {
+      return;
+    }
+    setState(() {
+      _isPinnedForInspection = true;
+    });
+  }
+
+  void _handleHover(bool isHovered) {
+    if (_isHovered == isHovered) {
+      return;
+    }
+    setState(() {
+      _isHovered = isHovered;
+    });
+  }
+
+  void _handleFocusChange(bool isFocused) {
+    if (_isFocused == isFocused) {
+      return;
+    }
+    setState(() {
+      _isFocused = isFocused;
+    });
+  }
+
+  void _clearInspection() {
+    if (!_isInspecting) {
+      return;
+    }
+    setState(() {
+      _isPinnedForInspection = false;
+      _isHovered = false;
+      _isFocused = false;
+    });
+  }
+
   void _handleAction(_NotebookAction action) {
+    _clearInspection();
     switch (action) {
       case _NotebookAction.rename:
-        onRename();
+        widget.onRename();
         break;
       case _NotebookAction.duplicate:
-        onDuplicate();
+        widget.onDuplicate();
         break;
       case _NotebookAction.move:
-        onMove();
+        widget.onMove();
         break;
       case _NotebookAction.archive:
-        onArchive();
+        widget.onArchive();
         break;
       case _NotebookAction.restore:
-        onRestore();
+        widget.onRestore();
         break;
       case _NotebookAction.delete:
-        onDelete();
+        widget.onDelete();
         break;
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final notebook = widget.notebook;
     final visualSeed = _stableVisualSeed(notebook.id);
     final backgroundColor =
         _notebookSpinePalette[visualSeed % _notebookSpinePalette.length];
     const heights = [224.0, 232.0, 240.0, 246.0, 236.0];
 
-    return _LibrarySpine(
-      key: ValueKey('notebook-spine-${notebook.id}'),
-      semanticsLabel: 'Open notebook ${notebook.title}',
-      onTap: onTap,
-      backgroundColor: backgroundColor,
-      height: heights[visualSeed % heights.length],
-      leanAngle: _spineLeanAngle,
-      leadingIcon: showArchived
-          ? Icons.inventory_2_outlined
-          : Icons.auto_stories_outlined,
-      title: notebook.title,
-      metadata: '${notebook.pageIds.length}p',
-      action: _NotebookActionMenu(
-        notebookTitle: notebook.title,
-        showArchived: showArchived,
-        foregroundColor: Colors.white,
-        onSelected: _handleAction,
+    return TapRegion(
+      onTapOutside: (_) => _clearInspection(),
+      child: _LibrarySpine(
+        key: ValueKey('notebook-spine-${notebook.id}'),
+        semanticsLabel: 'Open notebook ${notebook.title}',
+        onTap: () => unawaited(_handleTap()),
+        onLongPress: _inspect,
+        onHover: _handleHover,
+        onFocusChange: _handleFocusChange,
+        isPulledOut: _isPulledOut,
+        showTitleTip: _isInspecting,
+        backgroundColor: backgroundColor,
+        height: heights[visualSeed % heights.length],
+        leanAngle: _spineLeanAngle,
+        leadingIcon: widget.showArchived
+            ? Icons.inventory_2_outlined
+            : Icons.auto_stories_outlined,
+        title: notebook.title,
+        metadata: '${notebook.pageIds.length}p',
+        action: _NotebookActionMenu(
+          notebookTitle: notebook.title,
+          showArchived: widget.showArchived,
+          foregroundColor: Colors.white,
+          onSelected: _handleAction,
+        ),
       ),
     );
   }
@@ -1447,6 +1540,7 @@ const _notebookSpinePalette = <Color>[
 ];
 
 const _spineLeanAngle = -math.pi / 60;
+const _spinePullDuration = Duration(milliseconds: 200);
 
 int _stableVisualSeed(String value) {
   var result = 0;
@@ -1456,11 +1550,16 @@ int _stableVisualSeed(String value) {
   return result;
 }
 
-class _LibrarySpine extends StatelessWidget {
+class _LibrarySpine extends StatefulWidget {
   const _LibrarySpine({
     super.key,
     required this.semanticsLabel,
     required this.onTap,
+    this.onLongPress,
+    this.onHover,
+    this.onFocusChange,
+    this.isPulledOut = false,
+    this.showTitleTip = false,
     required this.backgroundColor,
     required this.height,
     required this.leanAngle,
@@ -1472,6 +1571,11 @@ class _LibrarySpine extends StatelessWidget {
 
   final String semanticsLabel;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
+  final ValueChanged<bool>? onHover;
+  final ValueChanged<bool>? onFocusChange;
+  final bool isPulledOut;
+  final bool showTitleTip;
   final Color backgroundColor;
   final double height;
   final double leanAngle;
@@ -1481,42 +1585,98 @@ class _LibrarySpine extends StatelessWidget {
   final Widget action;
 
   @override
+  State<_LibrarySpine> createState() => _LibrarySpineState();
+}
+
+class _LibrarySpineState extends State<_LibrarySpine> {
+  final _tooltipKey = GlobalKey<TooltipState>();
+  bool _tooltipScheduled = false;
+
+  void _scheduleTooltip() {
+    if (_tooltipScheduled) {
+      return;
+    }
+    _tooltipScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _tooltipScheduled = false;
+      if (mounted && widget.showTitleTip) {
+        _tooltipKey.currentState?.ensureTooltipVisible();
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
+    final isVisuallyPulledOut = widget.isPulledOut && !reduceMotion;
+    final motionDuration = reduceMotion ? Duration.zero : _spinePullDuration;
     const foregroundColor = Colors.white;
     const borderRadius = BorderRadius.vertical(
       top: Radius.circular(6),
       bottom: Radius.circular(2),
     );
+    final titleStyle =
+        textTheme.labelLarge?.copyWith(
+          color: foregroundColor,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.2,
+        ) ??
+        const TextStyle(
+          color: foregroundColor,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.2,
+        );
+    final titlePainter = TextPainter(
+      text: TextSpan(text: widget.title, style: titleStyle),
+      maxLines: 1,
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout(maxWidth: math.max(0, widget.height - 95));
+    final titleIsTruncated = titlePainter.didExceedMaxLines;
+    titlePainter.dispose();
 
-    return SizedBox(
-      height: height,
-      child: Tooltip(
-        message: title,
-        excludeFromSemantics: true,
-        child: Semantics(
-          container: true,
-          explicitChildNodes: true,
-          button: true,
-          label: semanticsLabel,
+    Widget spine = Semantics(
+      container: true,
+      explicitChildNodes: true,
+      button: true,
+      selected: widget.isPulledOut,
+      label: widget.semanticsLabel,
+      child: AnimatedSlide(
+        key: ValueKey('spine-slide-${widget.semanticsLabel}'),
+        offset: isVisuallyPulledOut ? const Offset(0, -0.05) : Offset.zero,
+        duration: motionDuration,
+        curve: Curves.easeOutCubic,
+        child: AnimatedScale(
+          key: ValueKey('spine-scale-${widget.semanticsLabel}'),
+          scale: isVisuallyPulledOut ? 1.04 : 1,
+          alignment: Alignment.bottomCenter,
+          duration: motionDuration,
+          curve: Curves.easeOutCubic,
           child: Transform.rotate(
-            key: ValueKey('spine-lean-$semanticsLabel'),
-            angle: leanAngle,
+            key: ValueKey('spine-lean-${widget.semanticsLabel}'),
+            angle: widget.leanAngle,
             alignment: Alignment.bottomCenter,
-            child: DecoratedBox(
+            child: AnimatedContainer(
+              duration: motionDuration,
+              curve: Curves.easeOutCubic,
               decoration: BoxDecoration(
                 borderRadius: borderRadius,
                 boxShadow: [
                   BoxShadow(
-                    color: colorScheme.shadow.withValues(alpha: 0.18),
-                    blurRadius: 7,
-                    offset: const Offset(2, 4),
+                    color: colorScheme.shadow.withValues(
+                      alpha: isVisuallyPulledOut ? 0.28 : 0.18,
+                    ),
+                    blurRadius: isVisuallyPulledOut ? 13 : 7,
+                    offset: isVisuallyPulledOut
+                        ? const Offset(4, 8)
+                        : const Offset(2, 4),
                   ),
                 ],
               ),
               child: Material(
-                color: backgroundColor,
+                color: widget.backgroundColor,
                 shape: RoundedRectangleBorder(
                   borderRadius: borderRadius,
                   side: BorderSide(color: Colors.black.withValues(alpha: 0.16)),
@@ -1524,7 +1684,10 @@ class _LibrarySpine extends StatelessWidget {
                 clipBehavior: Clip.antiAlias,
                 child: InkWell(
                   excludeFromSemantics: true,
-                  onTap: onTap,
+                  onTap: widget.onTap,
+                  onLongPress: widget.onLongPress,
+                  onHover: widget.onHover,
+                  onFocusChange: widget.onFocusChange,
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
@@ -1543,7 +1706,7 @@ class _LibrarySpine extends StatelessWidget {
                             height: 27,
                             child: Center(
                               child: Icon(
-                                leadingIcon,
+                                widget.leadingIcon,
                                 size: 16,
                                 color: foregroundColor.withValues(alpha: 0.9),
                               ),
@@ -1559,14 +1722,10 @@ class _LibrarySpine extends StatelessWidget {
                               child: RotatedBox(
                                 quarterTurns: 1,
                                 child: Text(
-                                  title,
+                                  widget.title,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: textTheme.labelLarge?.copyWith(
-                                    color: foregroundColor,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: 0.2,
-                                  ),
+                                  style: titleStyle,
                                 ),
                               ),
                             ),
@@ -1576,7 +1735,7 @@ class _LibrarySpine extends StatelessWidget {
                             alignment: Alignment.center,
                             color: Colors.black.withValues(alpha: 0.08),
                             child: Text(
-                              metadata,
+                              widget.metadata,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: textTheme.labelSmall?.copyWith(
@@ -1585,7 +1744,7 @@ class _LibrarySpine extends StatelessWidget {
                               ),
                             ),
                           ),
-                          action,
+                          widget.action,
                         ],
                       ),
                     ],
@@ -1597,6 +1756,21 @@ class _LibrarySpine extends StatelessWidget {
         ),
       ),
     );
+
+    if (widget.showTitleTip && titleIsTruncated) {
+      _scheduleTooltip();
+      spine = Tooltip(
+        key: _tooltipKey,
+        message: widget.title,
+        excludeFromSemantics: true,
+        triggerMode: TooltipTriggerMode.manual,
+        showDuration: const Duration(hours: 1),
+        preferBelow: false,
+        child: spine,
+      );
+    }
+
+    return SizedBox(height: widget.height, child: spine);
   }
 }
 

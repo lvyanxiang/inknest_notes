@@ -22,9 +22,13 @@ perspective.
    a folder name, or Archived.
 2. Use the always-visible search field, labelled sort control, folder button,
    or archive button without opening an extra search mode.
-3. Tap a book/binder spine to open it, or use the bottom overflow control for
-   management actions.
-4. Clear search or use the header back control to recover the full/root shelf.
+3. Tap a notebook spine; it moves forward and scales slightly for about 200ms,
+   then opens while preserving its existing leftward lean.
+4. Long press, hover, or keyboard-focus a notebook to hold it forward for
+   inspection. If its title is truncated, an anchored full-title tip appears.
+5. Tap the inspected notebook to open immediately, or tap elsewhere to retract
+   it. The overflow control remains independent.
+6. Clear search or use the header back control to recover the full/root shelf.
 
 ## State Matrix
 
@@ -32,6 +36,8 @@ perspective.
 |---|---|---|---|
 | Loading | Header and command bar plus centered progress | Search/control state remains visible; wait | Spines replace progress after repository load |
 | Populated | Dense responsive spine rows with folders first | Open, search, sort, manage, create/import | Ink response and existing navigation/dialog feedback |
+| Opening | One tapped notebook moves forward about 12px and scales to about 1.04x | Wait for the brief transition; repeated taps are ignored | Editor opens after about 200ms; reduced motion opens immediately |
+| Inspecting | Long-pressed, hovered, or focused notebook stays pulled forward; truncated title receives a full-title tip | Tap to open, move focus/pointer, or tap elsewhere | Leaving inspection retracts without opening |
 | Search | Query remains visible in the fixed search field; matching spines update | Edit/clear query, open/manage result | Clear restores the full current shelf |
 | No results | Header plus existing no-matches state | Clear or edit query | Matching spines repopulate in place |
 | Empty | Header plus existing actionable empty state | Create/import, return from archive/folder | Existing creation/import flow |
@@ -56,6 +62,8 @@ perspective.
   - Deterministic muted spine palette, small height variation, one shared lean
     angle, and page-count-derived width provide identity without persisted
     settings.
+  - `LibrarySpine` pull-forward state uses translation, scale, and shadow only;
+    it must not straighten, reflow the row, or push neighboring books.
 - User-facing copy:
   - Root location title: `My Library` with brand label `InkNest Notes`.
   - Search placeholder remains `Search notebooks`.
@@ -77,13 +85,22 @@ perspective.
   retaining the same tight row rhythm and tap behavior.
 - The page thumbnail is intentionally not shown on the home shelf because its
   front-cover orientation conflicts with the outward-spine model.
+- Pull-forward motion lasts about 200ms with an ease-out curve, moves the spine
+  roughly 12px upward/forward in the 2D shelf view, and scales it to about 1.04x.
+  Retraction is no slower than the opening motion.
+- Only the active notebook animates; scale and shadow distinguish it without
+  rearranging neighboring books. Its fixed 3-degree leftward rotation remains
+  unchanged during inspection and opening.
+- Determine title truncation from the rendered text, text scale, and available
+  spine extent; do not show a full-title tip for titles that already fit.
 
 ## Input And Responsive Behavior
 
-- Pencil and touch: Entire spine opens the item; overflow is a separate 44px
-  action. No hidden swipe, drag, or long-press is required.
-- Mouse/trackpad and keyboard: Material focus, hover, ripple, tooltips, and popup
-  menu behavior remain available.
+- Pencil and touch: A normal tap animates then opens without a second required
+  tap. Long press is an optional inspection route; overflow is a separate 44px
+  action and never opens the notebook.
+- Mouse/trackpad and keyboard: Hover or focus holds inspection; click/Enter opens
+  the inspected notebook immediately. Moving away or tapping elsewhere retracts.
 - iPad portrait/landscape: Header remains one hierarchy; command bar uses one row
   when it fits. Spine count grows with width while staying bounded inside centered
   library content.
@@ -99,6 +116,8 @@ perspective.
   retains its explicit action tooltip.
 - Text scaling and contrast: Location and command labels must not clip at common
   text scales; spine foreground is high-contrast and does not rely on color alone.
+- Motion: Respect the platform reduced-motion preference by skipping the wait
+  and spatial transition while preserving the open action and full semantics.
 - Non-gesture alternative: Standard buttons and menus expose every action.
 
 ## UI Acceptance Criteria
@@ -116,6 +135,14 @@ perspective.
 - [x] Search, loading, empty, archive, and folder states preserve clear feedback.
 - [x] Closing the editor refreshes shelf metadata before the next interaction,
   so the page label, width, sort position, and next open use current notebook data.
+- [x] A normal tap animates only the selected notebook and opens after about
+  200ms without changing the fixed leftward rotation or shelf layout.
+- [x] Long press, hover, and focus can hold and dismiss inspection without
+  accidentally opening the notebook or its action menu.
+- [x] Only genuinely truncated titles show a full-title tip; complete titles do
+  not receive redundant title tips.
+- [x] Reduced-motion, full-title semantics, keyboard opening, and separate
+  overflow-menu behavior remain available.
 
 ## Verification
 

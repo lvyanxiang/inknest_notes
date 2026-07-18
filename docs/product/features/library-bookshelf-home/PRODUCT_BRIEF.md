@@ -34,6 +34,11 @@ so recently edited work remains easiest to reach without a duplicate surface.
     without storing cover preferences.
   - Refresh repository-derived notebook metadata whenever the editor closes so
     page count, width, ordering, and the next editor session use current data.
+  - Give notebook spines a short pull-forward and scale animation before a
+    normal tap opens the editor; keep the existing leftward lean throughout.
+  - Let long press, pointer hover, and keyboard focus hold a notebook in the
+    pulled-forward inspection state, showing its full title only when the
+    rendered spine title is actually truncated.
   - Preserve search, all sort modes, folder navigation, archive navigation,
     notebook actions, empty states, and vertical scrolling behavior.
 - Non-goals:
@@ -47,8 +52,12 @@ so recently edited work remains easiest to reach without a duplicate surface.
 1. The user opens InkNest and sees a single library header above rows of spines.
 2. The user searches directly or uses the compact secondary controls to sort,
    enter folders, or view the archive.
-3. The user taps a spine to open it or its accessible overflow control for
-   management actions; clearing search returns to the same shelf context.
+3. The user taps a notebook spine, sees a brief pull-forward response, and then
+   enters the editor without a second required tap.
+4. The user can long press, hover, or focus a notebook to inspect it; tapping an
+   inspected notebook opens it, while tapping elsewhere returns it to the shelf.
+5. The user can open the accessible overflow control independently; clearing
+   search returns to the same shelf context.
 
 ## Acceptance Criteria
 
@@ -67,6 +76,13 @@ so recently edited work remains easiest to reach without a duplicate surface.
 - [x] Empty and no-search-result states remain clear and actionable.
 - [x] Returning from an edited notebook immediately refreshes its shelf page
   count, page-derived width, and subsequent editor input data.
+- [x] A normal notebook tap pulls the spine forward and scales it slightly for
+  about 200ms before opening, without changing its leftward lean.
+- [x] Long press, hover, and keyboard focus hold the spine in an inspection
+  state; tapping it opens immediately and tapping elsewhere retracts it.
+- [x] A full-title tip appears only when the rendered spine title is truncated;
+  accessibility semantics always expose the complete title.
+- [x] Reduced-motion users open notebooks without waiting for the animation.
 - [x] No notebook data or persistence migration is introduced.
 
 ## Alternatives And Tradeoffs
@@ -86,6 +102,9 @@ so recently edited work remains easiest to reach without a duplicate surface.
 - Data, privacy, performance, or migration risk: No new stored data. The custom
   row layout must remain lazy and bounded so large libraries still scroll
   efficiently.
+- Interaction risk: A mandatory two-tap open would slow the highest-frequency
+  library action, so inspection remains optional and normal taps still open
+  automatically after the brief feedback animation.
 
 ## Open Decisions
 
@@ -95,5 +114,6 @@ so recently edited work remains easiest to reach without a duplicate surface.
 
 - UI/UX spec: `docs/product/features/library-bookshelf-home/UI_UX_SPEC.md`
 - Implementation status: Complete
-- Verification: Zero-gap, variable-width, lean, split-view, full Flutter,
-  analyzer, formatting, and diff checks passed.
+- Verification: Pull-forward timing, unchanged lean, inspection/retraction,
+  conditional title tips, reduced motion, 87 Flutter tests, analyzer,
+  formatting, and diff checks passed.
