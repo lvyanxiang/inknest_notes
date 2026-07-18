@@ -3,8 +3,8 @@
 ## Current
 
 - Milestone: Post-MVP 5 - Audio And Search
-- Next task: Add PDF text search.
-- Last completed: Refined audio playback with ink spotlight and optional page following.
+- Next task: Explore handwriting recognition and OCR for search and Smart Ink.
+- Last completed: Fixed PDF search highlight alignment in fitted editor canvases.
 
 ## Decisions
 
@@ -67,6 +67,10 @@
 - Tag strokes completed during recording with `audioRecordingId`; playback keeps all ink visible and uses existing stroke-point timestamps to spotlight the current segment.
 - Follow linked pages during audio playback by default; a manual page change pauses following until the user enables it again from the playback bar.
 - Page saves merge the latest notebook index metadata before updating `updatedAt`, preventing delayed drawing saves from removing newly added audio recordings.
+- Extract embedded PDF text with `pdfrx`, cache it by file path and source page number, and reuse the index for duplicated notebook pages and later searches.
+- Map PDF search character bounds through the same contain-and-center layout as the page background; selecting a result jumps to the notebook page and highlights the match.
+- Scale model-page PDF highlight bounds into the editor's current fitted canvas during painting so resizing and zoom layout do not offset matches.
+- Treat scanned PDFs without an embedded text layer as not searchable until the OCR exploration task is implemented.
 
 ## Verification
 
@@ -156,6 +160,14 @@
 - `flutter test` passed with 41 tests after audio playback spotlight polish.
 - `flutter analyze` passed after audio playback spotlight polish.
 - `git diff --check` passed after audio playback spotlight polish.
+- `dart format lib test` passed after PDF text search.
+- `flutter test` passed with 45 tests after PDF text search.
+- `flutter analyze` passed after PDF text search.
+- `git diff --check` passed after PDF text search.
+- `dart format` passed after fixing PDF search highlight alignment.
+- `flutter test` passed with 47 tests after fixing PDF search highlight alignment.
+- `flutter analyze` passed after fixing PDF search highlight alignment.
+- `git diff --check` passed after fixing PDF search highlight alignment.
 - `git diff --check` passed after favorites toolbar.
 - `git diff --check` passed after adding graduation task book and opening report drafts.
 - `git diff --check` passed after retitling graduation docs for Flutter and Python.
@@ -205,6 +217,7 @@
 - Editor canvas includes a floating favorites toolbar with common black/teal/red pen and yellow highlighter presets.
 - Saved recordings can be played, paused, scrubbed, and closed from the editor; all ink stays visible while the current recorded segment receives a temporary spotlight.
 - Audio playback follows linked pages by default; manually selecting a page suspends following, and the playback bar can resume it.
+- Editor app bar includes PDF search with cached text extraction, cross-page results, notebook-page navigation, and in-page match highlighting.
 - Smart Ink planning lives in `docs/development/SMART_INK_PLAN.md`.
 - Post-MVP feature gaps and optimization areas are documented in `docs/development/POST_MVP_ROADMAP.md`.
 - Subscription packaging, platform behavior, and local/cloud merge rules are documented in `docs/development/SUBSCRIPTION_PLAN.md`.

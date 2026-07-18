@@ -38,6 +38,7 @@ void main() {
     expect(find.text('Notebook 1'), findsOneWidget);
     expect(find.byTooltip('Audio recordings'), findsOneWidget);
     expect(find.byTooltip('Start audio recording'), findsOneWidget);
+    expect(find.byTooltip('Search PDF'), findsOneWidget);
     expect(find.byTooltip('Export PDF'), findsOneWidget);
     expect(find.byTooltip('Shape'), findsOneWidget);
     expect(find.byTooltip('Shape type'), findsOneWidget);
@@ -46,6 +47,21 @@ void main() {
     expect(find.byTooltip('Insert image'), findsOneWidget);
     expect(find.byKey(const ValueKey('page-thumbnail-page-1')), findsOneWidget);
     expect(find.text('No notebooks yet'), findsNothing);
+  });
+
+  testWidgets('opens PDF search from the editor app bar', (
+    WidgetTester tester,
+  ) async {
+    await pumpInkNestApp(tester);
+    await tester.tap(find.text('New notebook'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Search PDF'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Search PDF'), findsOneWidget);
+    expect(find.text('No PDF pages in this notebook.'), findsOneWidget);
+    expect(find.byTooltip('Close PDF search'), findsOneWidget);
   });
 
   testWidgets('lists saved audio recordings with playback controls', (

@@ -11,6 +11,9 @@ import 'package:inknest_notes/export/notebook_pdf_exporter.dart';
 import 'package:inknest_notes/features/editor/canvas/drawing_canvas.dart';
 import 'package:inknest_notes/features/editor/canvas/pdf_page_background.dart';
 import 'package:inknest_notes/features/editor/images/image_layer.dart';
+import 'package:inknest_notes/features/editor/search/pdf_search_highlight_layer.dart';
+import 'package:inknest_notes/features/editor/search/pdf_text_search_service.dart';
+import 'package:inknest_notes/features/editor/search/pdf_text_search_sheet.dart';
 import 'package:inknest_notes/features/editor/shapes/shape_layer.dart';
 import 'package:inknest_notes/features/editor/smart_ink/smart_ink_selection_layer.dart';
 import 'package:inknest_notes/features/editor/text/note_text_box_styles.dart';
@@ -47,6 +50,7 @@ class EditorScreen extends StatefulWidget {
 
 class _EditorScreenState extends State<EditorScreen> {
   final AudioRecorder _audioRecorder = AudioRecorder();
+  final PdfTextSearchService _pdfTextSearchService = PdfTextSearchService();
   final List<Stroke> _redoStack = [];
   final Map<String, NotePage> _pagesById = {};
   DrawingTool _tool = const DrawingTool();
@@ -71,6 +75,8 @@ class _EditorScreenState extends State<EditorScreen> {
   bool _isAudioPlaying = false;
   bool _followAudioPlayback = true;
   int _audioPlaybackGeneration = 0;
+  String _pdfSearchQuery = '';
+  PdfTextSearchResult? _activePdfSearchResult;
   NotePage? _page;
 
   @override
@@ -1385,6 +1391,48 @@ class _EditorScreenState extends State<EditorScreen> {
     return '$baseName${selection.fileNameSuffix}.pdf';
   }
 
+  Future<void> _showPdfSearch() async {
+    await _loadPageThumbnails();
+    if (!mounted) {
+      return;
+    }
+
+    final pages = _notebook.pageIds
+        .map((pageId) => _pagesById[pageId])
+        .whereType<NotePage>()
+        .toList(growable: false);
+    final result = await showPdfTextSearchSheet(
+      context: context,
+      searchService: _pdfTextSearchService,
+      pages: pages,
+      initialQuery: _pdfSearchQuery,
+      onQueryChanged: _handlePdfSearchQueryChanged,
+    );
+    if (!mounted || result == null) {
+      return;
+    }
+
+    setState(() {
+      _activePdfSearchResult = result;
+      if (_audioPlaybackRecording != null &&
+          _followAudioPlayback &&
+          result.pageId != _currentPageId) {
+        _followAudioPlayback = false;
+      }
+    });
+    await _selectPage(result.pageId);
+  }
+
+  void _handlePdfSearchQueryChanged(String query) {
+    final queryChanged = query != _pdfSearchQuery;
+    _pdfSearchQuery = query;
+    if (queryChanged && _activePdfSearchResult != null && mounted) {
+      setState(() {
+        _activePdfSearchResult = null;
+      });
+    }
+  }
+
   Future<void> _selectPage(String pageId) async {
     if (pageId == _currentPageId) {
       return;
@@ -1400,11 +1448,16 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   Future<void> _selectPageManually(String pageId) async {
-    if (_audioPlaybackRecording != null &&
+    final shouldStopFollowingAudio =
+        _audioPlaybackRecording != null &&
         _followAudioPlayback &&
-        pageId != _currentPageId) {
+        pageId != _currentPageId;
+    if (shouldStopFollowingAudio || _activePdfSearchResult != null) {
       setState(() {
-        _followAudioPlayback = false;
+        if (shouldStopFollowingAudio) {
+          _followAudioPlayback = false;
+        }
+        _activePdfSearchResult = null;
       });
     }
 
@@ -1461,6 +1514,16 @@ class _EditorScreenState extends State<EditorScreen> {
             onPressed: _showNavigationSheet,
             tooltip: 'Outline and bookmarks',
             icon: const Icon(Icons.menu_book_outlined),
+          ),
+          IconButton(
+            onPressed: () => unawaited(_showPdfSearch()),
+            tooltip: 'Search PDF',
+            icon: Icon(
+              Icons.search,
+              color: _activePdfSearchResult == null
+                  ? null
+                  : Theme.of(context).colorScheme.primary,
+            ),
           ),
           IconButton(
             onPressed: page == null
@@ -1596,6 +1659,12 @@ class _EditorScreenState extends State<EditorScreen> {
                   '${background.filePath}-${background.pageNumber}',
                 ),
                 background: background,
+              ),
+            if (_activePdfSearchResult case final result?
+                when result.pageId == page.id)
+              PdfSearchHighlightLayer(
+                rects: result.highlightRects,
+                referencePageSize: Size(page.width, page.height),
               ),
             ImageLayer(
               page: page,
