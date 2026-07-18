@@ -11,6 +11,8 @@ import 'package:inknest_notes/export/notebook_pdf_exporter.dart';
 import 'package:inknest_notes/features/editor/canvas/drawing_canvas.dart';
 import 'package:inknest_notes/features/editor/canvas/pdf_page_background.dart';
 import 'package:inknest_notes/features/editor/images/image_layer.dart';
+import 'package:inknest_notes/features/editor/lasso/lasso_geometry.dart';
+import 'package:inknest_notes/features/editor/lasso/lasso_selection_layer.dart';
 import 'package:inknest_notes/features/editor/recognition/ink_recognition_image_renderer.dart';
 import 'package:inknest_notes/features/editor/recognition/text_recognition_provider.dart';
 import 'package:inknest_notes/features/editor/search/notebook_text_search_service.dart';
@@ -62,6 +64,7 @@ class _EditorScreenState extends State<EditorScreen> {
   final NotebookTextSearchService _notebookTextSearchService =
       NotebookTextSearchService();
   final List<Stroke> _redoStack = [];
+  final Set<String> _selectedStrokeIds = {};
   final Map<String, NotePage> _pagesById = {};
   DrawingTool _tool = const DrawingTool();
   late Notebook _notebook;
@@ -172,6 +175,7 @@ class _EditorScreenState extends State<EditorScreen> {
       _redoStack.clear();
       _activeTextBoxId = null;
       _activeImageId = null;
+      _selectedStrokeIds.clear();
     });
   }
 
@@ -938,6 +942,7 @@ class _EditorScreenState extends State<EditorScreen> {
     setState(() {
       _page = updatedPage;
       _pagesById[updatedPage.id] = updatedPage;
+      _selectedStrokeIds.clear();
     });
 
     unawaited(_savePage(updatedPage));
@@ -955,6 +960,7 @@ class _EditorScreenState extends State<EditorScreen> {
     setState(() {
       _page = updatedPage;
       _pagesById[updatedPage.id] = updatedPage;
+      _selectedStrokeIds.clear();
     });
 
     unawaited(_savePage(updatedPage));
@@ -963,10 +969,21 @@ class _EditorScreenState extends State<EditorScreen> {
   void _setTool(DrawingTool tool) {
     setState(() {
       _tool = tool;
+      if (tool.type == ToolType.lasso) {
+        _fingerPanEnabled = false;
+      } else {
+        _selectedStrokeIds.clear();
+      }
     });
   }
 
   void _setFingerPanEnabled(bool value) {
+    if (value && _tool.type == ToolType.lasso) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Finish lasso editing before finger pan')),
+      );
+      return;
+    }
     setState(() {
       _fingerPanEnabled = value;
     });
@@ -1003,6 +1020,108 @@ class _EditorScreenState extends State<EditorScreen> {
     });
 
     unawaited(_savePage(updatedPage));
+  }
+
+  void _selectStrokesWithLasso(List<Offset> polygon) {
+    final page = _page;
+    if (page == null) {
+      return;
+    }
+
+    final selectedStrokeIds = LassoGeometry.selectStrokeIds(
+      page.strokes,
+      polygon,
+    );
+    setState(() {
+      _selectedStrokeIds
+        ..clear()
+        ..addAll(selectedStrokeIds);
+    });
+    if (selectedStrokeIds.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('No strokes selected')));
+    }
+  }
+
+  void _previewSelectedStrokes(List<Stroke> strokes) {
+    _replaceSelectedStrokes(strokes, persist: false);
+  }
+
+  void _commitSelectedStrokes(List<Stroke> strokes) {
+    _replaceSelectedStrokes(strokes, persist: true);
+  }
+
+  void _replaceSelectedStrokes(List<Stroke> strokes, {required bool persist}) {
+    final page = _page;
+    if (page == null || strokes.isEmpty) {
+      return;
+    }
+
+    final strokesById = {for (final stroke in strokes) stroke.id: stroke};
+    final updatedPage = page.copyWith(
+      strokes: [
+        for (final stroke in page.strokes) strokesById[stroke.id] ?? stroke,
+      ],
+    );
+    setState(() {
+      _page = updatedPage;
+      _pagesById[updatedPage.id] = updatedPage;
+      if (persist) {
+        _redoStack.clear();
+      }
+    });
+    if (persist) {
+      unawaited(_savePage(updatedPage));
+    }
+  }
+
+  void _recolorSelectedStrokes(Color color) {
+    final page = _page;
+    if (page == null) {
+      return;
+    }
+    final selectedStrokes = _selectedStrokesForPage(page);
+    if (selectedStrokes.isEmpty) {
+      return;
+    }
+    _commitSelectedStrokes([
+      for (final stroke in selectedStrokes) stroke.copyWith(color: color),
+    ]);
+  }
+
+  void _deleteSelectedStrokes() {
+    final page = _page;
+    if (page == null || _selectedStrokeIds.isEmpty) {
+      return;
+    }
+    final updatedPage = page.copyWith(
+      strokes: [
+        for (final stroke in page.strokes)
+          if (!_selectedStrokeIds.contains(stroke.id)) stroke,
+      ],
+    );
+    setState(() {
+      _page = updatedPage;
+      _pagesById[updatedPage.id] = updatedPage;
+      _selectedStrokeIds.clear();
+      _redoStack.clear();
+    });
+    unawaited(_savePage(updatedPage));
+  }
+
+  void _clearLassoSelection() {
+    if (_selectedStrokeIds.isEmpty) {
+      return;
+    }
+    setState(_selectedStrokeIds.clear);
+  }
+
+  List<Stroke> _selectedStrokesForPage(NotePage page) {
+    return [
+      for (final stroke in page.strokes)
+        if (_selectedStrokeIds.contains(stroke.id)) stroke,
+    ];
   }
 
   Future<void> _runSmartInk(Rect selectionRect) async {
@@ -1106,29 +1225,11 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   Rect _boundsForStrokes(List<Stroke> strokes) {
-    final bounds = [for (final stroke in strokes) ?_boundsForStroke(stroke)];
-
-    return bounds.reduce((value, element) => value.expandToInclude(element));
+    return LassoGeometry.boundsForStrokes(strokes)!;
   }
 
   Rect? _boundsForStroke(Stroke stroke) {
-    if (stroke.points.isEmpty) {
-      return null;
-    }
-
-    var left = stroke.points.first.offset.dx;
-    var top = stroke.points.first.offset.dy;
-    var right = left;
-    var bottom = top;
-    for (final point in stroke.points.skip(1)) {
-      left = math.min(left, point.offset.dx);
-      top = math.min(top, point.offset.dy);
-      right = math.max(right, point.offset.dx);
-      bottom = math.max(bottom, point.offset.dy);
-    }
-
-    final padding = math.max(stroke.width / 2, 4.0);
-    return Rect.fromLTRB(left, top, right, bottom).inflate(padding);
+    return LassoGeometry.boundsForStroke(stroke);
   }
 
   Future<void> _savePage([NotePage? page]) async {
@@ -1515,6 +1616,7 @@ class _EditorScreenState extends State<EditorScreen> {
       _currentPageId = pageId;
       _page = null;
       _redoStack.clear();
+      _selectedStrokeIds.clear();
     });
 
     await _loadPage();
@@ -1721,6 +1823,20 @@ class _EditorScreenState extends State<EditorScreen> {
           bottom: 16,
           child: EditorFavoriteToolbar(tool: _tool, onToolChanged: _setTool),
         ),
+        if (_tool.type == ToolType.lasso && _selectedStrokeIds.isNotEmpty)
+          Positioned(
+            top: 16,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: LassoSelectionToolbar(
+                selectedStrokeCount: _selectedStrokesForPage(page).length,
+                onColorChanged: _recolorSelectedStrokes,
+                onDelete: _deleteSelectedStrokes,
+                onClearSelection: _clearLassoSelection,
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -1812,6 +1928,15 @@ class _EditorScreenState extends State<EditorScreen> {
             if (_tool.type == ToolType.smartInk)
               SmartInkSelectionLayer(
                 onSelectionComplete: (rect) => unawaited(_runSmartInk(rect)),
+              ),
+            if (_tool.type == ToolType.lasso)
+              LassoSelectionLayer(
+                key: ValueKey('lasso-selection-${page.id}'),
+                selectedStrokes: _selectedStrokesForPage(page),
+                onSelectionComplete: _selectStrokesWithLasso,
+                onStrokesPreviewChanged: _previewSelectedStrokes,
+                onStrokesChanged: _commitSelectedStrokes,
+                onClearSelection: _clearLassoSelection,
               ),
           ],
         ),

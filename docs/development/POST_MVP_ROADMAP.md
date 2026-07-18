@@ -41,23 +41,23 @@ The detailed plan lives in `docs/development/SMART_INK_PLAN.md`.
 
 ### Editor Experience
 
-- Zoom and pan with two-finger gestures.
-- Apple Pencil-focused input mode with finger pan and Pencil draw behavior.
+- [x] Zoom and pan with two-finger gestures.
+- [x] Apple Pencil-focused input mode with finger pan and Pencil draw behavior.
 - [x] Finger Writing Assist for smoothing rough finger handwriting before any
   recognition step.
-- Page thumbnail strip or sidebar for faster page navigation.
+- [x] Page thumbnail strip or sidebar for faster page navigation.
 - [x] Page templates: blank, ruled, dotted, grid, Cornell, planner.
 - [x] Page actions: duplicate, delete, reorder, and insert before/after.
 - [x] Page rotation.
-- Lasso selection for moving, resizing, recoloring, and deleting strokes.
-- Text boxes for typed notes.
-- Handwriting-style text rendering for typed or recognized text.
-- Smart Ink beautify flow: select rough handwriting, recognize it as text,
+- [x] Lasso selection for moving, resizing, recoloring, and deleting strokes.
+- [x] Text boxes for typed notes.
+- [x] Handwriting-style text rendering for typed or recognized text.
+- [x] Smart Ink beautify flow: select rough handwriting, recognize it as text,
   confirm the result, then replace or insert a neat handwriting-style version
   (`docs/development/SMART_INK_PLAN.md`).
-- Image insertion from Photos or Files.
-- Shape tool for lines, arrows, rectangles, circles, and auto-shape cleanup.
-- Favorites toolbar for common pens, highlighters, and colors.
+- [x] Image insertion from Photos or Files.
+- [x] Shape tool for lines, arrows, rectangles, circles, and auto-shape cleanup.
+- [x] Favorites toolbar for common pens, highlighters, and colors.
 
 ### PDF And Study Workflow
 

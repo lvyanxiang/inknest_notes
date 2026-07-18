@@ -2,9 +2,9 @@
 
 ## Current
 
-- Milestone: Post-MVP Editor Experience - Page Rotation (complete)
-- Next task: Add lasso selection for moving, resizing, recoloring, and deleting strokes; Post-MVP 6 sync and backup remains paused.
-- Last completed: Added persistent clockwise page rotation across editing, previews, storage, and PDF export.
+- Milestone: Post-MVP Editor Experience - Lasso Selection (complete)
+- Next task: Import multiple PDFs into an existing notebook; Post-MVP 6 sync and backup remains paused.
+- Last completed: Added persistent freeform stroke selection with move, proportional resize, recolor, and delete actions.
 
 ## Decisions
 
@@ -42,6 +42,10 @@
 - Store page orientation as a backward-compatible `rotationQuarterTurns` value while preserving the original page size and all content coordinates, avoiding cumulative geometry drift across repeated rotations.
 - Rotate the complete page surface as one layout unit so PDF backgrounds, templates, strokes, images, text, shapes, Smart Ink selection, search highlights, and pointer hit testing share the same transform.
 - Let new and inserted blank pages inherit the nearby page orientation, preserve orientation when duplicating pages, and rotate exported PDF page dimensions and content together.
+- Use a dedicated Lasso editor tool for freeform stroke selection, including strokes enclosed by the polygon or crossing its boundary.
+- Keep selected stroke IDs in editor state; preview move and resize changes in memory, then persist the transformed strokes when the gesture completes.
+- Preserve stroke IDs, pressure samples, timestamps, and audio links during lasso transforms; proportional resizing scales both points and stroke widths.
+- Keep the lasso action toolbar above the rotated page surface so recolor, delete, and clear controls remain upright; selecting Lasso temporarily disables Finger pan to avoid competing one-finger gestures.
 - Use shared stroke geometry helpers for smoothed screen drawing, thumbnail drawing, PDF export paths, and partial eraser stroke splitting.
 - Keep archived notebooks out of the default library list; show them through an explicit archived view where they can be restored or deleted.
 - Store folders as first-class repository metadata; keep folders one level deep for now, and use `Notebook.folderId` to move notebooks between the root library and a folder.
@@ -205,6 +209,10 @@
 - `flutter test` passed with 66 tests after page rotation.
 - `flutter analyze` passed after page rotation.
 - `git diff --check` passed after page rotation.
+- `dart format lib test` passed after lasso selection.
+- `flutter test` passed with 70 tests after lasso selection.
+- `flutter analyze` passed after lasso selection.
+- `git diff --check` passed after lasso selection.
 - `git diff --check` passed after favorites toolbar.
 - `git diff --check` passed after adding graduation task book and opening report drafts.
 - `git diff --check` passed after retitling graduation docs for Flutter and Python.
@@ -241,6 +249,7 @@
 - Editor bottom navigator now shows page thumbnails with selection state, page numbers, handwriting previews, and PDF page markers.
 - Editor page thumbnails include actions to duplicate, delete with confirmation, and move pages left or right.
 - Editor page thumbnail actions include clockwise page rotation; orientation persists, updates editor and library previews, keeps drawing hit testing aligned, and is preserved in PDF export.
+- Editor toolbar includes Lasso; draw around strokes to select them, drag the selection to move it, drag its corner handle to resize proportionally, or use the upright floating toolbar to recolor, delete, and clear the selection.
 - Editor strokes render with smoothed paths on canvas, thumbnails, and exported PDFs; the eraser can split strokes instead of only deleting whole strokes.
 - Library notebook cards include rename, duplicate, archive/restore, and delete actions backed by repository persistence.
 - Library supports creating root-level folders, moving notebooks into folders, entering folders, and deleting folders while moving contained notebooks back to the root library.

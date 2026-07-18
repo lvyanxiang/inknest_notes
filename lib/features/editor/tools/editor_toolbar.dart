@@ -64,6 +64,7 @@ class EditorToolbar extends StatelessWidget {
       ToolType.highlighter => tool.width < 8 ? 12.0 : tool.width,
       ToolType.eraser => tool.width < 16 ? 24.0 : tool.width,
       ToolType.text => tool.width,
+      ToolType.lasso => tool.width,
       ToolType.smartInk => tool.width,
       ToolType.shape => tool.width,
     };
@@ -115,6 +116,12 @@ class EditorToolbar extends StatelessWidget {
                 label: 'Text',
                 isSelected: tool.type == ToolType.text,
                 onPressed: () => _selectTool(ToolType.text),
+              ),
+              _ToolButton(
+                icon: Icons.select_all,
+                label: 'Lasso',
+                isSelected: tool.type == ToolType.lasso,
+                onPressed: () => _selectTool(ToolType.lasso),
               ),
               _ToolButton(
                 icon: Icons.auto_fix_high,

@@ -44,10 +44,17 @@ void main() {
     expect(find.byTooltip('Start audio recording'), findsOneWidget);
     expect(find.byTooltip('Search notebook'), findsOneWidget);
     expect(find.byTooltip('Export PDF'), findsOneWidget);
+    expect(find.byTooltip('Lasso'), findsOneWidget);
     expect(find.byTooltip('Shape'), findsOneWidget);
     expect(find.byTooltip('Shape type'), findsOneWidget);
     expect(find.byTooltip('Favorite black pen'), findsOneWidget);
     expect(find.byTooltip('Favorite yellow highlighter'), findsOneWidget);
+    final toolbarScrollable = find.ancestor(
+      of: find.byTooltip('Lasso'),
+      matching: find.byType(Scrollable),
+    );
+    await tester.drag(toolbarScrollable, const Offset(-700, 0));
+    await tester.pumpAndSettle();
     expect(find.byTooltip('Insert image'), findsOneWidget);
     expect(find.byKey(const ValueKey('page-thumbnail-page-1')), findsOneWidget);
     expect(find.text('No notebooks yet'), findsNothing);
@@ -155,6 +162,110 @@ void main() {
 
     final undoButton = find.widgetWithIcon(IconButton, Icons.undo);
     expect(tester.widget<IconButton>(undoButton).onPressed, isNotNull);
+  });
+
+  testWidgets('lasso moves resizes recolors and deletes selected strokes', (
+    WidgetTester tester,
+  ) async {
+    final repository = InMemoryNotebookRepository();
+    final notebook = await repository.createNotebook(title: 'Lasso notes');
+    await repository.savePage(
+      notebook,
+      NotePage(
+        id: 'page-1',
+        width: 768,
+        height: 1024,
+        strokes: [
+          _testStroke(
+            id: 'selected-stroke',
+            offsets: const [Offset(70, 70), Offset(90, 90)],
+          ),
+          _testStroke(
+            id: 'outside-stroke',
+            offsets: const [Offset(260, 260), Offset(290, 290)],
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(InkNestApp(notebookRepository: repository));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(notebook.title));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Lasso'));
+    await tester.pumpAndSettle();
+
+    final lassoRegion = find.byKey(const ValueKey('lasso-drawing-region'));
+    final pageOrigin = tester.getTopLeft(lassoRegion);
+    final lasso = await tester.startGesture(pageOrigin + const Offset(40, 40));
+    await lasso.moveTo(pageOrigin + const Offset(130, 40));
+    await lasso.moveTo(pageOrigin + const Offset(130, 130));
+    await lasso.moveTo(pageOrigin + const Offset(40, 130));
+    await lasso.moveTo(pageOrigin + const Offset(40, 40));
+    await lasso.up();
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('lasso-selection-toolbar')),
+      findsOneWidget,
+    );
+
+    var selectedStroke = (await repository.loadPage(
+      notebook,
+      'page-1',
+    )).strokes.first;
+    final originalFirstPoint = selectedStroke.points.first.offset;
+
+    final moveRegion = find.byKey(const ValueKey('lasso-move-region'));
+    final moveGesture = await tester.startGesture(
+      tester.getTopLeft(moveRegion) + const Offset(3, 3),
+    );
+    await moveGesture.moveBy(const Offset(10, 6));
+    await moveGesture.moveBy(const Offset(20, 14));
+    await moveGesture.moveBy(const Offset(10, 6));
+    await moveGesture.up();
+    await tester.pumpAndSettle();
+    selectedStroke = (await repository.loadPage(
+      notebook,
+      'page-1',
+    )).strokes.first;
+    expect(
+      selectedStroke.points.first.offset.dx,
+      greaterThan(originalFirstPoint.dx),
+    );
+    expect(
+      selectedStroke.points.first.offset.dy,
+      greaterThan(originalFirstPoint.dy),
+    );
+
+    final widthBeforeResize = selectedStroke.width;
+    await tester.drag(
+      find.byKey(const ValueKey('lasso-resize-handle')),
+      const Offset(30, 30),
+    );
+    await tester.pumpAndSettle();
+    selectedStroke = (await repository.loadPage(
+      notebook,
+      'page-1',
+    )).strokes.first;
+    expect(selectedStroke.width, greaterThan(widthBeforeResize));
+
+    const teal = Color(0xFF2F6F73);
+    await tester.tap(find.byKey(ValueKey('lasso-color-${teal.toARGB32()}')));
+    await tester.pumpAndSettle();
+    selectedStroke = (await repository.loadPage(
+      notebook,
+      'page-1',
+    )).strokes.first;
+    expect(selectedStroke.color, teal);
+
+    await tester.tap(find.byKey(const ValueKey('lasso-delete-selection')));
+    await tester.pumpAndSettle();
+    final remainingPage = await repository.loadPage(notebook, 'page-1');
+    expect(remainingPage.strokes.map((stroke) => stroke.id), [
+      'outside-stroke',
+    ]);
+    expect(find.byKey(const ValueKey('lasso-selection-toolbar')), findsNothing);
   });
 
   testWidgets('searches Smart Ink text and highlights it after a page jump', (
@@ -965,6 +1076,23 @@ void main() {
     expect(find.byKey(const ValueKey('page-thumbnail-page-1')), findsOneWidget);
     expect(find.byKey(const ValueKey('page-thumbnail-page-2')), findsNothing);
   });
+}
+
+Stroke _testStroke({required String id, required List<Offset> offsets}) {
+  return Stroke(
+    id: id,
+    tool: ToolType.pen,
+    color: const Color(0xFF1E2526),
+    width: 5,
+    points: [
+      for (final (index, offset) in offsets.indexed)
+        StrokePoint(
+          offset: offset,
+          pressure: 1,
+          time: DateTime.utc(2026, 7, 18, 0, 0, index),
+        ),
+    ],
+  );
 }
 
 Future<int> _capturePixelAlpha(

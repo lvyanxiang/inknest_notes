@@ -50,14 +50,16 @@ class Stroke {
   }
 
   Stroke copyWith({
+    Color? color,
+    double? width,
     List<StrokePoint>? points,
     Object? audioRecordingId = _audioRecordingIdNotChanged,
   }) {
     return Stroke(
       id: id,
       tool: tool,
-      color: color,
-      width: width,
+      color: color ?? this.color,
+      width: width ?? this.width,
       points: points ?? this.points,
       audioRecordingId: audioRecordingId == _audioRecordingIdNotChanged
           ? this.audioRecordingId
