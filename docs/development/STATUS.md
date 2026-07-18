@@ -2,9 +2,9 @@
 
 ## Current
 
-- Milestone: Post-MVP 5 - Audio And Search
-- Next task: Explore handwriting recognition and OCR for search and Smart Ink.
-- Last completed: Fixed PDF search highlight alignment in fitted editor canvases.
+- Milestone: Post-MVP 5 - Audio And Search (complete)
+- Next task: Select the next non-sync editor or PDF workflow polish item; Post-MVP 6 remains paused.
+- Last completed: Added local-first Apple Vision Smart Ink suggestions and completed the handwriting/OCR spike.
 
 ## Decisions
 
@@ -71,6 +71,10 @@
 - Map PDF search character bounds through the same contain-and-center layout as the page background; selecting a result jumps to the notebook page and highlights the match.
 - Scale model-page PDF highlight bounds into the editor's current fitted canvas during painting so resizing and zoom layout do not offset matches.
 - Treat scanned PDFs without an embedded text layer as not searchable until the OCR exploration task is implemented.
+- Use a shared recognition request/result contract for Smart Ink and future scanned-PDF/image OCR, including confidence, normalized regions, language priority, and an engine identifier.
+- Render selected strokes as bounded black-on-white PNG input and use on-device Apple Vision accurate text recognition on iOS, while keeping manual confirmation as the safe fallback.
+- Prefer PencilKit `PKStrokeRecognizer` for vector handwriting recognition and handwriting search on iPadOS 27+, after the build environment adopts an SDK that contains it; keep Vision for raster OCR and older-system fallback.
+- Keep the iOS 13 deployment target for now and do not make the new iPadOS 27 handwriting API a baseline requirement.
 
 ## Verification
 
@@ -168,6 +172,11 @@
 - `flutter test` passed with 47 tests after fixing PDF search highlight alignment.
 - `flutter analyze` passed after fixing PDF search highlight alignment.
 - `git diff --check` passed after fixing PDF search highlight alignment.
+- `dart format lib test` passed after the handwriting recognition and OCR spike.
+- `flutter test` passed with 51 tests after the handwriting recognition and OCR spike.
+- `flutter analyze` passed after the handwriting recognition and OCR spike.
+- `flutter build ios --simulator --no-codesign` passed with zero Xcode warnings after adding the Apple Vision bridge.
+- `git diff --check` passed after the handwriting recognition and OCR spike.
 - `git diff --check` passed after favorites toolbar.
 - `git diff --check` passed after adding graduation task book and opening report drafts.
 - `git diff --check` passed after retitling graduation docs for Flutter and Python.
@@ -218,7 +227,9 @@
 - Saved recordings can be played, paused, scrubbed, and closed from the editor; all ink stays visible while the current recorded segment receives a temporary spotlight.
 - Audio playback follows linked pages by default; manually selecting a page suspends following, and the playback bar can resume it.
 - Editor app bar includes PDF search with cached text extraction, cross-page results, notebook-page navigation, and in-page match highlighting.
+- Smart Ink now renders selected strokes for local Apple Vision OCR, asynchronously prefills the confirmation field on iOS, and preserves manual entry on unsupported platforms or recognition failure.
 - Smart Ink planning lives in `docs/development/SMART_INK_PLAN.md`.
+- Handwriting recognition, scanned-page OCR, caching, and iPadOS 27 PencilKit follow-up decisions live in `docs/development/RECOGNITION_OCR_SPIKE.md`.
 - Post-MVP feature gaps and optimization areas are documented in `docs/development/POST_MVP_ROADMAP.md`.
 - Subscription packaging, platform behavior, and local/cloud merge rules are documented in `docs/development/SUBSCRIPTION_PLAN.md`.
 - Web knowledge-base, mobile companion, collaboration, and AI directions are captured as later post-MVP milestones.

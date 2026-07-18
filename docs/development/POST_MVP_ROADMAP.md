@@ -219,7 +219,8 @@ Goal: add Notability-style study features.
 - [x] Add audio recording.
 - [x] Link playback timeline with strokes.
 - [x] Add PDF text search.
-- Explore handwriting recognition and OCR for search and Smart Ink.
+- [x] Explore handwriting recognition and OCR for search and Smart Ink. See
+  `docs/development/RECOGNITION_OCR_SPIKE.md`.
 
 ### Post-MVP 6: Sync And Backup
 

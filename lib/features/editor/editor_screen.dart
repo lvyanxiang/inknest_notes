@@ -11,6 +11,8 @@ import 'package:inknest_notes/export/notebook_pdf_exporter.dart';
 import 'package:inknest_notes/features/editor/canvas/drawing_canvas.dart';
 import 'package:inknest_notes/features/editor/canvas/pdf_page_background.dart';
 import 'package:inknest_notes/features/editor/images/image_layer.dart';
+import 'package:inknest_notes/features/editor/recognition/ink_recognition_image_renderer.dart';
+import 'package:inknest_notes/features/editor/recognition/text_recognition_provider.dart';
 import 'package:inknest_notes/features/editor/search/pdf_search_highlight_layer.dart';
 import 'package:inknest_notes/features/editor/search/pdf_text_search_service.dart';
 import 'package:inknest_notes/features/editor/search/pdf_text_search_sheet.dart';
@@ -39,10 +41,12 @@ class EditorScreen extends StatefulWidget {
     super.key,
     required this.notebook,
     required this.notebookRepository,
+    this.textRecognitionProvider = const AppleVisionTextRecognitionProvider(),
   });
 
   final Notebook notebook;
   final NotebookRepository notebookRepository;
+  final TextRecognitionProvider textRecognitionProvider;
 
   @override
   State<EditorScreen> createState() => _EditorScreenState();
@@ -50,6 +54,8 @@ class EditorScreen extends StatefulWidget {
 
 class _EditorScreenState extends State<EditorScreen> {
   final AudioRecorder _audioRecorder = AudioRecorder();
+  final InkRecognitionImageRenderer _inkRecognitionImageRenderer =
+      const InkRecognitionImageRenderer();
   final PdfTextSearchService _pdfTextSearchService = PdfTextSearchService();
   final List<Stroke> _redoStack = [];
   final Map<String, NotePage> _pagesById = {};
@@ -1010,6 +1016,7 @@ class _EditorScreenState extends State<EditorScreen> {
       context: context,
       builder: (context) => _SmartInkConfirmationDialog(
         selectedStrokeCount: selectedStrokes.length,
+        recognition: _recognizeSelectedInk(selectedStrokes),
       ),
     );
 
@@ -1064,6 +1071,18 @@ class _EditorScreenState extends State<EditorScreen> {
     });
 
     unawaited(_savePage(updatedPage));
+  }
+
+  Future<TextRecognitionResult> _recognizeSelectedInk(
+    List<Stroke> selectedStrokes,
+  ) async {
+    final pngBytes = await _inkRecognitionImageRenderer.render(selectedStrokes);
+    return widget.textRecognitionProvider.recognize(
+      TextRecognitionRequest(
+        pngBytes: pngBytes,
+        recognitionLanguages: const ['zh-Hans', 'en-US'],
+      ),
+    );
   }
 
   bool _strokeOverlapsRect(Stroke stroke, Rect rect) {
@@ -2010,9 +2029,13 @@ class _SmartInkConfirmation {
 }
 
 class _SmartInkConfirmationDialog extends StatefulWidget {
-  const _SmartInkConfirmationDialog({required this.selectedStrokeCount});
+  const _SmartInkConfirmationDialog({
+    required this.selectedStrokeCount,
+    required this.recognition,
+  });
 
   final int selectedStrokeCount;
+  final Future<TextRecognitionResult> recognition;
 
   @override
   State<_SmartInkConfirmationDialog> createState() =>
@@ -2023,6 +2046,42 @@ class _SmartInkConfirmationDialogState
     extends State<_SmartInkConfirmationDialog> {
   final TextEditingController _controller = TextEditingController();
   bool _replaceSelectedInk = true;
+  bool _isRecognizing = true;
+  bool _userEditedText = false;
+  String? _recognitionMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadRecognition());
+  }
+
+  Future<void> _loadRecognition() async {
+    String? message;
+    try {
+      final result = await widget.recognition;
+      final recognizedText = result.text.trim();
+      if (recognizedText.isEmpty) {
+        message = 'No text recognized. Enter the text manually.';
+      } else if (!_userEditedText && _controller.text.trim().isEmpty) {
+        _controller.text = recognizedText;
+      }
+    } on TextRecognitionUnavailableException {
+      message = 'On-device recognition is unavailable. Enter text manually.';
+    } on TextRecognitionException {
+      message = 'Recognition failed. Your ink is safe; enter text manually.';
+    } catch (_) {
+      message = 'Recognition failed. Your ink is safe; enter text manually.';
+    }
+
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isRecognizing = false;
+      _recognitionMessage = message;
+    });
+  }
 
   @override
   void dispose() {
@@ -2043,6 +2102,22 @@ class _SmartInkConfirmationDialogState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('Selected ${widget.selectedStrokeCount} strokes'),
+            const SizedBox(height: 8),
+            if (_isRecognizing)
+              const Row(
+                children: [
+                  SizedBox.square(
+                    dimension: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  SizedBox(width: 8),
+                  Text('Recognizing on device...'),
+                ],
+              )
+            else if (_recognitionMessage case final message?)
+              Text(message)
+            else
+              const Text('Review the on-device suggestion before beautifying.'),
             const SizedBox(height: 16),
             TextField(
               controller: _controller,
@@ -2053,7 +2128,10 @@ class _SmartInkConfirmationDialogState
                 labelText: 'Recognized text',
                 border: OutlineInputBorder(),
               ),
-              onChanged: (_) => setState(() {}),
+              onChanged: (_) {
+                _userEditedText = true;
+                setState(() {});
+              },
             ),
             const SizedBox(height: 8),
             CheckboxListTile(

@@ -2,9 +2,11 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:inknest_notes/app/app.dart';
 import 'package:inknest_notes/features/editor/canvas/drawing_canvas.dart';
+import 'package:inknest_notes/features/editor/recognition/text_recognition_provider.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/notebook_audio_recording.dart';
 import 'package:inknest_notes/models/stroke.dart';
@@ -207,6 +209,18 @@ void main() {
   testWidgets('beautifies selected handwriting with Smart Ink', (
     WidgetTester tester,
   ) async {
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(
+      AppleVisionTextRecognitionProvider.channel,
+      (call) => throw PlatformException(code: 'recognition_unavailable'),
+    );
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(
+        AppleVisionTextRecognitionProvider.channel,
+        null,
+      ),
+    );
     await pumpInkNestApp(tester);
 
     await tester.tap(find.text('New notebook'));
@@ -241,6 +255,58 @@ void main() {
 
     expect(find.text('Neat note'), findsOneWidget);
     expect(find.byTooltip('Plain text'), findsOneWidget);
+  });
+
+  testWidgets('prefills Smart Ink with an on-device recognition suggestion', (
+    WidgetTester tester,
+  ) async {
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(
+      AppleVisionTextRecognitionProvider.channel,
+      (call) async => <String, Object?>{
+        'text': 'Recognized note',
+        'confidence': 0.9,
+        'engineIdentifier': 'apple-vision-text-test',
+        'regions': <Object?>[],
+      },
+    );
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(
+        AppleVisionTextRecognitionProvider.channel,
+        null,
+      ),
+    );
+    await pumpInkNestApp(tester);
+
+    await tester.tap(find.text('New notebook'));
+    await tester.pumpAndSettle();
+    final canvas = find.byType(DrawingCanvas);
+    final center = tester.getCenter(canvas);
+    final strokeGesture = await tester.startGesture(
+      center - const Offset(32, 8),
+    );
+    await strokeGesture.moveBy(const Offset(64, 16));
+    await strokeGesture.up();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Smart Ink'));
+    await tester.pumpAndSettle();
+    final selectionGesture = await tester.startGesture(
+      center - const Offset(96, 64),
+    );
+    await selectionGesture.moveBy(const Offset(192, 128));
+    await selectionGesture.up();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Recognized note'), findsOneWidget);
+    expect(
+      find.text('Review the on-device suggestion before beautifying.'),
+      findsOneWidget,
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Beautify'));
+    await tester.pumpAndSettle();
+    expect(find.text('Recognized note'), findsOneWidget);
   });
 
   testWidgets('shows export options and validates page ranges', (

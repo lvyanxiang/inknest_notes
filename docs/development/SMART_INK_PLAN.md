@@ -1,13 +1,15 @@
 # Smart Ink Plan
 
-Smart Ink is a planned interaction layer for users who write with a finger or
-rough handwriting. It converts selected handwriting into recognized text, lets
-the user confirm or correct the result, and re-renders it as neat
-handwriting-style editable text.
+Smart Ink is an interaction layer for users who write with a finger or rough
+handwriting. It converts selected handwriting into recognized text, lets the
+user confirm or correct the result, and re-renders it as neat handwriting-style
+editable text.
 
-This is a planning document only. The current active roadmap remains
-Post-MVP 3 PDF Study Workflow. Smart Ink should start after the editor has
-text boxes, lasso selection, and handwriting-style text rendering.
+The selection, confirmation, replacement, editable text, persistence, and PDF
+export baseline is implemented. Post-MVP 5 adds a local-first recognition
+provider and Apple Vision OCR fallback; the current provider decision and
+PencilKit follow-up are recorded in
+`docs/development/RECOGNITION_OCR_SPIKE.md`.
 
 ## Product Goal
 
@@ -133,9 +135,12 @@ The request should include:
 - Locale hints.
 - Writing direction hints when available.
 
-Potential provider families to evaluate later:
+Provider strategy after the Post-MVP 5 recognition spike:
 
-- On-device platform text recognition.
+- Apple Vision accurate text recognition for raster OCR and pre-iPadOS 27
+  best-effort Smart Ink suggestions.
+- PencilKit `PKStrokeRecognizer` for vector handwriting on iPadOS 27 and later,
+  once the project build SDK supports it.
 - Cloud OCR or handwriting recognition.
 - A custom model if Smart Ink becomes a major differentiator.
 
