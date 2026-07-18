@@ -2,9 +2,9 @@
 
 ## Current
 
-- Milestone: Post-MVP 5 - Audio And Search (complete)
+- Milestone: Post-MVP 5A - Notebook Search Polish (complete)
 - Next task: Select the next non-sync editor or PDF workflow polish item; Post-MVP 6 remains paused.
-- Last completed: Added local-first Apple Vision Smart Ink suggestions and completed the handwriting/OCR spike.
+- Last completed: Unified editor search across embedded PDF text, typed text boxes, and confirmed Smart Ink text.
 
 ## Decisions
 
@@ -71,6 +71,9 @@
 - Map PDF search character bounds through the same contain-and-center layout as the page background; selecting a result jumps to the notebook page and highlights the match.
 - Scale model-page PDF highlight bounds into the editor's current fitted canvas during painting so resizing and zoom layout do not offset matches.
 - Treat scanned PDFs without an embedded text layer as not searchable until the OCR exploration task is implemented.
+- Use one editor search entry point for embedded PDF text and `NotePage.textBoxes`; confirmed Smart Ink content is searchable because it is stored as handwriting-style editable text.
+- Keep unconverted handwriting strokes and scanned PDF pages out of the unified index until the planned PencilKit/Vision recognition follow-up is implemented.
+- Keep PDF coordinate highlights for embedded-text results and highlight the matched editable text box after cross-page navigation.
 - Use a shared recognition request/result contract for Smart Ink and future scanned-PDF/image OCR, including confidence, normalized regions, language priority, and an engine identifier.
 - Render selected strokes as bounded black-on-white PNG input and use on-device Apple Vision accurate text recognition on iOS, while keeping manual confirmation as the safe fallback.
 - Prefer PencilKit `PKStrokeRecognizer` for vector handwriting recognition and handwriting search on iPadOS 27+, after the build environment adopts an SDK that contains it; keep Vision for raster OCR and older-system fallback.
@@ -177,6 +180,10 @@
 - `flutter analyze` passed after the handwriting recognition and OCR spike.
 - `flutter build ios --simulator --no-codesign` passed with zero Xcode warnings after adding the Apple Vision bridge.
 - `git diff --check` passed after the handwriting recognition and OCR spike.
+- `dart format lib test` passed after unified notebook search.
+- `flutter test` passed with 54 tests after unified notebook search.
+- `flutter analyze` passed after unified notebook search.
+- `git diff --check` passed after unified notebook search.
 - `git diff --check` passed after favorites toolbar.
 - `git diff --check` passed after adding graduation task book and opening report drafts.
 - `git diff --check` passed after retitling graduation docs for Flutter and Python.
@@ -226,7 +233,7 @@
 - Editor canvas includes a floating favorites toolbar with common black/teal/red pen and yellow highlighter presets.
 - Saved recordings can be played, paused, scrubbed, and closed from the editor; all ink stays visible while the current recorded segment receives a temporary spotlight.
 - Audio playback follows linked pages by default; manually selecting a page suspends following, and the playback bar can resume it.
-- Editor app bar includes PDF search with cached text extraction, cross-page results, notebook-page navigation, and in-page match highlighting.
+- Editor app bar includes unified notebook search across cached PDF text, typed text boxes, and confirmed Smart Ink text, with cross-page navigation and source-specific highlighting.
 - Smart Ink now renders selected strokes for local Apple Vision OCR, asynchronously prefills the confirmation field on iOS, and preserves manual entry on unsupported platforms or recognition failure.
 - Smart Ink planning lives in `docs/development/SMART_INK_PLAN.md`.
 - Handwriting recognition, scanned-page OCR, caching, and iPadOS 27 PencilKit follow-up decisions live in `docs/development/RECOGNITION_OCR_SPIKE.md`.

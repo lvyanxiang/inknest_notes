@@ -8,6 +8,7 @@ import 'package:inknest_notes/app/app.dart';
 import 'package:inknest_notes/features/editor/canvas/drawing_canvas.dart';
 import 'package:inknest_notes/features/editor/recognition/text_recognition_provider.dart';
 import 'package:inknest_notes/models/note_page.dart';
+import 'package:inknest_notes/models/note_text_box.dart';
 import 'package:inknest_notes/models/notebook_audio_recording.dart';
 import 'package:inknest_notes/models/stroke.dart';
 import 'package:inknest_notes/models/stroke_point.dart';
@@ -40,7 +41,7 @@ void main() {
     expect(find.text('Notebook 1'), findsOneWidget);
     expect(find.byTooltip('Audio recordings'), findsOneWidget);
     expect(find.byTooltip('Start audio recording'), findsOneWidget);
-    expect(find.byTooltip('Search PDF'), findsOneWidget);
+    expect(find.byTooltip('Search notebook'), findsOneWidget);
     expect(find.byTooltip('Export PDF'), findsOneWidget);
     expect(find.byTooltip('Shape'), findsOneWidget);
     expect(find.byTooltip('Shape type'), findsOneWidget);
@@ -51,19 +52,69 @@ void main() {
     expect(find.text('No notebooks yet'), findsNothing);
   });
 
-  testWidgets('opens PDF search from the editor app bar', (
+  testWidgets('opens notebook search from the editor app bar', (
     WidgetTester tester,
   ) async {
     await pumpInkNestApp(tester);
     await tester.tap(find.text('New notebook'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Search PDF'));
+    await tester.tap(find.byTooltip('Search notebook'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Search PDF'), findsOneWidget);
-    expect(find.text('No PDF pages in this notebook.'), findsOneWidget);
-    expect(find.byTooltip('Close PDF search'), findsOneWidget);
+    expect(find.text('Search notebook'), findsOneWidget);
+    expect(
+      find.text(
+        'Search PDF text and editable text boxes, including Smart Ink results.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.byTooltip('Close notebook search'), findsOneWidget);
+  });
+
+  testWidgets('searches Smart Ink text and highlights it after a page jump', (
+    WidgetTester tester,
+  ) async {
+    final repository = InMemoryNotebookRepository();
+    var notebook = await repository.createNotebook(title: 'Search notes');
+    notebook = await repository.addPage(notebook);
+    await repository.savePage(
+      notebook,
+      const NotePage(
+        id: 'page-2',
+        width: 768,
+        height: 1024,
+        textBoxes: [
+          NoteTextBox(
+            id: 'smart-search-result',
+            position: Offset(40, 48),
+            text: 'Photosynthesis summary',
+            style: NoteTextBoxStyle.handwriting,
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(InkNestApp(notebookRepository: repository));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Search notes'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Search notebook'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'photosynthesis');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Handwriting text'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('notebook-search-result-0')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(
+        const ValueKey('text-box-search-highlight-smart-search-result'),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('lists saved audio recordings with playback controls', (

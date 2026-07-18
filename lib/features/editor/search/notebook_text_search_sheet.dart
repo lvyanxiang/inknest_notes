@@ -1,17 +1,18 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:inknest_notes/features/editor/search/pdf_text_search_service.dart';
+import 'package:inknest_notes/features/editor/search/notebook_text_search_service.dart';
 import 'package:inknest_notes/models/note_page.dart';
+import 'package:inknest_notes/models/note_text_box.dart';
 
-Future<PdfTextSearchResult?> showPdfTextSearchSheet({
+Future<NotebookTextSearchResult?> showNotebookTextSearchSheet({
   required BuildContext context,
-  required PdfTextSearchService searchService,
+  required NotebookTextSearchService searchService,
   required List<NotePage> pages,
   required String initialQuery,
   required ValueChanged<String> onQueryChanged,
 }) {
-  return showModalBottomSheet<PdfTextSearchResult>(
+  return showModalBottomSheet<NotebookTextSearchResult>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
@@ -23,7 +24,7 @@ Future<PdfTextSearchResult?> showPdfTextSearchSheet({
         ),
         child: FractionallySizedBox(
           heightFactor: 0.78,
-          child: PdfTextSearchSheet(
+          child: NotebookTextSearchSheet(
             searchService: searchService,
             pages: pages,
             initialQuery: initialQuery,
@@ -35,8 +36,8 @@ Future<PdfTextSearchResult?> showPdfTextSearchSheet({
   );
 }
 
-class PdfTextSearchSheet extends StatefulWidget {
-  const PdfTextSearchSheet({
+class NotebookTextSearchSheet extends StatefulWidget {
+  const NotebookTextSearchSheet({
     super.key,
     required this.searchService,
     required this.pages,
@@ -44,33 +45,30 @@ class PdfTextSearchSheet extends StatefulWidget {
     required this.onQueryChanged,
   });
 
-  final PdfTextSearchService searchService;
+  final NotebookTextSearchService searchService;
   final List<NotePage> pages;
   final String initialQuery;
   final ValueChanged<String> onQueryChanged;
 
   @override
-  State<PdfTextSearchSheet> createState() => _PdfTextSearchSheetState();
+  State<NotebookTextSearchSheet> createState() =>
+      _NotebookTextSearchSheetState();
 }
 
-class _PdfTextSearchSheetState extends State<PdfTextSearchSheet> {
+class _NotebookTextSearchSheetState extends State<NotebookTextSearchSheet> {
   late final TextEditingController _queryController;
   Timer? _debounce;
-  PdfTextSearchResponse? _response;
+  NotebookTextSearchResponse? _response;
   bool _isSearching = false;
   int _completedPages = 0;
   int _totalPages = 0;
   int _searchGeneration = 0;
 
-  bool get _hasPdfPages {
-    return widget.pages.any((page) => page.pdfBackground != null);
-  }
-
   @override
   void initState() {
     super.initState();
     _queryController = TextEditingController(text: widget.initialQuery);
-    if (widget.initialQuery.trim().isNotEmpty && _hasPdfPages) {
+    if (widget.initialQuery.trim().isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         unawaited(_search(widget.initialQuery));
       });
@@ -154,13 +152,13 @@ class _PdfTextSearchSheetState extends State<PdfTextSearchSheet> {
             children: [
               Expanded(
                 child: Text(
-                  'Search PDF',
+                  'Search notebook',
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
               ),
               IconButton(
                 onPressed: () => Navigator.pop(context),
-                tooltip: 'Close PDF search',
+                tooltip: 'Close notebook search',
                 icon: const Icon(Icons.close),
               ),
             ],
@@ -180,7 +178,7 @@ class _PdfTextSearchSheetState extends State<PdfTextSearchSheet> {
               }
             },
             decoration: InputDecoration(
-              hintText: 'Search embedded PDF text',
+              hintText: 'Search PDF and editable text',
               prefixIcon: const Icon(Icons.search),
               suffixIcon: _queryController.text.isEmpty
                   ? null
@@ -208,22 +206,17 @@ class _PdfTextSearchSheetState extends State<PdfTextSearchSheet> {
   }
 
   Widget _buildResults(BuildContext context, ColorScheme colorScheme) {
-    if (!_hasPdfPages) {
-      return const _SearchMessage(
-        icon: Icons.picture_as_pdf_outlined,
-        message: 'No PDF pages in this notebook.',
-      );
-    }
     if (_queryController.text.trim().isEmpty) {
       return const _SearchMessage(
         icon: Icons.manage_search,
-        message: 'Enter text to search this PDF.',
+        message:
+            'Search PDF text and editable text boxes, including Smart Ink results.',
       );
     }
     if (_isSearching && _response == null) {
       final progressLabel = _totalPages == 0
-          ? 'Reading PDF text...'
-          : 'Reading page $_completedPages of $_totalPages...';
+          ? 'Searching notebook...'
+          : 'Reading PDF page $_completedPages of $_totalPages...';
       return _SearchMessage(
         icon: Icons.find_in_page_outlined,
         message: progressLabel,
@@ -234,10 +227,13 @@ class _PdfTextSearchSheetState extends State<PdfTextSearchSheet> {
     if (response == null) {
       return const SizedBox.shrink();
     }
-    if (response.textPageCount == 0) {
-      return const _SearchMessage(
+    if (!response.hasSearchableText) {
+      final message = response.pdfPageCount > 0
+          ? 'No searchable text found. Scanned PDF pages still need OCR.'
+          : 'No searchable text found in this notebook.';
+      return _SearchMessage(
         icon: Icons.text_snippet_outlined,
-        message: 'No searchable text found in this PDF.',
+        message: message,
       );
     }
     if (response.results.isEmpty) {
@@ -261,11 +257,11 @@ class _PdfTextSearchSheetState extends State<PdfTextSearchSheet> {
             ),
           ),
         ),
-        if (response.unavailablePageCount > 0)
+        if (response.unavailablePdfPageCount > 0)
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
             child: Text(
-              '${response.unavailablePageCount} PDF pages could not be read.',
+              '${response.unavailablePdfPageCount} PDF pages could not be read.',
               style: Theme.of(
                 context,
               ).textTheme.bodySmall?.copyWith(color: colorScheme.error),
@@ -277,16 +273,24 @@ class _PdfTextSearchSheetState extends State<PdfTextSearchSheet> {
             separatorBuilder: (context, index) => const Divider(height: 1),
             itemBuilder: (context, index) {
               final result = response.results[index];
+              final isPdf = result.source == NotebookTextSearchSource.pdf;
+              final sourceLabel = switch (result.textBoxStyle) {
+                NoteTextBoxStyle.handwriting => 'Handwriting text',
+                NoteTextBoxStyle.regular => 'Text box',
+                null => 'PDF page ${result.sourcePageNumber}',
+              };
               return ListTile(
-                leading: const Icon(Icons.description_outlined),
+                key: ValueKey('notebook-search-result-$index'),
+                leading: Icon(
+                  isPdf ? Icons.picture_as_pdf_outlined : Icons.text_fields,
+                ),
                 title: Text(
                   result.snippet,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
                 subtitle: Text(
-                  'Notebook page ${result.notebookPageNumber}  |  '
-                  'PDF page ${result.sourcePageNumber}',
+                  'Notebook page ${result.notebookPageNumber}  |  $sourceLabel',
                 ),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.pop(context, result),

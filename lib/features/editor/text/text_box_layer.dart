@@ -13,6 +13,7 @@ class TextBoxLayer extends StatelessWidget {
     required this.onTextBoxDeleted,
     this.onCreateTextBox,
     this.activeTextBoxId,
+    this.highlightedTextBoxId,
   });
 
   final NotePage page;
@@ -20,6 +21,7 @@ class TextBoxLayer extends StatelessWidget {
   final ValueChanged<NoteTextBox> onTextBoxChanged;
   final ValueChanged<String> onTextBoxDeleted;
   final String? activeTextBoxId;
+  final String? highlightedTextBoxId;
 
   @override
   Widget build(BuildContext context) {
@@ -43,6 +45,7 @@ class TextBoxLayer extends StatelessWidget {
               page: page,
               textBox: textBox,
               autofocus: textBox.id == activeTextBoxId,
+              isSearchHighlighted: textBox.id == highlightedTextBoxId,
               onChanged: onTextBoxChanged,
               onDeleted: onTextBoxDeleted,
             ),
@@ -58,6 +61,7 @@ class _EditableTextBox extends StatefulWidget {
     required this.page,
     required this.textBox,
     required this.autofocus,
+    required this.isSearchHighlighted,
     required this.onChanged,
     required this.onDeleted,
   });
@@ -65,6 +69,7 @@ class _EditableTextBox extends StatefulWidget {
   final NotePage page;
   final NoteTextBox textBox;
   final bool autofocus;
+  final bool isSearchHighlighted;
   final ValueChanged<NoteTextBox> onChanged;
   final ValueChanged<String> onDeleted;
 
@@ -128,15 +133,27 @@ class _EditableTextBoxState extends State<_EditableTextBox> {
     return Material(
       color: Colors.transparent,
       child: DecoratedBox(
+        key: widget.isSearchHighlighted
+            ? ValueKey('text-box-search-highlight-${widget.textBox.id}')
+            : null,
         decoration: BoxDecoration(
-          color: colorScheme.surface.withValues(alpha: 0.92),
+          color: widget.isSearchHighlighted
+              ? const Color(0xFFFFF3BF).withValues(alpha: 0.96)
+              : colorScheme.surface.withValues(alpha: 0.92),
           borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: colorScheme.primary, width: 1.5),
-          boxShadow: const [
+          border: Border.all(
+            color: widget.isSearchHighlighted
+                ? const Color(0xFFF57F17)
+                : colorScheme.primary,
+            width: widget.isSearchHighlighted ? 2.5 : 1.5,
+          ),
+          boxShadow: [
             BoxShadow(
-              color: Color(0x1A000000),
-              blurRadius: 8,
-              offset: Offset(0, 3),
+              color: widget.isSearchHighlighted
+                  ? const Color(0x55F9A825)
+                  : const Color(0x1A000000),
+              blurRadius: widget.isSearchHighlighted ? 12 : 8,
+              offset: const Offset(0, 3),
             ),
           ],
         ),

@@ -222,6 +222,14 @@ Goal: add Notability-style study features.
 - [x] Explore handwriting recognition and OCR for search and Smart Ink. See
   `docs/development/RECOGNITION_OCR_SPIKE.md`.
 
+### Post-MVP 5A: Notebook Search Polish
+
+Goal: make the editor search entry point useful for mixed PDF and rich-note
+notebooks before broader OCR indexing is added.
+
+- [x] Unify editor search across embedded PDF text, typed text boxes, and
+  confirmed Smart Ink text.
+
 ### Post-MVP 6: Sync And Backup
 
 Goal: resume the paused data protection milestone once local editing and
