@@ -18,6 +18,53 @@ import 'package:inknest_notes/models/tool.dart';
 import 'package:inknest_notes/storage/in_memory_notebook_repository.dart';
 
 void main() {
+  test('defines increasing flattened-background quality presets', () {
+    final compact = PdfExportQuality.compact.rasterSettings;
+    final balanced = PdfExportQuality.balanced.rasterSettings;
+    final best = PdfExportQuality.best.rasterSettings;
+
+    expect(
+      compact.maximumPixelDimension,
+      lessThan(balanced.maximumPixelDimension),
+    );
+    expect(
+      balanced.maximumPixelDimension,
+      lessThan(best.maximumPixelDimension),
+    );
+    expect(compact.targetPixelRatio, lessThan(balanced.targetPixelRatio));
+    expect(balanced.targetPixelRatio, lessThan(best.targetPixelRatio));
+    expect(compact.backgroundEncoding, PdfExportBackgroundEncoding.jpeg);
+    expect(balanced.backgroundEncoding, PdfExportBackgroundEncoding.jpeg);
+    expect(best.backgroundEncoding, PdfExportBackgroundEncoding.png);
+  });
+
+  test('encodes compact backgrounds smaller than lossless backgrounds', () {
+    const width = 64;
+    const height = 64;
+    final pixels = _noisyBgraPixels(width, height).buffer;
+    final compact = PdfExportQuality.compact.rasterSettings;
+    final best = PdfExportQuality.best.rasterSettings;
+
+    final jpegBytes = encodePdfExportBackgroundImage(
+      width: width,
+      height: height,
+      bgraPixels: pixels,
+      encoding: compact.backgroundEncoding,
+      jpegQuality: compact.jpegQuality,
+    );
+    final pngBytes = encodePdfExportBackgroundImage(
+      width: width,
+      height: height,
+      bgraPixels: pixels,
+      encoding: best.backgroundEncoding,
+      jpegQuality: best.jpegQuality,
+    );
+
+    expect(jpegBytes.take(2), [0xff, 0xd8]);
+    expect(pngBytes.take(8), [0x89, 0x50, 0x4e, 0x47, 13, 10, 26, 10]);
+    expect(jpegBytes.length, lessThan(pngBytes.length));
+  });
+
   test('exports blank-page notebook with strokes as PDF bytes', () async {
     final repository = InMemoryNotebookRepository();
     final notebook = await repository.createNotebook(title: 'Physics');
@@ -212,6 +259,19 @@ Uint8List _tinyPngBytes() {
   final png = image.Image(width: 1, height: 1);
   png.setPixelRgb(0, 0, 255, 255, 255);
   return image.encodePng(png);
+}
+
+Uint8List _noisyBgraPixels(int width, int height) {
+  var seed = 0x12345678;
+  final pixels = Uint8List(width * height * 4);
+  for (var offset = 0; offset < pixels.length; offset += 4) {
+    seed = (seed * 1664525 + 1013904223) & 0xffffffff;
+    pixels[offset] = seed & 0xff;
+    pixels[offset + 1] = (seed >> 8) & 0xff;
+    pixels[offset + 2] = (seed >> 16) & 0xff;
+    pixels[offset + 3] = 0xff;
+  }
+  return pixels;
 }
 
 class _FakeBackgroundRenderer implements PdfPageBackgroundRenderer {

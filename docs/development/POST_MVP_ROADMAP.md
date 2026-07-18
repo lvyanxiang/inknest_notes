@@ -66,8 +66,8 @@ The detailed plan lives in `docs/development/SMART_INK_PLAN.md`.
 - [x] PDF page thumbnails, outlines, and bookmarks.
 - [x] PDF search when the source PDF has selectable text.
 - [x] Export non-contiguous selected pages.
-- [ ] Refine flattened PDF export quality and file-size tradeoffs.
-- Preserve original PDF page size where possible instead of forcing every PDF
+- [x] Refine flattened PDF export quality and file-size tradeoffs.
+- [ ] Preserve original PDF page size where possible instead of forcing every PDF
   page into the same page dimensions.
 
 ### Library And Organization
@@ -144,7 +144,7 @@ The detailed plan lives in `docs/development/SMART_INK_PLAN.md`.
 - Avoid reloading PDF documents unnecessarily.
 - Improve behavior for very large PDFs.
 - Support encrypted or password-protected PDFs later.
-- Improve export quality and file size tradeoffs.
+- [x] Improve export quality and file size tradeoffs.
 
 ### Export
 

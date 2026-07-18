@@ -2,9 +2,9 @@
 
 ## Current
 
-- Milestone: Post-MVP PDF and Study Workflow - Selected-Page Export (complete)
-- Next task: Refine flattened PDF export quality and file-size tradeoffs; Post-MVP 6 sync and backup remains paused.
-- Last completed: Added non-contiguous PDF page selection with page/range syntax, validation, deduplication, and ordered export.
+- Milestone: Post-MVP PDF and Study Workflow - Flattened Export Quality (complete)
+- Next task: Preserve original imported-PDF page dimensions instead of normalizing every PDF page to 768x1024; Post-MVP 6 sync and backup remains paused.
+- Last completed: Added Compact, Balanced, and Best PDF export quality presets with explicit raster resolution and background encoding tradeoffs.
 
 ## Decisions
 
@@ -62,7 +62,9 @@
 - Track Smart Ink in the existing post-MVP roadmap rather than a separate plan for now: rough finger handwriting -> recognition -> user confirmation -> neat handwriting-style editable text.
 - Use `docs/development/SMART_INK_PLAN.md` as the dedicated Smart Ink planning document while keeping implementation after the current PDF workflow and Rich Notes prerequisites.
 - Export PDF opens a scope dialog before the save flow and can export the full notebook, current page, or an ordered page/range expression.
-- PDF export caches rendered PDF backgrounds during a single export, reuses opened PDF documents per file path, and targets 2x background rendering up to a 2400px longest edge.
+- PDF export caches rendered PDF backgrounds during a single export and reuses opened PDF documents per file path.
+- Default to Balanced export at 2x/up to 2400px with JPEG quality 88; Compact uses 1.25x/up to 1600px with JPEG quality 72, while Best uses 3x/up to 3600px with lossless PNG.
+- Apply export quality settings only to flattened PDF background rasters; keep handwriting strokes and shapes as vector paths so Compact does not blur ink.
 - Use one Pages field for PDF export expressions such as `1,3,5-7`; preserve the user's first-listed order, remove duplicate pages, and reject malformed, descending, or out-of-bounds ranges before opening the save dialog.
 - Keep existing current-page and contiguous-range filename suffixes; use `-selected-pages` for non-contiguous exports to avoid excessively long filenames.
 - Editor PDF background views reuse document references by file path and isolate background repainting with `RepaintBoundary`.
@@ -227,6 +229,10 @@
 - `flutter test` passed with 79 tests after non-contiguous selected-page export.
 - `flutter analyze` passed after non-contiguous selected-page export.
 - `git diff --check` passed after non-contiguous selected-page export.
+- `dart format lib test` passed after flattened PDF quality presets.
+- `flutter test` passed with 81 tests after flattened PDF quality presets.
+- `flutter analyze` passed after flattened PDF quality presets.
+- `git diff --check` passed after flattened PDF quality presets.
 - `git diff --check` passed after favorites toolbar.
 - `git diff --check` passed after adding graduation task book and opening report drafts.
 - `git diff --check` passed after retitling graduation docs for Flutter and Python.
@@ -272,6 +278,7 @@
 - Editor page thumbnails can insert blank pages before or after any page, including between imported PDF pages.
 - Editor page thumbnails render PDF page backgrounds, and the editor has an Outline/Bookmarks panel plus per-page bookmark toggling.
 - Editor export can save the full notebook, current page, or an ordered page/range expression such as `1,3,5-7`, with filenames suffixed by exported scope.
+- Editor export offers Compact, Balanced, and Best quality presets; Balanced is the default, Compact prioritizes sharing size, and Best preserves lossless PDF background detail.
 - PDF export now avoids rerendering duplicate backgrounds in the same export and renders imported PDF backgrounds at a higher default pixel density.
 - Editor toolbar includes a Text tool that can add typed text boxes to the current page; text boxes can be edited, moved, deleted, persisted, shown in thumbnails, and exported to PDF.
 - Text boxes can toggle between regular text and handwriting-style rendering; thumbnails and PDF export use the same text style path.

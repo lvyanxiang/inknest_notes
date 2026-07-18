@@ -625,6 +625,20 @@ void main() {
     expect(find.text('Current'), findsOneWidget);
     expect(find.text('Pages'), findsOneWidget);
     expect(find.text('All 4 pages'), findsOneWidget);
+    expect(find.text('Compact'), findsOneWidget);
+    expect(find.text('Balanced'), findsOneWidget);
+    expect(find.text('Best'), findsOneWidget);
+    expect(
+      find.text('Recommended balance of clarity and size.'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('Compact'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Smaller file for sharing and submission.'),
+      findsOneWidget,
+    );
 
     await tester.tap(find.text('Pages'));
     await tester.pumpAndSettle();

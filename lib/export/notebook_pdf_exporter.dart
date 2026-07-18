@@ -22,15 +22,73 @@ import 'package:pdf/pdf.dart' as pdf;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdfrx/pdfrx.dart' as pdfrx;
 
+enum PdfExportQuality { compact, balanced, best }
+
+enum PdfExportBackgroundEncoding { jpeg, png }
+
+extension PdfExportQualityDetails on PdfExportQuality {
+  String get label => switch (this) {
+    PdfExportQuality.compact => 'Compact',
+    PdfExportQuality.balanced => 'Balanced',
+    PdfExportQuality.best => 'Best',
+  };
+
+  String get description => switch (this) {
+    PdfExportQuality.compact => 'Smaller file for sharing and submission.',
+    PdfExportQuality.balanced => 'Recommended balance of clarity and size.',
+    PdfExportQuality.best => 'Maximum clarity with a larger file.',
+  };
+
+  PdfExportRasterSettings get rasterSettings => switch (this) {
+    PdfExportQuality.compact => const PdfExportRasterSettings(
+      maximumPixelDimension: 1600,
+      targetPixelRatio: 1.25,
+      backgroundEncoding: PdfExportBackgroundEncoding.jpeg,
+      jpegQuality: 72,
+    ),
+    PdfExportQuality.balanced => const PdfExportRasterSettings(
+      maximumPixelDimension: 2400,
+      targetPixelRatio: 2,
+      backgroundEncoding: PdfExportBackgroundEncoding.jpeg,
+      jpegQuality: 88,
+    ),
+    PdfExportQuality.best => const PdfExportRasterSettings(
+      maximumPixelDimension: 3600,
+      targetPixelRatio: 3,
+      backgroundEncoding: PdfExportBackgroundEncoding.png,
+      jpegQuality: 100,
+    ),
+  };
+}
+
+class PdfExportRasterSettings {
+  const PdfExportRasterSettings({
+    required this.maximumPixelDimension,
+    required this.targetPixelRatio,
+    required this.backgroundEncoding,
+    required this.jpegQuality,
+  }) : assert(maximumPixelDimension > 0),
+       assert(targetPixelRatio > 0),
+       assert(jpegQuality >= 1 && jpegQuality <= 100);
+
+  final int maximumPixelDimension;
+  final double targetPixelRatio;
+  final PdfExportBackgroundEncoding backgroundEncoding;
+  final int jpegQuality;
+}
+
 class NotebookPdfExporter {
   NotebookPdfExporter({
     required this.notebookRepository,
+    this.quality = PdfExportQuality.balanced,
     PdfPageBackgroundRenderer? backgroundRenderer,
   }) : _backgroundRenderer =
-           backgroundRenderer ?? PdfrxPageBackgroundRenderer(),
+           backgroundRenderer ??
+           PdfrxPageBackgroundRenderer.forQuality(quality),
        _ownsBackgroundRenderer = backgroundRenderer == null;
 
   final NotebookRepository notebookRepository;
+  final PdfExportQuality quality;
   final PdfPageBackgroundRenderer _backgroundRenderer;
   final bool _ownsBackgroundRenderer;
   final Map<_BackgroundCacheKey, Future<RenderedPdfPageBackground?>>
@@ -133,7 +191,7 @@ class NotebookPdfExporter {
         if (background != null)
           pw.Positioned.fill(
             child: pw.Image(
-              pw.MemoryImage(background.pngBytes),
+              pw.MemoryImage(background.imageBytes),
               fit: pw.BoxFit.contain,
             ),
           ),
@@ -608,11 +666,24 @@ class PdfrxPageBackgroundRenderer implements PdfPageBackgroundRenderer {
   PdfrxPageBackgroundRenderer({
     this.maximumPixelDimension = 2400,
     this.targetPixelRatio = 2.0,
+    this.backgroundEncoding = PdfExportBackgroundEncoding.png,
+    this.jpegQuality = 88,
   }) : assert(maximumPixelDimension > 0),
-       assert(targetPixelRatio > 0);
+       assert(targetPixelRatio > 0),
+       assert(jpegQuality >= 1 && jpegQuality <= 100);
+
+  PdfrxPageBackgroundRenderer.forQuality(PdfExportQuality quality)
+    : this(
+        maximumPixelDimension: quality.rasterSettings.maximumPixelDimension,
+        targetPixelRatio: quality.rasterSettings.targetPixelRatio,
+        backgroundEncoding: quality.rasterSettings.backgroundEncoding,
+        jpegQuality: quality.rasterSettings.jpegQuality,
+      );
 
   final int maximumPixelDimension;
   final double targetPixelRatio;
+  final PdfExportBackgroundEncoding backgroundEncoding;
+  final int jpegQuality;
   final Map<String, Future<pdfrx.PdfDocument>> _documentsByPath = {};
 
   @override
@@ -636,7 +707,13 @@ class PdfrxPageBackgroundRenderer implements PdfPageBackgroundRenderer {
 
     try {
       return RenderedPdfPageBackground(
-        pngBytes: _pngFromBgraPixels(renderedImage),
+        imageBytes: encodePdfExportBackgroundImage(
+          width: renderedImage.width,
+          height: renderedImage.height,
+          bgraPixels: renderedImage.pixels.buffer,
+          encoding: backgroundEncoding,
+          jpegQuality: jpegQuality,
+        ),
       );
     } finally {
       renderedImage.dispose();
@@ -682,23 +759,42 @@ class PdfrxPageBackgroundRenderer implements PdfPageBackgroundRenderer {
       height: math.max(1, (height * pixelScale).round()),
     );
   }
-
-  Uint8List _pngFromBgraPixels(pdfrx.PdfImage renderedImage) {
-    final decodedImage = image.Image.fromBytes(
-      width: renderedImage.width,
-      height: renderedImage.height,
-      bytes: renderedImage.pixels.buffer,
-      numChannels: 4,
-      order: image.ChannelOrder.bgra,
-    );
-    return image.encodePng(decodedImage);
-  }
 }
 
 class RenderedPdfPageBackground {
-  const RenderedPdfPageBackground({required this.pngBytes});
+  RenderedPdfPageBackground({Uint8List? imageBytes, Uint8List? pngBytes})
+    : assert(imageBytes != null || pngBytes != null),
+      imageBytes = imageBytes ?? pngBytes!;
 
-  final Uint8List pngBytes;
+  final Uint8List imageBytes;
+}
+
+Uint8List encodePdfExportBackgroundImage({
+  required int width,
+  required int height,
+  required ByteBuffer bgraPixels,
+  required PdfExportBackgroundEncoding encoding,
+  int jpegQuality = 88,
+}) {
+  assert(width > 0);
+  assert(height > 0);
+  assert(jpegQuality >= 1 && jpegQuality <= 100);
+
+  final decodedImage = image.Image.fromBytes(
+    width: width,
+    height: height,
+    bytes: bgraPixels,
+    numChannels: 4,
+    order: image.ChannelOrder.bgra,
+  );
+  return switch (encoding) {
+    PdfExportBackgroundEncoding.jpeg => Uint8List.fromList(
+      image.encodeJpg(decodedImage, quality: jpegQuality),
+    ),
+    PdfExportBackgroundEncoding.png => Uint8List.fromList(
+      image.encodePng(decodedImage),
+    ),
+  };
 }
 
 class _BackgroundCacheKey {

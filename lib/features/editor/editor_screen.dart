@@ -1571,6 +1571,7 @@ class _EditorScreenState extends State<EditorScreen> {
       await _savePage();
       final bytes = await NotebookPdfExporter(
         notebookRepository: widget.notebookRepository,
+        quality: selection.quality,
       ).exportNotebook(_notebook, pageIds: selection.pageIds);
       final fileName = _exportFileName(selection);
       final savedPath = await FilePicker.saveFile(
@@ -2485,10 +2486,15 @@ class _SmartInkConfirmationDialogState
 enum _ExportScope { fullNotebook, currentPage, selectedPages }
 
 class _ExportSelection {
-  const _ExportSelection({required this.pageIds, required this.fileNameSuffix});
+  const _ExportSelection({
+    required this.pageIds,
+    required this.fileNameSuffix,
+    required this.quality,
+  });
 
   final List<String> pageIds;
   final String fileNameSuffix;
+  final PdfExportQuality quality;
 }
 
 class _ExportOptionsDialog extends StatefulWidget {
@@ -2506,6 +2512,7 @@ class _ExportOptionsDialog extends StatefulWidget {
 
 class _ExportOptionsDialogState extends State<_ExportOptionsDialog> {
   _ExportScope _scope = _ExportScope.fullNotebook;
+  PdfExportQuality _quality = PdfExportQuality.balanced;
   late final TextEditingController _pageSelectionController;
 
   int get _pageCount => widget.pageIds.length;
@@ -2604,6 +2611,29 @@ class _ExportOptionsDialogState extends State<_ExportOptionsDialog> {
                   ),
                 ],
               ],
+              const SizedBox(height: 20),
+              Text('Export quality', style: theme.textTheme.titleSmall),
+              const SizedBox(height: 8),
+              SegmentedButton<PdfExportQuality>(
+                showSelectedIcon: false,
+                selected: {_quality},
+                segments: [
+                  for (final quality in PdfExportQuality.values)
+                    ButtonSegment(value: quality, label: Text(quality.label)),
+                ],
+                onSelectionChanged: (selected) {
+                  setState(() {
+                    _quality = selected.single;
+                  });
+                },
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _quality.description,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
             ],
           ),
         ),
@@ -2648,6 +2678,7 @@ class _ExportOptionsDialogState extends State<_ExportOptionsDialog> {
       _ExportScope.fullNotebook => _ExportSelection(
         pageIds: List.unmodifiable(widget.pageIds),
         fileNameSuffix: '',
+        quality: _quality,
       ),
       _ExportScope.currentPage => _currentPageSelection,
       _ExportScope.selectedPages => _selectedPagesSelection,
@@ -2663,6 +2694,7 @@ class _ExportOptionsDialogState extends State<_ExportOptionsDialog> {
     return _ExportSelection(
       pageIds: [widget.currentPageId],
       fileNameSuffix: '-page-${currentIndex + 1}',
+      quality: _quality,
     );
   }
 
@@ -2688,6 +2720,7 @@ class _ExportOptionsDialogState extends State<_ExportOptionsDialog> {
         pageNumbers.map((pageNumber) => widget.pageIds[pageNumber - 1]),
       ),
       fileNameSuffix: suffix,
+      quality: _quality,
     );
   }
 }
