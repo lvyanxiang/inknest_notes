@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:inknest_notes/app/app.dart';
 import 'package:inknest_notes/features/editor/canvas/drawing_canvas.dart';
+import 'package:inknest_notes/features/editor/editor_screen.dart';
 import 'package:inknest_notes/features/editor/recognition/text_recognition_provider.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/note_page_template.dart';
@@ -78,6 +80,52 @@ void main() {
       findsOneWidget,
     );
     expect(find.byTooltip('Close notebook search'), findsOneWidget);
+  });
+
+  testWidgets('imports multiple PDFs into the open notebook', (
+    WidgetTester tester,
+  ) async {
+    final repository = InMemoryNotebookRepository();
+    final notebook = await repository.createNotebook(title: 'PDF collection');
+    final tempDirectory = Directory.systemTemp.createTempSync(
+      'inknest-multi-pdf-widget-',
+    );
+    addTearDown(() {
+      if (tempDirectory.existsSync()) {
+        tempDirectory.deleteSync(recursive: true);
+      }
+    });
+    final firstPdf = File('${tempDirectory.path}/biology.pdf')
+      ..writeAsBytesSync([1]);
+    final secondPdf = File('${tempDirectory.path}/chemistry.pdf')
+      ..writeAsBytesSync([2]);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: EditorScreen(
+          notebook: notebook,
+          notebookRepository: repository,
+          pdfFilePicker: () async => [firstPdf, secondPdf],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Import PDFs into notebook'));
+    await tester.pumpAndSettle();
+
+    final updatedNotebook = (await repository.listNotebooks()).single;
+    expect(updatedNotebook.pageIds, ['page-1', 'page-2', 'page-3']);
+    expect(updatedNotebook.pdfOutlines.map((outline) => outline.title), [
+      'biology',
+      'chemistry',
+    ]);
+    expect(
+      find.byKey(const ValueKey('rotated-page-surface-page-2-0')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('page-thumbnail-page-3')), findsOneWidget);
+    expect(find.text('Imported 2 PDFs · 2 pages'), findsOneWidget);
   });
 
   testWidgets('selects persists and inherits page templates', (

@@ -47,11 +47,13 @@ class EditorScreen extends StatefulWidget {
     required this.notebook,
     required this.notebookRepository,
     this.textRecognitionProvider = const AppleVisionTextRecognitionProvider(),
+    this.pdfFilePicker,
   });
 
   final Notebook notebook;
   final NotebookRepository notebookRepository;
   final TextRecognitionProvider textRecognitionProvider;
+  final Future<List<File>> Function()? pdfFilePicker;
 
   @override
   State<EditorScreen> createState() => _EditorScreenState();
@@ -70,6 +72,7 @@ class _EditorScreenState extends State<EditorScreen> {
   late Notebook _notebook;
   late String _currentPageId;
   bool _isExporting = false;
+  bool _isImportingPdfs = false;
   bool _fingerPanEnabled = false;
   bool _fingerWritingAssistEnabled = true;
   String? _activeTextBoxId;
@@ -401,6 +404,82 @@ class _EditorScreenState extends State<EditorScreen> {
 
       _showSnackBar('Insert image failed: $error');
     }
+  }
+
+  Future<void> _importPdfsIntoNotebook() async {
+    if (_isImportingPdfs) {
+      return;
+    }
+
+    final sourceFiles = await _pickPdfFiles();
+    if (!mounted || sourceFiles.isEmpty) {
+      return;
+    }
+
+    setState(() {
+      _isImportingPdfs = true;
+    });
+    try {
+      await _savePage();
+      final previousPageIds = _notebook.pageIds.toSet();
+      final updatedNotebook = await widget.notebookRepository
+          .importPdfsIntoNotebook(_notebook, sourceFiles);
+      final importedPageIds = [
+        for (final pageId in updatedNotebook.pageIds)
+          if (!previousPageIds.contains(pageId)) pageId,
+      ];
+      if (!mounted) {
+        return;
+      }
+      if (importedPageIds.isEmpty) {
+        _showSnackBar('No PDF pages were imported');
+        return;
+      }
+
+      setState(() {
+        _notebook = updatedNotebook;
+        _currentPageId = importedPageIds.first;
+        _page = null;
+        _activeTextBoxId = null;
+        _activeImageId = null;
+        _selectedStrokeIds.clear();
+        _redoStack.clear();
+      });
+      await _loadPage();
+      unawaited(_loadPageThumbnails());
+      if (mounted) {
+        _showSnackBar(
+          'Imported ${sourceFiles.length} PDFs · '
+          '${importedPageIds.length} pages',
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        _showSnackBar('Unable to import the selected PDFs');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isImportingPdfs = false;
+        });
+      }
+    }
+  }
+
+  Future<List<File>> _pickPdfFiles() async {
+    final picker = widget.pdfFilePicker;
+    if (picker != null) {
+      return picker();
+    }
+    final result = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['pdf'],
+      allowMultiple: true,
+    );
+    return [
+      for (final file in result?.files ?? const <PlatformFile>[])
+        if (file.path case final path?) File(path),
+    ];
   }
 
   Future<File?> _sourceFileForPickedImage(PlatformFile pickedFile) async {
@@ -1699,6 +1778,21 @@ class _EditorScreenState extends State<EditorScreen> {
                   ? null
                   : Theme.of(context).colorScheme.primary,
             ),
+          ),
+          IconButton(
+            onPressed:
+                page == null ||
+                    _isImportingPdfs ||
+                    _activeAudioRecording != null
+                ? null
+                : () => unawaited(_importPdfsIntoNotebook()),
+            tooltip: 'Import PDFs into notebook',
+            icon: _isImportingPdfs
+                ? const SizedBox.square(
+                    dimension: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.picture_as_pdf_outlined),
           ),
           IconButton(
             onPressed: page == null || page.pdfBackground != null

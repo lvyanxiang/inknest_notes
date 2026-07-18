@@ -15,6 +15,7 @@ import 'package:inknest_notes/models/stroke.dart';
 import 'package:inknest_notes/models/stroke_point.dart';
 import 'package:inknest_notes/models/tool.dart';
 import 'package:inknest_notes/storage/file_notebook_repository.dart';
+import 'package:inknest_notes/storage/pdf_import_inspector.dart';
 
 void main() {
   late Directory tempDirectory;
@@ -662,6 +663,90 @@ void main() {
     expect(reloadedPage.pdfBackground?.pageNumber, 1);
   });
 
+  test('appends multiple PDFs with independent assets and outlines', () async {
+    final sourceDirectory = Directory('${tempDirectory.path}/sources')
+      ..createSync(recursive: true);
+    final secondSourceDirectory = Directory('${tempDirectory.path}/sources-2')
+      ..createSync(recursive: true);
+    final basePdf = File('${sourceDirectory.path}/base.pdf')
+      ..writeAsBytesSync([1, 2, 3]);
+    final firstCoursePdf = File('${sourceDirectory.path}/course.pdf')
+      ..writeAsBytesSync([4, 5, 6]);
+    final secondCoursePdf = File('${secondSourceDirectory.path}/course.pdf')
+      ..writeAsBytesSync([7, 8, 9]);
+    final inspector = _FakePdfImportInspector({
+      basePdf.path: const PdfImportInspection(
+        pageCount: 1,
+        outlines: [PdfImportOutlineNode(title: 'Base chapter', pageNumber: 1)],
+      ),
+      firstCoursePdf.path: const PdfImportInspection(
+        pageCount: 2,
+        outlines: [PdfImportOutlineNode(title: 'Second lesson', pageNumber: 2)],
+      ),
+      secondCoursePdf.path: const PdfImportInspection(pageCount: 1),
+    });
+    repository = FileNotebookRepository(
+      rootDirectory: tempDirectory,
+      pdfImportInspector: inspector,
+    );
+
+    var notebook = await repository.importPdf(basePdf);
+    notebook = await repository.importPdfsIntoNotebook(notebook, [
+      firstCoursePdf,
+      secondCoursePdf,
+    ]);
+
+    expect(notebook.pageIds, ['page-1', 'page-2', 'page-3', 'page-4']);
+    expect(notebook.pdfOutlines.map((outline) => outline.title), [
+      'Base chapter',
+      'course',
+      'course',
+    ]);
+    expect(notebook.pdfOutlines[1].pageId, 'page-2');
+    expect(notebook.pdfOutlines[1].children.single.pageId, 'page-3');
+    expect(notebook.pdfOutlines[2].pageId, 'page-4');
+
+    final firstImportedPage = await repository.loadPage(notebook, 'page-2');
+    final secondPageFromFirstPdf = await repository.loadPage(
+      notebook,
+      'page-3',
+    );
+    final pageFromSecondPdf = await repository.loadPage(notebook, 'page-4');
+    expect(
+      firstImportedPage.pdfBackground?.assetPath,
+      'assets/pdfs/course.pdf',
+    );
+    expect(
+      secondPageFromFirstPdf.pdfBackground?.assetPath,
+      'assets/pdfs/course.pdf',
+    );
+    expect(secondPageFromFirstPdf.pdfBackground?.pageNumber, 2);
+    expect(
+      pageFromSecondPdf.pdfBackground?.assetPath,
+      'assets/pdfs/course-2.pdf',
+    );
+    expect(
+      File(
+        '${tempDirectory.path}/notebooks/${notebook.id}/assets/pdfs/course.pdf',
+      ).readAsBytesSync(),
+      [4, 5, 6],
+    );
+    expect(
+      File(
+        '${tempDirectory.path}/notebooks/${notebook.id}/assets/pdfs/course-2.pdf',
+      ).readAsBytesSync(),
+      [7, 8, 9],
+    );
+
+    final reloadedRepository = FileNotebookRepository(
+      rootDirectory: tempDirectory,
+      pdfImportInspector: inspector,
+    );
+    final reloadedNotebook = (await reloadedRepository.listNotebooks()).single;
+    expect(reloadedNotebook.pageIds, notebook.pageIds);
+    expect(reloadedNotebook.pdfOutlines, hasLength(3));
+  });
+
   test(
     'resolves old absolute pdf asset paths into the current notebook assets',
     () async {
@@ -690,6 +775,18 @@ void main() {
       );
     },
   );
+}
+
+class _FakePdfImportInspector implements PdfImportInspector {
+  const _FakePdfImportInspector(this.inspectionsByPath);
+
+  final Map<String, PdfImportInspection> inspectionsByPath;
+
+  @override
+  Future<PdfImportInspection> inspect(File sourceFile) async {
+    return inspectionsByPath[sourceFile.path] ??
+        (throw StateError('Missing PDF inspection for ${sourceFile.path}'));
+  }
 }
 
 List<int> _tinyPngBytes() {

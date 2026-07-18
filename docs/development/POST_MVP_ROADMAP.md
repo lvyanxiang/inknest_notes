@@ -61,10 +61,10 @@ The detailed plan lives in `docs/development/SMART_INK_PLAN.md`.
 
 ### PDF And Study Workflow
 
-- Import multiple PDFs into an existing notebook.
-- Insert blank pages before, after, or between PDF pages.
-- PDF page thumbnails, outlines, and bookmarks.
-- PDF search when the source PDF has selectable text.
+- [x] Import multiple PDFs into an existing notebook.
+- [x] Insert blank pages before, after, or between PDF pages.
+- [x] PDF page thumbnails, outlines, and bookmarks.
+- [x] PDF search when the source PDF has selectable text.
 - Export options: non-contiguous selected pages and flattened PDF refinements.
 - Preserve original PDF page size where possible instead of forcing every PDF
   page into the same page dimensions.

@@ -7,6 +7,7 @@ import 'package:inknest_notes/models/notebook_folder.dart';
 import 'package:inknest_notes/models/note_image.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/note_page_template.dart';
+import 'package:inknest_notes/models/pdf_outline_entry.dart';
 import 'package:inknest_notes/storage/notebook_repository.dart';
 
 class InMemoryNotebookRepository implements NotebookRepository {
@@ -103,6 +104,39 @@ class InMemoryNotebookRepository implements NotebookRepository {
   @override
   Future<Notebook> importPdf(File sourceFile) {
     return createNotebook(title: _titleFromFile(sourceFile));
+  }
+
+  @override
+  Future<Notebook> importPdfsIntoNotebook(
+    Notebook notebook,
+    List<File> sourceFiles,
+  ) async {
+    if (sourceFiles.isEmpty) {
+      return notebook;
+    }
+
+    final pageIds = notebook.pageIds.toList();
+    final importedOutlines = <PdfOutlineEntry>[];
+    for (final sourceFile in sourceFiles) {
+      final pageId = _nextPageId(pageIds);
+      pageIds.add(pageId);
+      _pages[_pageKey(notebook, pageId)] = NotePage(
+        id: pageId,
+        width: _pageWidth,
+        height: _pageHeight,
+      );
+      importedOutlines.add(
+        PdfOutlineEntry(title: _titleFromFile(sourceFile), pageId: pageId),
+      );
+    }
+
+    final updatedNotebook = notebook.copyWith(
+      updatedAt: DateTime.now(),
+      pageIds: pageIds,
+      pdfOutlines: [...notebook.pdfOutlines, ...importedOutlines],
+    );
+    _replaceNotebook(updatedNotebook);
+    return updatedNotebook;
   }
 
   @override

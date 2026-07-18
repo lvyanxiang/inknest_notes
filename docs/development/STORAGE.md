@@ -10,6 +10,10 @@ notebooks/
       page-1.json
       page-2.json
     assets/
+      imported.pdf
+      pdfs/
+        source-name.pdf
+        source-name-2.pdf
 ```
 
 ## `notebooks/index.json`
@@ -36,6 +40,11 @@ Stores one notebook page:
 
 - `assetPath`
 - `pageNumber`
+
+The library-level single-PDF import keeps its source at
+`assets/imported.pdf` for backward compatibility. PDFs appended from an open
+notebook are copied to `assets/pdfs/`; sanitized same-name collisions receive
+numeric suffixes so every imported document remains independent.
 
 Each stroke stores:
 

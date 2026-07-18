@@ -11,16 +11,21 @@ import 'package:inknest_notes/models/note_page_template.dart';
 import 'package:inknest_notes/models/pdf_background.dart';
 import 'package:inknest_notes/models/pdf_outline_entry.dart';
 import 'package:inknest_notes/storage/notebook_repository.dart';
-import 'package:pdfrx/pdfrx.dart';
+import 'package:inknest_notes/storage/pdf_import_inspector.dart';
 
 class FileNotebookRepository implements NotebookRepository {
-  FileNotebookRepository({required Directory rootDirectory})
-    : _notebooksDirectory = Directory('${rootDirectory.path}/notebooks');
+  FileNotebookRepository({
+    required Directory rootDirectory,
+    PdfImportInspector? pdfImportInspector,
+  }) : _notebooksDirectory = Directory('${rootDirectory.path}/notebooks'),
+       _pdfImportInspector =
+           pdfImportInspector ?? const PdfrxPdfImportInspector();
 
   static const _pageWidth = 768.0;
   static const _pageHeight = 1024.0;
 
   final Directory _notebooksDirectory;
+  final PdfImportInspector _pdfImportInspector;
   Future<void> _storageWriteQueue = Future.value();
   int _temporaryFileCounter = 0;
 
@@ -121,13 +126,12 @@ class FileNotebookRepository implements NotebookRepository {
   Future<Notebook> importPdf(File sourceFile) async {
     final notebooks = await _readIndex();
     final now = DateTime.now();
-    final pdfDocument = await PdfDocument.openFile(sourceFile.path);
-    final pageCount = pdfDocument.pages.length;
+    final inspection = await _pdfImportInspector.inspect(sourceFile);
+    final pageCount = inspection.pageCount;
     final pageIds = [
       for (var index = 0; index < pageCount; index++) 'page-${index + 1}',
     ];
-    final pdfOutlines = await _loadPdfOutlineEntries(pdfDocument, pageIds);
-    await pdfDocument.dispose();
+    final pdfOutlines = inspection.buildOutlineEntries(pageIds);
 
     final notebook = Notebook(
       id: 'notebook-${now.microsecondsSinceEpoch}',
@@ -161,6 +165,100 @@ class FileNotebookRepository implements NotebookRepository {
     }
 
     return notebook;
+  }
+
+  @override
+  Future<Notebook> importPdfsIntoNotebook(
+    Notebook notebook,
+    List<File> sourceFiles,
+  ) async {
+    if (sourceFiles.isEmpty) {
+      return notebook;
+    }
+
+    final notebooks = await _readIndex();
+    final currentNotebook = notebooks.firstWhere(
+      (existingNotebook) => existingNotebook.id == notebook.id,
+      orElse: () => notebook,
+    );
+    final pageIds = currentNotebook.pageIds.toList();
+    final importedPages = <NotePage>[];
+    final importedOutlines = <PdfOutlineEntry>[];
+    final reservedAssetPaths = <String>{};
+
+    for (final sourceFile in sourceFiles) {
+      final inspection = await _pdfImportInspector.inspect(sourceFile);
+      if (inspection.pageCount <= 0) {
+        continue;
+      }
+
+      final importedPageIds = <String>[];
+      for (var index = 0; index < inspection.pageCount; index++) {
+        final pageId = _nextPageId(pageIds);
+        pageIds.add(pageId);
+        importedPageIds.add(pageId);
+      }
+
+      final assetPath = _availablePdfAssetPath(
+        currentNotebook,
+        sourceFile,
+        reservedAssetPaths,
+      );
+      reservedAssetPaths.add(assetPath);
+      final assetFile = File(
+        '${_notebookDirectory(currentNotebook).path}/$assetPath',
+      );
+      await assetFile.parent.create(recursive: true);
+      await sourceFile.copy(assetFile.path);
+
+      for (final (index, pageId) in importedPageIds.indexed) {
+        importedPages.add(
+          NotePage(
+            id: pageId,
+            width: _pageWidth,
+            height: _pageHeight,
+            pdfBackground: PdfBackground(
+              assetPath: assetPath,
+              pageNumber: index + 1,
+              resolvedFilePath: assetFile.path,
+            ),
+          ),
+        );
+      }
+
+      importedOutlines.add(
+        PdfOutlineEntry(
+          title: _titleFromFile(sourceFile),
+          pageId: importedPageIds.first,
+          children: inspection.buildOutlineEntries(importedPageIds),
+        ),
+      );
+    }
+
+    if (importedPages.isEmpty) {
+      return currentNotebook;
+    }
+
+    final updatedNotebook = currentNotebook.copyWith(
+      updatedAt: DateTime.now(),
+      pageIds: pageIds,
+      pdfOutlines: [...currentNotebook.pdfOutlines, ...importedOutlines],
+    );
+    final notebookExists = notebooks.any(
+      (existingNotebook) => existingNotebook.id == currentNotebook.id,
+    );
+    await _writeIndex([
+      for (final existingNotebook in notebooks)
+        if (existingNotebook.id == currentNotebook.id)
+          updatedNotebook
+        else
+          existingNotebook,
+      if (!notebookExists) updatedNotebook,
+    ]);
+    for (final page in importedPages) {
+      await savePage(updatedNotebook, page);
+    }
+    return updatedNotebook;
   }
 
   @override
@@ -634,6 +732,42 @@ class FileNotebookRepository implements NotebookRepository {
     );
   }
 
+  String _availablePdfAssetPath(
+    Notebook notebook,
+    File sourceFile,
+    Set<String> reservedAssetPaths,
+  ) {
+    final originalName = sourceFile.uri.pathSegments.isEmpty
+        ? 'imported.pdf'
+        : sourceFile.uri.pathSegments.last;
+    final sanitizedName = originalName
+        .replaceAll(RegExp(r'[^A-Za-z0-9._-]+'), '-')
+        .replaceAll(RegExp(r'-+'), '-');
+    final normalizedName = sanitizedName.trim().isEmpty
+        ? 'imported.pdf'
+        : sanitizedName;
+    final lowerName = normalizedName.toLowerCase();
+    final extensionIndex = lowerName.endsWith('.pdf')
+        ? normalizedName.length - 4
+        : normalizedName.length;
+    final rawBaseName = normalizedName.substring(0, extensionIndex);
+    final baseName =
+        rawBaseName.replaceAll(RegExp(r'[^A-Za-z0-9]+'), '').isEmpty
+        ? 'imported'
+        : rawBaseName;
+    var suffix = 1;
+
+    while (true) {
+      final suffixText = suffix == 1 ? '' : '-$suffix';
+      final assetPath = 'assets/pdfs/$baseName$suffixText.pdf';
+      final assetFile = File('${_notebookDirectory(notebook).path}/$assetPath');
+      if (!reservedAssetPaths.contains(assetPath) && !assetFile.existsSync()) {
+        return assetPath;
+      }
+      suffix++;
+    }
+  }
+
   Future<void> _copyDirectory(Directory source, Directory destination) async {
     await destination.create(recursive: true);
     await for (final entity in source.list(recursive: false)) {
@@ -680,40 +814,6 @@ class FileNotebookRepository implements NotebookRepository {
     }
 
     return resolvedPage;
-  }
-
-  List<PdfOutlineEntry> _pdfOutlineEntries(
-    List<PdfOutlineNode> nodes,
-    List<String> pageIds,
-  ) {
-    return [for (final node in nodes) ?_pdfOutlineEntry(node, pageIds)];
-  }
-
-  Future<List<PdfOutlineEntry>> _loadPdfOutlineEntries(
-    PdfDocument document,
-    List<String> pageIds,
-  ) async {
-    try {
-      return _pdfOutlineEntries(await document.loadOutline(), pageIds);
-    } catch (_) {
-      return const [];
-    }
-  }
-
-  PdfOutlineEntry? _pdfOutlineEntry(PdfOutlineNode node, List<String> pageIds) {
-    final title = node.title.trim().isEmpty ? 'Untitled' : node.title.trim();
-    final pageNumber = node.dest?.pageNumber;
-    final pageId =
-        pageNumber == null || pageNumber < 1 || pageNumber > pageIds.length
-        ? null
-        : pageIds[pageNumber - 1];
-    final children = _pdfOutlineEntries(node.children, pageIds);
-
-    if (pageId == null && children.isEmpty) {
-      return null;
-    }
-
-    return PdfOutlineEntry(title: title, pageId: pageId, children: children);
   }
 
   String _normalizePdfAssetPath(String assetPath) {

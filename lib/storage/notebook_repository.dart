@@ -25,6 +25,11 @@ abstract class NotebookRepository {
 
   Future<Notebook> importPdf(File sourceFile);
 
+  Future<Notebook> importPdfsIntoNotebook(
+    Notebook notebook,
+    List<File> sourceFiles,
+  );
+
   Future<NoteImage> importImage(
     Notebook notebook,
     File sourceFile, {
