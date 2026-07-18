@@ -2,9 +2,9 @@
 
 ## Current
 
-- Milestone: Post-MVP PDF and Study Workflow - Import Multiple PDFs (complete)
-- Next task: Add non-contiguous selected-page PDF export, then continue flattened PDF refinements; Post-MVP 6 sync and backup remains paused.
-- Last completed: Added ordered multi-PDF import into an existing notebook with independent assets, appended pages, and merged outlines.
+- Milestone: Post-MVP PDF and Study Workflow - Selected-Page Export (complete)
+- Next task: Refine flattened PDF export quality and file-size tradeoffs; Post-MVP 6 sync and backup remains paused.
+- Last completed: Added non-contiguous PDF page selection with page/range syntax, validation, deduplication, and ordered export.
 
 ## Decisions
 
@@ -61,8 +61,10 @@
 - Let PDF import continue when outline loading fails; the Outline tab simply starts empty.
 - Track Smart Ink in the existing post-MVP roadmap rather than a separate plan for now: rough finger handwriting -> recognition -> user confirmation -> neat handwriting-style editable text.
 - Use `docs/development/SMART_INK_PLAN.md` as the dedicated Smart Ink planning document while keeping implementation after the current PDF workflow and Rich Notes prerequisites.
-- Export PDF opens a scope dialog before the save flow and can export the full notebook, current page, or a contiguous page range.
+- Export PDF opens a scope dialog before the save flow and can export the full notebook, current page, or an ordered page/range expression.
 - PDF export caches rendered PDF backgrounds during a single export, reuses opened PDF documents per file path, and targets 2x background rendering up to a 2400px longest edge.
+- Use one Pages field for PDF export expressions such as `1,3,5-7`; preserve the user's first-listed order, remove duplicate pages, and reject malformed, descending, or out-of-bounds ranges before opening the save dialog.
+- Keep existing current-page and contiguous-range filename suffixes; use `-selected-pages` for non-contiguous exports to avoid excessively long filenames.
 - Editor PDF background views reuse document references by file path and isolate background repainting with `RepaintBoundary`.
 - Store typed note content on `NotePage.textBoxes` as `NoteTextBox` objects with page coordinates, color, width, and font size.
 - Text boxes first support add, edit, move, delete, persistence, page duplication, thumbnails, and PDF export.
@@ -221,6 +223,10 @@
 - `flutter test` passed with 72 tests after multi-PDF import.
 - `flutter analyze` passed after multi-PDF import.
 - `git diff --check` passed after multi-PDF import.
+- `dart format lib test` passed after non-contiguous selected-page export.
+- `flutter test` passed with 79 tests after non-contiguous selected-page export.
+- `flutter analyze` passed after non-contiguous selected-page export.
+- `git diff --check` passed after non-contiguous selected-page export.
 - `git diff --check` passed after favorites toolbar.
 - `git diff --check` passed after adding graduation task book and opening report drafts.
 - `git diff --check` passed after retitling graduation docs for Flutter and Python.
@@ -265,7 +271,7 @@
 - Library supports searching notebooks and folders, sorting notebooks, opening recent notebooks, and showing first-page notebook thumbnails with handwriting/PDF/archive markers.
 - Editor page thumbnails can insert blank pages before or after any page, including between imported PDF pages.
 - Editor page thumbnails render PDF page backgrounds, and the editor has an Outline/Bookmarks panel plus per-page bookmark toggling.
-- Editor export can save the full notebook, current page, or a page range, with filenames suffixed by exported scope.
+- Editor export can save the full notebook, current page, or an ordered page/range expression such as `1,3,5-7`, with filenames suffixed by exported scope.
 - PDF export now avoids rerendering duplicate backgrounds in the same export and renders imported PDF backgrounds at a higher default pixel density.
 - Editor toolbar includes a Text tool that can add typed text boxes to the current page; text boxes can be edited, moved, deleted, persisted, shown in thumbnails, and exported to PDF.
 - Text boxes can toggle between regular text and handwriting-style rendering; thumbnails and PDF export use the same text style path.

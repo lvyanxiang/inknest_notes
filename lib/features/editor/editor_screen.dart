@@ -5,9 +5,9 @@ import 'dart:ui' show PointerDeviceKind;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:image/image.dart' as image;
 import 'package:inknest_notes/export/notebook_pdf_exporter.dart';
+import 'package:inknest_notes/export/pdf_page_selection.dart';
 import 'package:inknest_notes/features/editor/canvas/drawing_canvas.dart';
 import 'package:inknest_notes/features/editor/canvas/pdf_page_background.dart';
 import 'package:inknest_notes/features/editor/images/image_layer.dart';
@@ -2482,7 +2482,7 @@ class _SmartInkConfirmationDialogState
   }
 }
 
-enum _ExportScope { fullNotebook, currentPage, pageRange }
+enum _ExportScope { fullNotebook, currentPage, selectedPages }
 
 class _ExportSelection {
   const _ExportSelection({required this.pageIds, required this.fileNameSuffix});
@@ -2506,8 +2506,7 @@ class _ExportOptionsDialog extends StatefulWidget {
 
 class _ExportOptionsDialogState extends State<_ExportOptionsDialog> {
   _ExportScope _scope = _ExportScope.fullNotebook;
-  late final TextEditingController _startController;
-  late final TextEditingController _endController;
+  late final TextEditingController _pageSelectionController;
 
   int get _pageCount => widget.pageIds.length;
 
@@ -2519,22 +2518,23 @@ class _ExportOptionsDialogState extends State<_ExportOptionsDialog> {
   @override
   void initState() {
     super.initState();
-    final currentPageNumber = _currentPageNumber.toString();
-    _startController = TextEditingController(text: currentPageNumber);
-    _endController = TextEditingController(text: currentPageNumber);
+    _pageSelectionController = TextEditingController(
+      text: _currentPageNumber.toString(),
+    );
   }
 
   @override
   void dispose() {
-    _startController.dispose();
-    _endController.dispose();
+    _pageSelectionController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final rangeError = _scope == _ExportScope.pageRange ? _rangeError : null;
+    final selectionError = _scope == _ExportScope.selectedPages
+        ? _parsedPageSelection.errorMessage
+        : null;
     final selection = _selectionOrNull;
 
     return AlertDialog(
@@ -2561,9 +2561,9 @@ class _ExportOptionsDialogState extends State<_ExportOptionsDialog> {
                     label: Text('Current'),
                   ),
                   ButtonSegment(
-                    value: _ExportScope.pageRange,
-                    icon: Icon(Icons.view_agenda_outlined),
-                    label: Text('Range'),
+                    value: _ExportScope.selectedPages,
+                    icon: Icon(Icons.playlist_add_check),
+                    label: Text('Pages'),
                   ),
                 ],
                 onSelectionChanged: (selected) {
@@ -2579,45 +2579,25 @@ class _ExportOptionsDialogState extends State<_ExportOptionsDialog> {
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
-              if (_scope == _ExportScope.pageRange) ...[
+              if (_scope == _ExportScope.selectedPages) ...[
                 const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _startController,
-                        decoration: const InputDecoration(
-                          labelText: 'From',
-                          border: OutlineInputBorder(),
-                        ),
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
-                        ],
-                        onChanged: (_) => setState(() {}),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: TextField(
-                        controller: _endController,
-                        decoration: const InputDecoration(
-                          labelText: 'To',
-                          border: OutlineInputBorder(),
-                        ),
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
-                        ],
-                        onChanged: (_) => setState(() {}),
-                      ),
-                    ),
-                  ],
+                TextField(
+                  controller: _pageSelectionController,
+                  decoration: const InputDecoration(
+                    labelText: 'Pages to export',
+                    hintText: '1,3,5-7',
+                    helperText: 'Separate pages or ranges with commas.',
+                    border: OutlineInputBorder(),
+                  ),
+                  keyboardType: TextInputType.text,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  onChanged: (_) => setState(() {}),
                 ),
-                if (rangeError != null) ...[
+                if (selectionError != null) ...[
                   const SizedBox(height: 8),
                   Text(
-                    rangeError,
+                    selectionError,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.error,
                     ),
@@ -2648,25 +2628,15 @@ class _ExportOptionsDialogState extends State<_ExportOptionsDialog> {
     return switch (_scope) {
       _ExportScope.fullNotebook => 'All $_pageCount pages',
       _ExportScope.currentPage => 'Page $_currentPageNumber',
-      _ExportScope.pageRange => 'Pages 1-$_pageCount',
+      _ExportScope.selectedPages => 'Choose individual pages or page ranges',
     };
   }
 
-  String? get _rangeError {
-    final start = int.tryParse(_startController.text.trim());
-    final end = int.tryParse(_endController.text.trim());
-
-    if (start == null || end == null) {
-      return 'Enter page numbers.';
-    }
-    if (start < 1 || end < 1 || start > _pageCount || end > _pageCount) {
-      return 'Pages must be between 1 and $_pageCount.';
-    }
-    if (start > end) {
-      return 'From must be before To.';
-    }
-
-    return null;
+  PdfPageSelectionParseResult get _parsedPageSelection {
+    return parsePdfPageSelection(
+      _pageSelectionController.text,
+      pageCount: _pageCount,
+    );
   }
 
   _ExportSelection? get _selectionOrNull {
@@ -2680,7 +2650,7 @@ class _ExportOptionsDialogState extends State<_ExportOptionsDialog> {
         fileNameSuffix: '',
       ),
       _ExportScope.currentPage => _currentPageSelection,
-      _ExportScope.pageRange => _rangeSelection,
+      _ExportScope.selectedPages => _selectedPagesSelection,
     };
   }
 
@@ -2696,17 +2666,27 @@ class _ExportOptionsDialogState extends State<_ExportOptionsDialog> {
     );
   }
 
-  _ExportSelection? get _rangeSelection {
-    if (_rangeError != null) {
+  _ExportSelection? get _selectedPagesSelection {
+    final parsedSelection = _parsedPageSelection;
+    if (!parsedSelection.isValid) {
       return null;
     }
 
-    final start = int.parse(_startController.text.trim());
-    final end = int.parse(_endController.text.trim());
-    final suffix = start == end ? '-page-$start' : '-pages-$start-$end';
+    final pageNumbers = parsedSelection.pageNumbers;
+    final isContiguous = pageNumbers.indexed.every((entry) {
+      final (index, pageNumber) = entry;
+      return index == 0 || pageNumber == pageNumbers[index - 1] + 1;
+    });
+    final suffix = switch (pageNumbers) {
+      [final pageNumber] => '-page-$pageNumber',
+      [final first, ..., final last] when isContiguous => '-pages-$first-$last',
+      _ => '-selected-pages',
+    };
 
     return _ExportSelection(
-      pageIds: List.unmodifiable(widget.pageIds.sublist(start - 1, end)),
+      pageIds: List.unmodifiable(
+        pageNumbers.map((pageNumber) => widget.pageIds[pageNumber - 1]),
+      ),
       fileNameSuffix: suffix,
     );
   }

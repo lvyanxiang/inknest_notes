@@ -605,15 +605,17 @@ void main() {
     expect(find.text('Recognized note'), findsOneWidget);
   });
 
-  testWidgets('shows export options and validates page ranges', (
+  testWidgets('selects non-contiguous pages for PDF export', (
     WidgetTester tester,
   ) async {
     await pumpInkNestApp(tester);
 
     await tester.tap(find.text('New notebook'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Add page'));
-    await tester.pumpAndSettle();
+    for (var index = 0; index < 3; index++) {
+      await tester.tap(find.byTooltip('Add page'));
+      await tester.pumpAndSettle();
+    }
 
     await tester.tap(find.byTooltip('Export PDF'));
     await tester.pumpAndSettle();
@@ -621,19 +623,30 @@ void main() {
     expect(find.text('Export PDF'), findsOneWidget);
     expect(find.text('Full'), findsOneWidget);
     expect(find.text('Current'), findsOneWidget);
-    expect(find.text('Range'), findsOneWidget);
-    expect(find.text('All 2 pages'), findsOneWidget);
+    expect(find.text('Pages'), findsOneWidget);
+    expect(find.text('All 4 pages'), findsOneWidget);
 
-    await tester.tap(find.text('Range'));
+    await tester.tap(find.text('Pages'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Pages 1-2'), findsOneWidget);
-    expect(find.byType(TextField), findsNWidgets(2));
+    expect(find.text('Choose individual pages or page ranges'), findsOneWidget);
+    expect(find.text('Separate pages or ranges with commas.'), findsOneWidget);
+    expect(find.byType(TextField), findsOneWidget);
 
-    await tester.enterText(find.byType(TextField).last, '9');
+    await tester.enterText(find.byType(TextField), '1,3-4');
     await tester.pumpAndSettle();
 
-    expect(find.text('Pages must be between 1 and 2.'), findsOneWidget);
+    expect(
+      tester
+          .widget<FilledButton>(find.widgetWithText(FilledButton, 'Export'))
+          .onPressed,
+      isNotNull,
+    );
+
+    await tester.enterText(find.byType(TextField), '1,9');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Pages must be between 1 and 4.'), findsOneWidget);
     expect(
       tester
           .widget<FilledButton>(find.widgetWithText(FilledButton, 'Export'))

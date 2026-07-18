@@ -170,23 +170,21 @@ void main() {
     expect(backgroundRenderer.renderedPages.single.id, 'page-1');
   });
 
-  test(
-    'exports only selected page ids when a page range is provided',
-    () async {
-      final repository = _TrackingNotebookRepository();
-      var notebook = await repository.createNotebook(title: 'Selected Pages');
-      notebook = await repository.addPage(notebook);
-      repository.loadedPageIds.clear();
+  test('exports non-contiguous page ids in the selected order', () async {
+    final repository = _TrackingNotebookRepository();
+    var notebook = await repository.createNotebook(title: 'Selected Pages');
+    notebook = await repository.addPage(notebook);
+    notebook = await repository.addPage(notebook);
+    repository.loadedPageIds.clear();
 
-      final bytes = await NotebookPdfExporter(
-        notebookRepository: repository,
-        backgroundRenderer: _UnexpectedBackgroundRenderer(),
-      ).exportNotebook(notebook, pageIds: const ['page-2']);
+    final bytes = await NotebookPdfExporter(
+      notebookRepository: repository,
+      backgroundRenderer: _UnexpectedBackgroundRenderer(),
+    ).exportNotebook(notebook, pageIds: const ['page-3', 'page-1']);
 
-      expect(String.fromCharCodes(bytes.take(4)), '%PDF');
-      expect(repository.loadedPageIds, ['page-2']);
-    },
-  );
+    expect(String.fromCharCodes(bytes.take(4)), '%PDF');
+    expect(repository.loadedPageIds, ['page-3', 'page-1']);
+  });
 }
 
 Stroke _sampleStroke() {
