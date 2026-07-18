@@ -135,8 +135,8 @@ void main() {
       notebook,
       NotePage(
         id: 'page-1',
-        width: 768,
-        height: 1024,
+        width: 612,
+        height: 792,
         pdfBackground: const PdfBackground(
           assetPath: 'assets/imported.pdf',
           pageNumber: 2,
@@ -154,6 +154,12 @@ void main() {
     expect(String.fromCharCodes(bytes.take(4)), '%PDF');
     expect(backgroundRenderer.renderedBackgrounds.single.pageNumber, 2);
     expect(backgroundRenderer.renderedPages.single.id, 'page-1');
+    expect(
+      RegExp(
+        r'/MediaBox\s*\[\s*0\s+0\s+612\s+792\s*\]',
+      ).hasMatch(String.fromCharCodes(bytes)),
+      isTrue,
+    );
   });
 
   test('exports rotated pages with swapped PDF dimensions', () async {

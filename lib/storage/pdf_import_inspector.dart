@@ -14,6 +14,23 @@ class PdfrxPdfImportInspector implements PdfImportInspector {
   Future<PdfImportInspection> inspect(File sourceFile) async {
     final document = await PdfDocument.openFile(sourceFile.path);
     try {
+      final pageSizes = <PdfImportPageSize>[];
+      for (final page in document.pages) {
+        var pageForSize = page;
+        try {
+          pageForSize = await page.ensureLoaded();
+        } catch (_) {
+          // Keep the best available dimensions and let the repository validate
+          // them before falling back to its standard notebook page size.
+        }
+        pageSizes.add(
+          PdfImportPageSize(
+            width: pageForSize.width,
+            height: pageForSize.height,
+          ),
+        );
+      }
+
       List<PdfImportOutlineNode> outlines;
       try {
         outlines = [
@@ -25,6 +42,7 @@ class PdfrxPdfImportInspector implements PdfImportInspector {
       }
       return PdfImportInspection(
         pageCount: document.pages.length,
+        pageSizes: pageSizes,
         outlines: outlines,
       );
     } finally {
@@ -44,15 +62,38 @@ class PdfrxPdfImportInspector implements PdfImportInspector {
 class PdfImportInspection {
   const PdfImportInspection({
     required this.pageCount,
+    this.pageSizes = const [],
     this.outlines = const [],
   });
 
   final int pageCount;
+  final List<PdfImportPageSize> pageSizes;
   final List<PdfImportOutlineNode> outlines;
+
+  PdfImportPageSize? validPageSizeAt(int pageIndex) {
+    if (pageIndex < 0 || pageIndex >= pageSizes.length) {
+      return null;
+    }
+    final pageSize = pageSizes[pageIndex];
+    if (!pageSize.width.isFinite ||
+        !pageSize.height.isFinite ||
+        pageSize.width <= 0 ||
+        pageSize.height <= 0) {
+      return null;
+    }
+    return pageSize;
+  }
 
   List<PdfOutlineEntry> buildOutlineEntries(List<String> pageIds) {
     return [for (final outline in outlines) ?outline.toOutlineEntry(pageIds)];
   }
+}
+
+class PdfImportPageSize {
+  const PdfImportPageSize({required this.width, required this.height});
+
+  final double width;
+  final double height;
 }
 
 class PdfImportOutlineNode {

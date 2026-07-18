@@ -67,7 +67,7 @@ The detailed plan lives in `docs/development/SMART_INK_PLAN.md`.
 - [x] PDF search when the source PDF has selectable text.
 - [x] Export non-contiguous selected pages.
 - [x] Refine flattened PDF export quality and file-size tradeoffs.
-- [ ] Preserve original PDF page size where possible instead of forcing every PDF
+- [x] Preserve original PDF page size where possible instead of forcing every PDF
   page into the same page dimensions.
 
 ### Library And Organization
@@ -151,7 +151,8 @@ The detailed plan lives in `docs/development/SMART_INK_PLAN.md`.
 - Add export progress and cancellation.
 - [x] Allow non-contiguous selected-page export.
 - Add share-sheet flow in addition to save-to-file.
-- Preserve page dimensions and PDF metadata where possible.
+- [x] Preserve imported PDF page dimensions.
+- Preserve source PDF metadata where possible.
 - Explore overlaying annotations on original PDF pages instead of rasterizing
   backgrounds for export.
 

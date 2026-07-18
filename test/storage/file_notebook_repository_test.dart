@@ -677,13 +677,21 @@ void main() {
     final inspector = _FakePdfImportInspector({
       basePdf.path: const PdfImportInspection(
         pageCount: 1,
+        pageSizes: [PdfImportPageSize(width: 612, height: 792)],
         outlines: [PdfImportOutlineNode(title: 'Base chapter', pageNumber: 1)],
       ),
       firstCoursePdf.path: const PdfImportInspection(
         pageCount: 2,
+        pageSizes: [
+          PdfImportPageSize(width: 595, height: 842),
+          PdfImportPageSize(width: 842, height: 595),
+        ],
         outlines: [PdfImportOutlineNode(title: 'Second lesson', pageNumber: 2)],
       ),
-      secondCoursePdf.path: const PdfImportInspection(pageCount: 1),
+      secondCoursePdf.path: const PdfImportInspection(
+        pageCount: 1,
+        pageSizes: [PdfImportPageSize(width: 0, height: 600)],
+      ),
     });
     repository = FileNotebookRepository(
       rootDirectory: tempDirectory,
@@ -706,12 +714,21 @@ void main() {
     expect(notebook.pdfOutlines[1].children.single.pageId, 'page-3');
     expect(notebook.pdfOutlines[2].pageId, 'page-4');
 
+    final basePage = await repository.loadPage(notebook, 'page-1');
     final firstImportedPage = await repository.loadPage(notebook, 'page-2');
     final secondPageFromFirstPdf = await repository.loadPage(
       notebook,
       'page-3',
     );
     final pageFromSecondPdf = await repository.loadPage(notebook, 'page-4');
+    expect(basePage.width, 612);
+    expect(basePage.height, 792);
+    expect(firstImportedPage.width, 595);
+    expect(firstImportedPage.height, 842);
+    expect(secondPageFromFirstPdf.width, 842);
+    expect(secondPageFromFirstPdf.height, 595);
+    expect(pageFromSecondPdf.width, 768);
+    expect(pageFromSecondPdf.height, 1024);
     expect(
       firstImportedPage.pdfBackground?.assetPath,
       'assets/pdfs/course.pdf',
@@ -743,8 +760,14 @@ void main() {
       pdfImportInspector: inspector,
     );
     final reloadedNotebook = (await reloadedRepository.listNotebooks()).single;
+    final reloadedLandscapePage = await reloadedRepository.loadPage(
+      reloadedNotebook,
+      'page-3',
+    );
     expect(reloadedNotebook.pageIds, notebook.pageIds);
     expect(reloadedNotebook.pdfOutlines, hasLength(3));
+    expect(reloadedLandscapePage.width, 842);
+    expect(reloadedLandscapePage.height, 595);
   });
 
   test(

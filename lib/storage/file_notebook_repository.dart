@@ -149,12 +149,13 @@ class FileNotebookRepository implements NotebookRepository {
     await _writeIndex([...notebooks, notebook]);
     for (var index = 0; index < pageCount; index++) {
       final pageId = notebook.pageIds[index];
+      final pageSize = _pdfPageSize(inspection, index);
       await savePage(
         notebook,
         NotePage(
           id: pageId,
-          width: _pageWidth,
-          height: _pageHeight,
+          width: pageSize.width,
+          height: pageSize.height,
           pdfBackground: PdfBackground(
             assetPath: 'assets/imported.pdf',
             pageNumber: index + 1,
@@ -212,11 +213,12 @@ class FileNotebookRepository implements NotebookRepository {
       await sourceFile.copy(assetFile.path);
 
       for (final (index, pageId) in importedPageIds.indexed) {
+        final pageSize = _pdfPageSize(inspection, index);
         importedPages.add(
           NotePage(
             id: pageId,
-            width: _pageWidth,
-            height: _pageHeight,
+            width: pageSize.width,
+            height: pageSize.height,
             pdfBackground: PdfBackground(
               assetPath: assetPath,
               pageNumber: index + 1,
@@ -923,6 +925,14 @@ class FileNotebookRepository implements NotebookRepository {
       rotationQuarterTurns: rotationQuarterTurns,
       template: template,
     );
+  }
+
+  Size _pdfPageSize(PdfImportInspection inspection, int pageIndex) {
+    final importedSize = inspection.validPageSizeAt(pageIndex);
+    if (importedSize == null) {
+      return const Size(_pageWidth, _pageHeight);
+    }
+    return Size(importedSize.width, importedSize.height);
   }
 
   Future<NotePage> _pageForInsertedBlank(Notebook notebook, int index) {

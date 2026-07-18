@@ -2,9 +2,9 @@
 
 ## Current
 
-- Milestone: Post-MVP PDF and Study Workflow - Flattened Export Quality (complete)
-- Next task: Preserve original imported-PDF page dimensions instead of normalizing every PDF page to 768x1024; Post-MVP 6 sync and backup remains paused.
-- Last completed: Added Compact, Balanced, and Best PDF export quality presets with explicit raster resolution and background encoding tradeoffs.
+- Milestone: Post-MVP PDF and Study Workflow - Original Page Dimensions (complete)
+- Next task: No additional implementation task is selected; choose the next concrete priority before entering Post-MVP 6-9, and keep sync and backup paused.
+- Last completed: Imported each PDF page using its source width and height in PDF points, with 768x1024 fallback for unavailable or invalid metadata.
 
 ## Decisions
 
@@ -50,6 +50,8 @@
 - Inspect PDF page counts and outlines through a small injectable `PdfImportInspector`; production uses `pdfrx`, while repository tests use deterministic metadata without native PDFium.
 - Store PDFs added to an existing notebook under unique notebook-relative `assets/pdfs/` paths so same-named files do not overwrite one another; retain `assets/imported.pdf` compatibility for notebooks created from the library import flow.
 - Add one top-level outline entry per appended PDF, preserve its nested source outlines, and keep existing notebook pages, outlines, bookmarks, and audio metadata intact.
+- Inspect accurate rotated PDF page width and height through `pdfrx` alongside page count and outlines; store those dimensions on each imported `NotePage` for both library import and editor multi-PDF append.
+- Fall back to the existing 768x1024 notebook page only when a source page size is missing, non-finite, or non-positive; existing notebooks keep their persisted dimensions unchanged.
 - Use shared stroke geometry helpers for smoothed screen drawing, thumbnail drawing, PDF export paths, and partial eraser stroke splitting.
 - Keep archived notebooks out of the default library list; show them through an explicit archived view where they can be restored or deleted.
 - Store folders as first-class repository metadata; keep folders one level deep for now, and use `Notebook.folderId` to move notebooks between the root library and a folder.
@@ -233,6 +235,10 @@
 - `flutter test` passed with 81 tests after flattened PDF quality presets.
 - `flutter analyze` passed after flattened PDF quality presets.
 - `git diff --check` passed after flattened PDF quality presets.
+- `dart format lib test` passed after preserving imported PDF page dimensions.
+- `flutter test` passed with 81 tests after preserving imported PDF page dimensions.
+- `flutter analyze` passed after preserving imported PDF page dimensions.
+- `git diff --check` passed after preserving imported PDF page dimensions.
 - `git diff --check` passed after favorites toolbar.
 - `git diff --check` passed after adding graduation task book and opening report drafts.
 - `git diff --check` passed after retitling graduation docs for Flutter and Python.
@@ -271,6 +277,7 @@
 - Editor page thumbnail actions include clockwise page rotation; orientation persists, updates editor and library previews, keeps drawing hit testing aligned, and is preserved in PDF export.
 - Editor toolbar includes Lasso; draw around strokes to select them, drag the selection to move it, drag its corner handle to resize proportionally, or use the upright floating toolbar to recolor, delete, and clear the selection.
 - Editor app bar includes Import PDFs into notebook; it accepts multiple files, appends every imported page, preserves separate source assets and outlines, and opens the first new page when complete.
+- Imported PDF pages retain their per-page source dimensions and orientation ratio through editor display, thumbnails, persistence, rotation, and PDF export.
 - Editor strokes render with smoothed paths on canvas, thumbnails, and exported PDFs; the eraser can split strokes instead of only deleting whole strokes.
 - Library notebook cards include rename, duplicate, archive/restore, and delete actions backed by repository persistence.
 - Library supports creating root-level folders, moving notebooks into folders, entering folders, and deleting folders while moving contained notebooks back to the root library.
