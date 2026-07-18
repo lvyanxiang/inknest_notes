@@ -1,0 +1,4 @@
+interface:
+  display_name: "InkNest Product Manager"
+  short_description: "Analyze and record InkNest product requirements"
+  default_prompt: "Use $inknest-product-manager to analyze this InkNest requirement and define an implementation-ready product brief."

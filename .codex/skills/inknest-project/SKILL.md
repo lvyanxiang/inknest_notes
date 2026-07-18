@@ -1,6 +1,6 @@
 ---
 name: inknest-project
-description: Project workflow for continuing the InkNest Notes Flutter app across many sessions. Use when Codex is asked to resume, plan, implement, verify, or mark roadmap tasks for this repository, including MVP milestones in docs/development/ROADMAP.md and post-MVP GoodNotes/Notability-style work in docs/development/POST_MVP_ROADMAP.md, while avoiding rereading the whole project.
+description: Project workflow and single delivery entry point for continuing InkNest Notes across sessions. Use when Codex is asked to resume, plan, implement, verify, or mark roadmap tasks, or to deliver a new or changed InkNest requirement. Route product requirements through inknest-product-manager and user-facing behavior through inknest-ui-ux before implementation, while using docs/development/STATUS.md and the active roadmap as project state.
 ---
 
 # InkNest Project
@@ -13,6 +13,27 @@ This is a development-only skill. Do not update
 `docs/academic/OPENING_REPORT.md`, or academic reference lists as a routine
 side effect of code or roadmap work. Use `$inknest-academic-docs` only when the
 user explicitly asks to maintain graduation academic documents.
+
+## Requirement Intake Routing
+
+For a new or materially changed product requirement:
+
+1. Read `../inknest-product-manager/SKILL.md` completely and follow its product
+   analysis, scope, acceptance, and record rules.
+2. If the change affects anything visible or interactive, also read
+   `../inknest-ui-ux/SKILL.md` completely and follow its design and handoff
+   rules.
+3. Analyze first, then implement in the same task when the user requested a
+   change and no material decision is missing.
+4. If the user requested only ideas, review, or recommendations, stop after the
+   requested product/design output and do not modify code.
+5. Keep product and UI records proportional to request size; do not generate a
+   feature folder for every small fix.
+
+When `docs/development/STATUS.md` says no implementation task is selected and
+the user only says to continue, do not infer a task from plain roadmap bullets.
+Report that the confirmed queue is complete and ask the user to choose a
+concrete priority. Never enter Post-MVP 6-9 automatically.
 
 ## Context Recovery
 
@@ -46,6 +67,8 @@ WebDAV, or a backend.
 For each user request:
 
 1. Identify the current phase and first unfinished task from the active planning document.
+   If no task is explicitly selected, stop before code changes and request a
+   product choice.
 2. Read only the smallest useful set of code files.
 3. Implement the requested task or the next roadmap task.
 4. Run focused validation, normally `flutter test` and `flutter analyze` after code changes.

@@ -7,6 +7,9 @@ graduation materials do not crowd the same folder.
 
 - `development/`: project status, roadmaps, storage notes, subscription planning,
   and feature planning.
+- `product/`: accepted product decisions and medium/large feature briefs.
+- `design/`: reusable UI/UX decisions; feature UI specs live beside product
+  briefs under `product/features/`.
 - `learning/flutter/`: Flutter study notes and keyword references.
 - `academic/`: graduation task book, opening report, and future academic
   deliverables.

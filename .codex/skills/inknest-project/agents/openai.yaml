@@ -1,4 +1,4 @@
 interface:
   display_name: "InkNest Project"
-  short_description: "Resume InkNest MVP and post-MVP work"
-  default_prompt: "Use $inknest-project to continue the next InkNest Notes task from docs/development/STATUS.md."
+  short_description: "Analyze and deliver InkNest product work"
+  default_prompt: "Use $inknest-project to resume or deliver this InkNest requirement through product analysis, UI/UX design, implementation, and verification."

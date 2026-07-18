@@ -778,7 +778,7 @@ void main() {
     expect(find.byTooltip('Show library'), findsOneWidget);
   });
 
-  testWidgets('searches sorts and previews recent notebooks', (
+  testWidgets('searches sorts and previews bookshelf notebooks', (
     WidgetTester tester,
   ) async {
     await pumpInkNestApp(tester);
@@ -793,7 +793,13 @@ void main() {
     await tester.pageBack();
     await tester.pumpAndSettle();
 
-    expect(find.text('Recent notebooks'), findsOneWidget);
+    expect(find.text('Recent notebooks'), findsNothing);
+    expect(find.byKey(const ValueKey('library-bookshelf')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('library-bookshelf-row-0')),
+      findsOneWidget,
+    );
+    expect(find.bySemanticsLabel('Open notebook Notebook 1'), findsOneWidget);
     expect(
       find.byWidgetPredicate((widget) {
         final key = widget.key;
@@ -828,6 +834,34 @@ void main() {
     final firstNotebookPosition = tester.getTopLeft(find.text('Notebook 1'));
     final secondNotebookPosition = tester.getTopLeft(find.text('Notebook 2'));
     expect(firstNotebookPosition.dx, lessThan(secondNotebookPosition.dx));
+  });
+
+  testWidgets('wraps bookshelf rows at iPad split-view width', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(600, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final repository = InMemoryNotebookRepository();
+    for (var index = 1; index <= 4; index++) {
+      await repository.createNotebook(title: 'Shelf book $index');
+    }
+
+    await tester.pumpWidget(InkNestApp(notebookRepository: repository));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('library-bookshelf')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('library-bookshelf-row-0')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('library-bookshelf-row-1')),
+      findsOneWidget,
+    );
+    expect(find.text('Recent notebooks'), findsNothing);
   });
 
   testWidgets('draws a stroke and supports undo redo', (

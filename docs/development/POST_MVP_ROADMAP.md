@@ -72,13 +72,14 @@ The detailed plan lives in `docs/development/SMART_INK_PLAN.md`.
 
 ### Library And Organization
 
-- Rename, delete, duplicate, and archive notebooks.
-- Folder support.
-- Notebook covers and preview thumbnails.
-- Sort by recent, title, created date, and updated date.
-- Search notebooks by title.
-- Recent notebooks section.
-- Trash/recovery for deleted notebooks.
+- [x] Rename, delete, duplicate, and archive notebooks.
+- [x] Folder support.
+- [x] Notebook covers and preview thumbnails.
+- [x] Sort by recent, title, created date, and updated date.
+- [x] Search notebooks by title.
+- [x] Retire the redundant Recent notebooks strip and use one responsive
+  bookshelf as the library source of truth.
+- [ ] Trash/recovery for deleted notebooks.
 
 ### Notability-Like Capabilities
 
@@ -191,7 +192,9 @@ Goal: make notebooks manageable as the user creates more documents.
 
 - [x] Rename, delete, duplicate, and archive notebooks.
 - [x] Add folders.
-- [x] Add sorting, search, recent notebooks, and notebook thumbnails.
+- [x] Add sorting, search, and notebook thumbnails.
+- [x] Replace the flat library grid with a responsive bookshelf and remove the
+  duplicate Recent notebooks strip while preserving Recent sorting.
 
 ### Post-MVP 3: PDF Study Workflow
 

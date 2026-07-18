@@ -1,0 +1,4 @@
+interface:
+  display_name: "InkNest UI/UX Designer"
+  short_description: "Design and review InkNest user experiences"
+  default_prompt: "Use $inknest-ui-ux to design an implementation-ready InkNest user experience for this requirement."

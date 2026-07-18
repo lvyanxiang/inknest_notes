@@ -2,9 +2,9 @@
 
 ## Current
 
-- Milestone: Post-MVP PDF and Study Workflow - Original Page Dimensions (complete)
+- Milestone: Library Bookshelf Home (complete)
 - Next task: No additional implementation task is selected; choose the next concrete priority before entering Post-MVP 6-9, and keep sync and backup paused.
-- Last completed: Imported each PDF page using its source width and height in PDF points, with 768x1024 fallback for unavailable or invalid metadata.
+- Last completed: Removed the duplicate Recent notebooks strip and replaced the flat library grid with an accessible responsive bookshelf while preserving Recent sorting, search, folders, archive, and notebook actions.
 
 ## Decisions
 
@@ -12,6 +12,9 @@
 - Use this file as the short resume point for future sessions.
 - Keep the first product direction iPadOS/iOS-first, handwriting-first, and paged-notebook based.
 - Use project skill `.codex/skills/inknest-project` to recover context without rereading the whole repo.
+- Use `$inknest-project` as the single entry for new or changed requirements: always run `$inknest-product-manager`, and also run `$inknest-ui-ux` when visible or interactive behavior changes.
+- Keep small requirement analysis in the task response; create `PRODUCT_BRIEF.md` and `UI_UX_SPEC.md` under `docs/product/features/<feature-slug>/` for medium or large work, and record only accepted durable decisions in the global product/design logs.
+- When no implementation task is selected, product analysis may recommend candidates but must not automatically start Post-MVP 6-9 or infer work from plain roadmap bullets.
 - Keep normal `$inknest-project` work focused on code, roadmap, and product implementation; do not automatically update task book or opening report during development tasks.
 - Use `$inknest-academic-docs` for `docs/academic/GRADUATION_TASK_BOOK.md`, `docs/academic/OPENING_REPORT.md`, academic writing requirements, graduation schedule, and formal reference maintenance.
 - Follow `docs/academic/ACADEMIC_WRITING_REQUIREMENTS.md` before updating academic graduation documents through `$inknest-academic-docs`.
@@ -57,6 +60,8 @@
 - Store folders as first-class repository metadata; keep folders one level deep for now, and use `Notebook.folderId` to move notebooks between the root library and a folder.
 - Keep library search and sort as UI-level derived state over repository results for now.
 - Render first-pass notebook thumbnails from the first page's saved strokes plus lightweight PDF/page markers before adding cached PDF bitmap thumbnails.
+- Keep Recent as a library sort mode, but do not duplicate recently updated notebooks in a separate home-screen strip.
+- Use one lazy responsive bookshelf for folders and notebooks, with whole-cover open targets and distinct accessible overflow actions.
 - Store blank-page insertion in the repository layer; inserted pages inherit the nearest page size but start without PDF background or strokes.
 - Store imported PDF outlines on `Notebook.pdfOutlines`, keyed to notebook page IDs so page insertion and reordering do not break outline navigation.
 - Store user page bookmarks on `Notebook.bookmarkedPageIds` and persist them through the repository layer.
@@ -239,6 +244,9 @@
 - `flutter test` passed with 81 tests after preserving imported PDF page dimensions.
 - `flutter analyze` passed after preserving imported PDF page dimensions.
 - `git diff --check` passed after preserving imported PDF page dimensions.
+- Skill Creator `quick_validate.py` passed for `$inknest-product-manager`, `$inknest-ui-ux`, and the updated `$inknest-project`.
+- Read-only forward testing confirmed that an underspecified WebDAV request stops at product/UI scope decisions instead of modifying code.
+- `git diff --check` passed after adding the product and UI/UX workflow skills.
 - `git diff --check` passed after favorites toolbar.
 - `git diff --check` passed after adding graduation task book and opening report drafts.
 - `git diff --check` passed after retitling graduation docs for Flutter and Python.
@@ -252,6 +260,10 @@
 - `git diff --check` passed after formalizing Python module wording in the graduation task book and opening report.
 - `git diff --check` passed after removing submit-inappropriate maintenance wording from the graduation task book and opening report.
 - `git diff --check` passed after replacing graduation document references with journal-title sources verified through the school library journal navigation page.
+- `dart format lib test` passed after the responsive library bookshelf redesign.
+- `flutter test` passed with 82 tests after the responsive library bookshelf redesign.
+- `flutter analyze` passed after the responsive library bookshelf redesign.
+- `git diff --check` passed after the responsive library bookshelf redesign.
 - `git diff --check` passed after re-screening graduation document references against school library journal coverage years.
 - `git diff --check` passed after splitting academic document maintenance into `$inknest-academic-docs`.
 - `git diff --check` passed after replacing graduation references with 2022-2025 journal papers and adding one-to-one body citations.
