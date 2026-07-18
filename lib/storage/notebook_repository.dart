@@ -69,6 +69,8 @@ abstract class NotebookRepository {
 
   Future<Notebook> movePage(Notebook notebook, String pageId, int newIndex);
 
+  Future<NotePage> rotatePageClockwise(Notebook notebook, String pageId);
+
   Future<NotePage> loadPage(Notebook notebook, String pageId);
 
   Future<void> savePage(Notebook notebook, NotePage page);

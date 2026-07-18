@@ -362,7 +362,11 @@ class FileNotebookRepository implements NotebookRepository {
     await _replaceNotebook(updatedNotebook);
     await savePage(
       updatedNotebook,
-      _emptyPage(pageId, template: _templateForNewBlankPage(referencePage)),
+      _emptyPage(
+        pageId,
+        rotationQuarterTurns: _rotationForNewBlankPage(referencePage),
+        template: _templateForNewBlankPage(referencePage),
+      ),
     );
     return updatedNotebook;
   }
@@ -386,6 +390,7 @@ class FileNotebookRepository implements NotebookRepository {
         id: pageId,
         width: referencePage.width,
         height: referencePage.height,
+        rotationQuarterTurns: _rotationForNewBlankPage(referencePage),
         template: _templateForNewBlankPage(referencePage),
       ),
     );
@@ -411,6 +416,7 @@ class FileNotebookRepository implements NotebookRepository {
       id: newPageId,
       width: sourcePage.width,
       height: sourcePage.height,
+      rotationQuarterTurns: sourcePage.rotationQuarterTurns,
       template: sourcePage.template,
       pdfBackground: sourcePage.pdfBackground,
       strokes: sourcePage.strokes,
@@ -476,6 +482,16 @@ class FileNotebookRepository implements NotebookRepository {
 
     await _replaceNotebook(updatedNotebook);
     return updatedNotebook;
+  }
+
+  @override
+  Future<NotePage> rotatePageClockwise(Notebook notebook, String pageId) async {
+    final page = await loadPage(notebook, pageId);
+    final rotatedPage = page.copyWith(
+      rotationQuarterTurns: (page.rotationQuarterTurns + 1) % 4,
+    );
+    await savePage(notebook, rotatedPage);
+    return rotatedPage;
   }
 
   @override
@@ -797,12 +813,14 @@ class FileNotebookRepository implements NotebookRepository {
 
   NotePage _emptyPage(
     String pageId, {
+    int rotationQuarterTurns = 0,
     NotePageTemplate template = NotePageTemplate.blank,
   }) {
     return NotePage(
       id: pageId,
       width: _pageWidth,
       height: _pageHeight,
+      rotationQuarterTurns: rotationQuarterTurns,
       template: template,
     );
   }
@@ -821,6 +839,10 @@ class FileNotebookRepository implements NotebookRepository {
       return NotePageTemplate.blank;
     }
     return referencePage.template;
+  }
+
+  int _rotationForNewBlankPage(NotePage? referencePage) {
+    return referencePage?.rotationQuarterTurns ?? 0;
   }
 
   String _nextPageId(List<String> pageIds) {

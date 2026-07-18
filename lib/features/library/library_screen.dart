@@ -1172,8 +1172,13 @@ class _NotebookThumbnailPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final pageWidth = page.width <= 0 ? size.width : page.width;
     final pageHeight = page.height <= 0 ? size.height : page.height;
-    final scale = math.min(size.width / pageWidth, size.height / pageHeight);
-    final previewSize = Size(pageWidth * scale, pageHeight * scale);
+    final displayWidth = page.isSideways ? pageHeight : pageWidth;
+    final displayHeight = page.isSideways ? pageWidth : pageHeight;
+    final scale = math.min(
+      size.width / displayWidth,
+      size.height / displayHeight,
+    );
+    final previewSize = Size(displayWidth * scale, displayHeight * scale);
     final previewOffset = Offset(
       (size.width - previewSize.width) / 2,
       (size.height - previewSize.height) / 2,
@@ -1182,28 +1187,23 @@ class _NotebookThumbnailPainter extends CustomPainter {
 
     canvas.drawRect(Offset.zero & size, Paint()..color = Colors.white);
 
-    if (page.pdfBackground != null) {
-      final pdfPaint = Paint()..color = const Color(0xFFFFF6E2);
-      canvas.drawRect(previewRect, pdfPaint);
-
-      final linePaint = Paint()
-        ..color = const Color(0xFFE7DCC4)
-        ..strokeWidth = 1;
-      for (var y = previewRect.top + 14; y < previewRect.bottom; y += 14) {
-        canvas.drawLine(
-          Offset(previewRect.left + 8, y),
-          Offset(previewRect.right - 8, y),
-          linePaint,
-        );
-      }
-    }
-
     canvas.save();
     canvas.clipRect(previewRect);
     canvas.translate(previewOffset.dx, previewOffset.dy);
     canvas.scale(scale);
+    _applyPageRotation(canvas, page, pageWidth, pageHeight);
 
-    if (page.pdfBackground == null) {
+    if (page.pdfBackground != null) {
+      final pdfPaint = Paint()..color = const Color(0xFFFFF6E2);
+      canvas.drawRect(Offset.zero & Size(pageWidth, pageHeight), pdfPaint);
+
+      final linePaint = Paint()
+        ..color = const Color(0xFFE7DCC4)
+        ..strokeWidth = 1 / scale;
+      for (var y = 14.0; y < pageHeight; y += 14) {
+        canvas.drawLine(Offset(8, y), Offset(pageWidth - 8, y), linePaint);
+      }
+    } else {
       paintPageTemplate(
         canvas,
         Size(pageWidth, pageHeight),
@@ -1242,6 +1242,31 @@ class _NotebookThumbnailPainter extends CustomPainter {
     }
 
     canvas.restore();
+  }
+
+  void _applyPageRotation(
+    Canvas canvas,
+    NotePage page,
+    double pageWidth,
+    double pageHeight,
+  ) {
+    switch (page.rotationQuarterTurns) {
+      case 1:
+        canvas
+          ..translate(pageHeight, 0)
+          ..rotate(math.pi / 2);
+        break;
+      case 2:
+        canvas
+          ..translate(pageWidth, pageHeight)
+          ..rotate(math.pi);
+        break;
+      case 3:
+        canvas
+          ..translate(0, pageWidth)
+          ..rotate(math.pi * 3 / 2);
+        break;
+    }
   }
 
   @override

@@ -111,6 +111,52 @@ void main() {
     );
   });
 
+  testWidgets('rotates a page from its thumbnail action menu', (
+    WidgetTester tester,
+  ) async {
+    final repository = InMemoryNotebookRepository();
+    final notebook = await repository.createNotebook(title: 'Rotated notes');
+
+    await tester.pumpWidget(InkNestApp(notebookRepository: repository));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(notebook.title));
+    await tester.pumpAndSettle();
+
+    final portraitSurface = find.byKey(
+      const ValueKey('rotated-page-surface-page-1-0'),
+    );
+    expect(
+      tester.getSize(portraitSurface).height,
+      greaterThan(tester.getSize(portraitSurface).width),
+    );
+
+    await tester.tap(find.byTooltip('Page 1 actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Rotate page clockwise'));
+    await tester.pumpAndSettle();
+
+    final landscapeSurface = find.byKey(
+      const ValueKey('rotated-page-surface-page-1-1'),
+    );
+    expect(
+      tester.getSize(landscapeSurface).width,
+      greaterThan(tester.getSize(landscapeSurface).height),
+    );
+    expect(
+      (await repository.loadPage(notebook, 'page-1')).rotationQuarterTurns,
+      1,
+    );
+
+    final canvas = find.byType(DrawingCanvas);
+    final gesture = await tester.startGesture(tester.getCenter(canvas));
+    await gesture.moveBy(const Offset(32, 24));
+    await gesture.up();
+    await tester.pump();
+
+    final undoButton = find.widgetWithIcon(IconButton, Icons.undo);
+    expect(tester.widget<IconButton>(undoButton).onPressed, isNotNull);
+  });
+
   testWidgets('searches Smart Ink text and highlights it after a page jump', (
     WidgetTester tester,
   ) async {

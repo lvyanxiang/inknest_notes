@@ -1343,6 +1343,27 @@ class _EditorScreenState extends State<EditorScreen> {
     unawaited(_loadPageThumbnails());
   }
 
+  Future<void> _rotatePageClockwise(String pageId) async {
+    await _savePage();
+
+    final rotatedPage = await widget.notebookRepository.rotatePageClockwise(
+      _notebook,
+      pageId,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _pagesById[pageId] = rotatedPage;
+      if (_currentPageId == pageId) {
+        _page = rotatedPage;
+      }
+    });
+    unawaited(_loadPageThumbnails());
+  }
+
   Future<void> _exportPdf() async {
     if (_isExporting) {
       return;
@@ -1673,6 +1694,7 @@ class _EditorScreenState extends State<EditorScreen> {
             onDeletePage: (pageId) => unawaited(_deletePage(pageId)),
             onMovePage: (pageId, newIndex) =>
                 unawaited(_movePage(pageId, newIndex)),
+            onRotatePage: (pageId) => unawaited(_rotatePageClockwise(pageId)),
           ),
         ],
       ),
@@ -1686,7 +1708,13 @@ class _EditorScreenState extends State<EditorScreen> {
           key: ValueKey('viewport-${page.id}'),
           page: page,
           fingerPanEnabled: _fingerPanEnabled,
-          child: _buildPageSurface(page),
+          child: RotatedBox(
+            key: ValueKey(
+              'rotated-page-surface-${page.id}-${page.rotationQuarterTurns}',
+            ),
+            quarterTurns: page.rotationQuarterTurns,
+            child: _buildPageSurface(page),
+          ),
         ),
         Positioned(
           left: 16,
@@ -2718,7 +2746,9 @@ class _ZoomablePageViewportState extends State<_ZoomablePageViewport> {
   @override
   void didUpdateWidget(covariant _ZoomablePageViewport oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.page.id != oldWidget.page.id) {
+    if (widget.page.id != oldWidget.page.id ||
+        widget.page.rotationQuarterTurns !=
+            oldWidget.page.rotationQuarterTurns) {
       _resetZoom();
     }
     if (widget.fingerPanEnabled != oldWidget.fingerPanEnabled) {
@@ -2924,11 +2954,14 @@ class _ZoomablePageViewportState extends State<_ZoomablePageViewport> {
     final availableWidth = math.max(0.0, constraints.maxWidth - _padding * 2);
     final availableHeight = math.max(0.0, constraints.maxHeight - _padding * 2);
     final scale = math.min(
-      availableWidth / widget.page.width,
-      availableHeight / widget.page.height,
+      availableWidth / widget.page.displayWidth,
+      availableHeight / widget.page.displayHeight,
     );
 
-    return Size(widget.page.width * scale, widget.page.height * scale);
+    return Size(
+      widget.page.displayWidth * scale,
+      widget.page.displayHeight * scale,
+    );
   }
 
   @override
@@ -3048,6 +3081,7 @@ class _PageNavigator extends StatelessWidget {
     required this.onDuplicatePage,
     required this.onDeletePage,
     required this.onMovePage,
+    required this.onRotatePage,
   });
 
   final List<String> pageIds;
@@ -3060,6 +3094,7 @@ class _PageNavigator extends StatelessWidget {
   final ValueChanged<String> onDuplicatePage;
   final ValueChanged<String> onDeletePage;
   final void Function(String pageId, int newIndex) onMovePage;
+  final ValueChanged<String> onRotatePage;
 
   @override
   Widget build(BuildContext context) {
@@ -3095,6 +3130,7 @@ class _PageNavigator extends StatelessWidget {
                     onDelete: () => onDeletePage(pageId),
                     onMoveLeft: () => onMovePage(pageId, index - 1),
                     onMoveRight: () => onMovePage(pageId, index + 1),
+                    onRotate: () => onRotatePage(pageId),
                   ),
                 ),
               Center(
@@ -3129,6 +3165,7 @@ class _PageThumbnailButton extends StatelessWidget {
     required this.onDelete,
     required this.onMoveLeft,
     required this.onMoveRight,
+    required this.onRotate,
   });
 
   final String pageId;
@@ -3146,6 +3183,7 @@ class _PageThumbnailButton extends StatelessWidget {
   final VoidCallback onDelete;
   final VoidCallback onMoveLeft;
   final VoidCallback onMoveRight;
+  final VoidCallback onRotate;
 
   void _handleAction(_PageAction action) {
     switch (action) {
@@ -3166,6 +3204,9 @@ class _PageThumbnailButton extends StatelessWidget {
         break;
       case _PageAction.moveRight:
         onMoveRight();
+        break;
+      case _PageAction.rotateClockwise:
+        onRotate();
         break;
     }
   }
@@ -3270,6 +3311,7 @@ enum _PageAction {
   delete,
   moveLeft,
   moveRight,
+  rotateClockwise,
 }
 
 class _PageActionMenu extends StatelessWidget {
@@ -3311,6 +3353,11 @@ class _PageActionMenu extends StatelessWidget {
             value: _PageAction.duplicate,
             icon: Icons.copy,
             label: 'Duplicate page',
+          ),
+          _pageActionItem(
+            value: _PageAction.rotateClockwise,
+            icon: Icons.rotate_right,
+            label: 'Rotate page clockwise',
           ),
           _pageActionItem(
             value: _PageAction.delete,
@@ -3375,20 +3422,28 @@ class _PageThumbnailPreview extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        if (page.pdfBackground case final background?)
-          PdfPageBackgroundView(
-            key: ValueKey(
-              'page-thumbnail-background-${background.filePath}-${background.pageNumber}',
-            ),
-            background: background,
-          )
-        else
-          ColoredBox(color: colorScheme.surface),
-        CustomPaint(painter: _PageThumbnailPainter(page: page)),
-      ],
+    return Center(
+      child: AspectRatio(
+        aspectRatio: page.displayWidth / page.displayHeight,
+        child: RotatedBox(
+          quarterTurns: page.rotationQuarterTurns,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (page.pdfBackground case final background?)
+                PdfPageBackgroundView(
+                  key: ValueKey(
+                    'page-thumbnail-background-${background.filePath}-${background.pageNumber}',
+                  ),
+                  background: background,
+                )
+              else
+                ColoredBox(color: colorScheme.surface),
+              CustomPaint(painter: _PageThumbnailPainter(page: page)),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

@@ -109,6 +109,33 @@ void main() {
     expect(backgroundRenderer.renderedPages.single.id, 'page-1');
   });
 
+  test('exports rotated pages with swapped PDF dimensions', () async {
+    final repository = InMemoryNotebookRepository();
+    final notebook = await repository.createNotebook(title: 'Landscape Notes');
+    await repository.savePage(
+      notebook,
+      NotePage(
+        id: 'page-1',
+        width: 768,
+        height: 1024,
+        rotationQuarterTurns: 1,
+        template: NotePageTemplate.ruled,
+        strokes: [_sampleStroke()],
+      ),
+    );
+
+    final bytes = await NotebookPdfExporter(
+      notebookRepository: repository,
+      backgroundRenderer: _UnexpectedBackgroundRenderer(),
+    ).exportNotebook(notebook);
+    final pdfSource = String.fromCharCodes(bytes);
+
+    expect(
+      RegExp(r'/MediaBox\s*\[\s*0\s+0\s+1024\s+768\s*\]').hasMatch(pdfSource),
+      isTrue,
+    );
+  });
+
   test('reuses rendered PDF backgrounds during a single export', () async {
     final repository = InMemoryNotebookRepository();
     var notebook = await repository.createNotebook(title: 'Duplicated PDF');

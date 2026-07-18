@@ -52,10 +52,13 @@ class NotebookPdfExporter {
 
         document.addPage(
           pw.Page(
-            pageFormat: pdf.PdfPageFormat(page.width, page.height),
+            pageFormat: pdf.PdfPageFormat(
+              page.displayWidth,
+              page.displayHeight,
+            ),
             margin: pw.EdgeInsets.zero,
             build: (context) =>
-                _buildPage(page, background, pageImages, textBoxes),
+                _buildRotatedPage(page, background, pageImages, textBoxes),
           ),
         );
       }
@@ -67,6 +70,28 @@ class NotebookPdfExporter {
         await _backgroundRenderer.dispose();
       }
     }
+  }
+
+  pw.Widget _buildRotatedPage(
+    NotePage page,
+    RenderedPdfPageBackground? background,
+    List<_RenderedPageImage> pageImages,
+    List<_RenderedTextBox> textBoxes,
+  ) {
+    final content = pw.SizedBox(
+      width: page.width,
+      height: page.height,
+      child: _buildPage(page, background, pageImages, textBoxes),
+    );
+    if (page.rotationQuarterTurns == 0) {
+      return content;
+    }
+
+    return pw.Transform.rotateBox(
+      angle: -page.rotationQuarterTurns * math.pi / 2,
+      unconstrained: true,
+      child: content,
+    );
   }
 
   Future<RenderedPdfPageBackground?> _renderBackground(NotePage page) {

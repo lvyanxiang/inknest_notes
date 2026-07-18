@@ -12,17 +12,19 @@ class NotePage {
     required this.id,
     required this.width,
     required this.height,
+    this.rotationQuarterTurns = 0,
     this.template = NotePageTemplate.blank,
     this.pdfBackground,
     this.strokes = const [],
     this.textBoxes = const [],
     this.images = const [],
     this.shapes = const [],
-  });
+  }) : assert(rotationQuarterTurns >= 0 && rotationQuarterTurns < 4);
 
   final String id;
   final double width;
   final double height;
+  final int rotationQuarterTurns;
   final NotePageTemplate template;
   final PdfBackground? pdfBackground;
   final List<Stroke> strokes;
@@ -30,11 +32,20 @@ class NotePage {
   final List<NoteImage> images;
   final List<NoteShape> shapes;
 
+  bool get isSideways => rotationQuarterTurns.isOdd;
+
+  double get displayWidth => isSideways ? height : width;
+
+  double get displayHeight => isSideways ? width : height;
+
   factory NotePage.fromJson(Map<String, Object?> json) {
     return NotePage(
       id: json['id']! as String,
       width: (json['width']! as num).toDouble(),
       height: (json['height']! as num).toDouble(),
+      rotationQuarterTurns: _rotationQuarterTurnsFromJson(
+        json['rotationQuarterTurns'],
+      ),
       template: notePageTemplateFromJson(json['template']),
       pdfBackground: json['pdfBackground'] == null
           ? null
@@ -65,6 +76,8 @@ class NotePage {
       'id': id,
       'width': width,
       'height': height,
+      if (rotationQuarterTurns != 0)
+        'rotationQuarterTurns': rotationQuarterTurns,
       if (template != NotePageTemplate.blank) 'template': template.name,
       if (pdfBackground != null) 'pdfBackground': pdfBackground!.toJson(),
       'strokes': strokes.map((stroke) => stroke.toJson()).toList(),
@@ -75,6 +88,7 @@ class NotePage {
   }
 
   NotePage copyWith({
+    int? rotationQuarterTurns,
     NotePageTemplate? template,
     PdfBackground? pdfBackground,
     List<Stroke>? strokes,
@@ -86,6 +100,7 @@ class NotePage {
       id: id,
       width: width,
       height: height,
+      rotationQuarterTurns: rotationQuarterTurns ?? this.rotationQuarterTurns,
       template: template ?? this.template,
       pdfBackground: pdfBackground ?? this.pdfBackground,
       strokes: strokes ?? this.strokes,
@@ -94,4 +109,12 @@ class NotePage {
       shapes: shapes ?? this.shapes,
     );
   }
+}
+
+int _rotationQuarterTurnsFromJson(Object? value) {
+  if (value is! num) {
+    return 0;
+  }
+  final normalized = value.toInt() % 4;
+  return normalized < 0 ? normalized + 4 : normalized;
 }

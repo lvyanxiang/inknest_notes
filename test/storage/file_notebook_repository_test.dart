@@ -310,6 +310,7 @@ void main() {
         id: 'page-1',
         width: 768,
         height: 1024,
+        rotationQuarterTurns: 1,
         template: NotePageTemplate.grid,
         textBoxes: const [
           NoteTextBox(
@@ -365,6 +366,7 @@ void main() {
     expect(duplicatedPage.images.single.id, 'image-1');
     expect(duplicatedPage.shapes.single.id, 'shape-1');
     expect(duplicatedPage.template, NotePageTemplate.grid);
+    expect(duplicatedPage.rotationQuarterTurns, 1);
 
     notebook = await repository.movePage(notebook, 'page-2', 0);
 
@@ -382,6 +384,32 @@ void main() {
 
     final reloadedNotebook = (await repository.listNotebooks()).single;
     expect(reloadedNotebook.pageIds, ['page-2', 'page-3']);
+  });
+
+  test('persists clockwise page rotation and wraps after four turns', () async {
+    final notebook = await repository.createNotebook(title: 'Rotated Notes');
+
+    var rotatedPage = await repository.rotatePageClockwise(notebook, 'page-1');
+    expect(rotatedPage.rotationQuarterTurns, 1);
+    expect(rotatedPage.displayWidth, 1024);
+    expect(rotatedPage.displayHeight, 768);
+
+    final reloadedRepository = FileNotebookRepository(
+      rootDirectory: tempDirectory,
+    );
+    final reloadedNotebook = (await reloadedRepository.listNotebooks()).single;
+    rotatedPage = await reloadedRepository.loadPage(reloadedNotebook, 'page-1');
+    expect(rotatedPage.rotationQuarterTurns, 1);
+
+    for (var turn = 0; turn < 3; turn++) {
+      rotatedPage = await reloadedRepository.rotatePageClockwise(
+        reloadedNotebook,
+        'page-1',
+      );
+    }
+    expect(rotatedPage.rotationQuarterTurns, 0);
+    expect(rotatedPage.displayWidth, 768);
+    expect(rotatedPage.displayHeight, 1024);
   });
 
   test('inserts blank pages around PDF pages persistently', () async {
@@ -433,6 +461,7 @@ void main() {
         id: 'page-1',
         width: 768,
         height: 1024,
+        rotationQuarterTurns: 3,
         template: NotePageTemplate.ruled,
       ),
     );
@@ -442,6 +471,10 @@ void main() {
       (await repository.loadPage(notebook, 'page-2')).template,
       NotePageTemplate.ruled,
     );
+    expect(
+      (await repository.loadPage(notebook, 'page-2')).rotationQuarterTurns,
+      3,
+    );
 
     await repository.savePage(
       notebook,
@@ -449,6 +482,7 @@ void main() {
         id: 'page-2',
         width: 768,
         height: 1024,
+        rotationQuarterTurns: 1,
         template: NotePageTemplate.dotted,
       ),
     );
@@ -457,6 +491,10 @@ void main() {
     expect(
       (await repository.loadPage(notebook, 'page-3')).template,
       NotePageTemplate.dotted,
+    );
+    expect(
+      (await repository.loadPage(notebook, 'page-3')).rotationQuarterTurns,
+      1,
     );
   });
 

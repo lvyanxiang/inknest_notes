@@ -266,6 +266,7 @@ class InMemoryNotebookRepository implements NotebookRepository {
       id: pageId,
       width: _pageWidth,
       height: _pageHeight,
+      rotationQuarterTurns: _rotationForNewBlankPage(referencePage),
       template: _templateForNewBlankPage(referencePage),
     );
     return updatedNotebook;
@@ -288,6 +289,7 @@ class InMemoryNotebookRepository implements NotebookRepository {
       id: pageId,
       width: referencePage.width,
       height: referencePage.height,
+      rotationQuarterTurns: _rotationForNewBlankPage(referencePage),
       template: _templateForNewBlankPage(referencePage),
     );
     return updatedNotebook;
@@ -314,6 +316,7 @@ class InMemoryNotebookRepository implements NotebookRepository {
       id: newPageId,
       width: sourcePage.width,
       height: sourcePage.height,
+      rotationQuarterTurns: sourcePage.rotationQuarterTurns,
       template: sourcePage.template,
       pdfBackground: sourcePage.pdfBackground,
       strokes: sourcePage.strokes,
@@ -377,6 +380,16 @@ class InMemoryNotebookRepository implements NotebookRepository {
   }
 
   @override
+  Future<NotePage> rotatePageClockwise(Notebook notebook, String pageId) async {
+    final page = await loadPage(notebook, pageId);
+    final rotatedPage = page.copyWith(
+      rotationQuarterTurns: (page.rotationQuarterTurns + 1) % 4,
+    );
+    await savePage(notebook, rotatedPage);
+    return rotatedPage;
+  }
+
+  @override
   Future<NotePage> loadPage(Notebook notebook, String pageId) async {
     return _pages[_pageKey(notebook, pageId)] ??
         NotePage(id: pageId, width: _pageWidth, height: _pageHeight);
@@ -427,6 +440,10 @@ class InMemoryNotebookRepository implements NotebookRepository {
       return NotePageTemplate.blank;
     }
     return referencePage.template;
+  }
+
+  int _rotationForNewBlankPage(NotePage? referencePage) {
+    return referencePage?.rotationQuarterTurns ?? 0;
   }
 
   String _nextPageId(List<String> pageIds) {

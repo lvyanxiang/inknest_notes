@@ -8,6 +8,7 @@ void main() {
       id: 'page-1',
       width: 768,
       height: 1024,
+      rotationQuarterTurns: 1,
       template: NotePageTemplate.cornell,
     );
 
@@ -20,7 +21,13 @@ void main() {
     });
 
     expect(reloaded.template, NotePageTemplate.cornell);
+    expect(reloaded.rotationQuarterTurns, 1);
+    expect(reloaded.displayWidth, 1024);
+    expect(reloaded.displayHeight, 768);
     expect(legacyPage.template, NotePageTemplate.blank);
+    expect(legacyPage.rotationQuarterTurns, 0);
+    expect(legacyPage.displayWidth, 768);
+    expect(legacyPage.displayHeight, 1024);
   });
 
   test('falls back to blank for unknown future template values', () {
@@ -33,5 +40,18 @@ void main() {
     });
 
     expect(page.template, NotePageTemplate.blank);
+  });
+
+  test('normalizes persisted page rotation to a valid quarter turn', () {
+    final page = NotePage.fromJson({
+      'id': 'page-1',
+      'width': 768,
+      'height': 1024,
+      'rotationQuarterTurns': -1,
+      'strokes': <Object?>[],
+    });
+
+    expect(page.rotationQuarterTurns, 3);
+    expect(page.isSideways, isTrue);
   });
 }
