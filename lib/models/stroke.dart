@@ -12,6 +12,7 @@ class Stroke {
     required this.color,
     required this.width,
     required this.points,
+    this.audioRecordingId,
   });
 
   final String id;
@@ -19,6 +20,7 @@ class Stroke {
   final Color color;
   final double width;
   final List<StrokePoint> points;
+  final String? audioRecordingId;
 
   bool get isHighlighter => tool == ToolType.highlighter;
 
@@ -32,6 +34,7 @@ class Stroke {
           .cast<Map<String, Object?>>()
           .map(StrokePoint.fromJson)
           .toList(),
+      audioRecordingId: json['audioRecordingId'] as String?,
     );
   }
 
@@ -42,16 +45,25 @@ class Stroke {
       'color': color.toARGB32(),
       'width': width,
       'points': points.map((point) => point.toJson()).toList(),
+      if (audioRecordingId != null) 'audioRecordingId': audioRecordingId,
     };
   }
 
-  Stroke copyWith({List<StrokePoint>? points}) {
+  Stroke copyWith({
+    List<StrokePoint>? points,
+    Object? audioRecordingId = _audioRecordingIdNotChanged,
+  }) {
     return Stroke(
       id: id,
       tool: tool,
       color: color,
       width: width,
       points: points ?? this.points,
+      audioRecordingId: audioRecordingId == _audioRecordingIdNotChanged
+          ? this.audioRecordingId
+          : audioRecordingId as String?,
     );
   }
 }
+
+const Object _audioRecordingIdNotChanged = Object();

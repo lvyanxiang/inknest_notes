@@ -195,6 +195,29 @@ void main() {
     expect(reloadedRecording.pageId, 'page-1');
   });
 
+  test('page saves preserve audio metadata added to the index', () async {
+    final staleNotebook = await repository.createNotebook(title: 'Lecture');
+    final preparedRecording = await repository.prepareAudioRecording(
+      staleNotebook,
+      pageId: 'page-1',
+    );
+    File(preparedRecording.filePath).writeAsBytesSync([1, 2, 3], flush: true);
+
+    await repository.saveAudioRecording(
+      staleNotebook,
+      preparedRecording.copyWith(duration: const Duration(seconds: 8)),
+    );
+    await repository.savePage(
+      staleNotebook,
+      const NotePage(id: 'page-1', width: 768, height: 1024),
+    );
+
+    final reloadedNotebook = (await repository.listNotebooks()).single;
+
+    expect(reloadedNotebook.audioRecordings, hasLength(1));
+    expect(reloadedNotebook.audioRecordings.single.id, preparedRecording.id);
+  });
+
   test('serializes concurrent page saves without corrupting index', () async {
     final notebook = await repository.createNotebook(title: 'Fast Edits');
 

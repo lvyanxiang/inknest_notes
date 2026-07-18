@@ -15,6 +15,9 @@ class DrawingCanvas extends StatefulWidget {
     required this.fingerPanEnabled,
     required this.onStrokeComplete,
     required this.onErase,
+    this.replayRecordingId,
+    this.replayStartedAt,
+    this.replayPosition,
   });
 
   final NotePage page;
@@ -22,6 +25,9 @@ class DrawingCanvas extends StatefulWidget {
   final bool fingerPanEnabled;
   final ValueChanged<Stroke> onStrokeComplete;
   final ValueChanged<List<StrokePoint>> onErase;
+  final String? replayRecordingId;
+  final DateTime? replayStartedAt;
+  final Duration? replayPosition;
 
   @override
   State<DrawingCanvas> createState() => _DrawingCanvasState();
@@ -175,6 +181,9 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
         child: CustomPaint(
           painter: _StrokePainter(
             strokes: [...widget.page.strokes, ?_activeStroke],
+            replayRecordingId: widget.replayRecordingId,
+            replayStartedAt: widget.replayStartedAt,
+            replayPosition: widget.replayPosition,
           ),
           child: const SizedBox.expand(),
         ),
@@ -184,14 +193,23 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
 }
 
 class _StrokePainter extends CustomPainter {
-  const _StrokePainter({required this.strokes});
+  const _StrokePainter({
+    required this.strokes,
+    required this.replayRecordingId,
+    required this.replayStartedAt,
+    required this.replayPosition,
+  });
 
   final List<Stroke> strokes;
+  final String? replayRecordingId;
+  final DateTime? replayStartedAt;
+  final Duration? replayPosition;
 
   @override
   void paint(Canvas canvas, Size size) {
     for (final stroke in strokes) {
-      if (stroke.points.isEmpty) {
+      final points = _visiblePoints(stroke);
+      if (points.isEmpty) {
         continue;
       }
 
@@ -205,21 +223,41 @@ class _StrokePainter extends CustomPainter {
             : BlendMode.srcOver
         ..style = PaintingStyle.stroke;
 
-      if (stroke.points.length == 1) {
+      if (points.length == 1) {
         canvas.drawCircle(
-          stroke.points.first.offset,
+          points.first.offset,
           stroke.width / 2,
           paint..style = PaintingStyle.fill,
         );
         continue;
       }
 
-      canvas.drawPath(StrokeGeometry.buildSmoothPath(stroke.points), paint);
+      canvas.drawPath(StrokeGeometry.buildSmoothPath(points), paint);
     }
+  }
+
+  List<StrokePoint> _visiblePoints(Stroke stroke) {
+    final recordingId = replayRecordingId;
+    final startedAt = replayStartedAt;
+    final position = replayPosition;
+    if (recordingId == null ||
+        startedAt == null ||
+        position == null ||
+        stroke.audioRecordingId != recordingId) {
+      return stroke.points;
+    }
+
+    final cutoff = startedAt.add(position);
+    return stroke.points
+        .takeWhile((point) => !point.time.isAfter(cutoff))
+        .toList();
   }
 
   @override
   bool shouldRepaint(covariant _StrokePainter oldDelegate) {
-    return oldDelegate.strokes != strokes;
+    return oldDelegate.strokes != strokes ||
+        oldDelegate.replayRecordingId != replayRecordingId ||
+        oldDelegate.replayStartedAt != replayStartedAt ||
+        oldDelegate.replayPosition != replayPosition;
   }
 }

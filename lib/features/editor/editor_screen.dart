@@ -28,6 +28,7 @@ import 'package:inknest_notes/models/stroke_geometry.dart';
 import 'package:inknest_notes/models/stroke_point.dart';
 import 'package:inknest_notes/models/tool.dart';
 import 'package:inknest_notes/storage/notebook_repository.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:record/record.dart';
 
 class EditorScreen extends StatefulWidget {
@@ -60,6 +61,15 @@ class _EditorScreenState extends State<EditorScreen> {
   DateTime? _activeAudioRecordingStartedAt;
   Duration _activeAudioElapsed = Duration.zero;
   Timer? _audioTimer;
+  AudioPlayer? _audioPlayer;
+  StreamSubscription<Duration>? _audioPositionSubscription;
+  StreamSubscription<PlayerState>? _audioPlayerStateSubscription;
+  NotebookAudioRecording? _audioPlaybackRecording;
+  Duration _audioPlaybackPosition = Duration.zero;
+  Duration _audioPlaybackDuration = Duration.zero;
+  bool _isAudioPlaybackLoading = false;
+  bool _isAudioPlaying = false;
+  int _audioPlaybackGeneration = 0;
   NotePage? _page;
 
   @override
@@ -74,7 +84,16 @@ class _EditorScreenState extends State<EditorScreen> {
   @override
   void dispose() {
     _audioTimer?.cancel();
+    final positionSubscription = _audioPositionSubscription;
+    final playerStateSubscription = _audioPlayerStateSubscription;
+    if (positionSubscription != null) {
+      unawaited(positionSubscription.cancel());
+    }
+    if (playerStateSubscription != null) {
+      unawaited(playerStateSubscription.cancel());
+    }
     unawaited(_disposeAudioRecorder());
+    unawaited(_disposeAudioPlayer());
     super.dispose();
   }
 
@@ -87,6 +106,36 @@ class _EditorScreenState extends State<EditorScreen> {
     } catch (_) {
       // Widget tests do not register the recorder plugin.
     }
+  }
+
+  Future<void> _disposeAudioPlayer() async {
+    final player = _audioPlayer;
+    if (player == null) {
+      return;
+    }
+
+    try {
+      await player.dispose();
+    } catch (_) {
+      // Widget tests do not register the player plugin.
+    }
+  }
+
+  AudioPlayer _ensureAudioPlayer() {
+    final existingPlayer = _audioPlayer;
+    if (existingPlayer != null) {
+      return existingPlayer;
+    }
+
+    final player = AudioPlayer();
+    _audioPlayer = player;
+    _audioPositionSubscription = player.positionStream.listen(
+      _handleAudioPlaybackPosition,
+    );
+    _audioPlayerStateSubscription = player.playerStateStream.listen(
+      _handleAudioPlayerState,
+    );
+    return player;
   }
 
   Future<void> _loadPage() async {
@@ -150,7 +199,11 @@ class _EditorScreenState extends State<EditorScreen> {
       return;
     }
 
-    final updatedPage = page.copyWith(strokes: [...page.strokes, stroke]);
+    final recording = _activeAudioRecording;
+    final linkedStroke = recording == null
+        ? stroke
+        : stroke.copyWith(audioRecordingId: recording.id);
+    final updatedPage = page.copyWith(strokes: [...page.strokes, linkedStroke]);
 
     setState(() {
       _page = updatedPage;
@@ -446,6 +499,238 @@ class _EditorScreenState extends State<EditorScreen> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  void _handleAudioPlaybackPosition(Duration position) {
+    final recording = _audioPlaybackRecording;
+    if (!mounted || recording == null) {
+      return;
+    }
+
+    final clampedPosition = _clampAudioPlaybackPosition(position);
+    final playbackPageId = _pageIdForAudioPlayback(recording, clampedPosition);
+    final playbackPage = playbackPageId == null
+        ? null
+        : _pagesById[playbackPageId];
+
+    setState(() {
+      _audioPlaybackPosition = clampedPosition;
+      if (playbackPageId != null &&
+          playbackPage != null &&
+          playbackPageId != _currentPageId) {
+        _currentPageId = playbackPageId;
+        _page = playbackPage;
+        _redoStack.clear();
+        _activeTextBoxId = null;
+        _activeImageId = null;
+      }
+    });
+  }
+
+  void _handleAudioPlayerState(PlayerState state) {
+    if (!mounted || _audioPlaybackRecording == null) {
+      return;
+    }
+
+    final isCompleted = state.processingState == ProcessingState.completed;
+    setState(() {
+      _isAudioPlaying = state.playing && !isCompleted;
+      if (isCompleted) {
+        _audioPlaybackPosition = _audioPlaybackDuration;
+      }
+    });
+  }
+
+  Duration _clampAudioPlaybackPosition(Duration position) {
+    final maxMilliseconds = _audioPlaybackDuration.inMilliseconds;
+    if (maxMilliseconds <= 0) {
+      return Duration.zero;
+    }
+
+    return Duration(
+      milliseconds: position.inMilliseconds.clamp(0, maxMilliseconds),
+    );
+  }
+
+  String? _pageIdForAudioPlayback(
+    NotebookAudioRecording recording,
+    Duration position,
+  ) {
+    final cutoff = recording.createdAt.add(position);
+    var pageId = recording.pageId;
+    DateTime? latestStrokeStart;
+
+    for (final candidatePageId in _notebook.pageIds) {
+      final page = _pagesById[candidatePageId];
+      if (page == null) {
+        continue;
+      }
+
+      for (final stroke in page.strokes) {
+        if (stroke.audioRecordingId != recording.id || stroke.points.isEmpty) {
+          continue;
+        }
+
+        final strokeStartedAt = stroke.points.first.time;
+        if (strokeStartedAt.isAfter(cutoff) ||
+            (latestStrokeStart != null &&
+                !strokeStartedAt.isAfter(latestStrokeStart))) {
+          continue;
+        }
+
+        latestStrokeStart = strokeStartedAt;
+        pageId = candidatePageId;
+      }
+    }
+
+    return pageId;
+  }
+
+  Future<void> _playAudioRecording(NotebookAudioRecording recording) async {
+    if (_activeAudioRecording != null || _isAudioPlaybackLoading) {
+      _showSnackBar('Stop the current recording before playback');
+      return;
+    }
+
+    final audioFile = File(recording.filePath);
+    if (!await audioFile.exists()) {
+      if (mounted) {
+        _showSnackBar('Audio file is missing');
+      }
+      return;
+    }
+
+    final playbackGeneration = ++_audioPlaybackGeneration;
+    setState(() {
+      _isAudioPlaybackLoading = true;
+      _audioPlaybackRecording = recording;
+      _audioPlaybackPosition = Duration.zero;
+      _audioPlaybackDuration = recording.duration;
+      _isAudioPlaying = false;
+    });
+
+    try {
+      final player = _ensureAudioPlayer();
+      await player.stop();
+      if (!_isCurrentAudioPlayback(playbackGeneration, recording.id)) {
+        return;
+      }
+
+      final pageId = recording.pageId;
+      if (pageId != null &&
+          pageId != _currentPageId &&
+          _notebook.pageIds.contains(pageId)) {
+        await _selectPage(pageId);
+      }
+      if (!_isCurrentAudioPlayback(playbackGeneration, recording.id)) {
+        return;
+      }
+
+      final loadedDuration = await player.setFilePath(recording.filePath);
+      if (!_isCurrentAudioPlayback(playbackGeneration, recording.id)) {
+        return;
+      }
+
+      setState(() {
+        _audioPlaybackDuration = loadedDuration ?? recording.duration;
+        _audioPlaybackPosition = Duration.zero;
+      });
+      _startLoadedAudioPlayback();
+    } catch (error) {
+      if (!_isCurrentAudioPlayback(playbackGeneration, recording.id)) {
+        return;
+      }
+
+      setState(() {
+        _audioPlaybackRecording = null;
+        _audioPlaybackPosition = Duration.zero;
+        _audioPlaybackDuration = Duration.zero;
+        _isAudioPlaying = false;
+      });
+      _showSnackBar('Audio playback failed: $error');
+    } finally {
+      if (_isCurrentAudioPlayback(playbackGeneration, recording.id)) {
+        setState(() {
+          _isAudioPlaybackLoading = false;
+        });
+      }
+    }
+  }
+
+  bool _isCurrentAudioPlayback(int generation, String recordingId) {
+    return mounted &&
+        generation == _audioPlaybackGeneration &&
+        _audioPlaybackRecording?.id == recordingId;
+  }
+
+  void _startLoadedAudioPlayback() {
+    final player = _audioPlayer;
+    if (player == null) {
+      return;
+    }
+
+    unawaited(
+      player.play().catchError((Object error) {
+        if (mounted) {
+          _showSnackBar('Audio playback failed: $error');
+        }
+      }),
+    );
+  }
+
+  Future<void> _toggleAudioPlayback() async {
+    final player = _audioPlayer;
+    if (player == null ||
+        _audioPlaybackRecording == null ||
+        _isAudioPlaybackLoading) {
+      return;
+    }
+
+    if (_isAudioPlaying) {
+      await player.pause();
+      return;
+    }
+
+    if (_audioPlaybackDuration > Duration.zero &&
+        _audioPlaybackPosition >= _audioPlaybackDuration) {
+      await player.seek(Duration.zero);
+    }
+    _startLoadedAudioPlayback();
+  }
+
+  Future<void> _seekAudioPlayback(Duration position) async {
+    final player = _audioPlayer;
+    if (player == null ||
+        _audioPlaybackRecording == null ||
+        _isAudioPlaybackLoading) {
+      return;
+    }
+
+    final clampedPosition = _clampAudioPlaybackPosition(position);
+    _handleAudioPlaybackPosition(clampedPosition);
+    await player.seek(clampedPosition);
+  }
+
+  Future<void> _closeAudioPlayback() async {
+    _audioPlaybackGeneration++;
+    final player = _audioPlayer;
+    try {
+      await player?.stop();
+    } catch (_) {
+      // The player may not be registered in widget tests.
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _audioPlaybackRecording = null;
+      _audioPlaybackPosition = Duration.zero;
+      _audioPlaybackDuration = Duration.zero;
+      _isAudioPlaying = false;
+      _isAudioPlaybackLoading = false;
+    });
+  }
+
   Future<void> _toggleAudioRecording() async {
     if (_isAudioBusy) {
       return;
@@ -464,6 +749,10 @@ class _EditorScreenState extends State<EditorScreen> {
     });
 
     try {
+      if (_audioPlaybackRecording != null) {
+        await _closeAudioPlayback();
+      }
+
       final hasPermission = await _audioRecorder.hasPermission();
       if (!hasPermission) {
         if (mounted) {
@@ -476,8 +765,6 @@ class _EditorScreenState extends State<EditorScreen> {
         _notebook,
         pageId: _currentPageId,
       );
-      final startedAt = DateTime.now();
-
       await _audioRecorder.start(
         const RecordConfig(
           encoder: AudioEncoder.aacLc,
@@ -487,6 +774,7 @@ class _EditorScreenState extends State<EditorScreen> {
         ),
         path: recording.filePath,
       );
+      final startedAt = DateTime.now();
 
       if (!mounted) {
         return;
@@ -505,7 +793,7 @@ class _EditorScreenState extends State<EditorScreen> {
       });
 
       setState(() {
-        _activeAudioRecording = recording;
+        _activeAudioRecording = recording.copyWith(createdAt: startedAt);
         _activeAudioRecordingStartedAt = startedAt;
         _activeAudioElapsed = Duration.zero;
       });
@@ -576,11 +864,18 @@ class _EditorScreenState extends State<EditorScreen> {
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
-      builder: (context) => _AudioRecordingsSheet(
+      builder: (sheetContext) => _AudioRecordingsSheet(
         recordings: _notebook.audioRecordings,
         activeElapsed: _activeAudioRecording == null
             ? null
             : _activeAudioElapsed,
+        selectedRecordingId: _audioPlaybackRecording?.id,
+        pageIds: _notebook.pageIds,
+        canPlay: _activeAudioRecording == null && !_isAudioPlaybackLoading,
+        onPlay: (recording) {
+          Navigator.of(sheetContext).pop();
+          unawaited(_playAudioRecording(recording));
+        },
       ),
     );
   }
@@ -1096,6 +1391,12 @@ class _EditorScreenState extends State<EditorScreen> {
       _currentPageId,
     );
     final isRecording = _activeAudioRecording != null;
+    final playbackRecording = _audioPlaybackRecording;
+    final playbackRecordingIndex = playbackRecording == null
+        ? -1
+        : _notebook.audioRecordings.indexWhere(
+            (recording) => recording.id == playbackRecording.id,
+          );
 
     return Scaffold(
       appBar: AppBar(
@@ -1179,6 +1480,19 @@ class _EditorScreenState extends State<EditorScreen> {
               onStop: _isAudioBusy
                   ? null
                   : () => unawaited(_stopAudioRecording()),
+            ),
+          if (playbackRecording != null)
+            _AudioPlaybackBar(
+              title: playbackRecordingIndex < 0
+                  ? 'Recording'
+                  : 'Recording ${playbackRecordingIndex + 1}',
+              position: _audioPlaybackPosition,
+              duration: _audioPlaybackDuration,
+              isPlaying: _isAudioPlaying,
+              isLoading: _isAudioPlaybackLoading,
+              onTogglePlayback: () => unawaited(_toggleAudioPlayback()),
+              onSeek: (position) => unawaited(_seekAudioPlayback(position)),
+              onClose: () => unawaited(_closeAudioPlayback()),
             ),
           EditorToolbar(
             tool: _tool,
@@ -1267,6 +1581,11 @@ class _EditorScreenState extends State<EditorScreen> {
               fingerPanEnabled: _fingerPanEnabled,
               onStrokeComplete: _addStroke,
               onErase: _eraseAt,
+              replayRecordingId: _audioPlaybackRecording?.id,
+              replayStartedAt: _audioPlaybackRecording?.createdAt,
+              replayPosition: _audioPlaybackRecording == null
+                  ? null
+                  : _audioPlaybackPosition,
             ),
             ShapeLayer(
               page: page,
@@ -1351,14 +1670,136 @@ class _AudioRecordingBanner extends StatelessWidget {
   }
 }
 
+class _AudioPlaybackBar extends StatefulWidget {
+  const _AudioPlaybackBar({
+    required this.title,
+    required this.position,
+    required this.duration,
+    required this.isPlaying,
+    required this.isLoading,
+    required this.onTogglePlayback,
+    required this.onSeek,
+    required this.onClose,
+  });
+
+  final String title;
+  final Duration position;
+  final Duration duration;
+  final bool isPlaying;
+  final bool isLoading;
+  final VoidCallback onTogglePlayback;
+  final ValueChanged<Duration> onSeek;
+  final VoidCallback onClose;
+
+  @override
+  State<_AudioPlaybackBar> createState() => _AudioPlaybackBarState();
+}
+
+class _AudioPlaybackBarState extends State<_AudioPlaybackBar> {
+  double? _dragValue;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final maxMilliseconds = math.max(1, widget.duration.inMilliseconds);
+    final positionMilliseconds = widget.position.inMilliseconds
+        .clamp(0, maxMilliseconds)
+        .toDouble();
+
+    return Material(
+      color: colorScheme.surfaceContainerHigh,
+      child: SafeArea(
+        top: false,
+        bottom: false,
+        child: SizedBox(
+          height: 64,
+          child: Row(
+            children: [
+              IconButton(
+                onPressed: widget.isLoading ? null : widget.onTogglePlayback,
+                tooltip: widget.isPlaying
+                    ? 'Pause audio playback'
+                    : 'Play audio recording',
+                icon: widget.isLoading
+                    ? const SizedBox.square(
+                        dimension: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(widget.isPlaying ? Icons.pause : Icons.play_arrow),
+              ),
+              SizedBox(
+                width: 96,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelLarge,
+                    ),
+                    Text(
+                      '${_formatDuration(widget.position)} / '
+                      '${_formatDuration(widget.duration)}',
+                      maxLines: 1,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Slider(
+                  value: _dragValue ?? positionMilliseconds,
+                  max: maxMilliseconds.toDouble(),
+                  onChanged: widget.isLoading
+                      ? null
+                      : (value) {
+                          setState(() {
+                            _dragValue = value;
+                          });
+                        },
+                  onChangeEnd: widget.isLoading
+                      ? null
+                      : (value) {
+                          setState(() {
+                            _dragValue = null;
+                          });
+                          widget.onSeek(Duration(milliseconds: value.round()));
+                        },
+                ),
+              ),
+              IconButton(
+                onPressed: widget.onClose,
+                tooltip: 'Close audio playback',
+                icon: const Icon(Icons.close),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _AudioRecordingsSheet extends StatelessWidget {
   const _AudioRecordingsSheet({
     required this.recordings,
     required this.activeElapsed,
+    required this.selectedRecordingId,
+    required this.pageIds,
+    required this.canPlay,
+    required this.onPlay,
   });
 
   final List<NotebookAudioRecording> recordings;
   final Duration? activeElapsed;
+  final String? selectedRecordingId;
+  final List<String> pageIds;
+  final bool canPlay;
+  final ValueChanged<NotebookAudioRecording> onPlay;
 
   @override
   Widget build(BuildContext context) {
@@ -1413,13 +1854,26 @@ class _AudioRecordingsSheet extends StatelessWidget {
                       itemCount: recordings.length,
                       itemBuilder: (context, index) {
                         final recording = recordings[index];
+                        final pageIndex = recording.pageId == null
+                            ? -1
+                            : pageIds.indexOf(recording.pageId!);
+                        final isSelected = recording.id == selectedRecordingId;
 
                         return ListTile(
-                          leading: const Icon(Icons.graphic_eq),
+                          leading: IconButton(
+                            onPressed: canPlay ? () => onPlay(recording) : null,
+                            tooltip: 'Play recording ${index + 1}',
+                            icon: Icon(
+                              isSelected
+                                  ? Icons.replay_circle_filled
+                                  : Icons.play_circle_outline,
+                            ),
+                          ),
                           title: Text('Recording ${index + 1}'),
                           subtitle: Text(
                             '${_formatDuration(recording.duration)} - '
-                            '${_formatDateTime(recording.createdAt)}',
+                            '${_formatDateTime(recording.createdAt)}'
+                            '${pageIndex < 0 ? '' : ' - Page ${pageIndex + 1}'}',
                           ),
                         );
                       },

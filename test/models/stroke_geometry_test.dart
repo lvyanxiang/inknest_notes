@@ -74,6 +74,25 @@ void main() {
 
     expect(identical(updatedStrokes, strokes), isTrue);
   });
+
+  test('serializes and preserves an audio recording link', () {
+    final stroke = Stroke(
+      id: 'stroke-audio',
+      tool: ToolType.pen,
+      color: const Color(0xFF1E2526),
+      width: 5,
+      points: [_point(0, 0), _point(10, 0)],
+      audioRecordingId: 'audio-1',
+    );
+
+    final reloadedStroke = Stroke.fromJson(stroke.toJson());
+    final splitStroke = reloadedStroke.copyWith(
+      points: [reloadedStroke.points.first],
+    );
+
+    expect(reloadedStroke.audioRecordingId, 'audio-1');
+    expect(splitStroke.audioRecordingId, 'audio-1');
+  });
 }
 
 StrokePoint _point(double x, double y) {

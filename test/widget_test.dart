@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:inknest_notes/app/app.dart';
 import 'package:inknest_notes/features/editor/canvas/drawing_canvas.dart';
+import 'package:inknest_notes/models/notebook_audio_recording.dart';
 import 'package:inknest_notes/storage/in_memory_notebook_repository.dart';
 
 void main() {
@@ -40,6 +41,35 @@ void main() {
     expect(find.byTooltip('Insert image'), findsOneWidget);
     expect(find.byKey(const ValueKey('page-thumbnail-page-1')), findsOneWidget);
     expect(find.text('No notebooks yet'), findsNothing);
+  });
+
+  testWidgets('lists saved audio recordings with playback controls', (
+    WidgetTester tester,
+  ) async {
+    final repository = InMemoryNotebookRepository();
+    var notebook = await repository.createNotebook(title: 'Lecture');
+    final recording = NotebookAudioRecording(
+      id: 'audio-1',
+      createdAt: DateTime.utc(2026, 7, 18, 9),
+      duration: const Duration(seconds: 8),
+      assetPath: '/tmp/audio-1.m4a',
+      pageId: 'page-1',
+    );
+    notebook = await repository.saveAudioRecording(notebook, recording);
+
+    await tester.pumpWidget(InkNestApp(notebookRepository: repository));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text(notebook.title));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.byTooltip('Audio recordings'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.text('Recording 1'), findsOneWidget);
+    expect(find.byTooltip('Play recording 1'), findsOneWidget);
+    expect(find.textContaining('Page 1'), findsOneWidget);
   });
 
   testWidgets('adds edits persists and deletes editor text boxes', (

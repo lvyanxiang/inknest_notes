@@ -487,7 +487,13 @@ class FileNotebookRepository implements NotebookRepository {
       await _writeJsonFile(_pageFile(notebook, page.id), page.toJson());
 
       final notebooks = await _readIndex();
-      final updatedNotebook = notebook.copyWith(updatedAt: DateTime.now());
+      final currentNotebook = notebooks.firstWhere(
+        (existingNotebook) => existingNotebook.id == notebook.id,
+        orElse: () => notebook,
+      );
+      final updatedNotebook = currentNotebook.copyWith(
+        updatedAt: DateTime.now(),
+      );
       await _writeIndex([
         for (final existingNotebook in notebooks)
           if (existingNotebook.id == notebook.id)
