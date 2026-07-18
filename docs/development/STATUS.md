@@ -4,7 +4,7 @@
 
 - Milestone: Post-MVP 5 - Audio And Search
 - Next task: Add PDF text search.
-- Last completed: Linked audio playback timeline with strokes.
+- Last completed: Refined audio playback with ink spotlight and optional page following.
 
 ## Decisions
 
@@ -64,7 +64,8 @@
 - Store audio recordings as notebook-level attachments under notebook-relative `assets/audio/` paths; keep the starting page on the recording and timeline linkage on `Stroke.audioRecordingId`.
 - iOS declares `NSMicrophoneUsageDescription`; Android declares `RECORD_AUDIO` and keeps `minSdk` at least 23 for the recorder plugin.
 - Use `just_audio` for local recording playback on the primary iOS/iPadOS and Android targets, and create the player lazily when playback first starts.
-- Tag strokes completed during recording with `audioRecordingId`; replay uses existing stroke-point timestamps to progressively reveal ink and follow linked strokes across notebook pages.
+- Tag strokes completed during recording with `audioRecordingId`; playback keeps all ink visible and uses existing stroke-point timestamps to spotlight the current segment.
+- Follow linked pages during audio playback by default; a manual page change pauses following until the user enables it again from the playback bar.
 - Page saves merge the latest notebook index metadata before updating `updatedAt`, preventing delayed drawing saves from removing newly added audio recordings.
 
 ## Verification
@@ -151,6 +152,10 @@
 - `flutter test` passed with 40 tests after audio timeline playback.
 - `flutter analyze` passed after audio timeline playback.
 - `git diff --check` passed after audio timeline playback.
+- `dart format lib test` passed after audio playback spotlight polish.
+- `flutter test` passed with 41 tests after audio playback spotlight polish.
+- `flutter analyze` passed after audio playback spotlight polish.
+- `git diff --check` passed after audio playback spotlight polish.
 - `git diff --check` passed after favorites toolbar.
 - `git diff --check` passed after adding graduation task book and opening report drafts.
 - `git diff --check` passed after retitling graduation docs for Flutter and Python.
@@ -198,7 +203,8 @@
 - Editor toolbar includes Insert image; selected images are copied into notebook assets, placed on the current page, movable, resizable, deletable, persisted, shown as thumbnail placeholders, and included in PDF export.
 - Editor toolbar includes a Shape tool with a shape-type menu for line, arrow, rectangle, and ellipse; created shapes persist, appear in thumbnails, and export to PDF.
 - Editor canvas includes a floating favorites toolbar with common black/teal/red pen and yellow highlighter presets.
-- Saved recordings can be played, paused, scrubbed, and closed from the editor; strokes written during a recording replay progressively and playback follows linked pages.
+- Saved recordings can be played, paused, scrubbed, and closed from the editor; all ink stays visible while the current recorded segment receives a temporary spotlight.
+- Audio playback follows linked pages by default; manually selecting a page suspends following, and the playback bar can resume it.
 - Smart Ink planning lives in `docs/development/SMART_INK_PLAN.md`.
 - Post-MVP feature gaps and optimization areas are documented in `docs/development/POST_MVP_ROADMAP.md`.
 - Subscription packaging, platform behavior, and local/cloud merge rules are documented in `docs/development/SUBSCRIPTION_PLAN.md`.

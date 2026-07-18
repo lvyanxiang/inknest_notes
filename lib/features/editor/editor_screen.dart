@@ -69,6 +69,7 @@ class _EditorScreenState extends State<EditorScreen> {
   Duration _audioPlaybackDuration = Duration.zero;
   bool _isAudioPlaybackLoading = false;
   bool _isAudioPlaying = false;
+  bool _followAudioPlayback = true;
   int _audioPlaybackGeneration = 0;
   NotePage? _page;
 
@@ -513,7 +514,8 @@ class _EditorScreenState extends State<EditorScreen> {
 
     setState(() {
       _audioPlaybackPosition = clampedPosition;
-      if (playbackPageId != null &&
+      if (_followAudioPlayback &&
+          playbackPageId != null &&
           playbackPage != null &&
           playbackPageId != _currentPageId) {
         _currentPageId = playbackPageId;
@@ -605,6 +607,7 @@ class _EditorScreenState extends State<EditorScreen> {
       _audioPlaybackPosition = Duration.zero;
       _audioPlaybackDuration = recording.duration;
       _isAudioPlaying = false;
+      _followAudioPlayback = true;
     });
 
     try {
@@ -709,6 +712,17 @@ class _EditorScreenState extends State<EditorScreen> {
     await player.seek(clampedPosition);
   }
 
+  void _toggleAudioPlaybackFollow() {
+    final shouldFollow = !_followAudioPlayback;
+    setState(() {
+      _followAudioPlayback = shouldFollow;
+    });
+
+    if (shouldFollow) {
+      _handleAudioPlaybackPosition(_audioPlaybackPosition);
+    }
+  }
+
   Future<void> _closeAudioPlayback() async {
     _audioPlaybackGeneration++;
     final player = _audioPlayer;
@@ -728,6 +742,7 @@ class _EditorScreenState extends State<EditorScreen> {
       _audioPlaybackDuration = Duration.zero;
       _isAudioPlaying = false;
       _isAudioPlaybackLoading = false;
+      _followAudioPlayback = true;
     });
   }
 
@@ -1115,7 +1130,7 @@ class _EditorScreenState extends State<EditorScreen> {
           currentPageId: _currentPageId,
           onSelectPage: (pageId) {
             Navigator.of(sheetContext).pop();
-            unawaited(_selectPage(pageId));
+            unawaited(_selectPageManually(pageId));
           },
         );
       },
@@ -1384,6 +1399,18 @@ class _EditorScreenState extends State<EditorScreen> {
     await _loadPage();
   }
 
+  Future<void> _selectPageManually(String pageId) async {
+    if (_audioPlaybackRecording != null &&
+        _followAudioPlayback &&
+        pageId != _currentPageId) {
+      setState(() {
+        _followAudioPlayback = false;
+      });
+    }
+
+    await _selectPage(pageId);
+  }
+
   @override
   Widget build(BuildContext context) {
     final page = _page;
@@ -1490,8 +1517,10 @@ class _EditorScreenState extends State<EditorScreen> {
               duration: _audioPlaybackDuration,
               isPlaying: _isAudioPlaying,
               isLoading: _isAudioPlaybackLoading,
+              isFollowingPlayback: _followAudioPlayback,
               onTogglePlayback: () => unawaited(_toggleAudioPlayback()),
               onSeek: (position) => unawaited(_seekAudioPlayback(position)),
+              onToggleFollow: _toggleAudioPlaybackFollow,
               onClose: () => unawaited(_closeAudioPlayback()),
             ),
           EditorToolbar(
@@ -1511,7 +1540,7 @@ class _EditorScreenState extends State<EditorScreen> {
             pagesById: _pagesById,
             currentPageId: _currentPageId,
             bookmarkedPageIds: _notebook.bookmarkedPageIds.toSet(),
-            onSelectPage: (pageId) => unawaited(_selectPage(pageId)),
+            onSelectPage: (pageId) => unawaited(_selectPageManually(pageId)),
             onAddPage: () => unawaited(_addPage()),
             onInsertPage: (index) => unawaited(_insertPage(index)),
             onDuplicatePage: (pageId) => unawaited(_duplicatePage(pageId)),
@@ -1677,8 +1706,10 @@ class _AudioPlaybackBar extends StatefulWidget {
     required this.duration,
     required this.isPlaying,
     required this.isLoading,
+    required this.isFollowingPlayback,
     required this.onTogglePlayback,
     required this.onSeek,
+    required this.onToggleFollow,
     required this.onClose,
   });
 
@@ -1687,8 +1718,10 @@ class _AudioPlaybackBar extends StatefulWidget {
   final Duration duration;
   final bool isPlaying;
   final bool isLoading;
+  final bool isFollowingPlayback;
   final VoidCallback onTogglePlayback;
   final ValueChanged<Duration> onSeek;
+  final VoidCallback onToggleFollow;
   final VoidCallback onClose;
 
   @override
@@ -1769,6 +1802,17 @@ class _AudioPlaybackBarState extends State<_AudioPlaybackBar> {
                           });
                           widget.onSeek(Duration(milliseconds: value.round()));
                         },
+                ),
+              ),
+              IconButton(
+                onPressed: widget.onToggleFollow,
+                tooltip: widget.isFollowingPlayback
+                    ? 'Stop following playback'
+                    : 'Follow playback',
+                icon: Icon(
+                  widget.isFollowingPlayback
+                      ? Icons.gps_fixed
+                      : Icons.gps_not_fixed,
                 ),
               ),
               IconButton(

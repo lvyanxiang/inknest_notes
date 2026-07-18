@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' show PointerDeviceKind;
 
 import 'package:flutter/material.dart';
@@ -184,6 +185,7 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
             replayRecordingId: widget.replayRecordingId,
             replayStartedAt: widget.replayStartedAt,
             replayPosition: widget.replayPosition,
+            replayHighlightColor: Theme.of(context).colorScheme.primary,
           ),
           child: const SizedBox.expand(),
         ),
@@ -198,18 +200,38 @@ class _StrokePainter extends CustomPainter {
     required this.replayRecordingId,
     required this.replayStartedAt,
     required this.replayPosition,
+    required this.replayHighlightColor,
   });
+
+  static const _highlightTrail = Duration(milliseconds: 1200);
 
   final List<Stroke> strokes;
   final String? replayRecordingId;
   final DateTime? replayStartedAt;
   final Duration? replayPosition;
+  final Color replayHighlightColor;
 
   @override
   void paint(Canvas canvas, Size size) {
     for (final stroke in strokes) {
-      final points = _visiblePoints(stroke);
-      if (points.isEmpty) {
+      final highlightedPoints = _highlightedPoints(stroke);
+      if (highlightedPoints.isEmpty) {
+        continue;
+      }
+
+      final highlightWidth = math.max(12.0, stroke.width + 10);
+      final highlightPaint = Paint()
+        ..color = replayHighlightColor.withValues(alpha: 0.32)
+        ..strokeWidth = highlightWidth
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..style = PaintingStyle.stroke
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
+      _drawStroke(canvas, highlightedPoints, highlightWidth, highlightPaint);
+    }
+
+    for (final stroke in strokes) {
+      if (stroke.points.isEmpty) {
         continue;
       }
 
@@ -222,21 +244,29 @@ class _StrokePainter extends CustomPainter {
             ? BlendMode.multiply
             : BlendMode.srcOver
         ..style = PaintingStyle.stroke;
-
-      if (points.length == 1) {
-        canvas.drawCircle(
-          points.first.offset,
-          stroke.width / 2,
-          paint..style = PaintingStyle.fill,
-        );
-        continue;
-      }
-
-      canvas.drawPath(StrokeGeometry.buildSmoothPath(points), paint);
+      _drawStroke(canvas, stroke.points, stroke.width, paint);
     }
   }
 
-  List<StrokePoint> _visiblePoints(Stroke stroke) {
+  void _drawStroke(
+    Canvas canvas,
+    List<StrokePoint> points,
+    double width,
+    Paint paint,
+  ) {
+    if (points.length == 1) {
+      canvas.drawCircle(
+        points.first.offset,
+        width / 2,
+        paint..style = PaintingStyle.fill,
+      );
+      return;
+    }
+
+    canvas.drawPath(StrokeGeometry.buildSmoothPath(points), paint);
+  }
+
+  List<StrokePoint> _highlightedPoints(Stroke stroke) {
     final recordingId = replayRecordingId;
     final startedAt = replayStartedAt;
     final position = replayPosition;
@@ -244,13 +274,33 @@ class _StrokePainter extends CustomPainter {
         startedAt == null ||
         position == null ||
         stroke.audioRecordingId != recordingId) {
-      return stroke.points;
+      return const [];
     }
 
     final cutoff = startedAt.add(position);
-    return stroke.points
+    final visiblePointCount = stroke.points
         .takeWhile((point) => !point.time.isAfter(cutoff))
-        .toList();
+        .length;
+    if (visiblePointCount == 0) {
+      return const [];
+    }
+
+    final lastVisiblePoint = stroke.points[visiblePointCount - 1];
+    if (cutoff.difference(lastVisiblePoint.time) > _highlightTrail) {
+      return const [];
+    }
+
+    final windowStart = cutoff.subtract(_highlightTrail);
+    var startIndex = 0;
+    while (startIndex < visiblePointCount &&
+        stroke.points[startIndex].time.isBefore(windowStart)) {
+      startIndex++;
+    }
+    if (startIndex > 0) {
+      startIndex--;
+    }
+
+    return stroke.points.sublist(startIndex, visiblePointCount);
   }
 
   @override
@@ -258,6 +308,7 @@ class _StrokePainter extends CustomPainter {
     return oldDelegate.strokes != strokes ||
         oldDelegate.replayRecordingId != replayRecordingId ||
         oldDelegate.replayStartedAt != replayStartedAt ||
-        oldDelegate.replayPosition != replayPosition;
+        oldDelegate.replayPosition != replayPosition ||
+        oldDelegate.replayHighlightColor != replayHighlightColor;
   }
 }

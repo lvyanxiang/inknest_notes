@@ -1,10 +1,15 @@
-import 'dart:ui' show PointerDeviceKind;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:inknest_notes/app/app.dart';
 import 'package:inknest_notes/features/editor/canvas/drawing_canvas.dart';
+import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/notebook_audio_recording.dart';
+import 'package:inknest_notes/models/stroke.dart';
+import 'package:inknest_notes/models/stroke_point.dart';
+import 'package:inknest_notes/models/tool.dart';
 import 'package:inknest_notes/storage/in_memory_notebook_repository.dart';
 
 void main() {
@@ -70,6 +75,78 @@ void main() {
     expect(find.text('Recording 1'), findsOneWidget);
     expect(find.byTooltip('Play recording 1'), findsOneWidget);
     expect(find.textContaining('Page 1'), findsOneWidget);
+  });
+
+  testWidgets('keeps replay ink visible and highlights the current segment', (
+    WidgetTester tester,
+  ) async {
+    final recordingStartedAt = DateTime.utc(2026, 7, 18, 9);
+    final page = NotePage(
+      id: 'page-1',
+      width: 200,
+      height: 100,
+      strokes: [
+        Stroke(
+          id: 'stroke-1',
+          tool: ToolType.pen,
+          color: Colors.black,
+          width: 4,
+          audioRecordingId: 'audio-1',
+          points: [
+            StrokePoint(
+              offset: const Offset(20, 50),
+              pressure: 1,
+              time: recordingStartedAt.add(const Duration(seconds: 5)),
+            ),
+            StrokePoint(
+              offset: const Offset(180, 50),
+              pressure: 1,
+              time: recordingStartedAt.add(const Duration(milliseconds: 5500)),
+            ),
+          ],
+        ),
+      ],
+    );
+    final boundaryKey = GlobalKey();
+
+    Widget buildCanvas(Duration replayPosition) {
+      return MaterialApp(
+        home: RepaintBoundary(
+          key: boundaryKey,
+          child: SizedBox(
+            width: 200,
+            height: 100,
+            child: DrawingCanvas(
+              page: page,
+              tool: const DrawingTool(),
+              fingerPanEnabled: false,
+              onStrokeComplete: (_) {},
+              onErase: (_) {},
+              replayRecordingId: 'audio-1',
+              replayStartedAt: recordingStartedAt,
+              replayPosition: replayPosition,
+            ),
+          ),
+        ),
+      );
+    }
+
+    await tester.pumpWidget(buildCanvas(Duration.zero));
+    await tester.pump();
+
+    expect(
+      await _capturePixelAlpha(tester, boundaryKey, 100, 50),
+      greaterThan(0),
+    );
+    expect(await _capturePixelAlpha(tester, boundaryKey, 100, 55), 0);
+
+    await tester.pumpWidget(buildCanvas(const Duration(milliseconds: 5500)));
+    await tester.pump();
+
+    expect(
+      await _capturePixelAlpha(tester, boundaryKey, 100, 55),
+      greaterThan(0),
+    );
   });
 
   testWidgets('adds edits persists and deletes editor text boxes', (
@@ -511,7 +588,7 @@ void main() {
     center = tester.getCenter(canvas);
     final stylusGesture = await tester.startGesture(
       center,
-      kind: PointerDeviceKind.stylus,
+      kind: ui.PointerDeviceKind.stylus,
     );
     await stylusGesture.moveBy(const Offset(32, 24));
     await stylusGesture.up();
@@ -659,4 +736,24 @@ void main() {
     expect(find.byKey(const ValueKey('page-thumbnail-page-1')), findsOneWidget);
     expect(find.byKey(const ValueKey('page-thumbnail-page-2')), findsNothing);
   });
+}
+
+Future<int> _capturePixelAlpha(
+  WidgetTester tester,
+  GlobalKey boundaryKey,
+  int x,
+  int y,
+) async {
+  final alpha = await tester.runAsync(() async {
+    final boundary =
+        boundaryKey.currentContext!.findRenderObject()!
+            as RenderRepaintBoundary;
+    final image = await boundary.toImage();
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    final bytes = byteData!.buffer.asUint8List();
+    final pixelAlpha = bytes[(y * image.width + x) * 4 + 3];
+    image.dispose();
+    return pixelAlpha;
+  });
+  return alpha!;
 }
