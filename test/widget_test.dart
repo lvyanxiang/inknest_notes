@@ -30,6 +30,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Notebook 1'), findsOneWidget);
+    expect(find.byTooltip('Audio recordings'), findsOneWidget);
+    expect(find.byTooltip('Start audio recording'), findsOneWidget);
     expect(find.byTooltip('Export PDF'), findsOneWidget);
     expect(find.byTooltip('Shape'), findsOneWidget);
     expect(find.byTooltip('Shape type'), findsOneWidget);

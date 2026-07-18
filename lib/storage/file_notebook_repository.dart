@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:ui';
 
 import 'package:inknest_notes/models/notebook.dart';
+import 'package:inknest_notes/models/notebook_audio_recording.dart';
 import 'package:inknest_notes/models/notebook_folder.dart';
 import 'package:inknest_notes/models/note_image.dart';
 import 'package:inknest_notes/models/note_page.dart';
@@ -187,6 +188,61 @@ class FileNotebookRepository implements NotebookRepository {
   }
 
   @override
+  Future<NotebookAudioRecording> prepareAudioRecording(
+    Notebook notebook, {
+    String? pageId,
+  }) async {
+    final now = DateTime.now();
+    final assetPath = _audioAssetPath(now);
+    final assetFile = File('${_notebookDirectory(notebook).path}/$assetPath');
+
+    await assetFile.parent.create(recursive: true);
+
+    return NotebookAudioRecording(
+      id: 'audio-${now.microsecondsSinceEpoch}',
+      createdAt: now,
+      duration: Duration.zero,
+      assetPath: assetPath,
+      pageId: pageId,
+      resolvedFilePath: assetFile.path,
+    );
+  }
+
+  @override
+  Future<Notebook> saveAudioRecording(
+    Notebook notebook,
+    NotebookAudioRecording recording,
+  ) {
+    return _runStorageWrite(() async {
+      final notebooks = await _readIndex();
+      final currentNotebook = notebooks.firstWhere(
+        (existingNotebook) => existingNotebook.id == notebook.id,
+        orElse: () => notebook,
+      );
+      final normalizedRecording = _resolveAudioRecordingAssets(
+        currentNotebook,
+        recording,
+      );
+      final existingRecordings = currentNotebook.audioRecordings.where(
+        (existingRecording) => existingRecording.id != recording.id,
+      );
+      final updatedNotebook = currentNotebook.copyWith(
+        updatedAt: DateTime.now(),
+        audioRecordings: [...existingRecordings, normalizedRecording],
+      );
+
+      await _writeIndex([
+        for (final existingNotebook in notebooks)
+          if (existingNotebook.id == notebook.id)
+            updatedNotebook
+          else
+            existingNotebook,
+      ]);
+      return updatedNotebook;
+    });
+  }
+
+  @override
   Future<Notebook> renameNotebook(Notebook notebook, String title) async {
     final updatedNotebook = notebook.copyWith(
       title: title.trim().isEmpty ? notebook.title : title.trim(),
@@ -209,6 +265,7 @@ class FileNotebookRepository implements NotebookRepository {
       folderId: notebook.isArchived ? null : notebook.folderId,
       pdfOutlines: notebook.pdfOutlines,
       bookmarkedPageIds: notebook.bookmarkedPageIds,
+      audioRecordings: notebook.audioRecordings,
     );
     final sourceDirectory = _notebookDirectory(notebook);
     final destinationDirectory = _notebookDirectory(duplicatedNotebook);
@@ -450,6 +507,7 @@ class FileNotebookRepository implements NotebookRepository {
     return (json as List<Object?>)
         .cast<Map<String, Object?>>()
         .map(Notebook.fromJson)
+        .map(_resolveNotebookAssets)
         .toList();
   }
 
@@ -514,6 +572,19 @@ class FileNotebookRepository implements NotebookRepository {
       for (final existingNotebook in notebooks)
         if (existingNotebook.id == notebook.id) notebook else existingNotebook,
     ]);
+  }
+
+  Notebook _resolveNotebookAssets(Notebook notebook) {
+    if (notebook.audioRecordings.isEmpty) {
+      return notebook;
+    }
+
+    return notebook.copyWith(
+      audioRecordings: [
+        for (final recording in notebook.audioRecordings)
+          _resolveAudioRecordingAssets(notebook, recording),
+      ],
+    );
   }
 
   File _pageFile(Notebook notebook, String pageId) {
@@ -644,6 +715,45 @@ class FileNotebookRepository implements NotebookRepository {
     final name = sanitizedName.trim().isEmpty ? 'image' : sanitizedName;
 
     return 'assets/images/${now.microsecondsSinceEpoch}-$name';
+  }
+
+  String _audioAssetPath(DateTime now) {
+    return 'assets/audio/${now.microsecondsSinceEpoch}.m4a';
+  }
+
+  NotebookAudioRecording _resolveAudioRecordingAssets(
+    Notebook notebook,
+    NotebookAudioRecording recording,
+  ) {
+    final normalizedAssetPath = _normalizeAudioAssetPath(recording.assetPath);
+    return recording.copyWith(
+      assetPath: normalizedAssetPath,
+      resolvedFilePath: _resolveAudioAssetPath(notebook, recording.assetPath),
+    );
+  }
+
+  String _normalizeAudioAssetPath(String assetPath) {
+    final file = File(assetPath);
+    if (!file.isAbsolute) {
+      return assetPath;
+    }
+
+    final fileName = file.uri.pathSegments.isEmpty
+        ? 'recording.m4a'
+        : file.uri.pathSegments.last;
+    return 'assets/audio/$fileName';
+  }
+
+  String _resolveAudioAssetPath(Notebook notebook, String assetPath) {
+    final absoluteFile = File(assetPath);
+    if (absoluteFile.isAbsolute && absoluteFile.existsSync()) {
+      return absoluteFile.path;
+    }
+
+    final normalizedAssetPath = _normalizeAudioAssetPath(assetPath);
+    return File(
+      '${_notebooksDirectory.path}/${notebook.id}/$normalizedAssetPath',
+    ).path;
   }
 
   String _normalizeImageAssetPath(String assetPath) {

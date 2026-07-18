@@ -4,6 +4,7 @@ import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as image;
+import 'package:inknest_notes/models/notebook_audio_recording.dart';
 import 'package:inknest_notes/models/note_image.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/note_shape.dart';
@@ -142,6 +143,56 @@ void main() {
     expect(reloadedImage.position, const Offset(40, 56));
     expect(reloadedImage.width, 180);
     expect(reloadedImage.height, 120);
+  });
+
+  test('persists notebook audio recordings as notebook assets', () async {
+    var notebook = await repository.createNotebook(title: 'Lecture');
+    final preparedRecording = await repository.prepareAudioRecording(
+      notebook,
+      pageId: 'page-1',
+    );
+    final audioFile = File(preparedRecording.filePath);
+
+    audioFile.writeAsBytesSync([1, 2, 3, 4], flush: true);
+
+    notebook = await repository.saveAudioRecording(
+      notebook,
+      preparedRecording.copyWith(duration: const Duration(seconds: 42)),
+    );
+
+    expect(notebook.audioRecordings, hasLength(1));
+    expect(
+      notebook.audioRecordings.single.assetPath,
+      startsWith('assets/audio/'),
+    );
+    expect(
+      notebook.audioRecordings.single.duration,
+      const Duration(seconds: 42),
+    );
+
+    final indexFile = File('${tempDirectory.path}/notebooks/index.json');
+    final indexJson =
+        jsonDecode(await indexFile.readAsString()) as List<Object?>;
+    final notebookJson = indexJson.single! as Map<String, Object?>;
+    final recordingsJson = notebookJson['audioRecordings']! as List<Object?>;
+    final recordingJson = recordingsJson.single! as Map<String, Object?>;
+
+    expect(recordingJson['assetPath'], startsWith('assets/audio/'));
+    expect(recordingJson['durationMs'], 42000);
+    expect(recordingJson['pageId'], 'page-1');
+
+    final reloadedRepository = FileNotebookRepository(
+      rootDirectory: tempDirectory,
+    );
+    final reloadedNotebook = (await reloadedRepository.listNotebooks()).single;
+    final reloadedRecording = reloadedNotebook.audioRecordings.single;
+
+    expect(reloadedRecording, isA<NotebookAudioRecording>());
+    expect(reloadedRecording.assetPath, preparedRecording.assetPath);
+    expect(reloadedRecording.filePath, isNot(reloadedRecording.assetPath));
+    expect(File(reloadedRecording.filePath).existsSync(), isTrue);
+    expect(reloadedRecording.duration, const Duration(seconds: 42));
+    expect(reloadedRecording.pageId, 'page-1');
   });
 
   test('serializes concurrent page saves without corrupting index', () async {

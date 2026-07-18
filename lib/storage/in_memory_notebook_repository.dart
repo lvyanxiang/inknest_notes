@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:ui';
 
 import 'package:inknest_notes/models/notebook.dart';
+import 'package:inknest_notes/models/notebook_audio_recording.dart';
 import 'package:inknest_notes/models/notebook_folder.dart';
 import 'package:inknest_notes/models/note_image.dart';
 import 'package:inknest_notes/models/note_page.dart';
@@ -144,6 +145,7 @@ class InMemoryNotebookRepository implements NotebookRepository {
       folderId: notebook.isArchived ? null : notebook.folderId,
       pdfOutlines: notebook.pdfOutlines,
       bookmarkedPageIds: notebook.bookmarkedPageIds,
+      audioRecordings: notebook.audioRecordings,
     );
 
     _notebooks.add(duplicatedNotebook);
@@ -203,6 +205,45 @@ class InMemoryNotebookRepository implements NotebookRepository {
     final updatedNotebook = notebook.copyWith(
       updatedAt: DateTime.now(),
       bookmarkedPageIds: bookmarkedPageIds,
+    );
+
+    _replaceNotebook(updatedNotebook);
+    return updatedNotebook;
+  }
+
+  @override
+  Future<NotebookAudioRecording> prepareAudioRecording(
+    Notebook notebook, {
+    String? pageId,
+  }) async {
+    final now = DateTime.now();
+    final file = File(
+      '${Directory.systemTemp.path}/inknest-notes-audio/'
+      '${now.microsecondsSinceEpoch}.m4a',
+    );
+    await file.parent.create(recursive: true);
+
+    return NotebookAudioRecording(
+      id: 'audio-${now.microsecondsSinceEpoch}',
+      createdAt: now,
+      duration: Duration.zero,
+      assetPath: file.path,
+      pageId: pageId,
+      resolvedFilePath: file.path,
+    );
+  }
+
+  @override
+  Future<Notebook> saveAudioRecording(
+    Notebook notebook,
+    NotebookAudioRecording recording,
+  ) async {
+    final existingRecordings = notebook.audioRecordings.where(
+      (existingRecording) => existingRecording.id != recording.id,
+    );
+    final updatedNotebook = notebook.copyWith(
+      updatedAt: DateTime.now(),
+      audioRecordings: [...existingRecordings, recording],
     );
 
     _replaceNotebook(updatedNotebook);

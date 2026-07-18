@@ -3,8 +3,8 @@
 ## Current
 
 - Milestone: Post-MVP 5 - Audio And Search
-- Next task: Add audio recording.
-- Last completed: Added favorites toolbar.
+- Next task: Link playback timeline with strokes.
+- Last completed: Added audio recording.
 
 ## Decisions
 
@@ -60,6 +60,9 @@
 - Store clean shape objects on `NotePage.shapes`; first shape tool supports line, arrow, rectangle, and ellipse with light line-angle snapping for cleaner line/arrow creation.
 - Shape rendering is shared across the editor, page thumbnails, library thumbnails, and PDF export.
 - Keep the first favorites toolbar as an in-editor floating preset strip instead of growing the main toolbar height; presets switch to common pen/highlighter combinations without changing page layout or canvas hit testing.
+- Use the `record` Flutter package for first-pass cross-platform microphone capture.
+- Store audio recordings as notebook-level attachments under notebook-relative `assets/audio/` paths; page linkage is stored as the page where recording started and can be expanded into stroke timeline metadata later.
+- iOS declares `NSMicrophoneUsageDescription`; Android declares `RECORD_AUDIO` and keeps `minSdk` at least 23 for the recorder plugin.
 
 ## Verification
 
@@ -137,6 +140,10 @@
 - `dart format lib test` passed after favorites toolbar.
 - `flutter test` passed after favorites toolbar.
 - `flutter analyze` passed after favorites toolbar.
+- `dart format lib test` passed after audio recording.
+- `flutter test` passed after audio recording.
+- `flutter analyze` passed after audio recording.
+- `git diff --check` passed after audio recording.
 - `git diff --check` passed after favorites toolbar.
 - `git diff --check` passed after adding graduation task book and opening report drafts.
 - `git diff --check` passed after retitling graduation docs for Flutter and Python.
