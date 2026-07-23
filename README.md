@@ -14,9 +14,35 @@ The current focus is building a strong handwriting-first MVP:
 - Local persistence
 - PDF annotation
 
-## Development
+## Run locally
+
+From the project root, install dependencies:
+
+```sh
+flutter pub get
+```
+
+On macOS, start the iOS Simulator:
+
+```sh
+open -a Simulator
+```
+
+Then run the app:
 
 ```sh
 flutter run
+```
+
+If more than one device is available, list the devices and select one by ID:
+
+```sh
+flutter devices
+flutter run -d <device-id>
+```
+
+Run the test suite with:
+
+```sh
 flutter test
 ```
