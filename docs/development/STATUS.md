@@ -2,9 +2,9 @@
 
 ## Current
 
-- Milestone: Library Bookshelf Pull-Forward Interaction (complete)
-- Next task: No additional implementation task is selected; choose the next concrete priority before entering Post-MVP 6-9, and keep sync and backup paused.
-- Last completed: Added a 200ms notebook pull-forward/scale response before opening, optional long-press/hover/focus inspection, and full-title tips only for rendered truncation while preserving the fixed left lean.
+- Milestone: Editor Workspace Redesign (core implementation complete for canonical v1 pages)
+- Next task: Run real-iPad Pencil/rotation/Split View QA, then decide whether legacy app-container recovery and a verified raw archive/conversion flow are required for non-empty v0 pages.
+- Last completed: Rebuilt the editor around a fixed document-coordinate viewport, responsive header/tool dock, contextual Smart Ink, on-demand Pages/Outline/Bookmarks navigation, and repository-enforced coordinate-version protection; removed the superseded editor interaction paths after a cross-file reference audit.
 
 ## Decisions
 
@@ -33,11 +33,13 @@
 - Use `docs/development/SUBSCRIPTION_PLAN.md` as the product reference for Free, InkNest Cloud, and future Pro monetization.
 - Long-term product direction: iPad handwriting/PDF study, phone capture/review, and Web Yuque-like knowledge base.
 - Use a custom two-finger zoom/pan viewport instead of `InteractiveViewer` so single-pointer drawing remains reliable.
+- Keep every page layer at the persisted document size and apply one shared D→R→V transform for page rotation, zoom, pan, rendering, and hit testing.
+- Start each page in Fit Width; expose Fit Page explicitly, enter Custom on the first content/pan/zoom gesture, and remember mode, scale, and focus per page for the editor session.
 - Keep finger drawing available by default; use an explicit Finger pan mode to make touch drag the page while stylus/mouse input writes.
 - Apply Finger Writing Assist only after a touch stroke completes; preserve its endpoints, pressure samples, and timestamps so persistence, audio replay, export, and recognition continue to share the same stroke model.
 - Keep Finger Writing Assist enabled by default with an editor toolbar toggle, and never apply it to Apple Pencil/stylus or mouse strokes.
 - Use corner-aware smoothing for Finger Writing Assist so small sampling jitter is reduced without rounding intentional handwriting corners aggressively.
-- Keep the first page thumbnail strip lightweight: show page shape, selection state, handwriting preview, and a PDF marker before adding full PDF thumbnail caching.
+- Keep page thumbnails lightweight, but show them through a collapsible wide navigator or an on-demand Pages/Outline/Bookmarks panel instead of a permanent bottom strip.
 - Store a backward-compatible template enum on `NotePage`; older or unknown JSON values fall back to blank.
 - Support Blank, Ruled, Dotted, Grid, Cornell, and Planner templates through one shared geometry layout used by the editor, page thumbnails, and PDF export.
 - Let added and inserted non-PDF pages inherit the nearest prior template, preserve templates when duplicating pages, and keep PDF background pages template-free.
@@ -82,7 +84,7 @@
 - Text boxes first support add, edit, move, delete, persistence, page duplication, thumbnails, and PDF export.
 - Store text rendering style on `NoteTextBox.style`; support regular and handwriting-style text boxes.
 - Text-box PDF export rasterizes Flutter-rendered text into PNGs before embedding them, preserving Unicode/CJK text and handwriting-style rendering without relying on `pdf` package default fonts.
-- Smart Ink first version uses a `Smart Ink` editor tool to box-select rough strokes, asks the user to enter or correct recognized text, then inserts a handwriting-style text box and can replace the selected ink.
+- Smart Ink uses the existing Lasso selection context: select rough strokes, invoke Smart Ink from the upright selection toolbar, confirm recognized text, then insert a handwriting-style text box and optionally replace the ink.
 - Automatic handwriting recognition is still future work; the current Smart Ink flow establishes the explicit selection and confirmation UX without sending handwriting off-device.
 - Store inserted images on `NotePage.images`; file-backed notebooks copy image files into notebook-relative `assets/images/` paths and resolve them at load time.
 - Render images below handwriting strokes, with move/delete/resize controls above the drawing canvas so users can write over inserted images.
@@ -90,7 +92,7 @@
 - File-backed JSON writes use temporary-file replacement, and page saves are serialized to avoid transient empty JSON reads during high-frequency edits such as image dragging.
 - Store clean shape objects on `NotePage.shapes`; first shape tool supports line, arrow, rectangle, and ellipse with light line-angle snapping for cleaner line/arrow creation.
 - Shape rendering is shared across the editor, page thumbnails, and PDF export.
-- Keep the first favorites toolbar as an in-editor floating preset strip instead of growing the main toolbar height; presets switch to common pen/highlighter combinations without changing page layout or canvas hit testing.
+- Keep four complete pen/highlighter presets in the responsive tool dock; compact widths use a labelled Presets menu and no control floats over the paper.
 - Use the `record` Flutter package for first-pass cross-platform microphone capture.
 - Store audio recordings as notebook-level attachments under notebook-relative `assets/audio/` paths; keep the starting page on the recording and timeline linkage on `Stroke.audioRecordingId`.
 - iOS declares `NSMicrophoneUsageDescription`; Android declares `RECORD_AUDIO` and keeps `minSdk` at least 23 for the recorder plugin.
@@ -100,7 +102,7 @@
 - Page saves merge the latest notebook index metadata before updating `updatedAt`, preventing delayed drawing saves from removing newly added audio recordings.
 - Extract embedded PDF text with `pdfrx`, cache it by file path and source page number, and reuse the index for duplicated notebook pages and later searches.
 - Map PDF search character bounds through the same contain-and-center layout as the page background; selecting a result jumps to the notebook page and highlights the match.
-- Scale model-page PDF highlight bounds into the editor's current fitted canvas during painting so resizing and zoom layout do not offset matches.
+- Keep PDF highlight bounds in document coordinates so the shared viewport transform preserves alignment through resize, zoom, and page rotation.
 - Treat scanned PDFs without an embedded text layer as not searchable until the OCR exploration task is implemented.
 - Use one editor search entry point for embedded PDF text and `NotePage.textBoxes`; confirmed Smart Ink content is searchable because it is stored as handwriting-style editable text.
 - Keep unconverted handwriting strokes and scanned PDF pages out of the unified index until the planned PencilKit/Vision recognition follow-up is implemented.
@@ -109,9 +111,22 @@
 - Render selected strokes as bounded black-on-white PNG input and use on-device Apple Vision accurate text recognition on iOS, while keeping manual confirmation as the safe fallback.
 - Prefer PencilKit `PKStrokeRecognizer` for vector handwriting recognition and handwriting search on iPadOS 27+, after the build environment adopts an SDK that contains it; keep Vision for raster OCR and older-system fallback.
 - Keep the iOS 13 deployment target for now and do not make the new iPadOS 27 handwriting API a baseline requirement.
+- Persist `NotePage.coordinateSpaceVersion`: new pages use canonical v1, missing values read as legacy v0, empty v0 pages upgrade losslessly, and non-empty legacy or unsupported pages remain repository-enforced read-only.
+- Keep unresolved legacy content viewable, navigable, zoomable, searchable, and exportable without allowing normal save, rotate, copy, or duplicate paths to overwrite its source JSON.
 
 ## Verification
 
+- `dart format` passed for the editor workspace, viewport, model, repository,
+  and test changes on 2026-07-27.
+- `flutter test` passed with 122 tests after the editor workspace redesign,
+  fixed-coordinate viewport, coordinate-version write gate, and dead-code
+  cleanup.
+- `flutter analyze` passed with no issues after the editor workspace redesign
+  and dead-code cleanup.
+- Focused responsive tests passed at 600×800, 834×1194, and 1194×834,
+  including fixed 768×1024 document layout through viewport rotation.
+- Legacy UI and repository tests confirm that non-empty v0/unsupported pages
+  remain readable but cannot be overwritten by normal saves.
 - `dart format lib test` passed.
 - `flutter test` passed.
 - `flutter analyze` passed.
@@ -299,6 +314,12 @@
 - `git diff --check` passed after re-screening graduation document references against school library journal coverage years.
 - `git diff --check` passed after splitting academic document maintenance into `$inknest-academic-docs`.
 - `git diff --check` passed after replacing graduation references with 2022-2025 journal papers and adding one-to-one body citations.
+- Read-only editor review confirmed that the current fitted page surface mixes
+  screen-local input with persisted document coordinates and can misalign
+  content after resize or rotation.
+- Product and UI/UX proposals for the editor workspace and stable page viewport
+  were completed; application implementation and migration are not started.
+- `git diff --check` passed after the editor workspace product/UI proposal.
 
 ## Notes
 
@@ -313,10 +334,17 @@
 - Library can import a PDF, copy it into notebook assets, create one note page per PDF page, and render the PDF page behind editable strokes.
 - Editor can export the current notebook as a PDF, including blank pages, imported PDF page backgrounds, and handwriting strokes.
 - Editor page viewport supports zoom controls and two-finger pinch/pan without saving accidental strokes.
+- Editor redesign records live under
+  `docs/product/features/editor-workspace-redesign/`; the implemented shell
+  replaces permanent all-actions chrome with a document header, contextual
+  tool dock, on-demand page navigator, and fixed document-coordinate viewport.
+- The current lowercase iOS bundle identifier uses a separate app container
+  from the old mixed-case identifier; decide whether legacy prototype data
+  must be recovered before implementing any coordinate conversion.
 - Editor toolbar includes Finger pan mode; when enabled, touch drags the page and stylus input still writes.
 - Editor toolbar includes default-on Finger assist; completed touch strokes are smoothed before saving while stylus and mouse strokes remain unchanged.
 - Editor app bar includes a Page template picker for Blank, Ruled, Dotted, Grid, Cornell, and Planner pages; the selected template persists and appears in previews and PDF exports.
-- Editor bottom navigator now shows page thumbnails with selection state, page numbers, handwriting previews, and PDF page markers.
+- Editor Pages/Outline/Bookmarks navigator shows page thumbnails with selection state, page numbers, handwriting previews, and PDF page markers on demand; wide layouts can pin it at the left.
 - Editor page thumbnails include actions to duplicate, delete with confirmation, and move pages left or right.
 - Editor page thumbnail actions include clockwise page rotation; orientation persists, updates editor and page previews, keeps drawing hit testing aligned, and is preserved in PDF export.
 - Editor toolbar includes Lasso; draw around strokes to select them, drag the selection to move it, drag its corner handle to resize proportionally, or use the upright floating toolbar to recolor, delete, and clear the selection.
@@ -334,10 +362,10 @@
 - PDF export now avoids rerendering duplicate backgrounds in the same export and renders imported PDF backgrounds at a higher default pixel density.
 - Editor toolbar includes a Text tool that can add typed text boxes to the current page; text boxes can be edited, moved, deleted, persisted, shown in thumbnails, and exported to PDF.
 - Text boxes can toggle between regular text and handwriting-style rendering; thumbnails and PDF export use the same text style path.
-- Editor toolbar includes a Smart Ink tool that box-selects strokes, confirms text, and creates editable handwriting-style text from the selection.
+- The Lasso contextual toolbar exposes Smart Ink for selected strokes, confirms text, and creates editable handwriting-style text from the selection.
 - Editor toolbar includes Insert image; selected images are copied into notebook assets, placed on the current page, movable, resizable, deletable, persisted, shown as thumbnail placeholders, and included in PDF export.
 - Editor toolbar includes a Shape tool with a shape-type menu for line, arrow, rectangle, and ellipse; created shapes persist, appear in thumbnails, and export to PDF.
-- Editor canvas includes a floating favorites toolbar with common black/teal/red pen and yellow highlighter presets.
+- Editor tool dock includes complete black/teal/red pen and yellow highlighter presets without covering the paper.
 - Saved recordings can be played, paused, scrubbed, and closed from the editor; all ink stays visible while the current recorded segment receives a temporary spotlight.
 - Audio playback follows linked pages by default; manually selecting a page suspends following, and the playback bar can resume it.
 - Editor app bar includes unified notebook search across cached PDF text, typed text boxes, and confirmed Smart Ink text, with cross-page navigation and source-specific highlighting.

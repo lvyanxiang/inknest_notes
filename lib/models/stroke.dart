@@ -27,7 +27,7 @@ class Stroke {
   factory Stroke.fromJson(Map<String, Object?> json) {
     return Stroke(
       id: json['id']! as String,
-      tool: ToolType.values.byName(json['tool']! as String),
+      tool: _toolTypeFromJson(json['tool']),
       color: Color(json['color']! as int),
       width: (json['width']! as num).toDouble(),
       points: (json['points']! as List<Object?>)
@@ -69,3 +69,12 @@ class Stroke {
 }
 
 const Object _audioRecordingIdNotChanged = Object();
+
+ToolType _toolTypeFromJson(Object? value) {
+  // Smart Ink used to be a selectable editor mode, but never a drawing tool.
+  // Treat any historic stroke carrying that UI-only value as regular ink.
+  if (value == 'smartInk') {
+    return ToolType.pen;
+  }
+  return ToolType.values.byName(value! as String);
+}

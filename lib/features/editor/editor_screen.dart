@@ -9,6 +9,7 @@ import 'package:image/image.dart' as image;
 import 'package:inknest_notes/export/notebook_pdf_exporter.dart';
 import 'package:inknest_notes/export/pdf_page_selection.dart';
 import 'package:inknest_notes/features/editor/canvas/drawing_canvas.dart';
+import 'package:inknest_notes/features/editor/canvas/page_viewport_model.dart';
 import 'package:inknest_notes/features/editor/canvas/pdf_page_background.dart';
 import 'package:inknest_notes/features/editor/images/image_layer.dart';
 import 'package:inknest_notes/features/editor/lasso/lasso_geometry.dart';
@@ -19,7 +20,6 @@ import 'package:inknest_notes/features/editor/search/notebook_text_search_servic
 import 'package:inknest_notes/features/editor/search/notebook_text_search_sheet.dart';
 import 'package:inknest_notes/features/editor/search/pdf_search_highlight_layer.dart';
 import 'package:inknest_notes/features/editor/shapes/shape_layer.dart';
-import 'package:inknest_notes/features/editor/smart_ink/smart_ink_selection_layer.dart';
 import 'package:inknest_notes/features/editor/templates/page_template_layer.dart';
 import 'package:inknest_notes/features/editor/templates/page_template_sheet.dart';
 import 'package:inknest_notes/features/editor/text/note_text_box_styles.dart';
@@ -68,12 +68,15 @@ class _EditorScreenState extends State<EditorScreen> {
   final List<Stroke> _redoStack = [];
   final Set<String> _selectedStrokeIds = {};
   final Map<String, NotePage> _pagesById = {};
-  DrawingTool _tool = const DrawingTool();
+  final Map<String, PageViewportSessionState> _viewportStatesByPageId = {};
+  DrawingTool _tool = const DrawingTool(width: 3);
   late Notebook _notebook;
   late String _currentPageId;
+  bool _isPageRailOpen = false;
   bool _isExporting = false;
   bool _isImportingPdfs = false;
   bool _fingerPanEnabled = false;
+  bool? _fingerPanBeforeLasso;
   bool _fingerWritingAssistEnabled = true;
   String? _activeTextBoxId;
   String? _activeImageId;
@@ -95,6 +98,9 @@ class _EditorScreenState extends State<EditorScreen> {
   String _notebookSearchQuery = '';
   NotebookTextSearchResult? _activeNotebookSearchResult;
   NotePage? _page;
+
+  bool get _isCurrentPageWriteProtected =>
+      _page?.isCoordinateSpaceWriteProtected ?? false;
 
   @override
   void initState() {
@@ -1047,10 +1053,19 @@ class _EditorScreenState extends State<EditorScreen> {
 
   void _setTool(DrawingTool tool) {
     setState(() {
+      final wasUsingLasso = _tool.type == ToolType.lasso;
       _tool = tool;
       if (tool.type == ToolType.lasso) {
+        if (!wasUsingLasso) {
+          _fingerPanBeforeLasso = _fingerPanEnabled;
+        }
         _fingerPanEnabled = false;
       } else {
+        final previousMode = _fingerPanBeforeLasso;
+        if (wasUsingLasso && previousMode != null) {
+          _fingerPanEnabled = previousMode;
+        }
+        _fingerPanBeforeLasso = null;
         _selectedStrokeIds.clear();
       }
     });
@@ -1203,17 +1218,15 @@ class _EditorScreenState extends State<EditorScreen> {
     ];
   }
 
-  Future<void> _runSmartInk(Rect selectionRect) async {
+  Future<void> _runSmartInkForSelectedStrokes() async {
     final page = _page;
     if (page == null) {
       return;
     }
+    await _runSmartInkForStrokes(_selectedStrokesForPage(page));
+  }
 
-    final selectedStrokes = [
-      for (final stroke in page.strokes)
-        if (_strokeOverlapsRect(stroke, selectionRect)) stroke,
-    ];
-
+  Future<void> _runSmartInkForStrokes(List<Stroke> selectedStrokes) async {
     if (selectedStrokes.isEmpty) {
       ScaffoldMessenger.of(
         context,
@@ -1233,6 +1246,10 @@ class _EditorScreenState extends State<EditorScreen> {
       return;
     }
 
+    final page = _page;
+    if (page == null) {
+      return;
+    }
     final text = result.text.trim();
     if (text.isEmpty) {
       ScaffoldMessenger.of(
@@ -1294,26 +1311,13 @@ class _EditorScreenState extends State<EditorScreen> {
     );
   }
 
-  bool _strokeOverlapsRect(Stroke stroke, Rect rect) {
-    final bounds = _boundsForStroke(stroke);
-    if (bounds == null) {
-      return false;
-    }
-
-    return bounds.overlaps(rect) || rect.contains(bounds.center);
-  }
-
   Rect _boundsForStrokes(List<Stroke> strokes) {
     return LassoGeometry.boundsForStrokes(strokes)!;
   }
 
-  Rect? _boundsForStroke(Stroke stroke) {
-    return LassoGeometry.boundsForStroke(stroke);
-  }
-
   Future<void> _savePage([NotePage? page]) async {
     final pageToSave = page ?? _page;
-    if (pageToSave == null) {
+    if (pageToSave == null || pageToSave.isCoordinateSpaceWriteProtected) {
       return;
     }
 
@@ -1336,21 +1340,159 @@ class _EditorScreenState extends State<EditorScreen> {
     });
   }
 
+  void _showPagesForWidth(double width) {
+    if (width >= 1100) {
+      setState(() {
+        _isPageRailOpen = !_isPageRailOpen;
+      });
+      return;
+    }
+    _showNavigationSheet();
+  }
+
   void _showNavigationSheet() {
+    Widget buildNavigator(BuildContext navigatorContext, {bool fill = false}) {
+      return _PdfNavigationSheet(
+        fillAvailableHeight: fill,
+        notebook: _notebook,
+        pagesById: _pagesById,
+        currentPageId: _currentPageId,
+        onAddPage: () {
+          Navigator.of(navigatorContext).pop();
+          unawaited(_addPage());
+        },
+        onInsertPage: (index) {
+          Navigator.of(navigatorContext).pop();
+          unawaited(_insertPage(index));
+        },
+        onDuplicatePage: (pageId) {
+          Navigator.of(navigatorContext).pop();
+          unawaited(_duplicatePage(pageId));
+        },
+        onDeletePage: (pageId) {
+          Navigator.of(navigatorContext).pop();
+          unawaited(_deletePage(pageId));
+        },
+        onMovePage: (pageId, newIndex) {
+          Navigator.of(navigatorContext).pop();
+          unawaited(_movePage(pageId, newIndex));
+        },
+        onRotatePage: (pageId) {
+          Navigator.of(navigatorContext).pop();
+          unawaited(_rotatePageClockwise(pageId));
+        },
+        onSelectPage: (pageId) {
+          Navigator.of(navigatorContext).pop();
+          unawaited(_selectPageManually(pageId));
+        },
+      );
+    }
+
+    final width = MediaQuery.sizeOf(context).width;
+    if (width >= 720) {
+      showGeneralDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        barrierLabel: 'Dismiss page navigator',
+        barrierColor: Colors.black38,
+        transitionDuration: const Duration(milliseconds: 180),
+        pageBuilder: (dialogContext, _, _) {
+          return Align(
+            alignment: Alignment.centerLeft,
+            child: SafeArea(
+              child: Material(
+                color: Theme.of(context).colorScheme.surface,
+                elevation: 16,
+                borderRadius: const BorderRadius.horizontal(
+                  right: Radius.circular(20),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: SizedBox(
+                  width: math.min(380, width * 0.82),
+                  height: double.infinity,
+                  child: buildNavigator(dialogContext, fill: true),
+                ),
+              ),
+            ),
+          );
+        },
+        transitionBuilder: (context, animation, secondaryAnimation, child) {
+          final curved = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+            reverseCurve: Curves.easeInCubic,
+          );
+          return FadeTransition(
+            opacity: curved,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(-0.08, 0),
+                end: Offset.zero,
+              ).animate(curved),
+              child: child,
+            ),
+          );
+        },
+      );
+      return;
+    }
+
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
+      isScrollControlled: true,
       builder: (sheetContext) {
-        return _PdfNavigationSheet(
-          notebook: _notebook,
-          currentPageId: _currentPageId,
-          onSelectPage: (pageId) {
-            Navigator.of(sheetContext).pop();
-            unawaited(_selectPageManually(pageId));
-          },
-        );
+        return buildNavigator(sheetContext);
       },
     );
+  }
+
+  Future<void> _handleEditorMenuAction(_EditorMenuAction action) async {
+    final page = _page;
+    switch (action) {
+      case _EditorMenuAction.audioLibrary:
+        _showAudioRecordingsSheet();
+        break;
+      case _EditorMenuAction.toggleRecording:
+        if (page != null && !_isAudioBusy) {
+          await _toggleAudioRecording();
+        }
+        break;
+      case _EditorMenuAction.importPdf:
+        if (page != null &&
+            !_isImportingPdfs &&
+            _activeAudioRecording == null) {
+          await _importPdfsIntoNotebook();
+        }
+        break;
+      case _EditorMenuAction.pageTemplate:
+        if (page != null &&
+            !page.isCoordinateSpaceWriteProtected &&
+            page.pdfBackground == null) {
+          await _showPageTemplatePicker();
+        }
+        break;
+      case _EditorMenuAction.toggleBookmark:
+        if (page != null) {
+          await _setCurrentPageBookmarked(
+            !_notebook.bookmarkedPageIds.contains(_currentPageId),
+          );
+        }
+        break;
+      case _EditorMenuAction.rotatePage:
+        if (page != null && !page.isCoordinateSpaceWriteProtected) {
+          await _rotatePageClockwise(page.id);
+        }
+        break;
+      case _EditorMenuAction.exportPdf:
+        if (page != null && !_isExporting) {
+          await _exportPdf();
+        }
+        break;
+      case _EditorMenuAction.addPage:
+        await _addPage();
+        break;
+    }
   }
 
   Future<void> _addPage() async {
@@ -1407,10 +1549,16 @@ class _EditorScreenState extends State<EditorScreen> {
     await _savePage();
 
     final previousPageIds = _notebook.pageIds.toSet();
-    final updatedNotebook = await widget.notebookRepository.duplicatePage(
-      _notebook,
-      pageId,
-    );
+    late final Notebook updatedNotebook;
+    try {
+      updatedNotebook = await widget.notebookRepository.duplicatePage(
+        _notebook,
+        pageId,
+      );
+    } on PageCoordinateSpaceWriteException catch (error) {
+      _showCoordinateSpaceWriteBlocked(error);
+      return;
+    }
 
     if (!mounted) {
       return;
@@ -1526,10 +1674,16 @@ class _EditorScreenState extends State<EditorScreen> {
   Future<void> _rotatePageClockwise(String pageId) async {
     await _savePage();
 
-    final rotatedPage = await widget.notebookRepository.rotatePageClockwise(
-      _notebook,
-      pageId,
-    );
+    late final NotePage rotatedPage;
+    try {
+      rotatedPage = await widget.notebookRepository.rotatePageClockwise(
+        _notebook,
+        pageId,
+      );
+    } on PageCoordinateSpaceWriteException catch (error) {
+      _showCoordinateSpaceWriteBlocked(error);
+      return;
+    }
 
     if (!mounted) {
       return;
@@ -1542,6 +1696,24 @@ class _EditorScreenState extends State<EditorScreen> {
       }
     });
     unawaited(_loadPageThumbnails());
+  }
+
+  void _showCoordinateSpaceWriteBlocked(
+    PageCoordinateSpaceWriteException error,
+  ) {
+    if (!mounted) {
+      return;
+    }
+    final message =
+        error.reason ==
+            PageCoordinateSpaceWriteBlockReason.unresolvedLegacyContent
+        ? 'This legacy page is read-only until its coordinates are safely '
+              'converted.'
+        : 'This page was created with an unsupported coordinate version and '
+              'is read-only.';
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _exportPdf() async {
@@ -1732,44 +1904,74 @@ class _EditorScreenState extends State<EditorScreen> {
         : _notebook.audioRecordings.indexWhere(
             (recording) => recording.id == playbackRecording.id,
           );
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final showStandardHeaderActions = screenWidth >= 720;
+    final showWideHeaderActions = screenWidth >= 1000;
+    final currentPageNumber = math.max(
+      1,
+      _notebook.pageIds.indexOf(_currentPageId) + 1,
+    );
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_notebook.title),
+        toolbarHeight: 64,
+        titleSpacing: 4,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              _notebook.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            Text(
+              'Page $currentPageNumber of ${_notebook.pageIds.length}',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
         actions: [
           IconButton(
-            onPressed: _showAudioRecordingsSheet,
-            tooltip: 'Audio recordings',
+            key: const ValueKey('editor-pages-button'),
+            onPressed: () => _showPagesForWidth(screenWidth),
+            tooltip: screenWidth >= 1100 && _isPageRailOpen
+                ? 'Hide pages'
+                : 'Show pages',
             icon: Badge(
-              isLabelVisible: _notebook.audioRecordings.isNotEmpty,
-              label: Text(_notebook.audioRecordings.length.toString()),
-              child: const Icon(Icons.library_music_outlined),
+              label: Text(_notebook.pageIds.length.toString()),
+              child: Icon(
+                screenWidth >= 1100 && _isPageRailOpen
+                    ? Icons.view_sidebar
+                    : Icons.library_books_outlined,
+              ),
             ),
           ),
-          IconButton(
-            onPressed: page == null || _isAudioBusy
-                ? null
-                : () => unawaited(_toggleAudioRecording()),
-            tooltip: isRecording
-                ? 'Stop audio recording'
-                : 'Start audio recording',
-            icon: _isAudioBusy
-                ? const SizedBox.square(
-                    dimension: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Icon(
-                    isRecording ? Icons.stop_circle : Icons.mic_none,
-                    color: isRecording
-                        ? Theme.of(context).colorScheme.error
-                        : null,
-                  ),
-          ),
-          IconButton(
-            onPressed: _showNavigationSheet,
-            tooltip: 'Outline and bookmarks',
-            icon: const Icon(Icons.menu_book_outlined),
-          ),
+          if (showStandardHeaderActions)
+            IconButton(
+              onPressed: page == null || _isAudioBusy
+                  ? null
+                  : () => unawaited(_toggleAudioRecording()),
+              tooltip: isRecording
+                  ? 'Stop audio recording'
+                  : 'Start audio recording',
+              icon: _isAudioBusy
+                  ? const SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Icon(
+                      isRecording ? Icons.stop_circle : Icons.mic_none,
+                      color: isRecording
+                          ? Theme.of(context).colorScheme.error
+                          : null,
+                    ),
+            ),
           IconButton(
             onPressed: () => unawaited(_showNotebookSearch()),
             tooltip: 'Search notebook',
@@ -1781,64 +1983,40 @@ class _EditorScreenState extends State<EditorScreen> {
             ),
           ),
           IconButton(
-            onPressed:
-                page == null ||
-                    _isImportingPdfs ||
-                    _activeAudioRecording != null
-                ? null
-                : () => unawaited(_importPdfsIntoNotebook()),
-            tooltip: 'Import PDFs into notebook',
-            icon: _isImportingPdfs
-                ? const SizedBox.square(
-                    dimension: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.picture_as_pdf_outlined),
-          ),
-          IconButton(
-            onPressed: page == null || page.pdfBackground != null
-                ? null
-                : () => unawaited(_showPageTemplatePicker()),
-            tooltip: page?.pdfBackground == null
-                ? 'Page template'
-                : 'Page template unavailable on PDF pages',
-            icon: const Icon(Icons.dashboard_customize_outlined),
-          ),
-          IconButton(
-            onPressed: page == null
-                ? null
-                : () => unawaited(
-                    _setCurrentPageBookmarked(!isCurrentPageBookmarked),
-                  ),
-            tooltip: isCurrentPageBookmarked
-                ? 'Remove bookmark'
-                : 'Bookmark page',
-            icon: Icon(
-              isCurrentPageBookmarked ? Icons.bookmark : Icons.bookmark_border,
-            ),
-          ),
-          IconButton(
-            onPressed: page == null || _isExporting
-                ? null
-                : () => unawaited(_exportPdf()),
-            tooltip: 'Export PDF',
-            icon: _isExporting
-                ? const SizedBox.square(
-                    dimension: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.ios_share),
-          ),
-          IconButton(
             onPressed: page == null || page.strokes.isEmpty ? null : _undo,
-            tooltip: 'Undo',
+            tooltip: 'Undo ink stroke',
             icon: const Icon(Icons.undo),
           ),
           IconButton(
             onPressed: _redoStack.isEmpty ? null : _redo,
-            tooltip: 'Redo',
+            tooltip: 'Redo ink stroke',
             icon: const Icon(Icons.redo),
           ),
+          if (showWideHeaderActions)
+            IconButton(
+              onPressed: page == null || _isExporting
+                  ? null
+                  : () => unawaited(_exportPdf()),
+              tooltip: 'Export PDF',
+              icon: _isExporting
+                  ? const SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.ios_share),
+            ),
+          _EditorOverflowMenu(
+            page: page,
+            isRecording: isRecording,
+            isAudioBusy: _isAudioBusy,
+            isImportingPdfs: _isImportingPdfs,
+            isExporting: _isExporting,
+            hasAudioRecordings: _notebook.audioRecordings.isNotEmpty,
+            isBookmarked: isCurrentPageBookmarked,
+            isPageWriteProtected: _isCurrentPageWriteProtected,
+            onSelected: (action) => unawaited(_handleEditorMenuAction(action)),
+          ),
+          const SizedBox(width: 4),
         ],
       ),
       body: Column(
@@ -1865,35 +2043,70 @@ class _EditorScreenState extends State<EditorScreen> {
               onToggleFollow: _toggleAudioPlaybackFollow,
               onClose: () => unawaited(_closeAudioPlayback()),
             ),
-          EditorToolbar(
-            tool: _tool,
-            fingerPanEnabled: _fingerPanEnabled,
-            fingerWritingAssistEnabled: _fingerWritingAssistEnabled,
-            onToolChanged: _setTool,
-            onFingerPanChanged: _setFingerPanEnabled,
-            onFingerWritingAssistChanged: _setFingerWritingAssistEnabled,
-            onInsertImage: () => unawaited(_insertImage()),
+          IgnorePointer(
+            ignoring: _isCurrentPageWriteProtected,
+            child: AnimatedOpacity(
+              opacity: _isCurrentPageWriteProtected ? 0.52 : 1,
+              duration: const Duration(milliseconds: 160),
+              child: EditorToolbar(
+                tool: _tool,
+                fingerPanEnabled: _fingerPanEnabled,
+                fingerWritingAssistEnabled: _fingerWritingAssistEnabled,
+                onToolChanged: _setTool,
+                onFingerPanChanged: _setFingerPanEnabled,
+                onFingerWritingAssistChanged: _setFingerWritingAssistEnabled,
+                onInsertImage: () => unawaited(_insertImage()),
+              ),
+            ),
           ),
           Expanded(
-            child: page == null
-                ? const Center(child: CircularProgressIndicator())
-                : _buildPageCanvas(page),
-          ),
-          _PageNavigator(
-            pageIds: _notebook.pageIds,
-            pagesById: _pagesById,
-            currentPageId: _currentPageId,
-            bookmarkedPageIds: _notebook.bookmarkedPageIds.toSet(),
-            onSelectPage: (pageId) => unawaited(_selectPageManually(pageId)),
-            onAddPage: () => unawaited(_addPage()),
-            onInsertPage: (index) => unawaited(_insertPage(index)),
-            onDuplicatePage: (pageId) => unawaited(_duplicatePage(pageId)),
-            onDeletePage: (pageId) => unawaited(_deletePage(pageId)),
-            onMovePage: (pageId, newIndex) =>
-                unawaited(_movePage(pageId, newIndex)),
-            onRotatePage: (pageId) => unawaited(_rotatePageClockwise(pageId)),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final showPageRail =
+                    constraints.maxWidth >= 1100 && _isPageRailOpen;
+                return ColoredBox(
+                  color: const Color(0xFFF0EFEA),
+                  child: Row(
+                    children: [
+                      if (showPageRail) _buildPinnedNavigator(),
+                      Expanded(
+                        child: page == null
+                            ? const Center(child: CircularProgressIndicator())
+                            : _buildPageCanvas(page),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildPinnedNavigator() {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Material(
+      color: colorScheme.surface,
+      elevation: 1,
+      shape: Border(right: BorderSide(color: colorScheme.outlineVariant)),
+      child: SizedBox(
+        width: 280,
+        child: _PdfNavigationSheet(
+          fillAvailableHeight: true,
+          notebook: _notebook,
+          pagesById: _pagesById,
+          currentPageId: _currentPageId,
+          onSelectPage: (pageId) => unawaited(_selectPageManually(pageId)),
+          onAddPage: () => unawaited(_addPage()),
+          onInsertPage: (index) => unawaited(_insertPage(index)),
+          onDuplicatePage: (pageId) => unawaited(_duplicatePage(pageId)),
+          onDeletePage: (pageId) => unawaited(_deletePage(pageId)),
+          onMovePage: (pageId, newIndex) =>
+              unawaited(_movePage(pageId, newIndex)),
+          onRotatePage: (pageId) => unawaited(_rotatePageClockwise(pageId)),
+        ),
       ),
     );
   }
@@ -1904,7 +2117,12 @@ class _EditorScreenState extends State<EditorScreen> {
         _ZoomablePageViewport(
           key: ValueKey('viewport-${page.id}'),
           page: page,
-          fingerPanEnabled: _fingerPanEnabled,
+          fingerPanEnabled:
+              _fingerPanEnabled || page.isCoordinateSpaceWriteProtected,
+          initialSessionState: _viewportStatesByPageId[page.id],
+          onSessionStateChanged: (state) {
+            _viewportStatesByPageId[page.id] = state;
+          },
           child: RotatedBox(
             key: ValueKey(
               'rotated-page-surface-${page.id}-${page.rotationQuarterTurns}',
@@ -1913,10 +2131,26 @@ class _EditorScreenState extends State<EditorScreen> {
             child: _buildPageSurface(page),
           ),
         ),
+        if (page.isCoordinateSpaceWriteProtected)
+          Positioned(
+            top: 16,
+            left: 16,
+            right: 176,
+            child: _CoordinateSpaceReadOnlyBanner(page: page),
+          ),
         Positioned(
-          left: 16,
+          left: 0,
+          right: 0,
           bottom: 16,
-          child: EditorFavoriteToolbar(tool: _tool, onToolChanged: _setTool),
+          child: Center(
+            child: _PagePositionButton(
+              currentPage:
+                  math.max(0, _notebook.pageIds.indexOf(_currentPageId)) + 1,
+              pageCount: _notebook.pageIds.length,
+              onPressed: () =>
+                  _showPagesForWidth(MediaQuery.sizeOf(context).width),
+            ),
+          ),
         ),
         if (_tool.type == ToolType.lasso && _selectedStrokeIds.isNotEmpty)
           Positioned(
@@ -1926,6 +2160,7 @@ class _EditorScreenState extends State<EditorScreen> {
             child: Center(
               child: LassoSelectionToolbar(
                 selectedStrokeCount: _selectedStrokesForPage(page).length,
+                onSmartInk: () => unawaited(_runSmartInkForSelectedStrokes()),
                 onColorChanged: _recolorSelectedStrokes,
                 onDelete: _deleteSelectedStrokes,
                 onClearSelection: _clearLassoSelection,
@@ -1952,88 +2187,89 @@ class _EditorScreenState extends State<EditorScreen> {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(8),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (page.pdfBackground == null &&
-                page.template != NotePageTemplate.blank)
-              PageTemplateLayer(
-                key: ValueKey(
-                  'page-template-layer-${page.id}-${page.template.name}',
+        child: IgnorePointer(
+          ignoring: page.isCoordinateSpaceWriteProtected,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (page.pdfBackground == null &&
+                  page.template != NotePageTemplate.blank)
+                PageTemplateLayer(
+                  key: ValueKey(
+                    'page-template-layer-${page.id}-${page.template.name}',
+                  ),
+                  template: page.template,
                 ),
-                template: page.template,
-              ),
-            if (page.pdfBackground case final background?)
-              PdfPageBackgroundView(
-                key: ValueKey(
-                  '${background.filePath}-${background.pageNumber}',
+              if (page.pdfBackground case final background?)
+                PdfPageBackgroundView(
+                  key: ValueKey(
+                    '${background.filePath}-${background.pageNumber}',
+                  ),
+                  background: background,
                 ),
-                background: background,
+              if (_activeNotebookSearchResult case final result?
+                  when result.pageId == page.id &&
+                      result.source == NotebookTextSearchSource.pdf)
+                PdfSearchHighlightLayer(
+                  rects: result.highlightRects,
+                  referencePageSize: Size(page.width, page.height),
+                ),
+              ImageLayer(
+                page: page,
+                activeImageId: _activeImageId,
+                showControls: false,
+                onImageChanged: _updateImage,
+                onImageDeleted: _deleteImage,
               ),
-            if (_activeNotebookSearchResult case final result?
-                when result.pageId == page.id &&
-                    result.source == NotebookTextSearchSource.pdf)
-              PdfSearchHighlightLayer(
-                rects: result.highlightRects,
-                referencePageSize: Size(page.width, page.height),
+              DrawingCanvas(
+                page: page,
+                tool: _tool,
+                fingerPanEnabled: _fingerPanEnabled,
+                fingerWritingAssistEnabled: _fingerWritingAssistEnabled,
+                onStrokeComplete: _addStroke,
+                onErase: _eraseAt,
+                replayRecordingId: _audioPlaybackRecording?.id,
+                replayStartedAt: _audioPlaybackRecording?.createdAt,
+                replayPosition: _audioPlaybackRecording == null
+                    ? null
+                    : _audioPlaybackPosition,
               ),
-            ImageLayer(
-              page: page,
-              activeImageId: _activeImageId,
-              showControls: false,
-              onImageChanged: _updateImage,
-              onImageDeleted: _deleteImage,
-            ),
-            DrawingCanvas(
-              page: page,
-              tool: _tool,
-              fingerPanEnabled: _fingerPanEnabled,
-              fingerWritingAssistEnabled: _fingerWritingAssistEnabled,
-              onStrokeComplete: _addStroke,
-              onErase: _eraseAt,
-              replayRecordingId: _audioPlaybackRecording?.id,
-              replayStartedAt: _audioPlaybackRecording?.createdAt,
-              replayPosition: _audioPlaybackRecording == null
-                  ? null
-                  : _audioPlaybackPosition,
-            ),
-            ShapeLayer(
-              page: page,
-              tool: _tool,
-              fingerPanEnabled: _fingerPanEnabled,
-              onShapeComplete: _tool.type == ToolType.shape ? _addShape : null,
-            ),
-            ImageLayer(
-              page: page,
-              activeImageId: _activeImageId,
-              showImage: false,
-              onImageChanged: _updateImage,
-              onImageDeleted: _deleteImage,
-            ),
-            TextBoxLayer(
-              page: page,
-              activeTextBoxId: _activeTextBoxId,
-              highlightedTextBoxId: _searchHighlightedTextBoxId(page),
-              onCreateTextBox: _tool.type == ToolType.text
-                  ? _addTextBoxAt
-                  : null,
-              onTextBoxChanged: _updateTextBox,
-              onTextBoxDeleted: _deleteTextBox,
-            ),
-            if (_tool.type == ToolType.smartInk)
-              SmartInkSelectionLayer(
-                onSelectionComplete: (rect) => unawaited(_runSmartInk(rect)),
+              ShapeLayer(
+                page: page,
+                tool: _tool,
+                fingerPanEnabled: _fingerPanEnabled,
+                onShapeComplete: _tool.type == ToolType.shape
+                    ? _addShape
+                    : null,
               ),
-            if (_tool.type == ToolType.lasso)
-              LassoSelectionLayer(
-                key: ValueKey('lasso-selection-${page.id}'),
-                selectedStrokes: _selectedStrokesForPage(page),
-                onSelectionComplete: _selectStrokesWithLasso,
-                onStrokesPreviewChanged: _previewSelectedStrokes,
-                onStrokesChanged: _commitSelectedStrokes,
-                onClearSelection: _clearLassoSelection,
+              ImageLayer(
+                page: page,
+                activeImageId: _activeImageId,
+                showImage: false,
+                onImageChanged: _updateImage,
+                onImageDeleted: _deleteImage,
               ),
-          ],
+              TextBoxLayer(
+                page: page,
+                activeTextBoxId: _activeTextBoxId,
+                highlightedTextBoxId: _searchHighlightedTextBoxId(page),
+                onCreateTextBox: _tool.type == ToolType.text
+                    ? _addTextBoxAt
+                    : null,
+                onTextBoxChanged: _updateTextBox,
+                onTextBoxDeleted: _deleteTextBox,
+              ),
+              if (_tool.type == ToolType.lasso)
+                LassoSelectionLayer(
+                  key: ValueKey('lasso-selection-${page.id}'),
+                  selectedStrokes: _selectedStrokesForPage(page),
+                  onSelectionComplete: _selectStrokesWithLasso,
+                  onStrokesPreviewChanged: _previewSelectedStrokes,
+                  onStrokesChanged: _commitSelectedStrokes,
+                  onClearSelection: _clearLassoSelection,
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -2047,6 +2283,226 @@ class _EditorScreenState extends State<EditorScreen> {
       return null;
     }
     return result.textBoxId;
+  }
+}
+
+class _CoordinateSpaceReadOnlyBanner extends StatelessWidget {
+  const _CoordinateSpaceReadOnlyBanner({required this.page});
+
+  final NotePage page;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isLegacy =
+        page.coordinateSpaceStatus == NotePageCoordinateSpaceStatus.legacy;
+    return Material(
+      key: const ValueKey('coordinate-space-read-only-banner'),
+      color: colorScheme.tertiaryContainer.withValues(alpha: 0.96),
+      elevation: 2,
+      borderRadius: BorderRadius.circular(12),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 48),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Row(
+            children: [
+              Icon(
+                Icons.lock_outline,
+                size: 20,
+                color: colorScheme.onTertiaryContainer,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  isLegacy
+                      ? 'Legacy page is read-only until its coordinates are '
+                            'safely converted.'
+                      : 'This page uses an unsupported coordinate version and '
+                            'is open read-only.',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: colorScheme.onTertiaryContainer,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+enum _EditorMenuAction {
+  audioLibrary,
+  toggleRecording,
+  importPdf,
+  pageTemplate,
+  toggleBookmark,
+  rotatePage,
+  exportPdf,
+  addPage,
+}
+
+class _EditorOverflowMenu extends StatelessWidget {
+  const _EditorOverflowMenu({
+    required this.page,
+    required this.isRecording,
+    required this.isAudioBusy,
+    required this.isImportingPdfs,
+    required this.isExporting,
+    required this.hasAudioRecordings,
+    required this.isBookmarked,
+    required this.isPageWriteProtected,
+    required this.onSelected,
+  });
+
+  final NotePage? page;
+  final bool isRecording;
+  final bool isAudioBusy;
+  final bool isImportingPdfs;
+  final bool isExporting;
+  final bool hasAudioRecordings;
+  final bool isBookmarked;
+  final bool isPageWriteProtected;
+  final ValueChanged<_EditorMenuAction> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<_EditorMenuAction>(
+      key: const ValueKey('editor-more-actions'),
+      tooltip: 'More editor actions',
+      onSelected: onSelected,
+      itemBuilder: (context) {
+        return [
+          _editorMenuItem(
+            value: _EditorMenuAction.audioLibrary,
+            icon: Icons.library_music_outlined,
+            label: hasAudioRecordings ? 'Audio recordings' : 'Audio library',
+          ),
+          _editorMenuItem(
+            value: _EditorMenuAction.toggleRecording,
+            icon: isRecording ? Icons.stop_circle_outlined : Icons.mic_none,
+            label: isRecording ? 'Stop recording' : 'Start recording',
+            enabled: page != null && !isAudioBusy,
+          ),
+          const PopupMenuDivider(),
+          _editorMenuItem(
+            value: _EditorMenuAction.importPdf,
+            icon: Icons.picture_as_pdf_outlined,
+            label: isImportingPdfs ? 'Importing PDF…' : 'Import PDF',
+            enabled: page != null && !isImportingPdfs && !isRecording,
+          ),
+          _editorMenuItem(
+            value: _EditorMenuAction.pageTemplate,
+            icon: Icons.dashboard_customize_outlined,
+            label: 'Page template',
+            enabled:
+                page != null &&
+                !isPageWriteProtected &&
+                page!.pdfBackground == null,
+          ),
+          _editorMenuItem(
+            value: _EditorMenuAction.toggleBookmark,
+            icon: isBookmarked ? Icons.bookmark : Icons.bookmark_border,
+            label: isBookmarked ? 'Remove bookmark' : 'Bookmark page',
+            enabled: page != null,
+          ),
+          _editorMenuItem(
+            value: _EditorMenuAction.rotatePage,
+            icon: Icons.rotate_right,
+            label: 'Rotate page clockwise',
+            enabled: page != null && !isPageWriteProtected,
+          ),
+          _editorMenuItem(
+            value: _EditorMenuAction.addPage,
+            icon: Icons.note_add_outlined,
+            label: 'Add page',
+          ),
+          const PopupMenuDivider(),
+          _editorMenuItem(
+            value: _EditorMenuAction.exportPdf,
+            icon: Icons.ios_share,
+            label: isExporting ? 'Exporting…' : 'Export PDF',
+            enabled: page != null && !isExporting,
+          ),
+        ];
+      },
+      icon: const Icon(Icons.more_horiz),
+    );
+  }
+}
+
+PopupMenuItem<_EditorMenuAction> _editorMenuItem({
+  required _EditorMenuAction value,
+  required IconData icon,
+  required String label,
+  bool enabled = true,
+}) {
+  return PopupMenuItem<_EditorMenuAction>(
+    value: value,
+    enabled: enabled,
+    height: 48,
+    child: Row(
+      children: [
+        Icon(icon, size: 20),
+        const SizedBox(width: 12),
+        Expanded(child: Text(label)),
+      ],
+    ),
+  );
+}
+
+class _PagePositionButton extends StatelessWidget {
+  const _PagePositionButton({
+    required this.currentPage,
+    required this.pageCount,
+    required this.onPressed,
+  });
+
+  final int currentPage;
+  final int pageCount;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Material(
+      color: colorScheme.surface.withValues(alpha: 0.96),
+      elevation: 3,
+      shadowColor: Colors.black26,
+      borderRadius: BorderRadius.circular(22),
+      child: InkWell(
+        key: const ValueKey('editor-page-position-button'),
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(22),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 44, minWidth: 96),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.layers_outlined, size: 19),
+                const SizedBox(width: 8),
+                Text(
+                  '$currentPage / $pageCount',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(width: 4),
+                const Icon(Icons.keyboard_arrow_up, size: 18),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -2727,33 +3183,46 @@ class _ExportOptionsDialogState extends State<_ExportOptionsDialog> {
 
 class _PdfNavigationSheet extends StatelessWidget {
   const _PdfNavigationSheet({
+    this.fillAvailableHeight = false,
     required this.notebook,
+    required this.pagesById,
     required this.currentPageId,
     required this.onSelectPage,
+    required this.onAddPage,
+    required this.onInsertPage,
+    required this.onDuplicatePage,
+    required this.onDeletePage,
+    required this.onMovePage,
+    required this.onRotatePage,
   });
 
+  final bool fillAvailableHeight;
   final Notebook notebook;
+  final Map<String, NotePage> pagesById;
   final String currentPageId;
   final ValueChanged<String> onSelectPage;
+  final VoidCallback onAddPage;
+  final ValueChanged<int> onInsertPage;
+  final ValueChanged<String> onDuplicatePage;
+  final ValueChanged<String> onDeletePage;
+  final void Function(String pageId, int newIndex) onMovePage;
+  final ValueChanged<String> onRotatePage;
 
   @override
   Widget build(BuildContext context) {
-    final initialIndex =
-        notebook.pdfOutlines.isEmpty && notebook.bookmarkedPageIds.isNotEmpty
-        ? 1
-        : 0;
-
     return DefaultTabController(
-      length: 2,
-      initialIndex: initialIndex,
+      length: 3,
       child: SafeArea(
         top: false,
         child: SizedBox(
-          height: 420,
+          height: fillAvailableHeight
+              ? double.infinity
+              : MediaQuery.sizeOf(context).height * 0.72,
           child: Column(
             children: [
               const TabBar(
                 tabs: [
+                  Tab(icon: Icon(Icons.layers_outlined), text: 'Pages'),
                   Tab(icon: Icon(Icons.format_list_bulleted), text: 'Outline'),
                   Tab(icon: Icon(Icons.bookmark_border), text: 'Bookmarks'),
                 ],
@@ -2761,6 +3230,19 @@ class _PdfNavigationSheet extends StatelessWidget {
               Expanded(
                 child: TabBarView(
                   children: [
+                    _PagesTab(
+                      pageIds: notebook.pageIds,
+                      pagesById: pagesById,
+                      currentPageId: currentPageId,
+                      bookmarkedPageIds: notebook.bookmarkedPageIds.toSet(),
+                      onSelectPage: onSelectPage,
+                      onAddPage: onAddPage,
+                      onInsertPage: onInsertPage,
+                      onDuplicatePage: onDuplicatePage,
+                      onDeletePage: onDeletePage,
+                      onMovePage: onMovePage,
+                      onRotatePage: onRotatePage,
+                    ),
                     _OutlineTab(
                       notebook: notebook,
                       currentPageId: currentPageId,
@@ -2778,6 +3260,89 @@ class _PdfNavigationSheet extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _PagesTab extends StatelessWidget {
+  const _PagesTab({
+    required this.pageIds,
+    required this.pagesById,
+    required this.currentPageId,
+    required this.bookmarkedPageIds,
+    required this.onSelectPage,
+    required this.onAddPage,
+    required this.onInsertPage,
+    required this.onDuplicatePage,
+    required this.onDeletePage,
+    required this.onMovePage,
+    required this.onRotatePage,
+  });
+
+  final List<String> pageIds;
+  final Map<String, NotePage> pagesById;
+  final String currentPageId;
+  final Set<String> bookmarkedPageIds;
+  final ValueChanged<String> onSelectPage;
+  final VoidCallback onAddPage;
+  final ValueChanged<int> onInsertPage;
+  final ValueChanged<String> onDuplicatePage;
+  final ValueChanged<String> onDeletePage;
+  final void Function(String pageId, int newIndex) onMovePage;
+  final ValueChanged<String> onRotatePage;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final crossAxisCount = math.max(
+          3,
+          (constraints.maxWidth / 112).floor(),
+        );
+        return GridView.builder(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            mainAxisExtent: 118,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+          ),
+          itemCount: pageIds.length + 1,
+          itemBuilder: (context, index) {
+            if (index == pageIds.length) {
+              return Center(
+                child: IconButton.filledTonal(
+                  onPressed: onAddPage,
+                  tooltip: 'Add page',
+                  icon: const Icon(Icons.add),
+                ),
+              );
+            }
+
+            final pageId = pageIds[index];
+            return Center(
+              child: _PageThumbnailButton(
+                pageId: pageId,
+                pageNumber: index + 1,
+                page: pagesById[pageId],
+                isSelected: pageId == currentPageId,
+                isBookmarked: bookmarkedPageIds.contains(pageId),
+                canDelete: pageIds.length > 1,
+                canMoveLeft: index > 0,
+                canMoveRight: index < pageIds.length - 1,
+                onPressed: () => onSelectPage(pageId),
+                onInsertBefore: () => onInsertPage(index),
+                onInsertAfter: () => onInsertPage(index + 1),
+                onDuplicate: () => onDuplicatePage(pageId),
+                onDelete: () => onDeletePage(pageId),
+                onMoveLeft: () => onMovePage(pageId, index - 1),
+                onMoveRight: () => onMovePage(pageId, index + 1),
+                onRotate: () => onRotatePage(pageId),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }
@@ -2949,11 +3514,15 @@ class _ZoomablePageViewport extends StatefulWidget {
     super.key,
     required this.page,
     required this.fingerPanEnabled,
+    required this.initialSessionState,
+    required this.onSessionStateChanged,
     required this.child,
   });
 
   final NotePage page;
   final bool fingerPanEnabled;
+  final PageViewportSessionState? initialSessionState;
+  final ValueChanged<PageViewportSessionState> onSessionStateChanged;
   final Widget child;
 
   @override
@@ -2961,36 +3530,42 @@ class _ZoomablePageViewport extends StatefulWidget {
 }
 
 class _ZoomablePageViewportState extends State<_ZoomablePageViewport> {
-  static const _padding = 24.0;
-  static const _minScale = 1.0;
-  static const _maxScale = 4.0;
-  static const _minimumVisiblePageExtent = 96.0;
-
   final Map<int, Offset> _activePointers = {};
-  double _scale = 1.0;
-  Offset _pan = Offset.zero;
   Offset? _lastFocalPoint;
   double? _lastPointerDistance;
-  Size _viewportSize = Size.zero;
-  Size _pageSize = Size.zero;
-  Offset _pageOrigin = Offset.zero;
+  PageViewportTransform? _transform;
 
   @override
   void didUpdateWidget(covariant _ZoomablePageViewport oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.page.id != oldWidget.page.id ||
-        widget.page.rotationQuarterTurns !=
-            oldWidget.page.rotationQuarterTurns) {
-      _resetZoom();
+    if (widget.page.id != oldWidget.page.id) {
+      _transform = null;
+    } else if (_transform case final transform?
+        when widget.page.width != oldWidget.page.width ||
+            widget.page.height != oldWidget.page.height ||
+            widget.page.rotationQuarterTurns !=
+                oldWidget.page.rotationQuarterTurns) {
+      _transform = PageViewportTransform.restore(
+        documentSize: Size(widget.page.width, widget.page.height),
+        rotationQuarterTurns: widget.page.rotationQuarterTurns,
+        usableRect: transform.usableRect,
+        state: transform.sessionState,
+      );
+      widget.onSessionStateChanged(_transform!.sessionState);
     }
     if (widget.fingerPanEnabled != oldWidget.fingerPanEnabled) {
-      _activePointers.clear();
-      _lastFocalPoint = null;
-      _lastPointerDistance = null;
+      _resetPointerTracking();
     }
   }
 
   void _handlePointerDown(PointerDownEvent event) {
+    final transform = _transform;
+    if (transform != null &&
+        transform.mode != PageViewportMode.custom &&
+        (event.kind != PointerDeviceKind.touch || !widget.fingerPanEnabled)) {
+      _setTransform(transform.enterCustom());
+    }
+
     if (event.kind != PointerDeviceKind.touch) {
       return;
     }
@@ -3026,11 +3601,16 @@ class _ZoomablePageViewportState extends State<_ZoomablePageViewport> {
         previousDistance != null &&
         previousDistance > 0 &&
         distance > 0) {
-      _applyPinchUpdate(
-        previousFocalPoint: previousFocalPoint,
-        focalPoint: focalPoint,
-        scaleFactor: distance / previousDistance,
-      );
+      final transform = _transform;
+      if (transform != null) {
+        _setTransform(
+          transform.applyViewportGesture(
+            previousFocalPoint: previousFocalPoint,
+            focalPoint: focalPoint,
+            scaleFactor: distance / previousDistance,
+          ),
+        );
+      }
     }
 
     _lastFocalPoint = focalPoint;
@@ -3056,11 +3636,9 @@ class _ZoomablePageViewportState extends State<_ZoomablePageViewport> {
 
   void _handleSingleFingerPan(Offset focalPoint) {
     final previousFocalPoint = _lastFocalPoint;
-    if (previousFocalPoint != null) {
-      final delta = focalPoint - previousFocalPoint;
-      setState(() {
-        _pan = _clampPan(_pan + delta);
-      });
+    final transform = _transform;
+    if (previousFocalPoint != null && transform != null) {
+      _setTransform(transform.panBy(focalPoint - previousFocalPoint));
     }
 
     _lastFocalPoint = focalPoint;
@@ -3075,44 +3653,33 @@ class _ZoomablePageViewportState extends State<_ZoomablePageViewport> {
     _lastPointerDistance = _pinchDistance();
   }
 
-  void _applyPinchUpdate({
-    required Offset previousFocalPoint,
-    required Offset focalPoint,
-    required double scaleFactor,
-  }) {
-    final pagePoint = _viewportToPage(previousFocalPoint);
-    final nextScale = (_scale * scaleFactor).clamp(_minScale, _maxScale);
-    final nextPan = _panForPagePoint(
-      pagePoint: pagePoint,
-      focalPoint: focalPoint,
-      scale: nextScale,
-    );
-
+  void _setTransform(PageViewportTransform transform) {
     setState(() {
-      _scale = nextScale.toDouble();
-      _pan = _clampPan(nextPan, scale: _scale);
+      _transform = transform;
     });
+    widget.onSessionStateChanged(transform.sessionState);
   }
 
   void _zoomBy(double scaleFactor) {
-    final focalPoint = Offset(
-      _viewportSize.width / 2,
-      _viewportSize.height / 2,
-    );
-    _applyPinchUpdate(
-      previousFocalPoint: focalPoint,
-      focalPoint: focalPoint,
-      scaleFactor: scaleFactor,
-    );
+    final transform = _transform;
+    if (transform != null) {
+      _setTransform(transform.zoomBy(scaleFactor: scaleFactor));
+    }
   }
 
-  void _resetZoom() {
-    setState(() {
-      _scale = 1.0;
-      _pan = Offset.zero;
-      _lastFocalPoint = null;
-      _lastPointerDistance = null;
-    });
+  void _fit(PageViewportMode mode) {
+    final transform = _transform;
+    if (transform == null || mode == PageViewportMode.custom) {
+      return;
+    }
+    _setTransform(transform.fit(mode));
+    _resetPointerTracking();
+  }
+
+  void _resetPointerTracking() {
+    _activePointers.clear();
+    _lastFocalPoint = null;
+    _lastPointerDistance = null;
   }
 
   Offset _pinchFocalPoint() {
@@ -3128,85 +3695,51 @@ class _ZoomablePageViewportState extends State<_ZoomablePageViewport> {
     return (points[0] - points[1]).distance;
   }
 
-  Offset _viewportToPage(Offset viewportPoint) {
-    final center = _pageCenter;
-    return (viewportPoint - _pageOrigin - _pan - center) / _scale + center;
-  }
-
-  Offset _panForPagePoint({
-    required Offset pagePoint,
-    required Offset focalPoint,
-    required double scale,
-  }) {
-    final center = _pageCenter;
-    return focalPoint - _pageOrigin - center - (pagePoint - center) * scale;
-  }
-
-  Offset _clampPan(Offset pan, {double? scale}) {
-    if (_pageSize == Size.zero || _viewportSize == Size.zero) {
-      return pan;
+  PageViewportTransform? _resolveTransform(BoxConstraints constraints) {
+    final viewportSize = constraints.biggest;
+    if (!viewportSize.width.isFinite ||
+        !viewportSize.height.isFinite ||
+        viewportSize.width <= 0 ||
+        viewportSize.height <= 0) {
+      return null;
     }
 
-    final effectiveScale = scale ?? _scale;
-    final scaledSize = Size(
-      _pageSize.width * effectiveScale,
-      _pageSize.height * effectiveScale,
-    );
-    final centerShift = _pageCenter - _pageCenter * effectiveScale;
-    final minimumVisibleX = math.min(
-      _minimumVisiblePageExtent,
-      math.min(_viewportSize.width, scaledSize.width) / 2,
-    );
-    final minimumVisibleY = math.min(
-      _minimumVisiblePageExtent,
-      math.min(_viewportSize.height, scaledSize.height) / 2,
-    );
+    final usableRect = Offset.zero & viewportSize;
+    final documentSize = Size(widget.page.width, widget.page.height);
+    var transform = _transform;
 
-    final minX =
-        minimumVisibleX - scaledSize.width - _pageOrigin.dx - centerShift.dx;
-    final maxX =
-        _viewportSize.width - minimumVisibleX - _pageOrigin.dx - centerShift.dx;
-    final minY =
-        minimumVisibleY - scaledSize.height - _pageOrigin.dy - centerShift.dy;
-    final maxY =
-        _viewportSize.height -
-        minimumVisibleY -
-        _pageOrigin.dy -
-        centerShift.dy;
+    if (transform == null) {
+      final restoredState = widget.initialSessionState;
+      transform = restoredState == null
+          ? PageViewportTransform.firstVisit(
+              documentSize: documentSize,
+              rotationQuarterTurns: widget.page.rotationQuarterTurns,
+              usableRect: usableRect,
+            )
+          : PageViewportTransform.restore(
+              documentSize: documentSize,
+              rotationQuarterTurns: widget.page.rotationQuarterTurns,
+              usableRect: usableRect,
+              state: restoredState,
+            );
+    } else if (transform.usableRect != usableRect) {
+      transform = transform.reflow(usableRect);
+    }
 
-    return Offset(
-      pan.dx.clamp(minX, maxX).toDouble(),
-      pan.dy.clamp(minY, maxY).toDouble(),
-    );
-  }
-
-  Offset get _pageCenter => Offset(_pageSize.width / 2, _pageSize.height / 2);
-
-  Size _fittedPageSize(BoxConstraints constraints) {
-    final availableWidth = math.max(0.0, constraints.maxWidth - _padding * 2);
-    final availableHeight = math.max(0.0, constraints.maxHeight - _padding * 2);
-    final scale = math.min(
-      availableWidth / widget.page.displayWidth,
-      availableHeight / widget.page.displayHeight,
-    );
-
-    return Size(
-      widget.page.displayWidth * scale,
-      widget.page.displayHeight * scale,
-    );
+    _transform = transform;
+    widget.onSessionStateChanged(transform.sessionState);
+    return transform;
   }
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        _viewportSize = constraints.biggest;
-        _pageSize = _fittedPageSize(constraints);
-        _pageOrigin = Offset(
-          (constraints.maxWidth - _pageSize.width) / 2,
-          (constraints.maxHeight - _pageSize.height) / 2,
-        );
-        _pan = _clampPan(_pan);
+        final transform = _resolveTransform(constraints);
+        if (transform == null) {
+          return const SizedBox.shrink();
+        }
+        final pageSize = transform.rotatedPageSize;
 
         return Listener(
           behavior: HitTestBehavior.opaque,
@@ -3218,15 +3751,19 @@ class _ZoomablePageViewportState extends State<_ZoomablePageViewport> {
             child: Stack(
               children: [
                 Positioned(
-                  left: _pageOrigin.dx,
-                  top: _pageOrigin.dy,
-                  width: _pageSize.width,
-                  height: _pageSize.height,
-                  child: Transform.translate(
-                    offset: _pan,
-                    child: Transform.scale(
-                      scale: _scale,
-                      alignment: Alignment.center,
+                  left: transform.pageOriginInViewport.dx,
+                  top: transform.pageOriginInViewport.dy,
+                  width: pageSize.width,
+                  height: pageSize.height,
+                  child: Transform.scale(
+                    key: ValueKey(
+                      'page-transform-${widget.page.id}-'
+                      '${widget.page.rotationQuarterTurns}',
+                    ),
+                    scale: transform.effectiveScale,
+                    alignment: Alignment.topLeft,
+                    child: SizedBox.fromSize(
+                      size: pageSize,
                       child: widget.child,
                     ),
                   ),
@@ -3235,11 +3772,16 @@ class _ZoomablePageViewportState extends State<_ZoomablePageViewport> {
                   top: 16,
                   right: 16,
                   child: _ZoomControls(
-                    canZoomOut: _scale > _minScale,
-                    canZoomIn: _scale < _maxScale,
+                    mode: transform.mode,
+                    scale: transform.effectiveScale,
+                    canZoomOut:
+                        transform.effectiveScale > transform.minimumCustomScale,
+                    canZoomIn:
+                        transform.effectiveScale < transform.maximumCustomScale,
                     onZoomOut: () => _zoomBy(0.8),
-                    onReset: _resetZoom,
                     onZoomIn: () => _zoomBy(1.25),
+                    onFitWidth: () => _fit(PageViewportMode.fitWidth),
+                    onFitPage: () => _fit(PageViewportMode.fitPage),
                   ),
                 ),
               ],
@@ -3253,18 +3795,24 @@ class _ZoomablePageViewportState extends State<_ZoomablePageViewport> {
 
 class _ZoomControls extends StatelessWidget {
   const _ZoomControls({
+    required this.mode,
+    required this.scale,
     required this.canZoomOut,
     required this.canZoomIn,
     required this.onZoomOut,
-    required this.onReset,
     required this.onZoomIn,
+    required this.onFitWidth,
+    required this.onFitPage,
   });
 
+  final PageViewportMode mode;
+  final double scale;
   final bool canZoomOut;
   final bool canZoomIn;
   final VoidCallback onZoomOut;
-  final VoidCallback onReset;
   final VoidCallback onZoomIn;
+  final VoidCallback onFitWidth;
+  final VoidCallback onFitPage;
 
   @override
   Widget build(BuildContext context) {
@@ -3273,9 +3821,10 @@ class _ZoomControls extends StatelessWidget {
     return Material(
       color: colorScheme.surface,
       elevation: 2,
-      borderRadius: BorderRadius.circular(8),
+      shadowColor: Colors.black26,
+      borderRadius: BorderRadius.circular(12),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 4),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -3284,10 +3833,58 @@ class _ZoomControls extends StatelessWidget {
               tooltip: 'Zoom out',
               icon: const Icon(Icons.zoom_out),
             ),
-            IconButton(
-              onPressed: onReset,
-              tooltip: 'Reset zoom',
-              icon: const Icon(Icons.center_focus_strong),
+            PopupMenuButton<PageViewportMode>(
+              tooltip: 'Zoom and fit',
+              initialValue: mode == PageViewportMode.custom ? null : mode,
+              onSelected: (selectedMode) {
+                switch (selectedMode) {
+                  case PageViewportMode.fitWidth:
+                    onFitWidth();
+                  case PageViewportMode.fitPage:
+                    onFitPage();
+                  case PageViewportMode.custom:
+                    break;
+                }
+              },
+              itemBuilder: (context) => const [
+                PopupMenuItem(
+                  value: PageViewportMode.fitWidth,
+                  height: 48,
+                  child: Row(
+                    children: [
+                      Icon(Icons.fit_screen_outlined),
+                      SizedBox(width: 12),
+                      Text('Fit width'),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: PageViewportMode.fitPage,
+                  height: 48,
+                  child: Row(
+                    children: [
+                      Icon(Icons.center_focus_strong),
+                      SizedBox(width: 12),
+                      Text('Fit page'),
+                    ],
+                  ),
+                ),
+              ],
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 68, minHeight: 44),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      '${(scale * 100).round()}%',
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const Icon(Icons.arrow_drop_down, size: 18),
+                  ],
+                ),
+              ),
             ),
             IconButton(
               onPressed: canZoomIn ? onZoomIn : null,
@@ -3295,85 +3892,6 @@ class _ZoomControls extends StatelessWidget {
               icon: const Icon(Icons.zoom_in),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PageNavigator extends StatelessWidget {
-  const _PageNavigator({
-    required this.pageIds,
-    required this.pagesById,
-    required this.currentPageId,
-    required this.bookmarkedPageIds,
-    required this.onSelectPage,
-    required this.onAddPage,
-    required this.onInsertPage,
-    required this.onDuplicatePage,
-    required this.onDeletePage,
-    required this.onMovePage,
-    required this.onRotatePage,
-  });
-
-  final List<String> pageIds;
-  final Map<String, NotePage> pagesById;
-  final String currentPageId;
-  final Set<String> bookmarkedPageIds;
-  final ValueChanged<String> onSelectPage;
-  final VoidCallback onAddPage;
-  final ValueChanged<int> onInsertPage;
-  final ValueChanged<String> onDuplicatePage;
-  final ValueChanged<String> onDeletePage;
-  final void Function(String pageId, int newIndex) onMovePage;
-  final ValueChanged<String> onRotatePage;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Material(
-      color: colorScheme.surface,
-      elevation: 1,
-      child: SafeArea(
-        top: false,
-        child: SizedBox(
-          height: 118,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            children: [
-              for (final (index, pageId) in pageIds.indexed)
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: _PageThumbnailButton(
-                    pageId: pageId,
-                    pageNumber: index + 1,
-                    page: pagesById[pageId],
-                    isSelected: pageId == currentPageId,
-                    isBookmarked: bookmarkedPageIds.contains(pageId),
-                    canDelete: pageIds.length > 1,
-                    canMoveLeft: index > 0,
-                    canMoveRight: index < pageIds.length - 1,
-                    onPressed: () => onSelectPage(pageId),
-                    onInsertBefore: () => onInsertPage(index),
-                    onInsertAfter: () => onInsertPage(index + 1),
-                    onDuplicate: () => onDuplicatePage(pageId),
-                    onDelete: () => onDeletePage(pageId),
-                    onMoveLeft: () => onMovePage(pageId, index - 1),
-                    onMoveRight: () => onMovePage(pageId, index + 1),
-                    onRotate: () => onRotatePage(pageId),
-                  ),
-                ),
-              Center(
-                child: IconButton.filledTonal(
-                  onPressed: onAddPage,
-                  tooltip: 'Add page',
-                  icon: const Icon(Icons.add),
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );
@@ -3498,6 +4016,8 @@ class _PageThumbnailButton extends StatelessWidget {
                     right: 3,
                     child: _PageActionMenu(
                       pageNumber: pageNumber,
+                      canDuplicateOrRotate:
+                          !(page?.isCoordinateSpaceWriteProtected ?? false),
                       canDelete: canDelete,
                       canMoveLeft: canMoveLeft,
                       canMoveRight: canMoveRight,
@@ -3549,6 +4069,7 @@ enum _PageAction {
 class _PageActionMenu extends StatelessWidget {
   const _PageActionMenu({
     required this.pageNumber,
+    required this.canDuplicateOrRotate,
     required this.canDelete,
     required this.canMoveLeft,
     required this.canMoveRight,
@@ -3556,6 +4077,7 @@ class _PageActionMenu extends StatelessWidget {
   });
 
   final int pageNumber;
+  final bool canDuplicateOrRotate;
   final bool canDelete;
   final bool canMoveLeft;
   final bool canMoveRight;
@@ -3585,11 +4107,13 @@ class _PageActionMenu extends StatelessWidget {
             value: _PageAction.duplicate,
             icon: Icons.copy,
             label: 'Duplicate page',
+            enabled: canDuplicateOrRotate,
           ),
           _pageActionItem(
             value: _PageAction.rotateClockwise,
             icon: Icons.rotate_right,
             label: 'Rotate page clockwise',
+            enabled: canDuplicateOrRotate,
           ),
           _pageActionItem(
             value: _PageAction.delete,

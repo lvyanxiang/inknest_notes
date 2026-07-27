@@ -3,7 +3,7 @@ import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:inknest_notes/models/note_shape.dart';
 
-enum ToolType { pen, highlighter, eraser, text, lasso, smartInk, shape }
+enum ToolType { pen, highlighter, eraser, text, lasso, shape }
 
 @immutable
 class DrawingTool {

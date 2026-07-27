@@ -350,12 +350,14 @@ class LassoSelectionToolbar extends StatelessWidget {
   const LassoSelectionToolbar({
     super.key,
     required this.selectedStrokeCount,
+    required this.onSmartInk,
     required this.onColorChanged,
     required this.onDelete,
     required this.onClearSelection,
   });
 
   final int selectedStrokeCount;
+  final VoidCallback onSmartInk;
   final ValueChanged<Color> onColorChanged;
   final VoidCallback onDelete;
   final VoidCallback onClearSelection;
@@ -381,6 +383,17 @@ class LassoSelectionToolbar extends StatelessWidget {
               style: Theme.of(context).textTheme.labelMedium,
             ),
             const SizedBox(width: 6),
+            FilledButton.tonalIcon(
+              key: const ValueKey('lasso-smart-ink'),
+              onPressed: onSmartInk,
+              icon: const Icon(Icons.auto_fix_high, size: 19),
+              label: const Text('Smart Ink'),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(44, 44),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+              ),
+            ),
+            const SizedBox(width: 4),
             for (final colorChoice in _colorChoices)
               _LassoColorButton(
                 color: colorChoice.color,
@@ -393,7 +406,7 @@ class LassoSelectionToolbar extends StatelessWidget {
               tooltip: 'Delete selected strokes',
               icon: const Icon(Icons.delete_outline),
               iconSize: 20,
-              constraints: const BoxConstraints.tightFor(width: 36, height: 36),
+              constraints: const BoxConstraints.tightFor(width: 44, height: 44),
               padding: EdgeInsets.zero,
             ),
             IconButton(
@@ -402,7 +415,7 @@ class LassoSelectionToolbar extends StatelessWidget {
               tooltip: 'Clear lasso selection',
               icon: const Icon(Icons.close),
               iconSize: 20,
-              constraints: const BoxConstraints.tightFor(width: 36, height: 36),
+              constraints: const BoxConstraints.tightFor(width: 44, height: 44),
               padding: EdgeInsets.zero,
             ),
           ],
@@ -427,22 +440,24 @@ class _LassoColorButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Tooltip(
       message: 'Recolor selected strokes $label',
-      child: InkResponse(
-        key: ValueKey('lasso-color-${color.toARGB32()}'),
-        onTap: onPressed,
-        radius: 18,
-        child: Padding(
-          padding: const EdgeInsets.all(5),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 2),
-              boxShadow: const [
-                BoxShadow(color: Color(0x33000000), blurRadius: 3),
-              ],
+      child: SizedBox.square(
+        dimension: 44,
+        child: InkResponse(
+          key: ValueKey('lasso-color-${color.toARGB32()}'),
+          onTap: onPressed,
+          radius: 22,
+          child: Center(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 2),
+                boxShadow: const [
+                  BoxShadow(color: Color(0x33000000), blurRadius: 3),
+                ],
+              ),
+              child: const SizedBox.square(dimension: 20),
             ),
-            child: const SizedBox.square(dimension: 18),
           ),
         ),
       ),

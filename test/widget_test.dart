@@ -26,6 +26,74 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  Future<void> selectEditorMoreAction(WidgetTester tester, String label) async {
+    await tester.tap(find.byKey(const ValueKey('editor-more-actions')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(label).last);
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> openEditorPages(WidgetTester tester) async {
+    await tester.tap(find.byKey(const ValueKey('editor-pages-button')));
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> selectInsertAction(WidgetTester tester, String label) async {
+    await tester.tap(find.byKey(const ValueKey('editor-insert-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(label).last);
+    await tester.pumpAndSettle();
+  }
+
+  Offset visibleCanvasPoint(
+    WidgetTester tester, {
+    double horizontalFraction = 0.35,
+    double verticalInset = 112,
+  }) {
+    final canvasRect = tester.getRect(find.byType(DrawingCanvas));
+    final viewSize = tester.view.physicalSize / tester.view.devicePixelRatio;
+    final visibleRect = canvasRect.intersect(Offset.zero & viewSize);
+    expect(visibleRect.width, greaterThan(96));
+    expect(visibleRect.height, greaterThan(96));
+    return Offset(
+      visibleRect.left + visibleRect.width * horizontalFraction,
+      (visibleRect.top + verticalInset).clamp(
+        visibleRect.top + 24,
+        visibleRect.bottom - 24,
+      ),
+    );
+  }
+
+  Future<void> drawVisibleStroke(
+    WidgetTester tester, {
+    ui.PointerDeviceKind kind = ui.PointerDeviceKind.touch,
+  }) async {
+    final start = visibleCanvasPoint(tester);
+    final gesture = await tester.startGesture(start, kind: kind);
+    await gesture.moveBy(const Offset(48, 16));
+    await gesture.up();
+    await tester.pump();
+  }
+
+  Future<void> selectVisibleStrokeWithLasso(WidgetTester tester) async {
+    await tester.tap(find.byTooltip('Lasso'));
+    await tester.pumpAndSettle();
+
+    final start = visibleCanvasPoint(tester);
+    final lasso = await tester.startGesture(start - const Offset(24, 24));
+    await lasso.moveTo(start + const Offset(88, -24));
+    await lasso.moveTo(start + const Offset(88, 56));
+    await lasso.moveTo(start + const Offset(-24, 56));
+    await lasso.moveTo(start - const Offset(24, 24));
+    await lasso.up();
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('lasso-selection-toolbar')),
+      findsOneWidget,
+    );
+  }
+
   testWidgets('shows the notebook library shell', (WidgetTester tester) async {
     await pumpInkNestApp(tester);
 
@@ -42,22 +110,32 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Notebook 1'), findsOneWidget);
-    expect(find.byTooltip('Audio recordings'), findsOneWidget);
     expect(find.byTooltip('Start audio recording'), findsOneWidget);
     expect(find.byTooltip('Search notebook'), findsOneWidget);
-    expect(find.byTooltip('Export PDF'), findsOneWidget);
+    expect(find.byKey(const ValueKey('editor-more-actions')), findsOneWidget);
+    expect(find.byTooltip('Pen'), findsOneWidget);
+    expect(find.byTooltip('Highlighter'), findsOneWidget);
+    expect(find.byTooltip('Eraser'), findsOneWidget);
     expect(find.byTooltip('Lasso'), findsOneWidget);
-    expect(find.byTooltip('Shape'), findsOneWidget);
-    expect(find.byTooltip('Shape type'), findsOneWidget);
-    expect(find.byTooltip('Favorite black pen'), findsOneWidget);
-    expect(find.byTooltip('Favorite yellow highlighter'), findsOneWidget);
-    final toolbarScrollable = find.ancestor(
-      of: find.byTooltip('Lasso'),
-      matching: find.byType(Scrollable),
+    expect(find.byTooltip('Insert'), findsOneWidget);
+    expect(
+      find.ancestor(
+        of: find.byTooltip('Lasso'),
+        matching: find.byType(Scrollable),
+      ),
+      findsNothing,
     );
-    await tester.drag(toolbarScrollable, const Offset(-700, 0));
+    expect(find.byKey(const ValueKey('page-thumbnail-page-1')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('editor-insert-menu')));
     await tester.pumpAndSettle();
-    expect(find.byTooltip('Insert image'), findsOneWidget);
+    expect(find.text('Text'), findsOneWidget);
+    expect(find.text('Image'), findsOneWidget);
+    expect(find.text('Shape'), findsOneWidget);
+    await tester.tapAt(const Offset(8, 180));
+    await tester.pumpAndSettle();
+
+    await openEditorPages(tester);
     expect(find.byKey(const ValueKey('page-thumbnail-page-1')), findsOneWidget);
     expect(find.text('No notebooks yet'), findsNothing);
   });
@@ -111,8 +189,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Import PDFs into notebook'));
-    await tester.pumpAndSettle();
+    await selectEditorMoreAction(tester, 'Import PDF');
 
     final updatedNotebook = (await repository.listNotebooks()).single;
     expect(updatedNotebook.pageIds, ['page-1', 'page-2', 'page-3']);
@@ -124,6 +201,7 @@ void main() {
       find.byKey(const ValueKey('rotated-page-surface-page-2-0')),
       findsOneWidget,
     );
+    await openEditorPages(tester);
     expect(find.byKey(const ValueKey('page-thumbnail-page-3')), findsOneWidget);
     expect(find.text('Imported 2 PDFs · 2 pages'), findsOneWidget);
   });
@@ -139,8 +217,7 @@ void main() {
     await tester.tap(find.text(notebook.title));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Page template'));
-    await tester.pumpAndSettle();
+    await selectEditorMoreAction(tester, 'Page template');
 
     for (final template in NotePageTemplate.values) {
       expect(find.text(template.label), findsOneWidget);
@@ -157,8 +234,7 @@ void main() {
       NotePageTemplate.grid,
     );
 
-    await tester.tap(find.byTooltip('Add page'));
-    await tester.pumpAndSettle();
+    await selectEditorMoreAction(tester, 'Add page');
 
     expect(
       (await repository.loadPage(notebook, 'page-2')).template,
@@ -185,6 +261,7 @@ void main() {
       greaterThan(tester.getSize(portraitSurface).width),
     );
 
+    await openEditorPages(tester);
     await tester.tap(find.byTooltip('Page 1 actions'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Rotate page clockwise'));
@@ -202,11 +279,7 @@ void main() {
       1,
     );
 
-    final canvas = find.byType(DrawingCanvas);
-    final gesture = await tester.startGesture(tester.getCenter(canvas));
-    await gesture.moveBy(const Offset(32, 24));
-    await gesture.up();
-    await tester.pump();
+    await drawVisibleStroke(tester);
 
     final undoButton = find.widgetWithIcon(IconButton, Icons.undo);
     expect(tester.widget<IconButton>(undoButton).onPressed, isNotNull);
@@ -380,13 +453,15 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(find.text(notebook.title));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Audio recordings'));
-    await tester.pump();
+    await selectEditorMoreAction(tester, 'Audio recordings');
     await tester.pump(const Duration(milliseconds: 400));
 
     expect(find.text('Recording 1'), findsOneWidget);
     expect(find.byTooltip('Play recording 1'), findsOneWidget);
-    expect(find.textContaining('Page 1'), findsOneWidget);
+    expect(
+      find.textContaining('0:08 - 2026-07-18 09:00 - Page 1'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('keeps replay ink visible and highlights the current segment', (
@@ -469,10 +544,9 @@ void main() {
 
     await tester.tap(find.text('New notebook'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Text'));
-    await tester.pumpAndSettle();
+    await selectInsertAction(tester, 'Text');
 
-    await tester.tapAt(tester.getCenter(find.byType(DrawingCanvas)));
+    await tester.tapAt(visibleCanvasPoint(tester));
     await tester.pumpAndSettle();
 
     expect(find.byType(TextField), findsOneWidget);
@@ -488,8 +562,8 @@ void main() {
 
     expect(find.byTooltip('Plain text'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Add page'));
-    await tester.pumpAndSettle();
+    await selectEditorMoreAction(tester, 'Add page');
+    await openEditorPages(tester);
     await tester.tap(find.byTooltip('Page 1'));
     await tester.pumpAndSettle();
 
@@ -521,26 +595,18 @@ void main() {
     await tester.tap(find.text('New notebook'));
     await tester.pumpAndSettle();
 
-    final canvas = find.byType(DrawingCanvas);
-    final center = tester.getCenter(canvas);
-    final strokeGesture = await tester.startGesture(
-      center - const Offset(32, 8),
+    await drawVisibleStroke(tester);
+    await selectVisibleStrokeWithLasso(tester);
+    await tester.tap(find.byKey(const ValueKey('lasso-smart-ink')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('Smart Ink'),
+      ),
+      findsOneWidget,
     );
-    await strokeGesture.moveBy(const Offset(64, 16));
-    await strokeGesture.up();
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byTooltip('Smart Ink'));
-    await tester.pumpAndSettle();
-
-    final selectionGesture = await tester.startGesture(
-      center - const Offset(96, 64),
-    );
-    await selectionGesture.moveBy(const Offset(192, 128));
-    await selectionGesture.up();
-    await tester.pumpAndSettle();
-
-    expect(find.text('Smart Ink'), findsOneWidget);
     expect(find.text('Selected 1 strokes'), findsOneWidget);
 
     await tester.enterText(find.byType(TextField), 'Neat note');
@@ -576,22 +642,9 @@ void main() {
 
     await tester.tap(find.text('New notebook'));
     await tester.pumpAndSettle();
-    final canvas = find.byType(DrawingCanvas);
-    final center = tester.getCenter(canvas);
-    final strokeGesture = await tester.startGesture(
-      center - const Offset(32, 8),
-    );
-    await strokeGesture.moveBy(const Offset(64, 16));
-    await strokeGesture.up();
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byTooltip('Smart Ink'));
-    await tester.pumpAndSettle();
-    final selectionGesture = await tester.startGesture(
-      center - const Offset(96, 64),
-    );
-    await selectionGesture.moveBy(const Offset(192, 128));
-    await selectionGesture.up();
+    await drawVisibleStroke(tester);
+    await selectVisibleStrokeWithLasso(tester);
+    await tester.tap(find.byKey(const ValueKey('lasso-smart-ink')));
     await tester.pumpAndSettle();
 
     expect(find.text('Recognized note'), findsOneWidget);
@@ -612,12 +665,10 @@ void main() {
     await tester.tap(find.text('New notebook'));
     await tester.pumpAndSettle();
     for (var index = 0; index < 3; index++) {
-      await tester.tap(find.byTooltip('Add page'));
-      await tester.pumpAndSettle();
+      await selectEditorMoreAction(tester, 'Add page');
     }
 
-    await tester.tap(find.byTooltip('Export PDF'));
-    await tester.pumpAndSettle();
+    await selectEditorMoreAction(tester, 'Export PDF');
 
     expect(find.text('Export PDF'), findsOneWidget);
     expect(find.text('Full'), findsOneWidget);
@@ -899,14 +950,14 @@ void main() {
       tester.widget<Transform>(lean).transform.entry(1, 0),
       lessThan(-0.05),
     );
-    expect(find.byTooltip('Audio recordings'), findsNothing);
+    expect(find.byKey(const ValueKey('editor-more-actions')), findsNothing);
 
     await tester.pump(const Duration(milliseconds: 199));
-    expect(find.byTooltip('Audio recordings'), findsNothing);
+    expect(find.byKey(const ValueKey('editor-more-actions')), findsNothing);
     await tester.pump(const Duration(milliseconds: 1));
     await tester.pumpAndSettle();
 
-    expect(find.byTooltip('Audio recordings'), findsOneWidget);
+    expect(find.byKey(const ValueKey('editor-more-actions')), findsOneWidget);
   });
 
   testWidgets('inspects spines and tips only truncated notebook titles', (
@@ -975,7 +1026,7 @@ void main() {
 
     await tester.tap(shortNotebook);
     await tester.pumpAndSettle();
-    expect(find.byTooltip('Audio recordings'), findsOneWidget);
+    expect(find.byKey(const ValueKey('editor-more-actions')), findsOneWidget);
   });
 
   testWidgets('opens immediately when reduced motion is enabled', (
@@ -1001,7 +1052,7 @@ void main() {
     expect(tester.widget<AnimatedScale>(scale).scale, 1);
     await tester.pumpAndSettle();
 
-    expect(find.byTooltip('Audio recordings'), findsOneWidget);
+    expect(find.byKey(const ValueKey('editor-more-actions')), findsOneWidget);
   });
 
   testWidgets('widens notebook spines as page count grows', (
@@ -1045,10 +1096,12 @@ void main() {
     await tester.tap(find.bySemanticsLabel('Open notebook Growing notes'));
     await tester.pumpAndSettle();
     for (var index = 0; index < 5; index++) {
-      await tester.tap(find.byTooltip('Add page'));
-      await tester.pumpAndSettle();
+      await selectEditorMoreAction(tester, 'Add page');
     }
+    await openEditorPages(tester);
     expect(find.byKey(const ValueKey('page-thumbnail-page-6')), findsOneWidget);
+    await tester.tap(find.byTooltip('Page 6'));
+    await tester.pumpAndSettle();
 
     await tester.pageBack();
     await tester.pumpAndSettle();
@@ -1058,6 +1111,7 @@ void main() {
 
     await tester.tap(find.bySemanticsLabel('Open notebook Growing notes'));
     await tester.pumpAndSettle();
+    await openEditorPages(tester);
     expect(find.byKey(const ValueKey('page-thumbnail-page-6')), findsOneWidget);
   });
 
@@ -1103,11 +1157,7 @@ void main() {
     expect(tester.widget<IconButton>(undoButton).onPressed, isNull);
     expect(tester.widget<IconButton>(redoButton).onPressed, isNull);
 
-    final canvas = find.byType(DrawingCanvas);
-    final gesture = await tester.startGesture(tester.getCenter(canvas));
-    await gesture.moveBy(const Offset(32, 24));
-    await gesture.up();
-    await tester.pump();
+    await drawVisibleStroke(tester);
 
     expect(tester.widget<IconButton>(undoButton).onPressed, isNotNull);
 
@@ -1132,25 +1182,23 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byTooltip('Zoom out'), findsOneWidget);
-    expect(find.byTooltip('Reset zoom'), findsOneWidget);
+    expect(find.byTooltip('Zoom and fit'), findsOneWidget);
     expect(find.byTooltip('Zoom in'), findsOneWidget);
 
     final zoomOutButton = find.widgetWithIcon(IconButton, Icons.zoom_out);
-    expect(tester.widget<IconButton>(zoomOutButton).onPressed, isNull);
+    expect(tester.widget<IconButton>(zoomOutButton).onPressed, isNotNull);
 
     await tester.tap(find.byTooltip('Zoom in'));
     await tester.pump();
 
     expect(tester.widget<IconButton>(zoomOutButton).onPressed, isNotNull);
 
-    await tester.tap(find.byTooltip('Reset zoom'));
-    await tester.pump();
+    await tester.tap(find.byTooltip('Zoom and fit'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Fit width'));
+    await tester.pumpAndSettle();
 
-    final canvas = find.byType(DrawingCanvas);
-    final gesture = await tester.startGesture(tester.getCenter(canvas));
-    await gesture.moveBy(const Offset(32, 24));
-    await gesture.up();
-    await tester.pump();
+    await drawVisibleStroke(tester);
 
     final undoButton = find.widgetWithIcon(IconButton, Icons.undo);
     expect(tester.widget<IconButton>(undoButton).onPressed, isNotNull);
@@ -1164,8 +1212,7 @@ void main() {
     await tester.tap(find.text('New notebook'));
     await tester.pumpAndSettle();
 
-    final canvas = find.byType(DrawingCanvas);
-    final center = tester.getCenter(canvas);
+    final center = visibleCanvasPoint(tester);
     final firstFinger = await tester.startGesture(
       center - const Offset(24, 0),
       pointer: 7,
@@ -1197,30 +1244,57 @@ void main() {
     expect(find.byTooltip('Pen'), findsOneWidget);
     expect(find.byTooltip('Highlighter'), findsOneWidget);
     expect(find.byTooltip('Eraser'), findsOneWidget);
-    expect(find.byTooltip('Finger assist'), findsOneWidget);
-    expect(find.byTooltip('Finger pan'), findsOneWidget);
-    expect(find.byTooltip('Width 3'), findsOneWidget);
-    expect(find.byTooltip('Width 5'), findsOneWidget);
-    expect(find.byTooltip('Width 8'), findsOneWidget);
-
-    final fingerAssistButton = find.descendant(
-      of: find.byTooltip('Finger assist'),
-      matching: find.byType(IconButton),
+    expect(find.byTooltip('Finger writes'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('editor-tool-properties')),
+      findsOneWidget,
     );
-    expect(tester.widget<IconButton>(fingerAssistButton).isSelected, isTrue);
-    await tester.tap(fingerAssistButton);
-    await tester.pump();
-    expect(tester.widget<IconButton>(fingerAssistButton).isSelected, isFalse);
+
+    await tester.tap(find.byKey(const ValueKey('editor-finger-mode-menu')));
+    await tester.pumpAndSettle();
+    final writingAssistItem = find.ancestor(
+      of: find.text('Writing assist'),
+      matching: find.byWidgetPredicate((widget) => widget is PopupMenuItem),
+    );
+    expect(
+      find.descendant(
+        of: writingAssistItem,
+        matching: find.byIcon(Icons.check_box),
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Writing assist'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('editor-finger-mode-menu')));
+    await tester.pumpAndSettle();
+    final disabledWritingAssistItem = find.ancestor(
+      of: find.text('Writing assist'),
+      matching: find.byWidgetPredicate((widget) => widget is PopupMenuItem),
+    );
+    expect(
+      find.descendant(
+        of: disabledWritingAssistItem,
+        matching: find.byIcon(Icons.check_box_outline_blank),
+      ),
+      findsOneWidget,
+    );
+    await tester.tapAt(const Offset(8, 180));
+    await tester.pumpAndSettle();
 
     await tester.tap(find.byTooltip('Highlighter'));
-    await tester.pump();
-    await tester.tap(find.byTooltip('Width 8'));
-    await tester.pump();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('editor-tool-properties')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const ValueKey('tool-width-16.0')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('tool-width-16.0')));
+    await tester.pumpAndSettle();
+    await tester.tapAt(const Offset(12, 24));
+    await tester.pumpAndSettle();
 
-    final canvas = find.byType(DrawingCanvas);
-    final center = tester.getCenter(canvas);
-    final gesture = await tester.startGesture(center);
-    await gesture.moveBy(const Offset(40, 0));
+    final start = visibleCanvasPoint(tester);
+    final gesture = await tester.startGesture(start);
+    await gesture.moveBy(const Offset(48, 0));
     await gesture.up();
     await tester.pump();
 
@@ -1230,8 +1304,8 @@ void main() {
     await tester.tap(find.byTooltip('Eraser'));
     await tester.pump();
 
-    final eraserGesture = await tester.startGesture(center);
-    await eraserGesture.moveBy(const Offset(8, 0));
+    final eraserGesture = await tester.startGesture(start);
+    await eraserGesture.moveBy(const Offset(52, 0));
     await eraserGesture.up();
     await tester.pump();
 
@@ -1246,12 +1320,13 @@ void main() {
     await tester.tap(find.text('New notebook'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Finger pan'));
-    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('editor-finger-mode-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Finger moves'));
+    await tester.pumpAndSettle();
 
-    final canvas = find.byType(DrawingCanvas);
-    var center = tester.getCenter(canvas);
-    final touchGesture = await tester.startGesture(center);
+    var start = visibleCanvasPoint(tester);
+    final touchGesture = await tester.startGesture(start);
     await touchGesture.moveBy(const Offset(32, 24));
     await touchGesture.up();
     await tester.pump();
@@ -1259,9 +1334,9 @@ void main() {
     final undoButton = find.widgetWithIcon(IconButton, Icons.undo);
     expect(tester.widget<IconButton>(undoButton).onPressed, isNull);
 
-    center = tester.getCenter(canvas);
+    start = visibleCanvasPoint(tester);
     final stylusGesture = await tester.startGesture(
-      center,
+      start,
       kind: ui.PointerDeviceKind.stylus,
     );
     await stylusGesture.moveBy(const Offset(32, 24));
@@ -1277,19 +1352,15 @@ void main() {
     await tester.tap(find.text('New notebook'));
     await tester.pumpAndSettle();
 
-    final canvas = find.byType(DrawingCanvas);
     final undoButton = find.widgetWithIcon(IconButton, Icons.undo);
 
-    final gesture = await tester.startGesture(tester.getCenter(canvas));
-    await gesture.moveBy(const Offset(32, 24));
-    await gesture.up();
-    await tester.pump();
+    await drawVisibleStroke(tester);
 
     expect(tester.widget<IconButton>(undoButton).onPressed, isNotNull);
 
-    await tester.tap(find.byTooltip('Add page'));
-    await tester.pumpAndSettle();
+    await selectEditorMoreAction(tester, 'Add page');
 
+    await openEditorPages(tester);
     expect(find.byKey(const ValueKey('page-thumbnail-page-1')), findsOneWidget);
     expect(find.byKey(const ValueKey('page-thumbnail-page-2')), findsOneWidget);
     expect(find.byTooltip('Page 1'), findsOneWidget);
@@ -1310,16 +1381,11 @@ void main() {
     await tester.tap(find.text('New notebook'));
     await tester.pumpAndSettle();
 
-    expect(find.byTooltip('Bookmark page'), findsOneWidget);
+    await selectEditorMoreAction(tester, 'Bookmark page');
+    await openEditorPages(tester);
 
-    await tester.tap(find.byTooltip('Bookmark page'));
+    await tester.tap(find.text('Bookmarks'));
     await tester.pumpAndSettle();
-
-    expect(find.byTooltip('Remove bookmark'), findsOneWidget);
-
-    await tester.tap(find.byTooltip('Outline and bookmarks'));
-    await tester.pumpAndSettle();
-
     expect(find.text('Bookmarks'), findsOneWidget);
     expect(find.text('Page 1'), findsOneWidget);
 
@@ -1328,10 +1394,10 @@ void main() {
 
     expect(find.text('Page 1'), findsNothing);
 
-    await tester.tap(find.byTooltip('Remove bookmark'));
+    await selectEditorMoreAction(tester, 'Remove bookmark');
+    await tester.tap(find.byKey(const ValueKey('editor-more-actions')));
     await tester.pumpAndSettle();
-
-    expect(find.byTooltip('Bookmark page'), findsOneWidget);
+    expect(find.text('Bookmark page'), findsOneWidget);
   });
 
   testWidgets('inserts blank pages before and after selected pages', (
@@ -1342,11 +1408,13 @@ void main() {
     await tester.tap(find.text('New notebook'));
     await tester.pumpAndSettle();
 
+    await openEditorPages(tester);
     await tester.tap(find.byTooltip('Page 1 actions'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Insert page after'));
     await tester.pumpAndSettle();
 
+    await openEditorPages(tester);
     expect(find.byKey(const ValueKey('page-thumbnail-page-1')), findsOneWidget);
     expect(find.byKey(const ValueKey('page-thumbnail-page-2')), findsOneWidget);
 
@@ -1355,6 +1423,7 @@ void main() {
     await tester.tap(find.text('Insert page before'));
     await tester.pumpAndSettle();
 
+    await openEditorPages(tester);
     expect(find.byKey(const ValueKey('page-thumbnail-page-3')), findsOneWidget);
 
     final page1Left = tester.getTopLeft(
@@ -1379,11 +1448,13 @@ void main() {
     await tester.tap(find.text('New notebook'));
     await tester.pumpAndSettle();
 
+    await openEditorPages(tester);
     await tester.tap(find.byTooltip('Page 1 actions'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Duplicate page'));
     await tester.pumpAndSettle();
 
+    await openEditorPages(tester);
     expect(find.byKey(const ValueKey('page-thumbnail-page-1')), findsOneWidget);
     expect(find.byKey(const ValueKey('page-thumbnail-page-2')), findsOneWidget);
 
@@ -1392,6 +1463,7 @@ void main() {
     await tester.tap(find.text('Move page left'));
     await tester.pumpAndSettle();
 
+    await openEditorPages(tester);
     final page1Left = tester.getTopLeft(
       find.byKey(const ValueKey('page-thumbnail-page-1')),
     );
@@ -1407,6 +1479,7 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
     await tester.pumpAndSettle();
 
+    await openEditorPages(tester);
     expect(find.byKey(const ValueKey('page-thumbnail-page-1')), findsOneWidget);
     expect(find.byKey(const ValueKey('page-thumbnail-page-2')), findsNothing);
   });

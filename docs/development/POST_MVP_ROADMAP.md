@@ -42,10 +42,13 @@ The detailed plan lives in `docs/development/SMART_INK_PLAN.md`.
 ### Editor Experience
 
 - [x] Zoom and pan with two-finger gestures.
+- [x] Stable fixed-coordinate paper viewport with Fit Width, Fit Page,
+  per-page session focus, and resize/rotation preservation.
 - [x] Apple Pencil-focused input mode with finger pan and Pencil draw behavior.
 - [x] Finger Writing Assist for smoothing rough finger handwriting before any
   recognition step.
-- [x] Page thumbnail strip or sidebar for faster page navigation.
+- [x] On-demand Pages/Outline/Bookmarks navigator with a collapsible wide
+  sidebar and no permanent bottom strip.
 - [x] Page templates: blank, ruled, dotted, grid, Cornell, planner.
 - [x] Page actions: duplicate, delete, reorder, and insert before/after.
 - [x] Page rotation.
@@ -57,7 +60,8 @@ The detailed plan lives in `docs/development/SMART_INK_PLAN.md`.
   (`docs/development/SMART_INK_PLAN.md`).
 - [x] Image insertion from Photos or Files.
 - [x] Shape tool for lines, arrows, rectangles, circles, and auto-shape cleanup.
-- [x] Favorites toolbar for common pens, highlighters, and colors.
+- [x] Responsive contextual tool dock with complete common pen/highlighter
+  presets and no floating favorites bar.
 
 ### PDF And Study Workflow
 
@@ -159,10 +163,12 @@ The detailed plan lives in `docs/development/SMART_INK_PLAN.md`.
 
 ### Editor UI
 
-- Make tool controls more compact for iPad landscape use.
+- [x] Make tool controls more compact and contextual for iPad portrait,
+  landscape, and Split View without hidden horizontal scrolling.
 - Add keyboard shortcuts for undo, redo, tool switching, and export.
 - Add undo/redo history per page with clearer state.
-- Improve page navigator density and thumbnails.
+- [x] Move page thumbnails into one Pages/Outline/Bookmarks navigator that can
+  overlay compact layouts or pin on wide layouts.
 - Add accessibility labels for all important controls.
 
 ### Testing And Release Quality
@@ -181,6 +187,8 @@ The detailed plan lives in `docs/development/SMART_INK_PLAN.md`.
 Goal: make writing and navigating a notebook feel natural on iPad.
 
 - [x] Add zoom and pan.
+- [x] Decouple fixed paper coordinates from viewport size and preserve writing
+  focus through page/device rotation.
 - [x] Add Pencil draw plus finger pan mode.
 - [x] Add page thumbnails.
 - [x] Add page duplicate, delete, and reorder.

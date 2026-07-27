@@ -2,7 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:inknest_notes/models/note_shape.dart';
 import 'package:inknest_notes/models/tool.dart';
 
-class EditorToolbar extends StatelessWidget {
+/// The writing-first editor dock.
+///
+/// The dock deliberately uses a fixed [Row] instead of a horizontally
+/// scrolling toolbar. Primary tools remain visible at every supported iPad
+/// width, while presets and properties progressively disclose into menus.
+class EditorToolbar extends StatefulWidget {
   const EditorToolbar({
     super.key,
     required this.tool,
@@ -22,33 +27,24 @@ class EditorToolbar extends StatelessWidget {
   final ValueChanged<bool> onFingerWritingAssistChanged;
   final VoidCallback onInsertImage;
 
-  static const _colors = [
-    Color(0xFF1E2526),
-    Color(0xFF2F6F73),
-    Color(0xFFC24B3A),
-    Color(0xFFB98A16),
-  ];
-
-  static const _widths = [3.0, 5.0, 8.0];
-
   static const _favoritePresets = [
     _FavoriteToolPreset(
-      label: 'Favorite black pen',
+      label: 'Black pen, 3 pt',
       tool: DrawingTool(type: ToolType.pen, color: Color(0xFF1E2526), width: 3),
       icon: Icons.edit,
     ),
     _FavoriteToolPreset(
-      label: 'Favorite teal pen',
+      label: 'Teal pen, 5 pt',
       tool: DrawingTool(type: ToolType.pen, color: Color(0xFF2F6F73), width: 5),
       icon: Icons.edit,
     ),
     _FavoriteToolPreset(
-      label: 'Favorite red pen',
+      label: 'Red pen, 5 pt',
       tool: DrawingTool(type: ToolType.pen, color: Color(0xFFC24B3A), width: 5),
       icon: Icons.edit,
     ),
     _FavoriteToolPreset(
-      label: 'Favorite yellow highlighter',
+      label: 'Yellow highlighter, 12 pt',
       tool: DrawingTool(
         type: ToolType.highlighter,
         color: Color(0xFFB98A16),
@@ -58,125 +54,359 @@ class EditorToolbar extends StatelessWidget {
     ),
   ];
 
+  @override
+  State<EditorToolbar> createState() => _EditorToolbarState();
+}
+
+class _EditorToolbarState extends State<EditorToolbar> {
+  late final Map<ToolType, DrawingTool> _lastToolSettings = {
+    ToolType.pen: EditorToolbar._favoritePresets[0].tool,
+    ToolType.highlighter: EditorToolbar._favoritePresets[3].tool,
+    ToolType.eraser: const DrawingTool(
+      type: ToolType.eraser,
+      color: Color(0xFF1E2526),
+      width: 24,
+    ),
+    ToolType.shape: const DrawingTool(
+      type: ToolType.shape,
+      color: Color(0xFF1E2526),
+      width: 3,
+    ),
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _rememberTool(widget.tool);
+  }
+
+  @override
+  void didUpdateWidget(covariant EditorToolbar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _rememberTool(widget.tool);
+  }
+
+  void _rememberTool(DrawingTool tool) {
+    if (_lastToolSettings.containsKey(tool.type)) {
+      _lastToolSettings[tool.type] = tool;
+    }
+  }
+
+  void _applyTool(DrawingTool tool) {
+    _rememberTool(tool);
+    widget.onToolChanged(tool);
+  }
+
   void _selectTool(ToolType type) {
-    final width = switch (type) {
-      ToolType.pen => tool.width,
-      ToolType.highlighter => tool.width < 8 ? 12.0 : tool.width,
-      ToolType.eraser => tool.width < 16 ? 24.0 : tool.width,
-      ToolType.text => tool.width,
-      ToolType.lasso => tool.width,
-      ToolType.smartInk => tool.width,
-      ToolType.shape => tool.width,
-    };
-
-    onToolChanged(tool.copyWith(type: type, width: width));
+    final rememberedTool = _lastToolSettings[type];
+    if (rememberedTool != null) {
+      _applyTool(rememberedTool);
+      return;
+    }
+    _applyTool(widget.tool.copyWith(type: type));
   }
 
-  void _selectColor(Color color) {
-    onToolChanged(tool.copyWith(color: color));
+  void _selectInsertAction(_InsertAction action) {
+    switch (action) {
+      case _InsertAction.text:
+        _selectTool(ToolType.text);
+      case _InsertAction.image:
+        widget.onInsertImage();
+      case _InsertAction.shape:
+        _selectTool(ToolType.shape);
+    }
   }
 
-  void _selectWidth(double width) {
-    onToolChanged(tool.copyWith(width: width));
+  Future<void> _showToolProperties() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      constraints: const BoxConstraints(maxWidth: 560),
+      builder: (context) {
+        return _ToolPropertiesSheet(
+          initialTool: widget.tool,
+          presets: EditorToolbar._favoritePresets,
+          onToolChanged: _applyTool,
+        );
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Theme.of(context).colorScheme.surface,
+      color: const Color(0xFFFFFCF7),
       elevation: 1,
       child: SafeArea(
+        top: false,
         bottom: false,
         child: SizedBox(
-          height: 72,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            children: [
-              _ToolButton(
-                icon: Icons.edit,
-                label: 'Pen',
-                isSelected: tool.type == ToolType.pen,
-                onPressed: () => _selectTool(ToolType.pen),
-              ),
-              _ToolButton(
-                icon: Icons.border_color,
-                label: 'Highlighter',
-                isSelected: tool.type == ToolType.highlighter,
-                onPressed: () => _selectTool(ToolType.highlighter),
-              ),
-              _ToolButton(
-                icon: Icons.cleaning_services,
-                label: 'Eraser',
-                isSelected: tool.type == ToolType.eraser,
-                onPressed: () => _selectTool(ToolType.eraser),
-              ),
-              _ToolButton(
-                icon: Icons.text_fields,
-                label: 'Text',
-                isSelected: tool.type == ToolType.text,
-                onPressed: () => _selectTool(ToolType.text),
-              ),
-              _ToolButton(
-                icon: Icons.select_all,
-                label: 'Lasso',
-                isSelected: tool.type == ToolType.lasso,
-                onPressed: () => _selectTool(ToolType.lasso),
-              ),
-              _ToolButton(
-                icon: Icons.auto_fix_high,
-                label: 'Smart Ink',
-                isSelected: tool.type == ToolType.smartInk,
-                onPressed: () => _selectTool(ToolType.smartInk),
-              ),
-              _ToolButton(
-                icon: _shapeIcon(tool.shapeType),
-                label: 'Shape',
-                isSelected: tool.type == ToolType.shape,
-                onPressed: () => _selectTool(ToolType.shape),
-              ),
-              _ShapeMenuButton(
-                shapeType: tool.shapeType,
-                onSelected: (shapeType) {
-                  onToolChanged(
-                    tool.copyWith(type: ToolType.shape, shapeType: shapeType),
-                  );
-                },
-              ),
-              const _ToolbarDivider(),
-              _ModeButton(
-                icon: Icons.gesture,
-                label: 'Finger assist',
-                isSelected: fingerWritingAssistEnabled,
-                onPressed: () =>
-                    onFingerWritingAssistChanged(!fingerWritingAssistEnabled),
-              ),
-              _ModeButton(
-                icon: Icons.pan_tool_alt,
-                label: 'Finger pan',
-                isSelected: fingerPanEnabled,
-                onPressed: () => onFingerPanChanged(!fingerPanEnabled),
-              ),
-              const _ToolbarDivider(),
-              for (final color in _colors)
-                _ColorButton(
-                  color: color,
-                  isSelected: tool.color == color,
-                  onPressed: () => _selectColor(color),
+          height: 56,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final density = switch (constraints.maxWidth) {
+                >= 1100 => _ToolbarDensity.wide,
+                >= 720 => _ToolbarDensity.standard,
+                _ => _ToolbarDensity.compact,
+              };
+              // Four presets remain visible from the wide breakpoint, but
+              // text labels on all five primary tools need more room than a
+              // typical 11-inch iPad landscape window provides.
+              final showPrimaryLabels = constraints.maxWidth >= 1320;
+              final horizontalPadding = density == _ToolbarDensity.compact
+                  ? 4.0
+                  : 12.0;
+
+              return Padding(
+                padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+                child: Row(
+                  children: [
+                    _PrimaryToolButton(
+                      icon: Icons.edit,
+                      label: 'Pen',
+                      isSelected: widget.tool.type == ToolType.pen,
+                      showLabel: showPrimaryLabels,
+                      onPressed: () => _selectTool(ToolType.pen),
+                    ),
+                    _PrimaryToolButton(
+                      icon: Icons.border_color,
+                      label: 'Highlighter',
+                      isSelected: widget.tool.type == ToolType.highlighter,
+                      showLabel: showPrimaryLabels,
+                      onPressed: () => _selectTool(ToolType.highlighter),
+                    ),
+                    _PrimaryToolButton(
+                      icon: Icons.cleaning_services_outlined,
+                      label: 'Eraser',
+                      isSelected: widget.tool.type == ToolType.eraser,
+                      showLabel: showPrimaryLabels,
+                      onPressed: () => _selectTool(ToolType.eraser),
+                    ),
+                    _PrimaryToolButton(
+                      icon: Icons.select_all,
+                      label: 'Lasso',
+                      isSelected: widget.tool.type == ToolType.lasso,
+                      showLabel: showPrimaryLabels,
+                      onPressed: () => _selectTool(ToolType.lasso),
+                    ),
+                    _InsertMenuButton(
+                      isSelected:
+                          widget.tool.type == ToolType.text ||
+                          widget.tool.type == ToolType.shape,
+                      showLabel: showPrimaryLabels,
+                      onSelected: _selectInsertAction,
+                    ),
+                    const _ToolbarDivider(),
+                    Expanded(
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: _PropertyButton(
+                          tool: widget.tool,
+                          compact: density == _ToolbarDensity.compact,
+                          onPressed: _showToolProperties,
+                        ),
+                      ),
+                    ),
+                    if (density == _ToolbarDensity.wide)
+                      for (final preset in EditorToolbar._favoritePresets)
+                        _PresetButton(
+                          preset: preset,
+                          isSelected: _toolMatches(widget.tool, preset.tool),
+                          onPressed: () => _applyTool(preset.tool),
+                        )
+                    else if (density == _ToolbarDensity.standard)
+                      _PresetMenuButton(
+                        tool: widget.tool,
+                        presets: EditorToolbar._favoritePresets,
+                        onSelected: _applyTool,
+                      ),
+                    const _ToolbarDivider(),
+                    _FingerModeMenuButton(
+                      fingerPanEnabled: widget.fingerPanEnabled,
+                      fingerWritingAssistEnabled:
+                          widget.fingerWritingAssistEnabled,
+                      showLabel: density != _ToolbarDensity.compact,
+                      onFingerPanChanged: widget.onFingerPanChanged,
+                      onFingerWritingAssistChanged:
+                          widget.onFingerWritingAssistChanged,
+                    ),
+                  ],
                 ),
-              const _ToolbarDivider(),
-              for (final width in _widths)
-                _WidthButton(
-                  width: width,
-                  isSelected: tool.width == width,
-                  onPressed: () => _selectWidth(width),
-                ),
-              const _ToolbarDivider(),
-              _CommandButton(
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+enum _ToolbarDensity { wide, standard, compact }
+
+enum _InsertAction { text, image, shape }
+
+enum _FingerMenuAction { writes, moves, toggleWritingAssist }
+
+class _PrimaryToolButton extends StatelessWidget {
+  const _PrimaryToolButton({
+    required this.icon,
+    required this.label,
+    required this.isSelected,
+    required this.showLabel,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool isSelected;
+  final bool showLabel;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 4),
+      child: Tooltip(
+        message: label,
+        child: Semantics(
+          button: true,
+          selected: isSelected,
+          label: '$label${isSelected ? ', selected' : ''}',
+          excludeSemantics: true,
+          child: _DockControlSurface(
+            isSelected: isSelected,
+            onTap: onPressed,
+            minWidth: showLabel ? null : 44,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 21),
+                if (showLabel) ...[
+                  const SizedBox(width: 6),
+                  Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InsertMenuButton extends StatelessWidget {
+  const _InsertMenuButton({
+    required this.isSelected,
+    required this.showLabel,
+    required this.onSelected,
+  });
+
+  final bool isSelected;
+  final bool showLabel;
+  final ValueChanged<_InsertAction> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Insert',
+      child: Semantics(
+        button: true,
+        selected: isSelected,
+        label: 'Insert${isSelected ? ', selected' : ''}',
+        excludeSemantics: true,
+        child: PopupMenuButton<_InsertAction>(
+          key: const ValueKey('editor-insert-menu'),
+          tooltip: '',
+          onSelected: onSelected,
+          itemBuilder: (context) => const [
+            PopupMenuItem(
+              value: _InsertAction.text,
+              height: 48,
+              child: _MenuRow(icon: Icons.text_fields, label: 'Text'),
+            ),
+            PopupMenuItem(
+              value: _InsertAction.image,
+              height: 48,
+              child: _MenuRow(
                 icon: Icons.add_photo_alternate_outlined,
-                label: 'Insert image',
-                onPressed: onInsertImage,
+                label: 'Image',
               ),
+            ),
+            PopupMenuItem(
+              value: _InsertAction.shape,
+              height: 48,
+              child: _MenuRow(icon: Icons.category_outlined, label: 'Shape'),
+            ),
+          ],
+          child: IgnorePointer(
+            child: _DockControlVisual(
+              isSelected: isSelected,
+              minWidth: showLabel ? null : 44,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.add_circle_outline, size: 21),
+                  if (showLabel) ...[
+                    const SizedBox(width: 6),
+                    const Text('Insert'),
+                  ],
+                  const SizedBox(width: 2),
+                  const Icon(Icons.arrow_drop_down, size: 18),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PropertyButton extends StatelessWidget {
+  const _PropertyButton({
+    required this.tool,
+    required this.compact,
+    required this.onPressed,
+  });
+
+  final DrawingTool tool;
+  final bool compact;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final preset = _matchingPreset(tool);
+    final label = _propertySummary(tool, preset);
+    final tooltip = '${_toolLabel(tool.type)} properties';
+
+    return Tooltip(
+      message: tooltip,
+      child: Semantics(
+        button: true,
+        label: '$label. Open ${_toolLabel(tool.type)} properties',
+        excludeSemantics: true,
+        child: _DockControlSurface(
+          key: const ValueKey('editor-tool-properties'),
+          isSelected: false,
+          onTap: onPressed,
+          minWidth: compact ? 48 : 88,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _ToolPreview(tool: tool),
+              if (!compact) ...[
+                const SizedBox(width: 7),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+              const SizedBox(width: 2),
+              const Icon(Icons.expand_more, size: 18),
             ],
           ),
         ),
@@ -185,35 +415,534 @@ class EditorToolbar extends StatelessWidget {
   }
 }
 
-class EditorFavoriteToolbar extends StatelessWidget {
-  const EditorFavoriteToolbar({
-    super.key,
+class _PresetButton extends StatelessWidget {
+  const _PresetButton({
+    required this.preset,
+    required this.isSelected,
+    required this.onPressed,
+  });
+
+  final _FavoriteToolPreset preset;
+  final bool isSelected;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: Tooltip(
+        message: preset.label,
+        child: Semantics(
+          button: true,
+          selected: isSelected,
+          label: '${preset.label} preset${isSelected ? ', selected' : ''}',
+          excludeSemantics: true,
+          child: _DockControlSurface(
+            key: ValueKey('editor-preset-${preset.label}'),
+            isSelected: isSelected,
+            onTap: onPressed,
+            minWidth: 44,
+            horizontalPadding: 6,
+            child: _ToolPreview(tool: preset.tool),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PresetMenuButton extends StatelessWidget {
+  const _PresetMenuButton({
     required this.tool,
-    required this.onToolChanged,
+    required this.presets,
+    required this.onSelected,
   });
 
   final DrawingTool tool;
-  final ValueChanged<DrawingTool> onToolChanged;
+  final List<_FavoriteToolPreset> presets;
+  final ValueChanged<DrawingTool> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final activePreset = _matchingPreset(tool);
+    return Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: Tooltip(
+        message: 'Presets',
+        child: PopupMenuButton<DrawingTool>(
+          key: const ValueKey('editor-presets-menu'),
+          tooltip: '',
+          onSelected: onSelected,
+          itemBuilder: (context) => [
+            for (final preset in presets)
+              PopupMenuItem(
+                value: preset.tool,
+                height: 48,
+                child: _MenuRow(
+                  icon: preset.icon,
+                  label: preset.label,
+                  trailing: _ToolPreview(tool: preset.tool),
+                ),
+              ),
+          ],
+          child: IgnorePointer(
+            child: _DockControlVisual(
+              isSelected: activePreset != null,
+              minWidth: 48,
+              horizontalPadding: 7,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (activePreset == null)
+                    const Icon(Icons.palette_outlined, size: 21)
+                  else
+                    _ToolPreview(tool: activePreset.tool),
+                  const Icon(Icons.arrow_drop_down, size: 17),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FingerModeMenuButton extends StatelessWidget {
+  const _FingerModeMenuButton({
+    required this.fingerPanEnabled,
+    required this.fingerWritingAssistEnabled,
+    required this.showLabel,
+    required this.onFingerPanChanged,
+    required this.onFingerWritingAssistChanged,
+  });
+
+  final bool fingerPanEnabled;
+  final bool fingerWritingAssistEnabled;
+  final bool showLabel;
+  final ValueChanged<bool> onFingerPanChanged;
+  final ValueChanged<bool> onFingerWritingAssistChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = fingerPanEnabled ? 'Finger moves' : 'Finger writes';
+    final icon = fingerPanEnabled ? Icons.pan_tool_alt : Icons.gesture;
+
+    return Tooltip(
+      message: label,
+      child: Semantics(
+        button: true,
+        selected: true,
+        label: '$label, selected',
+        excludeSemantics: true,
+        child: PopupMenuButton<_FingerMenuAction>(
+          key: const ValueKey('editor-finger-mode-menu'),
+          tooltip: '',
+          onSelected: (action) {
+            switch (action) {
+              case _FingerMenuAction.writes:
+                onFingerPanChanged(false);
+              case _FingerMenuAction.moves:
+                onFingerPanChanged(true);
+              case _FingerMenuAction.toggleWritingAssist:
+                onFingerWritingAssistChanged(!fingerWritingAssistEnabled);
+            }
+          },
+          itemBuilder: (context) => [
+            _FingerModeMenuItem(
+              value: _FingerMenuAction.writes,
+              icon: Icons.gesture,
+              label: 'Finger writes',
+              isSelected: !fingerPanEnabled,
+            ),
+            _FingerModeMenuItem(
+              value: _FingerMenuAction.moves,
+              icon: Icons.pan_tool_alt,
+              label: 'Finger moves',
+              isSelected: fingerPanEnabled,
+            ),
+            const PopupMenuDivider(),
+            PopupMenuItem(
+              value: _FingerMenuAction.toggleWritingAssist,
+              height: 52,
+              child: Row(
+                children: [
+                  Icon(
+                    fingerWritingAssistEnabled
+                        ? Icons.check_box
+                        : Icons.check_box_outline_blank,
+                    size: 21,
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Writing assist'),
+                        Text(
+                          'Used for completed finger strokes',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          child: IgnorePointer(
+            child: _DockControlVisual(
+              isSelected: true,
+              minWidth: showLabel ? null : 48,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, size: 21),
+                  if (showLabel) ...[const SizedBox(width: 6), Text(label)],
+                  const SizedBox(width: 2),
+                  const Icon(Icons.arrow_drop_down, size: 18),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FingerModeMenuItem extends PopupMenuItem<_FingerMenuAction> {
+  _FingerModeMenuItem({
+    required super.value,
+    required IconData icon,
+    required String label,
+    required bool isSelected,
+  }) : super(
+         height: 48,
+         child: Row(
+           children: [
+             Icon(icon, size: 21),
+             const SizedBox(width: 12),
+             Expanded(child: Text(label)),
+             if (isSelected) const Icon(Icons.check, size: 20),
+           ],
+         ),
+       );
+}
+
+class _ToolbarDivider extends StatelessWidget {
+  const _ToolbarDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.symmetric(horizontal: 5, vertical: 12),
+      child: VerticalDivider(width: 1),
+    );
+  }
+}
+
+class _DockControlSurface extends StatelessWidget {
+  const _DockControlSurface({
+    super.key,
+    required this.isSelected,
+    required this.onTap,
+    required this.child,
+    this.minWidth,
+    this.horizontalPadding = 10,
+  });
+
+  final bool isSelected;
+  final VoidCallback onTap;
+  final Widget child;
+  final double? minWidth;
+  final double horizontalPadding;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: _DockControlVisual(
+          isSelected: isSelected,
+          minWidth: minWidth,
+          horizontalPadding: horizontalPadding,
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+class _DockControlVisual extends StatelessWidget {
+  const _DockControlVisual({
+    required this.isSelected,
+    required this.child,
+    this.minWidth,
+    this.horizontalPadding = 10,
+  });
+
+  final bool isSelected;
+  final Widget child;
+  final double? minWidth;
+  final double horizontalPadding;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 120),
+      constraints: BoxConstraints(minWidth: minWidth ?? 44, minHeight: 44),
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+      decoration: BoxDecoration(
+        color: isSelected ? const Color(0xFFDCEEEE) : Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isSelected ? colorScheme.primary : Colors.transparent,
+          width: 1,
+        ),
+      ),
+      child: DefaultTextStyle.merge(
+        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+          color: colorScheme.onSurface,
+          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+        ),
+        child: IconTheme(
+          data: IconThemeData(
+            color: isSelected ? colorScheme.primary : colorScheme.onSurface,
+          ),
+          child: Center(child: child),
+        ),
+      ),
+    );
+  }
+}
 
-    return Material(
-      color: colorScheme.surface.withValues(alpha: 0.94),
-      elevation: 2,
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+class _ToolPropertiesSheet extends StatefulWidget {
+  const _ToolPropertiesSheet({
+    required this.initialTool,
+    required this.presets,
+    required this.onToolChanged,
+  });
+
+  final DrawingTool initialTool;
+  final List<_FavoriteToolPreset> presets;
+  final ValueChanged<DrawingTool> onToolChanged;
+
+  @override
+  State<_ToolPropertiesSheet> createState() => _ToolPropertiesSheetState();
+}
+
+class _ToolPropertiesSheetState extends State<_ToolPropertiesSheet> {
+  static const _colors = [
+    _NamedColor('Black', Color(0xFF1E2526)),
+    _NamedColor('Teal', Color(0xFF2F6F73)),
+    _NamedColor('Red', Color(0xFFC24B3A)),
+    _NamedColor('Yellow', Color(0xFFB98A16)),
+  ];
+
+  late DrawingTool _tool = widget.initialTool;
+
+  void _apply(DrawingTool tool) {
+    setState(() {
+      _tool = tool;
+    });
+    widget.onToolChanged(tool);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final title = '${_toolLabel(_tool.type)} settings';
+    final supportsColor = switch (_tool.type) {
+      ToolType.pen ||
+      ToolType.highlighter ||
+      ToolType.text ||
+      ToolType.shape => true,
+      _ => false,
+    };
+    final widths = _widthChoices(_tool.type);
+
+    return SafeArea(
+      top: false,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.78,
+        ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  _ToolPreview(tool: _tool),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(title, style: theme.textTheme.titleMedium),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    tooltip: 'Close tool properties',
+                    icon: const Icon(Icons.close),
+                    constraints: const BoxConstraints.tightFor(
+                      width: 44,
+                      height: 44,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (_tool.type == ToolType.lasso)
+                const _LassoProperties()
+              else ...[
+                if (_tool.type == ToolType.pen ||
+                    _tool.type == ToolType.highlighter) ...[
+                  Text('Presets', style: theme.textTheme.titleSmall),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final preset in widget.presets)
+                        _SheetPresetButton(
+                          preset: preset,
+                          isSelected: _toolMatches(_tool, preset.tool),
+                          onPressed: () => _apply(preset.tool),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                ],
+                if (_tool.type == ToolType.eraser) ...[
+                  Text('Eraser mode', style: theme.textTheme.titleSmall),
+                  const SizedBox(height: 8),
+                  const _SelectedSettingRow(
+                    icon: Icons.auto_fix_off_outlined,
+                    title: 'Whole-stroke eraser',
+                    subtitle: 'Removes a complete stroke when touched',
+                  ),
+                  const SizedBox(height: 20),
+                ],
+                if (_tool.type == ToolType.shape) ...[
+                  Text('Shape', style: theme.textTheme.titleSmall),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final shapeType in NoteShapeType.values)
+                        _SettingChoice(
+                          key: ValueKey('shape-${shapeType.name}'),
+                          label: _shapeLabel(shapeType),
+                          icon: _shapeIcon(shapeType),
+                          isSelected: _tool.shapeType == shapeType,
+                          onPressed: () =>
+                              _apply(_tool.copyWith(shapeType: shapeType)),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                ],
+                if (supportsColor) ...[
+                  Text('Color', style: theme.textTheme.titleSmall),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final color in _colors)
+                        _ColorSettingButton(
+                          namedColor: color,
+                          isSelected: _tool.color == color.color,
+                          onPressed: () =>
+                              _apply(_tool.copyWith(color: color.color)),
+                        ),
+                    ],
+                  ),
+                ],
+                if (widths.isNotEmpty) ...[
+                  const SizedBox(height: 20),
+                  Text(
+                    _tool.type == ToolType.eraser ? 'Size' : 'Width',
+                    style: theme.textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final width in widths)
+                        _SettingChoice(
+                          key: ValueKey('tool-width-$width'),
+                          label: '${_formatWidth(width)} pt',
+                          icon: null,
+                          preview: _StrokeWidthPreview(
+                            color: _tool.type == ToolType.eraser
+                                ? theme.colorScheme.onSurface
+                                : _tool.color,
+                            width: width,
+                          ),
+                          isSelected: _tool.width == width,
+                          onPressed: () => _apply(_tool.copyWith(width: width)),
+                        ),
+                    ],
+                  ),
+                ],
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LassoProperties extends StatelessWidget {
+  const _LassoProperties();
+
+  @override
+  Widget build(BuildContext context) {
+    return const _SelectedSettingRow(
+      icon: Icons.gesture,
+      title: 'Ink-only selection',
+      subtitle: 'Draw around handwriting, then use its contextual actions.',
+    );
+  }
+}
+
+class _SheetPresetButton extends StatelessWidget {
+  const _SheetPresetButton({
+    required this.preset,
+    required this.isSelected,
+    required this.onPressed,
+  });
+
+  final _FavoriteToolPreset preset;
+  final bool isSelected;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      selected: isSelected,
+      button: true,
+      label: '${preset.label} preset${isSelected ? ', selected' : ''}',
+      excludeSemantics: true,
+      child: _DockControlSurface(
+        isSelected: isSelected,
+        onTap: onPressed,
+        minWidth: 154,
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            for (final preset in EditorToolbar._favoritePresets)
-              _FavoriteToolButton(
-                preset: preset,
-                isSelected: _toolMatches(tool, preset.tool),
-                onPressed: () => onToolChanged(preset.tool),
-              ),
+            _ToolPreview(tool: preset.tool),
+            const SizedBox(width: 8),
+            Text(preset.label),
           ],
         ),
       ),
@@ -221,11 +950,234 @@ class EditorFavoriteToolbar extends StatelessWidget {
   }
 }
 
-bool _toolMatches(DrawingTool a, DrawingTool b) {
-  return a.type == b.type &&
-      a.color == b.color &&
-      a.width == b.width &&
-      a.shapeType == b.shapeType;
+class _SettingChoice extends StatelessWidget {
+  const _SettingChoice({
+    super.key,
+    required this.label,
+    required this.icon,
+    required this.isSelected,
+    required this.onPressed,
+    this.preview,
+  });
+
+  final String label;
+  final IconData? icon;
+  final Widget? preview;
+  final bool isSelected;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      selected: isSelected,
+      button: true,
+      label: '$label${isSelected ? ', selected' : ''}',
+      excludeSemantics: true,
+      child: _DockControlSurface(
+        isSelected: isSelected,
+        onTap: onPressed,
+        minWidth: 80,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ...switch (preview) {
+              null => const <Widget>[],
+              final preview => <Widget>[preview],
+            },
+            ...switch (icon) {
+              null => const <Widget>[],
+              final icon => <Widget>[Icon(icon, size: 20)],
+            },
+            if (preview != null || icon != null) const SizedBox(width: 7),
+            Text(label),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ColorSettingButton extends StatelessWidget {
+  const _ColorSettingButton({
+    required this.namedColor,
+    required this.isSelected,
+    required this.onPressed,
+  });
+
+  final _NamedColor namedColor;
+  final bool isSelected;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: isSelected,
+      label: '${namedColor.name}${isSelected ? ', selected' : ''}',
+      excludeSemantics: true,
+      child: _DockControlSurface(
+        isSelected: isSelected,
+        onTap: onPressed,
+        minWidth: 92,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: namedColor.color,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                ),
+              ),
+              child: const SizedBox.square(dimension: 20),
+            ),
+            const SizedBox(width: 8),
+            Text(namedColor.name),
+            if (isSelected) ...[
+              const SizedBox(width: 6),
+              const Icon(Icons.check, size: 18),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SelectedSettingRow extends StatelessWidget {
+  const _SelectedSettingRow({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      constraints: const BoxConstraints(minHeight: 56),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFDCEEEE),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colorScheme.primary),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: colorScheme.primary),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+              ],
+            ),
+          ),
+          const Icon(Icons.check),
+        ],
+      ),
+    );
+  }
+}
+
+class _MenuRow extends StatelessWidget {
+  const _MenuRow({required this.icon, required this.label, this.trailing});
+
+  final IconData icon;
+  final String label;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 21),
+        const SizedBox(width: 12),
+        Expanded(child: Text(label)),
+        ...switch (trailing) {
+          null => const <Widget>[],
+          final trailing => <Widget>[trailing],
+        },
+      ],
+    );
+  }
+}
+
+class _ToolPreview extends StatelessWidget {
+  const _ToolPreview({required this.tool});
+
+  final DrawingTool tool;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 30,
+      height: 30,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Align(
+            alignment: Alignment.topLeft,
+            child: Icon(_toolIcon(tool), size: 19),
+          ),
+          if (_toolUsesColor(tool.type))
+            Positioned(
+              right: 0,
+              bottom: 0,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: tool.color,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.surface,
+                    width: 1.5,
+                  ),
+                ),
+                child: const SizedBox.square(dimension: 12),
+              ),
+            ),
+          if (_toolUsesWidth(tool.type))
+            Positioned(
+              left: 1,
+              right: 12,
+              bottom: 2,
+              child: _StrokeWidthPreview(color: tool.color, width: tool.width),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StrokeWidthPreview extends StatelessWidget {
+  const _StrokeWidthPreview({required this.color, required this.width});
+
+  final Color color;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 22,
+      height: width.clamp(2, 6).toDouble(),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(4),
+      ),
+    );
+  }
 }
 
 class _FavoriteToolPreset {
@@ -238,6 +1190,96 @@ class _FavoriteToolPreset {
   final String label;
   final DrawingTool tool;
   final IconData icon;
+}
+
+class _NamedColor {
+  const _NamedColor(this.name, this.color);
+
+  final String name;
+  final Color color;
+}
+
+bool _toolMatches(DrawingTool a, DrawingTool b) {
+  return a.type == b.type &&
+      a.color == b.color &&
+      a.width == b.width &&
+      a.shapeType == b.shapeType;
+}
+
+_FavoriteToolPreset? _matchingPreset(DrawingTool tool) {
+  for (final preset in EditorToolbar._favoritePresets) {
+    if (_toolMatches(tool, preset.tool)) {
+      return preset;
+    }
+  }
+  return null;
+}
+
+String _propertySummary(DrawingTool tool, _FavoriteToolPreset? matchingPreset) {
+  if (matchingPreset != null) {
+    return matchingPreset.label;
+  }
+  return switch (tool.type) {
+    ToolType.pen ||
+    ToolType.highlighter => 'Custom · ${_formatWidth(tool.width)} pt',
+    ToolType.eraser => '${_formatWidth(tool.width)} pt',
+    ToolType.text => 'Text style',
+    ToolType.lasso => 'Ink only',
+    ToolType.shape =>
+      '${_shapeLabel(tool.shapeType)} · ${_formatWidth(tool.width)} pt',
+  };
+}
+
+String _toolLabel(ToolType type) {
+  return switch (type) {
+    ToolType.pen => 'Pen',
+    ToolType.highlighter => 'Highlighter',
+    ToolType.eraser => 'Eraser',
+    ToolType.text => 'Text',
+    ToolType.lasso => 'Lasso',
+    ToolType.shape => 'Shape',
+  };
+}
+
+IconData _toolIcon(DrawingTool tool) {
+  return switch (tool.type) {
+    ToolType.pen => Icons.edit,
+    ToolType.highlighter => Icons.border_color,
+    ToolType.eraser => Icons.cleaning_services_outlined,
+    ToolType.text => Icons.text_fields,
+    ToolType.lasso => Icons.select_all,
+    ToolType.shape => _shapeIcon(tool.shapeType),
+  };
+}
+
+bool _toolUsesColor(ToolType type) {
+  return switch (type) {
+    ToolType.pen ||
+    ToolType.highlighter ||
+    ToolType.text ||
+    ToolType.shape => true,
+    _ => false,
+  };
+}
+
+bool _toolUsesWidth(ToolType type) {
+  return switch (type) {
+    ToolType.pen ||
+    ToolType.highlighter ||
+    ToolType.eraser ||
+    ToolType.shape => true,
+    _ => false,
+  };
+}
+
+List<double> _widthChoices(ToolType type) {
+  return switch (type) {
+    ToolType.pen => const [1, 3, 5, 8],
+    ToolType.highlighter => const [8, 12, 16, 24],
+    ToolType.eraser => const [16, 24, 36, 48],
+    ToolType.shape => const [2, 3, 5, 8],
+    _ => const [],
+  };
 }
 
 IconData _shapeIcon(NoteShapeType shapeType) {
@@ -258,362 +1300,8 @@ String _shapeLabel(NoteShapeType shapeType) {
   };
 }
 
-class _ToolButton extends StatelessWidget {
-  const _ToolButton({
-    required this.icon,
-    required this.label,
-    required this.isSelected,
-    required this.onPressed,
-  });
-
-  final IconData icon;
-  final String label;
-  final bool isSelected;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 6),
-      child: Tooltip(
-        message: label,
-        child: IconButton.filledTonal(
-          isSelected: isSelected,
-          onPressed: onPressed,
-          icon: Icon(icon),
-          selectedIcon: Icon(icon),
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints.tightFor(width: 40, height: 40),
-          visualDensity: VisualDensity.compact,
-        ),
-      ),
-    );
-  }
-}
-
-class _FavoriteToolButton extends StatelessWidget {
-  const _FavoriteToolButton({
-    required this.preset,
-    required this.isSelected,
-    required this.onPressed,
-  });
-
-  final _FavoriteToolPreset preset;
-  final bool isSelected;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 6),
-      child: Tooltip(
-        message: preset.label,
-        child: IconButton.filledTonal(
-          isSelected: isSelected,
-          onPressed: onPressed,
-          icon: _FavoriteToolPreview(preset: preset, isSelected: isSelected),
-          selectedIcon: _FavoriteToolPreview(
-            preset: preset,
-            isSelected: isSelected,
-          ),
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints.tightFor(width: 42, height: 36),
-          visualDensity: VisualDensity.compact,
-        ),
-      ),
-    );
-  }
-}
-
-class _FavoriteToolPreview extends StatelessWidget {
-  const _FavoriteToolPreview({required this.preset, required this.isSelected});
-
-  final _FavoriteToolPreset preset;
-  final bool isSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final iconColor = isSelected
-        ? colorScheme.primary
-        : colorScheme.onSecondaryContainer;
-
-    return SizedBox.square(
-      dimension: 30,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Center(child: Icon(preset.icon, size: 18, color: iconColor)),
-          Positioned(
-            right: 0,
-            bottom: 0,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: preset.tool.color,
-                shape: BoxShape.circle,
-                border: Border.all(color: colorScheme.surface, width: 1.5),
-              ),
-              child: const SizedBox.square(dimension: 11),
-            ),
-          ),
-          Positioned(
-            left: 4,
-            right: 13,
-            bottom: 2,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: preset.tool.color,
-                borderRadius: BorderRadius.circular(2),
-              ),
-              child: SizedBox(
-                height: _favoriteStrokePreviewHeight(preset.tool),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-double _favoriteStrokePreviewHeight(DrawingTool tool) {
-  return switch (tool.type) {
-    ToolType.highlighter => 5,
-    _ => tool.width.clamp(2, 5).toDouble(),
-  };
-}
-
-class _ModeButton extends StatelessWidget {
-  const _ModeButton({
-    required this.icon,
-    required this.label,
-    required this.isSelected,
-    required this.onPressed,
-  });
-
-  final IconData icon;
-  final String label;
-  final bool isSelected;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 6),
-      child: Tooltip(
-        message: label,
-        child: IconButton.filledTonal(
-          isSelected: isSelected,
-          onPressed: onPressed,
-          icon: Icon(icon),
-          selectedIcon: Icon(icon),
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints.tightFor(width: 40, height: 40),
-          visualDensity: VisualDensity.compact,
-        ),
-      ),
-    );
-  }
-}
-
-class _CommandButton extends StatelessWidget {
-  const _CommandButton({
-    required this.icon,
-    required this.label,
-    required this.onPressed,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 6),
-      child: Tooltip(
-        message: label,
-        child: IconButton.filledTonal(
-          onPressed: onPressed,
-          icon: Icon(icon),
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints.tightFor(width: 40, height: 40),
-          visualDensity: VisualDensity.compact,
-        ),
-      ),
-    );
-  }
-}
-
-class _ShapeMenuButton extends StatelessWidget {
-  const _ShapeMenuButton({required this.shapeType, required this.onSelected});
-
-  final NoteShapeType shapeType;
-  final ValueChanged<NoteShapeType> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 6),
-      child: PopupMenuButton<NoteShapeType>(
-        tooltip: 'Shape type',
-        initialValue: shapeType,
-        onSelected: onSelected,
-        itemBuilder: (context) {
-          return [
-            for (final value in NoteShapeType.values)
-              PopupMenuItem(
-                value: value,
-                child: Row(
-                  children: [
-                    Icon(_shapeIcon(value), size: 18),
-                    const SizedBox(width: 12),
-                    Expanded(child: Text(_shapeLabel(value))),
-                  ],
-                ),
-              ),
-          ];
-        },
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.secondaryContainer,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: SizedBox.square(
-            dimension: 40,
-            child: Icon(_shapeIcon(shapeType)),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ColorButton extends StatelessWidget {
-  const _ColorButton({
-    required this.color,
-    required this.isSelected,
-    required this.onPressed,
-  });
-
-  final Color color;
-  final bool isSelected;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 6),
-      child: Tooltip(
-        message: 'Color',
-        child: IconButton(
-          isSelected: isSelected,
-          onPressed: onPressed,
-          icon: _ColorDot(color: color, isSelected: isSelected),
-          selectedIcon: _ColorDot(color: color, isSelected: isSelected),
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints.tightFor(width: 40, height: 40),
-          visualDensity: VisualDensity.compact,
-        ),
-      ),
-    );
-  }
-}
-
-class _WidthButton extends StatelessWidget {
-  const _WidthButton({
-    required this.width,
-    required this.isSelected,
-    required this.onPressed,
-  });
-
-  final double width;
-  final bool isSelected;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 6),
-      child: Tooltip(
-        message: 'Width ${width.toInt()}',
-        child: IconButton(
-          isSelected: isSelected,
-          onPressed: onPressed,
-          icon: _WidthPreview(width: width, isSelected: isSelected),
-          selectedIcon: _WidthPreview(width: width, isSelected: isSelected),
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints.tightFor(width: 40, height: 40),
-          visualDensity: VisualDensity.compact,
-        ),
-      ),
-    );
-  }
-}
-
-class _ColorDot extends StatelessWidget {
-  const _ColorDot({required this.color, required this.isSelected});
-
-  final Color color;
-  final bool isSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(
-          color: isSelected
-              ? Theme.of(context).colorScheme.primary
-              : Colors.transparent,
-          width: 3,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(3),
-        child: DecoratedBox(
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-          child: const SizedBox.square(dimension: 18),
-        ),
-      ),
-    );
-  }
-}
-
-class _WidthPreview extends StatelessWidget {
-  const _WidthPreview({required this.width, required this.isSelected});
-
-  final double width;
-  final bool isSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return SizedBox.square(
-      dimension: 28,
-      child: Center(
-        child: Container(
-          width: 24,
-          height: width,
-          decoration: BoxDecoration(
-            color: isSelected ? colorScheme.primary : colorScheme.onSurface,
-            borderRadius: BorderRadius.circular(width),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ToolbarDivider extends StatelessWidget {
-  const _ToolbarDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-      child: VerticalDivider(width: 1),
-    );
-  }
+String _formatWidth(double width) {
+  return width == width.roundToDouble()
+      ? width.toInt().toString()
+      : width.toStringAsFixed(1);
 }

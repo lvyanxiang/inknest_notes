@@ -7,6 +7,46 @@ import 'package:inknest_notes/models/notebook_folder.dart';
 import 'package:inknest_notes/models/note_image.dart';
 import 'package:inknest_notes/models/note_page.dart';
 
+enum PageCoordinateSpaceWriteBlockReason {
+  unresolvedLegacyContent,
+  unsupportedVersion,
+}
+
+class PageCoordinateSpaceWriteException extends StateError {
+  PageCoordinateSpaceWriteException.forPage(NotePage page)
+    : pageId = page.id,
+      coordinateSpaceVersion = page.persistedCoordinateSpaceVersion,
+      reason =
+          page.coordinateSpaceStatus == NotePageCoordinateSpaceStatus.legacy
+          ? PageCoordinateSpaceWriteBlockReason.unresolvedLegacyContent
+          : PageCoordinateSpaceWriteBlockReason.unsupportedVersion,
+      super(_messageFor(page));
+
+  final String pageId;
+  final Object? coordinateSpaceVersion;
+  final PageCoordinateSpaceWriteBlockReason reason;
+
+  static String _messageFor(NotePage page) {
+    if (page.coordinateSpaceStatus == NotePageCoordinateSpaceStatus.legacy) {
+      return 'Page "${page.id}" uses unresolved legacy coordinate space v0 '
+          'and contains coordinate-bearing content. Create a verified backup '
+          'and convert the page before saving.';
+    }
+
+    return 'Page "${page.id}" has unsupported coordinateSpaceVersion '
+        '${page.persistedCoordinateSpaceVersion}. Normal saves are blocked '
+        'to prevent data loss.';
+  }
+}
+
+NotePage preparePageForNormalSave(NotePage page) {
+  final preparedPage = page.upgradeEmptyLegacyCoordinateSpace();
+  if (!preparedPage.usesCanonicalCoordinateSpace) {
+    throw PageCoordinateSpaceWriteException.forPage(preparedPage);
+  }
+  return preparedPage;
+}
+
 abstract class NotebookRepository {
   Future<List<Notebook>> listNotebooks({
     bool archived = false,

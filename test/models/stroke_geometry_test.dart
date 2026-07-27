@@ -137,6 +137,19 @@ void main() {
     expect(reloadedStroke.audioRecordingId, 'audio-1');
     expect(splitStroke.audioRecordingId, 'audio-1');
   });
+
+  test('loads the removed Smart Ink tool value as regular ink', () {
+    final stroke = Stroke.fromJson({
+      'id': 'legacy-smart-ink-stroke',
+      'tool': 'smartInk',
+      'color': const Color(0xFF1E2526).toARGB32(),
+      'width': 5,
+      'points': [_point(0, 0).toJson(), _point(10, 0).toJson()],
+    });
+
+    expect(stroke.tool, ToolType.pen);
+    expect(stroke.toJson()['tool'], ToolType.pen.name);
+  });
 }
 
 StrokePoint _point(

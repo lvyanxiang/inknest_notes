@@ -504,7 +504,9 @@ class FileNotebookRepository implements NotebookRepository {
       return notebook;
     }
 
-    final sourcePage = await loadPage(notebook, pageId);
+    final sourcePage = preparePageForNormalSave(
+      await loadPage(notebook, pageId),
+    );
     final newPageId = _nextPageId(notebook.pageIds);
     final updatedPageIds = notebook.pageIds.toList()
       ..insert(sourceIndex + 1, newPageId);
@@ -516,6 +518,7 @@ class FileNotebookRepository implements NotebookRepository {
       id: newPageId,
       width: sourcePage.width,
       height: sourcePage.height,
+      coordinateSpaceVersion: sourcePage.coordinateSpaceVersion!,
       rotationQuarterTurns: sourcePage.rotationQuarterTurns,
       template: sourcePage.template,
       pdfBackground: sourcePage.pdfBackground,
@@ -601,15 +604,38 @@ class FileNotebookRepository implements NotebookRepository {
       return _emptyPage(pageId);
     }
 
-    final json = jsonDecode(await pageFile.readAsString());
-    final page = NotePage.fromJson(json as Map<String, Object?>);
-    return _resolvePageAssets(notebook, page);
+    final page = await _readPageFile(pageFile);
+    if (!page.canSafelyUpgradeCoordinateSpace) {
+      return _resolvePageAssets(notebook, page);
+    }
+
+    return _runStorageWrite(() async {
+      if (!await pageFile.exists()) {
+        return _emptyPage(pageId);
+      }
+
+      final currentPage = await _readPageFile(pageFile);
+      final upgradedPage = currentPage.upgradeEmptyLegacyCoordinateSpace();
+      if (!identical(currentPage, upgradedPage)) {
+        await _writeJsonFile(pageFile, upgradedPage.toJson());
+      }
+      return _resolvePageAssets(notebook, upgradedPage);
+    });
   }
 
   @override
   Future<void> savePage(Notebook notebook, NotePage page) async {
+    final preparedPage = preparePageForNormalSave(page);
     await _runStorageWrite(() async {
-      await _writeJsonFile(_pageFile(notebook, page.id), page.toJson());
+      final pageFile = _pageFile(notebook, preparedPage.id);
+      if (await pageFile.exists()) {
+        final existingPage = await _readPageFile(pageFile);
+        if (existingPage.isCoordinateSpaceWriteProtected) {
+          throw PageCoordinateSpaceWriteException.forPage(existingPage);
+        }
+      }
+
+      await _writeJsonFile(pageFile, preparedPage.toJson());
 
       final notebooks = await _readIndex();
       final currentNotebook = notebooks.firstWhere(
@@ -627,6 +653,11 @@ class FileNotebookRepository implements NotebookRepository {
             existingNotebook,
       ]);
     });
+  }
+
+  Future<NotePage> _readPageFile(File pageFile) async {
+    final json = jsonDecode(await pageFile.readAsString());
+    return NotePage.fromJson(json as Map<String, Object?>);
   }
 
   Future<List<Notebook>> _readIndex() async {

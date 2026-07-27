@@ -336,7 +336,9 @@ class InMemoryNotebookRepository implements NotebookRepository {
       return notebook;
     }
 
-    final sourcePage = await loadPage(notebook, pageId);
+    final sourcePage = preparePageForNormalSave(
+      await loadPage(notebook, pageId),
+    );
     final newPageId = _nextPageId(notebook.pageIds);
     final updatedPageIds = notebook.pageIds.toList()
       ..insert(sourceIndex + 1, newPageId);
@@ -350,6 +352,7 @@ class InMemoryNotebookRepository implements NotebookRepository {
       id: newPageId,
       width: sourcePage.width,
       height: sourcePage.height,
+      coordinateSpaceVersion: sourcePage.coordinateSpaceVersion!,
       rotationQuarterTurns: sourcePage.rotationQuarterTurns,
       template: sourcePage.template,
       pdfBackground: sourcePage.pdfBackground,
@@ -425,13 +428,26 @@ class InMemoryNotebookRepository implements NotebookRepository {
 
   @override
   Future<NotePage> loadPage(Notebook notebook, String pageId) async {
-    return _pages[_pageKey(notebook, pageId)] ??
+    final pageKey = _pageKey(notebook, pageId);
+    final page =
+        _pages[pageKey] ??
         NotePage(id: pageId, width: _pageWidth, height: _pageHeight);
+    final upgradedPage = page.upgradeEmptyLegacyCoordinateSpace();
+    if (!identical(upgradedPage, page)) {
+      _pages[pageKey] = upgradedPage;
+    }
+    return upgradedPage;
   }
 
   @override
   Future<void> savePage(Notebook notebook, NotePage page) async {
-    _pages[_pageKey(notebook, page.id)] = page;
+    final pageKey = _pageKey(notebook, page.id);
+    final existingPage = _pages[pageKey];
+    if (existingPage?.isCoordinateSpaceWriteProtected ?? false) {
+      throw PageCoordinateSpaceWriteException.forPage(existingPage!);
+    }
+
+    _pages[pageKey] = preparePageForNormalSave(page);
   }
 
   void _replaceNotebook(Notebook notebook) {
