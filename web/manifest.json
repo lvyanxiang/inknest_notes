@@ -1,6 +1,6 @@
 {
-    "name": "inknest_notes",
-    "short_name": "inknest_notes",
+    "name": "InkNest Notes",
+    "short_name": "InkNest",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

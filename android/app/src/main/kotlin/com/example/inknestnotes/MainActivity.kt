@@ -1,4 +1,4 @@
-package com.example.inknest_notes
+package com.example.inknestnotes
 
 import io.flutter.embedding.android.FlutterActivity
 
