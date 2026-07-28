@@ -1,4 +1,8 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:inknest_notes/features/editor/theme/editor_workspace_tokens.dart';
 import 'package:inknest_notes/models/note_shape.dart';
 import 'package:inknest_notes/models/tool.dart';
 
@@ -73,6 +77,7 @@ class _EditorToolbarState extends State<EditorToolbar> {
       width: 3,
     ),
   };
+  ToolType _lastWritingToolType = ToolType.pen;
 
   @override
   void initState() {
@@ -90,12 +95,26 @@ class _EditorToolbarState extends State<EditorToolbar> {
     if (_lastToolSettings.containsKey(tool.type)) {
       _lastToolSettings[tool.type] = tool;
     }
+    if (_isWritingTool(tool.type)) {
+      _lastWritingToolType = tool.type;
+    }
   }
 
   void _applyTool(DrawingTool tool) {
     _rememberTool(tool);
     widget.onToolChanged(tool);
   }
+
+  void _selectWritingTool() {
+    if (_isWritingTool(widget.tool.type)) {
+      return;
+    }
+    final remembered = _lastToolSettings[_lastWritingToolType];
+    _applyTool(remembered ?? EditorToolbar._favoritePresets.first.tool);
+  }
+
+  bool _isWritingTool(ToolType type) =>
+      type == ToolType.pen || type == ToolType.highlighter;
 
   void _selectTool(ToolType type) {
     final rememberedTool = _lastToolSettings[type];
@@ -117,17 +136,70 @@ class _EditorToolbarState extends State<EditorToolbar> {
     }
   }
 
-  Future<void> _showToolProperties() async {
-    await showModalBottomSheet<void>(
+  Future<void> _showToolProperties(BuildContext anchorContext) async {
+    final panel = _ToolPropertiesSheet(
+      initialTool: widget.tool,
+      presets: EditorToolbar._favoritePresets,
+      onToolChanged: _applyTool,
+    );
+    final width = MediaQuery.sizeOf(context).width;
+    if (width < 720) {
+      await showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        isScrollControlled: true,
+        constraints: const BoxConstraints(maxWidth: 560),
+        backgroundColor: EditorWorkspaceTokens.chrome,
+        builder: (context) => panel,
+      );
+      return;
+    }
+
+    final renderObject = anchorContext.findRenderObject();
+    if (renderObject is! RenderBox || !renderObject.hasSize) {
+      await showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        isScrollControlled: true,
+        constraints: const BoxConstraints(maxWidth: 560),
+        backgroundColor: EditorWorkspaceTokens.chrome,
+        builder: (context) => panel,
+      );
+      return;
+    }
+
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final offset = renderObject.localToGlobal(Offset.zero, ancestor: overlay);
+    final size = renderObject.size;
+    const panelWidth = 360.0;
+    final left = offset.dx
+        .clamp(16.0, math.max(16.0, overlay.size.width - panelWidth - 16))
+        .toDouble();
+    final top = (offset.dy + size.height + 8)
+        .clamp(16.0, math.max(16.0, overlay.size.height - 240))
+        .toDouble();
+
+    await showDialog<void>(
       context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      constraints: const BoxConstraints(maxWidth: 560),
-      builder: (context) {
-        return _ToolPropertiesSheet(
-          initialTool: widget.tool,
-          presets: EditorToolbar._favoritePresets,
-          onToolChanged: _applyTool,
+      barrierColor: const Color(0x331E2526),
+      builder: (dialogContext) {
+        return Stack(
+          children: [
+            Positioned(
+              left: left,
+              top: top,
+              child: Material(
+                color: EditorWorkspaceTokens.chrome,
+                elevation: 8,
+                shadowColor: EditorWorkspaceTokens.paperShadow,
+                borderRadius: BorderRadius.circular(
+                  EditorWorkspaceTokens.chromeRadius,
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: SizedBox(width: panelWidth, child: panel),
+              ),
+            ),
+          ],
         );
       },
     );
@@ -136,7 +208,7 @@ class _EditorToolbarState extends State<EditorToolbar> {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: const Color(0xFFFFFCF7),
+      color: EditorWorkspaceTokens.chrome,
       elevation: 1,
       child: SafeArea(
         top: false,
@@ -162,19 +234,32 @@ class _EditorToolbarState extends State<EditorToolbar> {
                 padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
                 child: Row(
                   children: [
-                    _PrimaryToolButton(
-                      icon: Icons.edit,
-                      label: 'Pen',
-                      isSelected: widget.tool.type == ToolType.pen,
-                      showLabel: showPrimaryLabels,
-                      onPressed: () => _selectTool(ToolType.pen),
-                    ),
-                    _PrimaryToolButton(
-                      icon: Icons.border_color,
-                      label: 'Highlighter',
-                      isSelected: widget.tool.type == ToolType.highlighter,
-                      showLabel: showPrimaryLabels,
-                      onPressed: () => _selectTool(ToolType.highlighter),
+                    Builder(
+                      builder: (buttonContext) {
+                        final isWriting = _isWritingTool(widget.tool.type);
+                        final writingLabel =
+                            widget.tool.type == ToolType.highlighter
+                            ? 'Highlighter'
+                            : 'Pen';
+                        final writingIcon =
+                            widget.tool.type == ToolType.highlighter
+                            ? Icons.border_color
+                            : Icons.edit;
+                        return _PrimaryToolButton(
+                          key: const ValueKey('editor-writing-tool'),
+                          icon: writingIcon,
+                          label: writingLabel,
+                          isSelected: isWriting,
+                          showLabel: showPrimaryLabels,
+                          onPressed: () {
+                            if (isWriting) {
+                              unawaited(_showToolProperties(buttonContext));
+                              return;
+                            }
+                            _selectWritingTool();
+                          },
+                        );
+                      },
                     ),
                     _PrimaryToolButton(
                       icon: Icons.cleaning_services_outlined,
@@ -248,8 +333,11 @@ enum _InsertAction { text, image, shape }
 
 enum _FingerMenuAction { writes, moves, toggleWritingAssist }
 
+enum _SelectionEmphasis { primary, preset, quiet }
+
 class _PrimaryToolButton extends StatelessWidget {
   const _PrimaryToolButton({
+    super.key,
     required this.icon,
     required this.label,
     required this.isSelected,
@@ -276,8 +364,10 @@ class _PrimaryToolButton extends StatelessWidget {
           excludeSemantics: true,
           child: _DockControlSurface(
             isSelected: isSelected,
+            emphasis: _SelectionEmphasis.primary,
             onTap: onPressed,
-            minWidth: showLabel ? null : 44,
+            square: !showLabel,
+            minWidth: showLabel ? null : EditorWorkspaceTokens.controlSize,
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -315,45 +405,48 @@ class _InsertMenuButton extends StatelessWidget {
         selected: isSelected,
         label: 'Insert${isSelected ? ', selected' : ''}',
         excludeSemantics: true,
-        child: PopupMenuButton<_InsertAction>(
-          key: const ValueKey('editor-insert-menu'),
-          tooltip: '',
-          onSelected: onSelected,
-          itemBuilder: (context) => const [
-            PopupMenuItem(
-              value: _InsertAction.text,
-              height: 48,
-              child: _MenuRow(icon: Icons.text_fields, label: 'Text'),
-            ),
-            PopupMenuItem(
-              value: _InsertAction.image,
-              height: 48,
-              child: _MenuRow(
-                icon: Icons.add_photo_alternate_outlined,
-                label: 'Image',
+        child: _DockPopupControl(
+          child: PopupMenuButton<_InsertAction>(
+            key: const ValueKey('editor-insert-menu'),
+            tooltip: '',
+            onSelected: onSelected,
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: _InsertAction.text,
+                height: 48,
+                child: _MenuRow(icon: Icons.text_fields, label: 'Text'),
               ),
-            ),
-            PopupMenuItem(
-              value: _InsertAction.shape,
-              height: 48,
-              child: _MenuRow(icon: Icons.category_outlined, label: 'Shape'),
-            ),
-          ],
-          child: IgnorePointer(
-            child: _DockControlVisual(
-              isSelected: isSelected,
-              minWidth: showLabel ? null : 44,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.add_circle_outline, size: 21),
-                  if (showLabel) ...[
-                    const SizedBox(width: 6),
-                    const Text('Insert'),
+              PopupMenuItem(
+                value: _InsertAction.image,
+                height: 48,
+                child: _MenuRow(
+                  icon: Icons.add_photo_alternate_outlined,
+                  label: 'Image',
+                ),
+              ),
+              PopupMenuItem(
+                value: _InsertAction.shape,
+                height: 48,
+                child: _MenuRow(icon: Icons.category_outlined, label: 'Shape'),
+              ),
+            ],
+            child: IgnorePointer(
+              child: _DockControlVisual(
+                isSelected: isSelected,
+                minWidth: showLabel ? null : 48,
+                horizontalPadding: showLabel ? 10 : 6,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.add_circle_outline, size: 21),
+                    if (showLabel) ...[
+                      const SizedBox(width: 6),
+                      const Text('Insert'),
+                    ],
+                    const SizedBox(width: 2),
+                    const Icon(Icons.arrow_drop_down, size: 18),
                   ],
-                  const SizedBox(width: 2),
-                  const Icon(Icons.arrow_drop_down, size: 18),
-                ],
+                ),
               ),
             ),
           ),
@@ -372,7 +465,7 @@ class _PropertyButton extends StatelessWidget {
 
   final DrawingTool tool;
   final bool compact;
-  final VoidCallback onPressed;
+  final ValueChanged<BuildContext> onPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -389,7 +482,7 @@ class _PropertyButton extends StatelessWidget {
         child: _DockControlSurface(
           key: const ValueKey('editor-tool-properties'),
           isSelected: false,
-          onTap: onPressed,
+          onTap: () => onPressed(context),
           minWidth: compact ? 48 : 88,
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -440,9 +533,9 @@ class _PresetButton extends StatelessWidget {
           child: _DockControlSurface(
             key: ValueKey('editor-preset-${preset.label}'),
             isSelected: isSelected,
+            emphasis: _SelectionEmphasis.preset,
             onTap: onPressed,
-            minWidth: 44,
-            horizontalPadding: 6,
+            square: true,
             child: _ToolPreview(tool: preset.tool),
           ),
         ),
@@ -469,36 +562,39 @@ class _PresetMenuButton extends StatelessWidget {
       padding: const EdgeInsets.only(left: 4),
       child: Tooltip(
         message: 'Presets',
-        child: PopupMenuButton<DrawingTool>(
-          key: const ValueKey('editor-presets-menu'),
-          tooltip: '',
-          onSelected: onSelected,
-          itemBuilder: (context) => [
-            for (final preset in presets)
-              PopupMenuItem(
-                value: preset.tool,
-                height: 48,
-                child: _MenuRow(
-                  icon: preset.icon,
-                  label: preset.label,
-                  trailing: _ToolPreview(tool: preset.tool),
+        child: _DockPopupControl(
+          child: PopupMenuButton<DrawingTool>(
+            key: const ValueKey('editor-presets-menu'),
+            tooltip: '',
+            onSelected: onSelected,
+            itemBuilder: (context) => [
+              for (final preset in presets)
+                PopupMenuItem(
+                  value: preset.tool,
+                  height: 48,
+                  child: _MenuRow(
+                    icon: preset.icon,
+                    label: preset.label,
+                    trailing: _ToolPreview(tool: preset.tool),
+                  ),
                 ),
-              ),
-          ],
-          child: IgnorePointer(
-            child: _DockControlVisual(
-              isSelected: activePreset != null,
-              minWidth: 48,
-              horizontalPadding: 7,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (activePreset == null)
-                    const Icon(Icons.palette_outlined, size: 21)
-                  else
-                    _ToolPreview(tool: activePreset.tool),
-                  const Icon(Icons.arrow_drop_down, size: 17),
-                ],
+            ],
+            child: IgnorePointer(
+              child: _DockControlVisual(
+                isSelected: activePreset != null,
+                emphasis: _SelectionEmphasis.preset,
+                minWidth: 48,
+                horizontalPadding: 7,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (activePreset == null)
+                      const Icon(Icons.palette_outlined, size: 21)
+                    else
+                      _ToolPreview(tool: activePreset.tool),
+                    const Icon(Icons.arrow_drop_down, size: 17),
+                  ],
+                ),
               ),
             ),
           ),
@@ -532,77 +628,87 @@ class _FingerModeMenuButton extends StatelessWidget {
       message: label,
       child: Semantics(
         button: true,
-        selected: true,
-        label: '$label, selected',
+        selected: fingerPanEnabled,
+        label: fingerPanEnabled
+            ? 'Finger moves, selected'
+            : 'Finger writes, default',
         excludeSemantics: true,
-        child: PopupMenuButton<_FingerMenuAction>(
-          key: const ValueKey('editor-finger-mode-menu'),
-          tooltip: '',
-          onSelected: (action) {
-            switch (action) {
-              case _FingerMenuAction.writes:
-                onFingerPanChanged(false);
-              case _FingerMenuAction.moves:
-                onFingerPanChanged(true);
-              case _FingerMenuAction.toggleWritingAssist:
-                onFingerWritingAssistChanged(!fingerWritingAssistEnabled);
-            }
-          },
-          itemBuilder: (context) => [
-            _FingerModeMenuItem(
-              value: _FingerMenuAction.writes,
-              icon: Icons.gesture,
-              label: 'Finger writes',
-              isSelected: !fingerPanEnabled,
-            ),
-            _FingerModeMenuItem(
-              value: _FingerMenuAction.moves,
-              icon: Icons.pan_tool_alt,
-              label: 'Finger moves',
-              isSelected: fingerPanEnabled,
-            ),
-            const PopupMenuDivider(),
-            PopupMenuItem(
-              value: _FingerMenuAction.toggleWritingAssist,
-              height: 52,
-              child: Row(
-                children: [
-                  Icon(
-                    fingerWritingAssistEnabled
-                        ? Icons.check_box
-                        : Icons.check_box_outline_blank,
-                    size: 21,
-                  ),
-                  const SizedBox(width: 12),
-                  const Expanded(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Writing assist'),
-                        Text(
-                          'Used for completed finger strokes',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+        child: _DockPopupControl(
+          child: PopupMenuButton<_FingerMenuAction>(
+            key: const ValueKey('editor-finger-mode-menu'),
+            tooltip: '',
+            onSelected: (action) {
+              switch (action) {
+                case _FingerMenuAction.writes:
+                  onFingerPanChanged(false);
+                case _FingerMenuAction.moves:
+                  onFingerPanChanged(true);
+                case _FingerMenuAction.toggleWritingAssist:
+                  onFingerWritingAssistChanged(!fingerWritingAssistEnabled);
+              }
+            },
+            itemBuilder: (context) => [
+              _FingerModeMenuItem(
+                value: _FingerMenuAction.writes,
+                icon: Icons.gesture,
+                label: 'Finger writes',
+                isSelected: !fingerPanEnabled,
               ),
-            ),
-          ],
-          child: IgnorePointer(
-            child: _DockControlVisual(
-              isSelected: true,
-              minWidth: showLabel ? null : 48,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(icon, size: 21),
-                  if (showLabel) ...[const SizedBox(width: 6), Text(label)],
-                  const SizedBox(width: 2),
-                  const Icon(Icons.arrow_drop_down, size: 18),
-                ],
+              _FingerModeMenuItem(
+                value: _FingerMenuAction.moves,
+                icon: Icons.pan_tool_alt,
+                label: 'Finger moves',
+                isSelected: fingerPanEnabled,
+              ),
+              if (!fingerPanEnabled) ...[
+                const PopupMenuDivider(),
+                PopupMenuItem(
+                  value: _FingerMenuAction.toggleWritingAssist,
+                  height: 52,
+                  child: Row(
+                    children: [
+                      Icon(
+                        fingerWritingAssistEnabled
+                            ? Icons.check_box
+                            : Icons.check_box_outline_blank,
+                        size: 21,
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Writing assist'),
+                            Text(
+                              'Used for completed finger strokes',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+            child: IgnorePointer(
+              child: _DockControlVisual(
+                isSelected: fingerPanEnabled,
+                emphasis: fingerPanEnabled
+                    ? _SelectionEmphasis.primary
+                    : _SelectionEmphasis.quiet,
+                minWidth: showLabel ? null : 48,
+                horizontalPadding: showLabel ? 10 : 6,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon, size: 21),
+                    if (showLabel) ...[const SizedBox(width: 6), Text(label)],
+                    const SizedBox(width: 2),
+                    const Icon(Icons.arrow_drop_down, size: 18),
+                  ],
+                ),
               ),
             ),
           ),
@@ -649,28 +755,42 @@ class _DockControlSurface extends StatelessWidget {
     required this.isSelected,
     required this.onTap,
     required this.child,
+    this.emphasis = _SelectionEmphasis.primary,
     this.minWidth,
     this.horizontalPadding = 10,
+    this.square = false,
   });
 
   final bool isSelected;
   final VoidCallback onTap;
   final Widget child;
+  final _SelectionEmphasis emphasis;
   final double? minWidth;
   final double horizontalPadding;
+  final bool square;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: _DockControlVisual(
-          isSelected: isSelected,
-          minWidth: minWidth,
-          horizontalPadding: horizontalPadding,
-          child: child,
+    final radius = BorderRadius.circular(EditorWorkspaceTokens.controlRadius);
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        vertical: EditorWorkspaceTokens.controlInset,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: radius,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: radius,
+          child: _DockControlVisual(
+            isSelected: isSelected,
+            emphasis: emphasis,
+            minWidth: minWidth,
+            horizontalPadding: horizontalPadding,
+            square: square,
+            child: child,
+          ),
         ),
       ),
     );
@@ -681,42 +801,81 @@ class _DockControlVisual extends StatelessWidget {
   const _DockControlVisual({
     required this.isSelected,
     required this.child,
+    this.emphasis = _SelectionEmphasis.primary,
     this.minWidth,
     this.horizontalPadding = 10,
+    this.square = false,
   });
 
   final bool isSelected;
   final Widget child;
+  final _SelectionEmphasis emphasis;
   final double? minWidth;
   final double horizontalPadding;
+  final bool square;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final selected = isSelected && emphasis != _SelectionEmphasis.quiet;
+    final fill = switch (emphasis) {
+      _SelectionEmphasis.primary when selected =>
+        EditorWorkspaceTokens.selectedFill,
+      _SelectionEmphasis.preset when selected =>
+        EditorWorkspaceTokens.selectedFill.withValues(alpha: 0.45),
+      _ => Colors.transparent,
+    };
+    const size = EditorWorkspaceTokens.controlSize;
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 120),
-      constraints: BoxConstraints(minWidth: minWidth ?? 44, minHeight: 44),
-      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+      width: square ? size : null,
+      height: size,
+      constraints: BoxConstraints(
+        minWidth: square ? size : (minWidth ?? size),
+        maxWidth: square ? size : double.infinity,
+        minHeight: size,
+        maxHeight: size,
+      ),
+      padding: EdgeInsets.symmetric(horizontal: square ? 0 : horizontalPadding),
+      alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: isSelected ? const Color(0xFFDCEEEE) : Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: isSelected ? colorScheme.primary : Colors.transparent,
-          width: 1,
+        color: fill,
+        borderRadius: BorderRadius.circular(
+          EditorWorkspaceTokens.controlRadius,
         ),
       ),
       child: DefaultTextStyle.merge(
         style: Theme.of(context).textTheme.labelMedium?.copyWith(
           color: colorScheme.onSurface,
-          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+          fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
         ),
         child: IconTheme(
           data: IconThemeData(
-            color: isSelected ? colorScheme.primary : colorScheme.onSurface,
+            color: selected
+                ? EditorWorkspaceTokens.primary
+                : colorScheme.onSurface,
           ),
-          child: Center(child: child),
+          child: child,
         ),
       ),
+    );
+  }
+}
+
+/// Keeps popup-menu dock controls the same 40px tile height as ink buttons.
+class _DockPopupControl extends StatelessWidget {
+  const _DockPopupControl({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        vertical: EditorWorkspaceTokens.controlInset,
+      ),
+      child: child,
     );
   }
 }
@@ -745,12 +904,43 @@ class _ToolPropertiesSheetState extends State<_ToolPropertiesSheet> {
   ];
 
   late DrawingTool _tool = widget.initialTool;
+  late DrawingTool _penTool = widget.presets
+      .firstWhere((preset) => preset.tool.type == ToolType.pen)
+      .tool;
+  late DrawingTool _highlighterTool = widget.presets
+      .firstWhere((preset) => preset.tool.type == ToolType.highlighter)
+      .tool;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_tool.type == ToolType.pen) {
+      _penTool = _tool;
+    } else if (_tool.type == ToolType.highlighter) {
+      _highlighterTool = _tool;
+    }
+  }
 
   void _apply(DrawingTool tool) {
     setState(() {
       _tool = tool;
+      if (tool.type == ToolType.pen) {
+        _penTool = tool;
+      } else if (tool.type == ToolType.highlighter) {
+        _highlighterTool = tool;
+      }
     });
     widget.onToolChanged(tool);
+  }
+
+  void _selectWritingStyle(ToolType type) {
+    if (type == ToolType.pen) {
+      _apply(_penTool);
+      return;
+    }
+    if (type == ToolType.highlighter) {
+      _apply(_highlighterTool);
+    }
   }
 
   @override
@@ -802,6 +992,30 @@ class _ToolPropertiesSheetState extends State<_ToolPropertiesSheet> {
               else ...[
                 if (_tool.type == ToolType.pen ||
                     _tool.type == ToolType.highlighter) ...[
+                  Text('Style', style: theme.textTheme.titleSmall),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _SettingChoice(
+                        key: const ValueKey('writing-style-pen'),
+                        label: 'Pen',
+                        icon: Icons.edit,
+                        isSelected: _tool.type == ToolType.pen,
+                        onPressed: () => _selectWritingStyle(ToolType.pen),
+                      ),
+                      _SettingChoice(
+                        key: const ValueKey('writing-style-highlighter'),
+                        label: 'Highlighter',
+                        icon: Icons.border_color,
+                        isSelected: _tool.type == ToolType.highlighter,
+                        onPressed: () =>
+                            _selectWritingStyle(ToolType.highlighter),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
                   Text('Presets', style: theme.textTheme.titleSmall),
                   const SizedBox(height: 8),
                   Wrap(
@@ -933,17 +1147,25 @@ class _SheetPresetButton extends StatelessWidget {
       button: true,
       label: '${preset.label} preset${isSelected ? ', selected' : ''}',
       excludeSemantics: true,
-      child: _DockControlSurface(
-        isSelected: isSelected,
-        onTap: onPressed,
-        minWidth: 154,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _ToolPreview(tool: preset.tool),
-            const SizedBox(width: 8),
-            Text(preset.label),
-          ],
+      child: SizedBox(
+        width: 156,
+        child: _DockControlSurface(
+          isSelected: isSelected,
+          onTap: onPressed,
+          minWidth: 156,
+          child: Row(
+            children: [
+              _ToolPreview(tool: preset.tool),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  preset.label,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

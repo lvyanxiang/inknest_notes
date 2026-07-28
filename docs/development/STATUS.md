@@ -2,9 +2,9 @@
 
 ## Current
 
-- Milestone: Editor Workspace Redesign (core implementation complete for canonical v1 pages)
-- Next task: Run real-iPad Pencil/rotation/Split View QA, then decide whether legacy app-container recovery and a verified raw archive/conversion flow are required for non-empty v0 pages.
-- Last completed: Rebuilt the editor around a fixed document-coordinate viewport, responsive header/tool dock, contextual Smart Ink, on-demand Pages/Outline/Bookmarks navigation, and repository-enforced coordinate-version protection; removed the superseded editor interaction paths after a cross-file reference audit.
+- Milestone: Editor Workspace Interaction Polish (delivered)
+- Next task: Run real-iPad Pencil/rotation/Split View QA for the redesigned and polished editor; then decide whether legacy app-container recovery and a verified raw archive/conversion flow are required for non-empty v0 pages.
+- Last completed: Softened dock selection styling and merged Pen/Highlighter into one writing tool with Style switching in properties/presets.
 
 ## Decisions
 
@@ -30,6 +30,9 @@
 - Exported annotated PDFs rasterize imported PDF backgrounds and overlay editable strokes as vector paths in the generated output.
 - Pause sync and backup until the editor, PDF, and library workflows are more polished.
 - Use `docs/development/POST_MVP_ROADMAP.md` for GoodNotes / Notability-style post-MVP planning.
+- Prefer collapsing on-canvas zoom chrome and keeping Fit Width / Fit Page discoverable from More → View so the paper stays primary while writing.
+- Prefer anchored tool-property popovers on regular/wide iPad widths; keep bottom sheets only for compact Split View.
+- Treat Finger writes as the quiet default and Finger moves as the strongly selected touch mode.
 - Use `docs/development/SUBSCRIPTION_PLAN.md` as the product reference for Free, InkNest Cloud, and future Pro monetization.
 - Long-term product direction: iPad handwriting/PDF study, phone capture/review, and Web Yuque-like knowledge base.
 - Use a custom two-finger zoom/pan viewport instead of `InteractiveViewer` so single-pointer drawing remains reliable.
@@ -116,6 +119,11 @@
 
 ## Verification
 
+- `dart format` passed for the editor interaction polish changes on 2026-07-27.
+- `flutter test` passed with 126 tests after editor interaction polish.
+- `flutter analyze` passed with no issues after editor interaction polish.
+- Focused toolbar, workspace, and viewport model tests cover collapsed zoom chrome, More → View fit actions, properties popover, and Finger mode hierarchy.
+- `git diff --check` passed after the editor interaction polish.
 - `dart format` passed for the editor workspace, viewport, model, repository,
   and test changes on 2026-07-27.
 - `flutter test` passed with 122 tests after the editor workspace redesign,
@@ -338,6 +346,10 @@
   `docs/product/features/editor-workspace-redesign/`; the implemented shell
   replaces permanent all-actions chrome with a document header, contextual
   tool dock, on-demand page navigator, and fixed document-coordinate viewport.
+- Editor interaction polish records live under
+  `docs/product/features/editor-workspace-polish/`; the floating page chip is
+  removed, zoom chrome collapses by default, Fit Width/Fit Page are in More →
+  View, and tool properties use an anchored popover on regular/wide widths.
 - The current lowercase iOS bundle identifier uses a separate app container
   from the old mixed-case identifier; decide whether legacy prototype data
   must be recovered before implementing any coordinate conversion.

@@ -75,6 +75,23 @@ void main() {
       },
     );
 
+    testWidgets(
+      'keeps page navigation in the header without a floating page chip',
+      (tester) async {
+        await _createFixture(tester, const Size(834, 1194));
+
+        expect(
+          find.byKey(const ValueKey('editor-pages-button')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('editor-page-position-button')),
+          findsNothing,
+        );
+        expect(find.byKey(const ValueKey('editor-zoom-chip')), findsOneWidget);
+      },
+    );
+
     testWidgets('exposes Fit width and Fit page from the zoom menu', (
       tester,
     ) async {
@@ -83,11 +100,30 @@ void main() {
       expect(find.text('Fit width'), findsNothing);
       expect(find.text('Fit page'), findsNothing);
 
+      await tester.tap(find.byKey(const ValueKey('editor-zoom-chip')));
+      await tester.pump();
       await tester.tap(find.byTooltip('Zoom and fit'));
       await tester.pumpAndSettle();
 
       expect(find.text('Fit width'), findsOneWidget);
       expect(find.text('Fit page'), findsOneWidget);
+    });
+
+    testWidgets('exposes Fit width and Fit page from More View actions', (
+      tester,
+    ) async {
+      await _createFixture(tester, const Size(834, 1194));
+
+      await tester.tap(find.byKey(const ValueKey('editor-more-actions')));
+      await tester.pumpAndSettle();
+      expect(find.text('Fit width'), findsOneWidget);
+      expect(find.text('Fit page'), findsOneWidget);
+
+      await tester.tap(find.text('Fit page'));
+      await tester.pump();
+
+      expect(find.byKey(const ValueKey('editor-zoom-chip')), findsNothing);
+      expect(find.byTooltip('Zoom and fit'), findsOneWidget);
     });
 
     testWidgets(
@@ -98,10 +134,12 @@ void main() {
         tester.view.physicalSize = const Size(800, 600);
         await tester.pumpAndSettle();
 
+        await tester.tap(find.byKey(const ValueKey('editor-zoom-chip')));
+        await tester.pump();
         await tester.tap(find.byTooltip('Zoom and fit'));
         await tester.pumpAndSettle();
         await tester.tap(find.text('Fit page'));
-        await tester.pumpAndSettle();
+        await tester.pump();
 
         final canvas = find.byType(DrawingCanvas);
         expect(tester.getSize(canvas), const Size(768, 1024));

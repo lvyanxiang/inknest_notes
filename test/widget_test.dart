@@ -114,7 +114,7 @@ void main() {
     expect(find.byTooltip('Search notebook'), findsOneWidget);
     expect(find.byKey(const ValueKey('editor-more-actions')), findsOneWidget);
     expect(find.byTooltip('Pen'), findsOneWidget);
-    expect(find.byTooltip('Highlighter'), findsOneWidget);
+    expect(find.byTooltip('Highlighter'), findsNothing);
     expect(find.byTooltip('Eraser'), findsOneWidget);
     expect(find.byTooltip('Lasso'), findsOneWidget);
     expect(find.byTooltip('Insert'), findsOneWidget);
@@ -1181,6 +1181,9 @@ void main() {
     await tester.tap(find.text('New notebook'));
     await tester.pumpAndSettle();
 
+    await tester.tap(find.byKey(const ValueKey('editor-zoom-chip')));
+    await tester.pump();
+
     expect(find.byTooltip('Zoom out'), findsOneWidget);
     expect(find.byTooltip('Zoom and fit'), findsOneWidget);
     expect(find.byTooltip('Zoom in'), findsOneWidget);
@@ -1196,7 +1199,7 @@ void main() {
     await tester.tap(find.byTooltip('Zoom and fit'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Fit width'));
-    await tester.pumpAndSettle();
+    await tester.pump();
 
     await drawVisibleStroke(tester);
 
@@ -1242,7 +1245,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byTooltip('Pen'), findsOneWidget);
-    expect(find.byTooltip('Highlighter'), findsOneWidget);
+    expect(find.byTooltip('Highlighter'), findsNothing);
     expect(find.byTooltip('Eraser'), findsOneWidget);
     expect(find.byTooltip('Finger writes'), findsOneWidget);
     expect(
@@ -1281,15 +1284,11 @@ void main() {
     await tester.tapAt(const Offset(8, 180));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Highlighter'));
-    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('editor-tool-properties')));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byKey(const ValueKey('tool-width-16.0')));
+    await tester.tap(find.byKey(const ValueKey('writing-style-highlighter')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('tool-width-16.0')));
-    await tester.pumpAndSettle();
-    await tester.tapAt(const Offset(12, 24));
+    await tester.tap(find.byTooltip('Close tool properties'));
     await tester.pumpAndSettle();
 
     final start = visibleCanvasPoint(tester);

@@ -24,6 +24,7 @@ import 'package:inknest_notes/features/editor/templates/page_template_layer.dart
 import 'package:inknest_notes/features/editor/templates/page_template_sheet.dart';
 import 'package:inknest_notes/features/editor/text/note_text_box_styles.dart';
 import 'package:inknest_notes/features/editor/text/text_box_layer.dart';
+import 'package:inknest_notes/features/editor/theme/editor_workspace_tokens.dart';
 import 'package:inknest_notes/features/editor/tools/editor_toolbar.dart';
 import 'package:inknest_notes/models/note_image.dart';
 import 'package:inknest_notes/models/note_page.dart';
@@ -65,6 +66,8 @@ class _EditorScreenState extends State<EditorScreen> {
       const InkRecognitionImageRenderer();
   final NotebookTextSearchService _notebookTextSearchService =
       NotebookTextSearchService();
+  final GlobalKey<_ZoomablePageViewportState> _viewportKey =
+      GlobalKey<_ZoomablePageViewportState>();
   final List<Stroke> _redoStack = [];
   final Set<String> _selectedStrokeIds = {};
   final Map<String, NotePage> _pagesById = {};
@@ -1492,6 +1495,12 @@ class _EditorScreenState extends State<EditorScreen> {
       case _EditorMenuAction.addPage:
         await _addPage();
         break;
+      case _EditorMenuAction.fitWidth:
+        _viewportKey.currentState?.fitWidth();
+        break;
+      case _EditorMenuAction.fitPage:
+        _viewportKey.currentState?.fitPage();
+        break;
     }
   }
 
@@ -2065,7 +2074,7 @@ class _EditorScreenState extends State<EditorScreen> {
                 final showPageRail =
                     constraints.maxWidth >= 1100 && _isPageRailOpen;
                 return ColoredBox(
-                  color: const Color(0xFFF0EFEA),
+                  color: EditorWorkspaceTokens.workspace,
                   child: Row(
                     children: [
                       if (showPageRail) _buildPinnedNavigator(),
@@ -2115,7 +2124,7 @@ class _EditorScreenState extends State<EditorScreen> {
     return Stack(
       children: [
         _ZoomablePageViewport(
-          key: ValueKey('viewport-${page.id}'),
+          key: _viewportKey,
           page: page,
           fingerPanEnabled:
               _fingerPanEnabled || page.isCoordinateSpaceWriteProtected,
@@ -2138,20 +2147,6 @@ class _EditorScreenState extends State<EditorScreen> {
             right: 176,
             child: _CoordinateSpaceReadOnlyBanner(page: page),
           ),
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 16,
-          child: Center(
-            child: _PagePositionButton(
-              currentPage:
-                  math.max(0, _notebook.pageIds.indexOf(_currentPageId)) + 1,
-              pageCount: _notebook.pageIds.length,
-              onPressed: () =>
-                  _showPagesForWidth(MediaQuery.sizeOf(context).width),
-            ),
-          ),
-        ),
         if (_tool.type == ToolType.lasso && _selectedStrokeIds.isNotEmpty)
           Positioned(
             top: 16,
@@ -2174,13 +2169,13 @@ class _EditorScreenState extends State<EditorScreen> {
   Widget _buildPageSurface(NotePage page) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: EditorWorkspaceTokens.paper,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFE4DED1)),
+        border: Border.all(color: EditorWorkspaceTokens.divider),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x1A1E2526),
-            blurRadius: 18,
+            color: EditorWorkspaceTokens.paperShadow,
+            blurRadius: 20,
             offset: Offset(0, 8),
           ),
         ],
@@ -2345,6 +2340,8 @@ enum _EditorMenuAction {
   rotatePage,
   exportPdf,
   addPage,
+  fitWidth,
+  fitPage,
 }
 
 class _EditorOverflowMenu extends StatelessWidget {
@@ -2424,6 +2421,19 @@ class _EditorOverflowMenu extends StatelessWidget {
           ),
           const PopupMenuDivider(),
           _editorMenuItem(
+            value: _EditorMenuAction.fitWidth,
+            icon: Icons.fit_screen_outlined,
+            label: 'Fit width',
+            enabled: page != null,
+          ),
+          _editorMenuItem(
+            value: _EditorMenuAction.fitPage,
+            icon: Icons.center_focus_strong,
+            label: 'Fit page',
+            enabled: page != null,
+          ),
+          const PopupMenuDivider(),
+          _editorMenuItem(
             value: _EditorMenuAction.exportPdf,
             icon: Icons.ios_share,
             label: isExporting ? 'Exporting…' : 'Export PDF',
@@ -2454,56 +2464,6 @@ PopupMenuItem<_EditorMenuAction> _editorMenuItem({
       ],
     ),
   );
-}
-
-class _PagePositionButton extends StatelessWidget {
-  const _PagePositionButton({
-    required this.currentPage,
-    required this.pageCount,
-    required this.onPressed,
-  });
-
-  final int currentPage;
-  final int pageCount;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Material(
-      color: colorScheme.surface.withValues(alpha: 0.96),
-      elevation: 3,
-      shadowColor: Colors.black26,
-      borderRadius: BorderRadius.circular(22),
-      child: InkWell(
-        key: const ValueKey('editor-page-position-button'),
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(22),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 44, minWidth: 96),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.layers_outlined, size: 19),
-                const SizedBox(width: 8),
-                Text(
-                  '$currentPage / $pageCount',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(width: 4),
-                const Icon(Icons.keyboard_arrow_up, size: 18),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class _AudioRecordingBanner extends StatelessWidget {
@@ -3534,12 +3494,28 @@ class _ZoomablePageViewportState extends State<_ZoomablePageViewport> {
   Offset? _lastFocalPoint;
   double? _lastPointerDistance;
   PageViewportTransform? _transform;
+  bool _zoomChromeExpanded = false;
+  bool _showZoomBadge = false;
+  Timer? _zoomIdleTimer;
+
+  @override
+  void dispose() {
+    _zoomIdleTimer?.cancel();
+    super.dispose();
+  }
+
+  void fitWidth() => _fit(PageViewportMode.fitWidth);
+
+  void fitPage() => _fit(PageViewportMode.fitPage);
 
   @override
   void didUpdateWidget(covariant _ZoomablePageViewport oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.page.id != oldWidget.page.id) {
       _transform = null;
+      _zoomChromeExpanded = false;
+      _showZoomBadge = false;
+      _zoomIdleTimer?.cancel();
     } else if (_transform case final transform?
         when widget.page.width != oldWidget.page.width ||
             widget.page.height != oldWidget.page.height ||
@@ -3563,7 +3539,7 @@ class _ZoomablePageViewportState extends State<_ZoomablePageViewport> {
     if (transform != null &&
         transform.mode != PageViewportMode.custom &&
         (event.kind != PointerDeviceKind.touch || !widget.fingerPanEnabled)) {
-      _setTransform(transform.enterCustom());
+      _setTransform(transform.enterCustom(), announceZoom: false);
     }
 
     if (event.kind != PointerDeviceKind.touch) {
@@ -3638,7 +3614,10 @@ class _ZoomablePageViewportState extends State<_ZoomablePageViewport> {
     final previousFocalPoint = _lastFocalPoint;
     final transform = _transform;
     if (previousFocalPoint != null && transform != null) {
-      _setTransform(transform.panBy(focalPoint - previousFocalPoint));
+      _setTransform(
+        transform.panBy(focalPoint - previousFocalPoint),
+        announceZoom: false,
+      );
     }
 
     _lastFocalPoint = focalPoint;
@@ -3653,11 +3632,41 @@ class _ZoomablePageViewportState extends State<_ZoomablePageViewport> {
     _lastPointerDistance = _pinchDistance();
   }
 
-  void _setTransform(PageViewportTransform transform) {
+  void _setTransform(
+    PageViewportTransform transform, {
+    bool announceZoom = true,
+  }) {
     setState(() {
       _transform = transform;
+      if (announceZoom) {
+        _showZoomBadge = true;
+        _zoomChromeExpanded = true;
+      }
     });
     widget.onSessionStateChanged(transform.sessionState);
+    if (announceZoom) {
+      _scheduleZoomIdleCollapse();
+    }
+  }
+
+  void _scheduleZoomIdleCollapse() {
+    _zoomIdleTimer?.cancel();
+    _zoomIdleTimer = Timer(const Duration(milliseconds: 1600), () {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _showZoomBadge = false;
+        _zoomChromeExpanded = false;
+      });
+    });
+  }
+
+  void _expandZoomChrome() {
+    setState(() {
+      _zoomChromeExpanded = true;
+    });
+    _scheduleZoomIdleCollapse();
   }
 
   void _zoomBy(double scaleFactor) {
@@ -3740,8 +3749,10 @@ class _ZoomablePageViewportState extends State<_ZoomablePageViewport> {
           return const SizedBox.shrink();
         }
         final pageSize = transform.rotatedPageSize;
+        final zoomPercent = transform.fitWidthRelativePercent;
 
         return Listener(
+          key: ValueKey('viewport-${widget.page.id}'),
           behavior: HitTestBehavior.opaque,
           onPointerDown: _handlePointerDown,
           onPointerMove: _handlePointerMove,
@@ -3772,18 +3783,26 @@ class _ZoomablePageViewportState extends State<_ZoomablePageViewport> {
                   top: 16,
                   right: 16,
                   child: _ZoomControls(
+                    expanded: _zoomChromeExpanded,
                     mode: transform.mode,
-                    scale: transform.effectiveScale,
+                    zoomPercent: zoomPercent,
                     canZoomOut:
                         transform.effectiveScale > transform.minimumCustomScale,
                     canZoomIn:
                         transform.effectiveScale < transform.maximumCustomScale,
+                    onExpand: _expandZoomChrome,
                     onZoomOut: () => _zoomBy(0.8),
                     onZoomIn: () => _zoomBy(1.25),
                     onFitWidth: () => _fit(PageViewportMode.fitWidth),
                     onFitPage: () => _fit(PageViewportMode.fitPage),
                   ),
                 ),
+                if (_showZoomBadge)
+                  IgnorePointer(
+                    child: Center(
+                      child: _ZoomStatusBadge(percent: zoomPercent),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -3795,20 +3814,24 @@ class _ZoomablePageViewportState extends State<_ZoomablePageViewport> {
 
 class _ZoomControls extends StatelessWidget {
   const _ZoomControls({
+    required this.expanded,
     required this.mode,
-    required this.scale,
+    required this.zoomPercent,
     required this.canZoomOut,
     required this.canZoomIn,
+    required this.onExpand,
     required this.onZoomOut,
     required this.onZoomIn,
     required this.onFitWidth,
     required this.onFitPage,
   });
 
+  final bool expanded;
   final PageViewportMode mode;
-  final double scale;
+  final int zoomPercent;
   final bool canZoomOut;
   final bool canZoomIn;
+  final VoidCallback onExpand;
   final VoidCallback onZoomOut;
   final VoidCallback onZoomIn;
   final VoidCallback onFitWidth;
@@ -3816,82 +3839,146 @@ class _ZoomControls extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
     return Material(
-      color: colorScheme.surface,
-      elevation: 2,
-      shadowColor: Colors.black26,
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              onPressed: canZoomOut ? onZoomOut : null,
-              tooltip: 'Zoom out',
-              icon: const Icon(Icons.zoom_out),
-            ),
-            PopupMenuButton<PageViewportMode>(
-              tooltip: 'Zoom and fit',
-              initialValue: mode == PageViewportMode.custom ? null : mode,
-              onSelected: (selectedMode) {
-                switch (selectedMode) {
-                  case PageViewportMode.fitWidth:
-                    onFitWidth();
-                  case PageViewportMode.fitPage:
-                    onFitPage();
-                  case PageViewportMode.custom:
-                    break;
-                }
-              },
-              itemBuilder: (context) => const [
-                PopupMenuItem(
-                  value: PageViewportMode.fitWidth,
-                  height: 48,
-                  child: Row(
-                    children: [
-                      Icon(Icons.fit_screen_outlined),
-                      SizedBox(width: 12),
-                      Text('Fit width'),
-                    ],
-                  ),
-                ),
-                PopupMenuItem(
-                  value: PageViewportMode.fitPage,
-                  height: 48,
-                  child: Row(
-                    children: [
-                      Icon(Icons.center_focus_strong),
-                      SizedBox(width: 12),
-                      Text('Fit page'),
-                    ],
-                  ),
-                ),
-              ],
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(minWidth: 68, minHeight: 44),
+      color: EditorWorkspaceTokens.chrome,
+      elevation: expanded ? 3 : 1,
+      shadowColor: EditorWorkspaceTokens.paperShadow,
+      borderRadius: BorderRadius.circular(EditorWorkspaceTokens.chromeRadius),
+      child: AnimatedSize(
+        duration: const Duration(milliseconds: 160),
+        curve: Curves.easeOutCubic,
+        alignment: Alignment.centerRight,
+        child: expanded
+            ? Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      '${(scale * 100).round()}%',
-                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
+                    IconButton(
+                      onPressed: canZoomOut ? onZoomOut : null,
+                      tooltip: 'Zoom out',
+                      icon: const Icon(Icons.zoom_out),
+                    ),
+                    PopupMenuButton<PageViewportMode>(
+                      tooltip: 'Zoom and fit',
+                      initialValue: mode == PageViewportMode.custom
+                          ? null
+                          : mode,
+                      onSelected: (selectedMode) {
+                        switch (selectedMode) {
+                          case PageViewportMode.fitWidth:
+                            onFitWidth();
+                          case PageViewportMode.fitPage:
+                            onFitPage();
+                          case PageViewportMode.custom:
+                            break;
+                        }
+                      },
+                      itemBuilder: (context) => const [
+                        PopupMenuItem(
+                          value: PageViewportMode.fitWidth,
+                          height: 48,
+                          child: Row(
+                            children: [
+                              Icon(Icons.fit_screen_outlined),
+                              SizedBox(width: 12),
+                              Text('Fit width'),
+                            ],
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: PageViewportMode.fitPage,
+                          height: 48,
+                          child: Row(
+                            children: [
+                              Icon(Icons.center_focus_strong),
+                              SizedBox(width: 12),
+                              Text('Fit page'),
+                            ],
+                          ),
+                        ),
+                      ],
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(
+                          minWidth: 68,
+                          minHeight: 44,
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              '$zoomPercent%',
+                              style: Theme.of(context).textTheme.labelLarge
+                                  ?.copyWith(fontWeight: FontWeight.w700),
+                            ),
+                            const Icon(Icons.arrow_drop_down, size: 18),
+                          ],
+                        ),
                       ),
                     ),
-                    const Icon(Icons.arrow_drop_down, size: 18),
+                    IconButton(
+                      onPressed: canZoomIn ? onZoomIn : null,
+                      tooltip: 'Zoom in',
+                      icon: const Icon(Icons.zoom_in),
+                    ),
                   ],
                 ),
+              )
+            : Tooltip(
+                message: 'Zoom and fit',
+                child: InkWell(
+                  key: const ValueKey('editor-zoom-chip'),
+                  onTap: onExpand,
+                  borderRadius: BorderRadius.circular(
+                    EditorWorkspaceTokens.chromeRadius,
+                  ),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      minWidth: 64,
+                      minHeight: 44,
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            '$zoomPercent%',
+                            style: Theme.of(context).textTheme.labelLarge
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(width: 2),
+                          const Icon(Icons.unfold_more, size: 18),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               ),
-            ),
-            IconButton(
-              onPressed: canZoomIn ? onZoomIn : null,
-              tooltip: 'Zoom in',
-              icon: const Icon(Icons.zoom_in),
-            ),
-          ],
+      ),
+    );
+  }
+}
+
+class _ZoomStatusBadge extends StatelessWidget {
+  const _ZoomStatusBadge({required this.percent});
+
+  final int percent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: EditorWorkspaceTokens.ink.withValues(alpha: 0.78),
+      borderRadius: BorderRadius.circular(EditorWorkspaceTokens.chromeRadius),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Text(
+          '$percent%',
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            color: EditorWorkspaceTokens.chrome,
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ),
     );

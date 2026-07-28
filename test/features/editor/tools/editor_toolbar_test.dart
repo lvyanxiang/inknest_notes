@@ -62,19 +62,15 @@ void main() {
       );
 
       expect(tester.takeException(), isNull);
-      for (final label in const [
-        'Pen',
-        'Highlighter',
-        'Eraser',
-        'Lasso',
-        'Insert',
-      ]) {
+      for (final label in const ['Pen', 'Eraser', 'Lasso', 'Insert']) {
         expect(find.byTooltip(label), findsOneWidget);
         expect(
           tester.getSize(find.byTooltip(label)).height,
           greaterThanOrEqualTo(44),
         );
       }
+      expect(find.byTooltip('Highlighter'), findsNothing);
+      expect(find.byKey(const ValueKey('editor-writing-tool')), findsOneWidget);
       expect(
         find.descendant(
           of: find.byType(EditorToolbar),
@@ -186,7 +182,7 @@ void main() {
     expect(tool.width, 5);
   });
 
-  testWidgets('finger mode menu separates movement and writing assist', (
+  testWidgets('finger mode emphasizes moves and keeps writing assist nested', (
     tester,
   ) async {
     var fingerPanEnabled = false;
@@ -214,9 +210,91 @@ void main() {
     expect(find.byTooltip('Finger writes'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('editor-finger-mode-menu')));
     await tester.pumpAndSettle();
+    expect(find.text('Writing assist'), findsOneWidget);
     await tester.tap(find.text('Finger moves'));
     await tester.pumpAndSettle();
     expect(fingerPanEnabled, isTrue);
     expect(writingAssistEnabled, isTrue);
+
+    await pumpToolbar(
+      tester,
+      size: const Size(834, 1194),
+      tool: const DrawingTool(
+        type: ToolType.pen,
+        color: Color(0xFF1E2526),
+        width: 3,
+      ),
+      onToolChanged: (_) {},
+      fingerPanEnabled: true,
+      fingerWritingAssistEnabled: writingAssistEnabled,
+      onFingerPanChanged: (value) {
+        fingerPanEnabled = value;
+      },
+      onFingerWritingAssistChanged: (value) {
+        writingAssistEnabled = value;
+      },
+    );
+    expect(find.byTooltip('Finger moves'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('editor-finger-mode-menu')));
+    await tester.pumpAndSettle();
+    expect(find.text('Writing assist'), findsNothing);
+  });
+
+  testWidgets('merges pen and highlighter into one writing tool', (
+    tester,
+  ) async {
+    var tool = const DrawingTool(
+      type: ToolType.pen,
+      color: Color(0xFF1E2526),
+      width: 3,
+    );
+
+    Future<void> rebuild() async {
+      await pumpToolbar(
+        tester,
+        size: const Size(834, 1194),
+        tool: tool,
+        onToolChanged: (value) {
+          tool = value;
+        },
+      );
+    }
+
+    await rebuild();
+    expect(find.byTooltip('Pen'), findsOneWidget);
+    expect(find.byTooltip('Highlighter'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('editor-writing-tool')));
+    await tester.pumpAndSettle();
+    expect(find.text('Style'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('writing-style-highlighter')));
+    await tester.pump();
+    expect(tool.type, ToolType.highlighter);
+
+    await rebuild();
+    expect(find.byTooltip('Highlighter'), findsOneWidget);
+    expect(find.byTooltip('Pen'), findsNothing);
+  });
+
+  testWidgets('opens tool properties as a popover on regular widths', (
+    tester,
+  ) async {
+    await pumpToolbar(
+      tester,
+      size: const Size(834, 1194),
+      tool: const DrawingTool(
+        type: ToolType.pen,
+        color: Color(0xFF1E2526),
+        width: 3,
+      ),
+      onToolChanged: (_) {},
+    );
+
+    await tester.tap(find.byKey(const ValueKey('editor-tool-properties')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Pen settings'), findsOneWidget);
+    expect(find.byType(BottomSheet), findsNothing);
+    expect(find.byIcon(Icons.close), findsOneWidget);
   });
 }

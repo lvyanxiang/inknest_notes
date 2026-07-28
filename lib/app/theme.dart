@@ -9,12 +9,12 @@ ThemeData buildInkNestTheme() {
       seedColor: seedColor,
       brightness: Brightness.light,
     ),
-    scaffoldBackgroundColor: const Color(0xFFF7F5EF),
+    scaffoldBackgroundColor: const Color(0xFFF3F0E8),
     appBarTheme: const AppBarTheme(
       centerTitle: false,
       elevation: 0,
       scrolledUnderElevation: 0,
-      backgroundColor: Color(0xFFF7F5EF),
+      backgroundColor: Color(0xFFF3F0E8),
       foregroundColor: Color(0xFF1E2526),
     ),
     filledButtonTheme: FilledButtonThemeData(

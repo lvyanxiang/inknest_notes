@@ -213,6 +213,18 @@ class PageViewportTransform {
 
   double get maximumCustomScale => _metrics.maximumCustomScale;
 
+  /// Fit Width scale for the current usable viewport.
+  double get fitWidthScale => _metrics.fitWidthScale;
+
+  /// Zoom percentage relative to Fit Width, matching the editor status badge.
+  int get fitWidthRelativePercent {
+    final baseline = fitWidthScale;
+    if (baseline <= 0) {
+      return 100;
+    }
+    return (effectiveScale / baseline * 100).round();
+  }
+
   /// The rotated-page origin relative to [usableRect]'s top-left.
   Offset get pageOriginInUsable => pageOriginInViewport - usableRect.topLeft;
 

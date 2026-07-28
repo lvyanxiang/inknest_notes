@@ -78,6 +78,19 @@ void main() {
 
   group('fit modes', () {
     const documentSize = Size(500, 1000);
+
+    test('reports Fit Width relative zoom percent', () {
+      final transform = PageViewportTransform.firstVisit(
+        documentSize: documentSize,
+        rotationQuarterTurns: 0,
+        usableRect: const Rect.fromLTWH(0, 0, 600, 800),
+      );
+
+      expect(transform.fitWidthRelativePercent, 100);
+
+      final zoomed = transform.zoomBy(scaleFactor: 1.25);
+      expect(zoomed.fitWidthRelativePercent, 125);
+    });
     const usableRect = Rect.fromLTWH(10, 20, 1000, 700);
 
     test('first Fit Width uses exact padding and top alignment', () {
