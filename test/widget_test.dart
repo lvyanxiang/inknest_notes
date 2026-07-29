@@ -29,7 +29,10 @@ void main() {
   Future<void> selectEditorMoreAction(WidgetTester tester, String label) async {
     await tester.tap(find.byKey(const ValueKey('editor-more-actions')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text(label).last);
+    final action = find.text(label).last;
+    await tester.ensureVisible(action);
+    await tester.pumpAndSettle();
+    await tester.tap(action);
     await tester.pumpAndSettle();
   }
 
@@ -1255,32 +1258,14 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('editor-finger-mode-menu')));
     await tester.pumpAndSettle();
-    final writingAssistItem = find.ancestor(
-      of: find.text('Writing assist'),
-      matching: find.byWidgetPredicate((widget) => widget is PopupMenuItem),
-    );
-    expect(
-      find.descendant(
-        of: writingAssistItem,
-        matching: find.byIcon(Icons.check_box),
-      ),
-      findsOneWidget,
-    );
+    expect(find.text('Writing assist'), findsOneWidget);
+    expect(find.byIcon(Icons.check_box), findsOneWidget);
     await tester.tap(find.text('Writing assist'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('editor-finger-mode-menu')));
     await tester.pumpAndSettle();
-    final disabledWritingAssistItem = find.ancestor(
-      of: find.text('Writing assist'),
-      matching: find.byWidgetPredicate((widget) => widget is PopupMenuItem),
-    );
-    expect(
-      find.descendant(
-        of: disabledWritingAssistItem,
-        matching: find.byIcon(Icons.check_box_outline_blank),
-      ),
-      findsOneWidget,
-    );
+    expect(find.text('Writing assist'), findsOneWidget);
+    expect(find.byIcon(Icons.check_box_outline_blank), findsOneWidget);
     await tester.tapAt(const Offset(8, 180));
     await tester.pumpAndSettle();
 

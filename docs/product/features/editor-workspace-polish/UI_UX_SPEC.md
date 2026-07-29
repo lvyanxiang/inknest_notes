@@ -23,6 +23,18 @@ Lead design:
 6. Pen and Highlighter share one primary writing control; style switches live in
    properties/presets. Selected dock controls use a soft fill and primary icon
    tint without a heavy outline border.
+7. Tool properties use a compact card: stroke preview header, segmented Style,
+   icon presets, circular color swatches, and visual width tiles — not a long
+   labelled form.
+8. Editor popovers/menus/sheets share `EditorChrome` surfaces (`#FFFCF7`,
+   12px radius, divider border): Insert and Finger use anchored cards; More /
+   zoom / page actions use chrome-tinted menus; template, search, and audio use
+   chrome sheets; Export / Smart Ink / delete confirmations use chrome dialogs.
+9. Header and tool dock share one chrome surface: AppBar hosts the dock as
+   `bottom`, Pages badge uses primary teal (not error red), property chip uses
+   a short `Color · width` label. On tablet widths the dock controls form one
+   centered cluster (tools → properties/presets → undo/redo → Finger) instead
+   of stretching Finger to the trailing edge and leaving a middle dead zone.
 
 ## User Flow
 

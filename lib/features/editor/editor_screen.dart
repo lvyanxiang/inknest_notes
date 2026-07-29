@@ -24,6 +24,7 @@ import 'package:inknest_notes/features/editor/templates/page_template_layer.dart
 import 'package:inknest_notes/features/editor/templates/page_template_sheet.dart';
 import 'package:inknest_notes/features/editor/text/note_text_box_styles.dart';
 import 'package:inknest_notes/features/editor/text/text_box_layer.dart';
+import 'package:inknest_notes/features/editor/theme/editor_chrome.dart';
 import 'package:inknest_notes/features/editor/theme/editor_workspace_tokens.dart';
 import 'package:inknest_notes/features/editor/tools/editor_toolbar.dart';
 import 'package:inknest_notes/models/note_image.dart';
@@ -985,9 +986,8 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   void _showAudioRecordingsSheet() {
-    showModalBottomSheet<void>(
+    EditorChrome.showSheet<void>(
       context: context,
-      showDragHandle: true,
       builder: (sheetContext) => _AudioRecordingsSheet(
         recordings: _notebook.audioRecordings,
         activeElapsed: _activeAudioRecording == null
@@ -1440,9 +1440,8 @@ class _EditorScreenState extends State<EditorScreen> {
       return;
     }
 
-    showModalBottomSheet<void>(
+    EditorChrome.showSheet<void>(
       context: context,
-      showDragHandle: true,
       isScrollControlled: true,
       builder: (sheetContext) {
         return buildNavigator(sheetContext);
@@ -1642,6 +1641,9 @@ class _EditorScreenState extends State<EditorScreen> {
       builder: (context) {
         return AlertDialog(
           title: const Text('Delete page?'),
+          backgroundColor: EditorWorkspaceTokens.chrome,
+          surfaceTintColor: Colors.transparent,
+          shape: EditorChrome.shape,
           content: Text('Page $pageNumber will be removed from this notebook.'),
           actions: [
             TextButton(
@@ -1923,8 +1925,10 @@ class _EditorScreenState extends State<EditorScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        toolbarHeight: 64,
+        toolbarHeight: 52,
         titleSpacing: 4,
+        backgroundColor: EditorWorkspaceTokens.chrome,
+        surfaceTintColor: Colors.transparent,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -1953,6 +1957,8 @@ class _EditorScreenState extends State<EditorScreen> {
                 ? 'Hide pages'
                 : 'Show pages',
             icon: Badge(
+              backgroundColor: EditorWorkspaceTokens.primary,
+              textColor: Colors.white,
               label: Text(_notebook.pageIds.length.toString()),
               child: Icon(
                 screenWidth >= 1100 && _isPageRailOpen
@@ -1961,6 +1967,7 @@ class _EditorScreenState extends State<EditorScreen> {
               ),
             ),
           ),
+          const SizedBox(width: 4),
           if (showStandardHeaderActions)
             IconButton(
               onPressed: page == null || _isAudioBusy
@@ -1991,16 +1998,6 @@ class _EditorScreenState extends State<EditorScreen> {
                   : Theme.of(context).colorScheme.primary,
             ),
           ),
-          IconButton(
-            onPressed: page == null || page.strokes.isEmpty ? null : _undo,
-            tooltip: 'Undo ink stroke',
-            icon: const Icon(Icons.undo),
-          ),
-          IconButton(
-            onPressed: _redoStack.isEmpty ? null : _redo,
-            tooltip: 'Redo ink stroke',
-            icon: const Icon(Icons.redo),
-          ),
           if (showWideHeaderActions)
             IconButton(
               onPressed: page == null || _isExporting
@@ -2025,8 +2022,31 @@ class _EditorScreenState extends State<EditorScreen> {
             isPageWriteProtected: _isCurrentPageWriteProtected,
             onSelected: (action) => unawaited(_handleEditorMenuAction(action)),
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: 6),
         ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(52),
+          child: IgnorePointer(
+            ignoring: _isCurrentPageWriteProtected,
+            child: AnimatedOpacity(
+              opacity: _isCurrentPageWriteProtected ? 0.52 : 1,
+              duration: const Duration(milliseconds: 160),
+              child: EditorToolbar(
+                tool: _tool,
+                fingerPanEnabled: _fingerPanEnabled,
+                fingerWritingAssistEnabled: _fingerWritingAssistEnabled,
+                onToolChanged: _setTool,
+                onFingerPanChanged: _setFingerPanEnabled,
+                onFingerWritingAssistChanged: _setFingerWritingAssistEnabled,
+                onInsertImage: () => unawaited(_insertImage()),
+                canUndo: page != null && page.strokes.isNotEmpty,
+                canRedo: _redoStack.isNotEmpty,
+                onUndo: _undo,
+                onRedo: _redo,
+              ),
+            ),
+          ),
+        ),
       ),
       body: Column(
         children: [
@@ -2052,22 +2072,6 @@ class _EditorScreenState extends State<EditorScreen> {
               onToggleFollow: _toggleAudioPlaybackFollow,
               onClose: () => unawaited(_closeAudioPlayback()),
             ),
-          IgnorePointer(
-            ignoring: _isCurrentPageWriteProtected,
-            child: AnimatedOpacity(
-              opacity: _isCurrentPageWriteProtected ? 0.52 : 1,
-              duration: const Duration(milliseconds: 160),
-              child: EditorToolbar(
-                tool: _tool,
-                fingerPanEnabled: _fingerPanEnabled,
-                fingerWritingAssistEnabled: _fingerWritingAssistEnabled,
-                onToolChanged: _setTool,
-                onFingerPanChanged: _setFingerPanEnabled,
-                onFingerWritingAssistChanged: _setFingerWritingAssistEnabled,
-                onInsertImage: () => unawaited(_insertImage()),
-              ),
-            ),
-          ),
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
@@ -2372,6 +2376,9 @@ class _EditorOverflowMenu extends StatelessWidget {
     return PopupMenuButton<_EditorMenuAction>(
       key: const ValueKey('editor-more-actions'),
       tooltip: 'More editor actions',
+      color: EditorWorkspaceTokens.chrome,
+      surfaceTintColor: Colors.transparent,
+      shape: EditorChrome.shape,
       onSelected: onSelected,
       itemBuilder: (context) {
         return [
@@ -2455,12 +2462,28 @@ PopupMenuItem<_EditorMenuAction> _editorMenuItem({
   return PopupMenuItem<_EditorMenuAction>(
     value: value,
     enabled: enabled,
-    height: 48,
+    height: 44,
     child: Row(
       children: [
-        Icon(icon, size: 20),
+        Icon(
+          icon,
+          size: 20,
+          color: enabled
+              ? EditorWorkspaceTokens.ink
+              : EditorWorkspaceTokens.ink.withValues(alpha: 0.35),
+        ),
         const SizedBox(width: 12),
-        Expanded(child: Text(label)),
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              color: enabled
+                  ? EditorWorkspaceTokens.ink
+                  : EditorWorkspaceTokens.ink.withValues(alpha: 0.35),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
       ],
     ),
   );
@@ -2824,6 +2847,9 @@ class _SmartInkConfirmationDialogState
 
     return AlertDialog(
       title: const Text('Smart Ink'),
+      backgroundColor: EditorWorkspaceTokens.chrome,
+      surfaceTintColor: Colors.transparent,
+      shape: EditorChrome.shape,
       content: SizedBox(
         width: 420,
         child: Column(
@@ -2962,6 +2988,9 @@ class _ExportOptionsDialogState extends State<_ExportOptionsDialog> {
 
     return AlertDialog(
       title: const Text('Export PDF'),
+      backgroundColor: EditorWorkspaceTokens.chrome,
+      surfaceTintColor: Colors.transparent,
+      shape: EditorChrome.shape,
       content: SingleChildScrollView(
         child: SizedBox(
           width: 420,
@@ -3861,6 +3890,9 @@ class _ZoomControls extends StatelessWidget {
                     ),
                     PopupMenuButton<PageViewportMode>(
                       tooltip: 'Zoom and fit',
+                      color: EditorWorkspaceTokens.chrome,
+                      surfaceTintColor: Colors.transparent,
+                      shape: EditorChrome.shape,
                       initialValue: mode == PageViewportMode.custom
                           ? null
                           : mode,
@@ -4177,6 +4209,9 @@ class _PageActionMenu extends StatelessWidget {
     return PopupMenuButton<_PageAction>(
       tooltip: 'Page $pageNumber actions',
       padding: EdgeInsets.zero,
+      color: EditorWorkspaceTokens.chrome,
+      surfaceTintColor: Colors.transparent,
+      shape: EditorChrome.shape,
       onSelected: onSelected,
       itemBuilder: (context) {
         return [

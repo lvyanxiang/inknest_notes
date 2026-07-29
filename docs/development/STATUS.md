@@ -4,7 +4,9 @@
 
 - Milestone: Editor Workspace Interaction Polish (delivered)
 - Next task: Run real-iPad Pencil/rotation/Split View QA for the redesigned and polished editor; then decide whether legacy app-container recovery and a verified raw archive/conversion flow are required for non-empty v0 pages.
-- Last completed: Softened dock selection styling and merged Pen/Highlighter into one writing tool with Style switching in properties/presets.
+- Last completed: Unified editor header + tool dock chrome; shortened property
+  chip labels; quiet primary Pages badge; shared EditorChrome for editor
+  popovers/menus/sheets.
 
 ## Decisions
 

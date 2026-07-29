@@ -22,5 +22,6 @@ class EditorWorkspaceTokens {
   static const double controlSize = 40;
 
   /// Vertical inset so selected tiles do not touch the dock edges.
-  static const double controlInset = 8;
+  /// Paired with [controlSize] inside a 52px dock: 6 + 40 + 6.
+  static const double controlInset = 6;
 }

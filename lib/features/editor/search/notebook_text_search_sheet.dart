@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:inknest_notes/features/editor/search/notebook_text_search_service.dart';
+import 'package:inknest_notes/features/editor/theme/editor_chrome.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/note_text_box.dart';
 
@@ -12,11 +13,9 @@ Future<NotebookTextSearchResult?> showNotebookTextSearchSheet({
   required String initialQuery,
   required ValueChanged<String> onQueryChanged,
 }) {
-  return showModalBottomSheet<NotebookTextSearchResult>(
+  return EditorChrome.showSheet<NotebookTextSearchResult>(
     context: context,
     isScrollControlled: true,
-    useSafeArea: true,
-    showDragHandle: true,
     builder: (context) {
       return Padding(
         padding: EdgeInsets.only(
