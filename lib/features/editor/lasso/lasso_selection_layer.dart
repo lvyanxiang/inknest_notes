@@ -7,6 +7,7 @@ import 'package:inknest_notes/models/stroke.dart';
 class LassoSelectionLayer extends StatefulWidget {
   const LassoSelectionLayer({
     super.key,
+    required this.pageStrokes,
     required this.selectedStrokes,
     required this.onSelectionComplete,
     required this.onStrokesPreviewChanged,
@@ -14,6 +15,7 @@ class LassoSelectionLayer extends StatefulWidget {
     required this.onClearSelection,
   });
 
+  final List<Stroke> pageStrokes;
   final List<Stroke> selectedStrokes;
   final ValueChanged<List<Offset>> onSelectionComplete;
   final ValueChanged<List<Stroke>> onStrokesPreviewChanged;
@@ -25,9 +27,10 @@ class LassoSelectionLayer extends StatefulWidget {
 }
 
 class _LassoSelectionLayerState extends State<LassoSelectionLayer> {
-  static const _minimumLassoExtent = 12.0;
-  static const _selectionHitPadding = 10.0;
-  static const _resizeHandleSize = 32.0;
+  static const _minimumLassoExtent = 16.0;
+  static const _selectionHitPadding = 14.0;
+  static const _marqueePadding = 10.0;
+  static const _resizeHandleSize = 36.0;
   static const _minimumScale = 0.25;
   static const _maximumScale = 4.0;
 
@@ -39,6 +42,9 @@ class _LassoSelectionLayerState extends State<LassoSelectionLayer> {
 
   Rect? get _selectionBounds =>
       LassoGeometry.boundsForStrokes(widget.selectedStrokes);
+
+  Rect? get _marqueeBounds =>
+      _lassoPoints.length < 2 ? null : _boundsForOffsets(_lassoPoints);
 
   @override
   Widget build(BuildContext context) {
@@ -61,7 +67,7 @@ class _LassoSelectionLayerState extends State<LassoSelectionLayer> {
                   onPanCancel: _cancelLasso,
                   child: CustomPaint(
                     painter: _LassoSelectionPainter(
-                      lassoPoints: List<Offset>.of(_lassoPoints),
+                      marqueeBounds: _marqueeBounds,
                       selectionBounds: selectionBounds,
                     ),
                     child: const SizedBox.expand(),
@@ -154,18 +160,40 @@ class _LassoSelectionLayerState extends State<LassoSelectionLayer> {
   }
 
   void _finishLasso() {
-    final polygon = List<Offset>.of(_lassoPoints);
+    final points = List<Offset>.of(_lassoPoints);
     _cancelLasso();
-    if (polygon.length < 3) {
+    if (points.isEmpty) {
       return;
     }
 
-    final bounds = _boundsForOffsets(polygon);
-    if (bounds.width < _minimumLassoExtent &&
-        bounds.height < _minimumLassoExtent) {
+    final dragBounds = _boundsForOffsets(points);
+    final isTap =
+        dragBounds.width < _minimumLassoExtent &&
+        dragBounds.height < _minimumLassoExtent;
+    if (isTap) {
+      final strokeId = LassoGeometry.hitTestNearestStroke(
+        widget.pageStrokes,
+        points.first,
+      );
+      if (strokeId == null) {
+        return;
+      }
+      final stroke = widget.pageStrokes.firstWhere(
+        (candidate) => candidate.id == strokeId,
+      );
+      final strokeBounds = LassoGeometry.boundsForStroke(stroke);
+      if (strokeBounds == null) {
+        return;
+      }
+      widget.onSelectionComplete(
+        LassoGeometry.rectPolygon(strokeBounds.inflate(4)),
+      );
       return;
     }
-    widget.onSelectionComplete(polygon);
+
+    widget.onSelectionComplete(
+      LassoGeometry.rectPolygon(dragBounds.inflate(_marqueePadding)),
+    );
   }
 
   void _cancelLasso() {
@@ -284,11 +312,11 @@ class _LassoSelectionLayerState extends State<LassoSelectionLayer> {
 
 class _LassoSelectionPainter extends CustomPainter {
   const _LassoSelectionPainter({
-    required this.lassoPoints,
+    required this.marqueeBounds,
     required this.selectionBounds,
   });
 
-  final List<Offset> lassoPoints;
+  final Rect? marqueeBounds;
   final Rect? selectionBounds;
 
   @override
@@ -312,36 +340,33 @@ class _LassoSelectionPainter extends CustomPainter {
         ..drawRRect(selection, selectionBorder);
     }
 
-    if (lassoPoints.length < 2) {
+    final marqueeBounds = this.marqueeBounds;
+    if (marqueeBounds == null || marqueeBounds.shortestSide < 1) {
       return;
     }
-    final path = Path()..moveTo(lassoPoints.first.dx, lassoPoints.first.dy);
-    for (final point in lassoPoints.skip(1)) {
-      path.lineTo(point.dx, point.dy);
-    }
-    if (lassoPoints.length >= 3) {
-      path.close();
-      canvas.drawPath(
-        path,
-        Paint()
-          ..color = color.withValues(alpha: 0.08)
-          ..style = PaintingStyle.fill,
-      );
-    }
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = color
-        ..strokeWidth = 2
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round
-        ..style = PaintingStyle.stroke,
+    final marquee = RRect.fromRectAndRadius(
+      marqueeBounds,
+      const Radius.circular(6),
     );
+    canvas
+      ..drawRRect(
+        marquee,
+        Paint()
+          ..color = color.withValues(alpha: 0.10)
+          ..style = PaintingStyle.fill,
+      )
+      ..drawRRect(
+        marquee,
+        Paint()
+          ..color = color
+          ..strokeWidth = 1.8
+          ..style = PaintingStyle.stroke,
+      );
   }
 
   @override
   bool shouldRepaint(covariant _LassoSelectionPainter oldDelegate) {
-    return oldDelegate.lassoPoints != lassoPoints ||
+    return oldDelegate.marqueeBounds != marqueeBounds ||
         oldDelegate.selectionBounds != selectionBounds;
   }
 }
@@ -387,7 +412,7 @@ class LassoSelectionToolbar extends StatelessWidget {
               key: const ValueKey('lasso-smart-ink'),
               onPressed: onSmartInk,
               icon: const Icon(Icons.auto_fix_high, size: 19),
-              label: const Text('Smart Ink'),
+              label: const Text('Beautify'),
               style: FilledButton.styleFrom(
                 minimumSize: const Size(44, 44),
                 padding: const EdgeInsets.symmetric(horizontal: 12),

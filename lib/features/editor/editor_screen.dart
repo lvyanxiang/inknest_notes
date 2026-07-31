@@ -14,6 +14,8 @@ import 'package:inknest_notes/features/editor/canvas/pdf_page_background.dart';
 import 'package:inknest_notes/features/editor/images/image_layer.dart';
 import 'package:inknest_notes/features/editor/lasso/lasso_geometry.dart';
 import 'package:inknest_notes/features/editor/lasso/lasso_selection_layer.dart';
+import 'package:inknest_notes/features/editor/recognition/font_glyph_stroke_generator.dart';
+import 'package:inknest_notes/features/editor/recognition/ink_beautify_fonts.dart';
 import 'package:inknest_notes/features/editor/recognition/ink_recognition_image_renderer.dart';
 import 'package:inknest_notes/features/editor/recognition/text_recognition_provider.dart';
 import 'package:inknest_notes/features/editor/search/notebook_text_search_service.dart';
@@ -65,6 +67,8 @@ class _EditorScreenState extends State<EditorScreen> {
   final AudioRecorder _audioRecorder = AudioRecorder();
   final InkRecognitionImageRenderer _inkRecognitionImageRenderer =
       const InkRecognitionImageRenderer();
+  final FontGlyphStrokeGenerator _fontGlyphStrokeGenerator =
+      const FontGlyphStrokeGenerator();
   final NotebookTextSearchService _notebookTextSearchService =
       NotebookTextSearchService();
   final GlobalKey<_ZoomablePageViewportState> _viewportKey =
@@ -1257,7 +1261,7 @@ class _EditorScreenState extends State<EditorScreen> {
     if (text.isEmpty) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Smart Ink text is empty')));
+      ).showSnackBar(const SnackBar(content: Text('Beautify text is empty')));
       return;
     }
 
@@ -1265,37 +1269,80 @@ class _EditorScreenState extends State<EditorScreen> {
         .map((stroke) => stroke.id)
         .toSet();
     final selectedBounds = _boundsForStrokes(selectedStrokes).inflate(8);
-    final textWidth = math.min(
-      math.max(180.0, selectedBounds.width + 48),
-      page.width,
-    );
-    final textBox = NoteTextBox(
-      id: 'smart-ink-${DateTime.now().microsecondsSinceEpoch}',
-      position: _clampTextBoxPosition(
-        page: page,
-        position: selectedBounds.topLeft,
-        width: textWidth,
-      ),
-      text: text,
-      width: textWidth,
-      color: selectedStrokes.first.color,
-      fontSize: math.min(math.max(22.0, selectedBounds.height * 0.45), 34.0),
-      style: NoteTextBoxStyle.handwriting,
-    );
+    final averageWidth =
+        selectedStrokes
+            .map((stroke) => stroke.width)
+            .fold<double>(0, (sum, width) => sum + width) /
+        selectedStrokes.length;
+
+    List<Stroke> beautifiedStrokes = const [];
+    var loadingShown = false;
+    try {
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) {
+          return const Center(
+            child: Card(
+              child: Padding(
+                padding: EdgeInsets.all(20),
+                child: Text('Redrawing as ink...'),
+              ),
+            ),
+          );
+        },
+      );
+      loadingShown = true;
+      beautifiedStrokes = await _fontGlyphStrokeGenerator.generate(
+        text: text,
+        font: result.font,
+        targetBounds: selectedBounds,
+        color: selectedStrokes.first.color,
+        strokeWidth: averageWidth,
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Beautify failed. Your ink is unchanged.'),
+          ),
+        );
+      }
+      return;
+    } finally {
+      if (loadingShown && mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+    }
+
+    if (!mounted) {
+      return;
+    }
+    if (beautifiedStrokes.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not build ink from that text. Try again.'),
+        ),
+      );
+      return;
+    }
+
+    final remainingStrokes = result.replaceSelectedInk
+        ? [
+            for (final stroke in page.strokes)
+              if (!selectedStrokeIds.contains(stroke.id)) stroke,
+          ]
+        : page.strokes;
     final updatedPage = page.copyWith(
-      strokes: result.replaceSelectedInk
-          ? [
-              for (final stroke in page.strokes)
-                if (!selectedStrokeIds.contains(stroke.id)) stroke,
-            ]
-          : page.strokes,
-      textBoxes: [...page.textBoxes, textBox],
+      strokes: [...remainingStrokes, ...beautifiedStrokes],
     );
 
     setState(() {
       _page = updatedPage;
       _pagesById[updatedPage.id] = updatedPage;
-      _activeTextBoxId = textBox.id;
+      _selectedStrokeIds
+        ..clear()
+        ..addAll(beautifiedStrokes.map((stroke) => stroke.id));
       _redoStack.clear();
     });
 
@@ -2261,6 +2308,7 @@ class _EditorScreenState extends State<EditorScreen> {
               if (_tool.type == ToolType.lasso)
                 LassoSelectionLayer(
                   key: ValueKey('lasso-selection-${page.id}'),
+                  pageStrokes: page.strokes,
                   selectedStrokes: _selectedStrokesForPage(page),
                   onSelectionComplete: _selectStrokesWithLasso,
                   onStrokesPreviewChanged: _previewSelectedStrokes,
@@ -2773,10 +2821,12 @@ class _AudioRecordingsSheet extends StatelessWidget {
 class _SmartInkConfirmation {
   const _SmartInkConfirmation({
     required this.text,
+    required this.font,
     required this.replaceSelectedInk,
   });
 
   final String text;
+  final InkBeautifyFont font;
   final bool replaceSelectedInk;
 }
 
@@ -2797,9 +2847,10 @@ class _SmartInkConfirmationDialog extends StatefulWidget {
 class _SmartInkConfirmationDialogState
     extends State<_SmartInkConfirmationDialog> {
   final TextEditingController _controller = TextEditingController();
-  bool _replaceSelectedInk = true;
+  InkBeautifyFont _font = InkBeautifyFonts.liuJianMaoCao;
   bool _isRecognizing = true;
   bool _userEditedText = false;
+  bool _showTextEditor = false;
   String? _recognitionMessage;
 
   @override
@@ -2810,20 +2861,26 @@ class _SmartInkConfirmationDialogState
 
   Future<void> _loadRecognition() async {
     String? message;
+    var showEditor = false;
     try {
       final result = await widget.recognition;
       final recognizedText = result.text.trim();
       if (recognizedText.isEmpty) {
-        message = 'No text recognized. Enter the text manually.';
+        message = 'No text recognized. Enter the text to redraw.';
+        showEditor = true;
       } else if (!_userEditedText && _controller.text.trim().isEmpty) {
         _controller.text = recognizedText;
       }
     } on TextRecognitionUnavailableException {
-      message = 'On-device recognition is unavailable. Enter text manually.';
+      message =
+          'On-device recognition is unavailable. Enter the text to redraw.';
+      showEditor = true;
     } on TextRecognitionException {
-      message = 'Recognition failed. Your ink is safe; enter text manually.';
+      message = 'Recognition failed. Enter the text to redraw.';
+      showEditor = true;
     } catch (_) {
-      message = 'Recognition failed. Your ink is safe; enter text manually.';
+      message = 'Recognition failed. Enter the text to redraw.';
+      showEditor = true;
     }
 
     if (!mounted) {
@@ -2832,6 +2889,7 @@ class _SmartInkConfirmationDialogState
     setState(() {
       _isRecognizing = false;
       _recognitionMessage = message;
+      _showTextEditor = showEditor;
     });
   }
 
@@ -2844,63 +2902,128 @@ class _SmartInkConfirmationDialogState
   @override
   Widget build(BuildContext context) {
     final text = _controller.text.trim();
+    final previewText = text.isEmpty ? _font.preview : text;
+    final theme = Theme.of(context);
 
     return AlertDialog(
-      title: const Text('Smart Ink'),
+      title: const Text('Beautify ink'),
       backgroundColor: EditorWorkspaceTokens.chrome,
       surfaceTintColor: Colors.transparent,
       shape: EditorChrome.shape,
       content: SizedBox(
         width: 420,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Selected ${widget.selectedStrokeCount} strokes'),
-            const SizedBox(height: 8),
-            if (_isRecognizing)
-              const Row(
-                children: [
-                  SizedBox.square(
-                    dimension: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (_isRecognizing)
+                const Row(
+                  children: [
+                    SizedBox.square(
+                      dimension: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    SizedBox(width: 8),
+                    Text('Recognizing on device...'),
+                  ],
+                )
+              else if (_recognitionMessage case final message?)
+                Text(message)
+              else
+                Text(
+                  'Choose a style to redraw the selected ink.',
+                  style: theme.textTheme.bodyMedium,
+                ),
+              if (!_isRecognizing && text.isNotEmpty && !_showTextEditor) ...[
+                const SizedBox(height: 12),
+                Text(
+                  text,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: EditorWorkspaceTokens.ink,
                   ),
-                  SizedBox(width: 8),
-                  Text('Recognizing on device...'),
+                ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(
+                    key: const ValueKey('beautify-edit-text'),
+                    onPressed: () {
+                      setState(() {
+                        _showTextEditor = true;
+                      });
+                    },
+                    child: const Text('Edit text'),
+                  ),
+                ),
+              ],
+              if (_showTextEditor) ...[
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _controller,
+                  autofocus: true,
+                  minLines: 2,
+                  maxLines: 4,
+                  decoration: const InputDecoration(
+                    labelText: 'Text to redraw',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: (_) {
+                    _userEditedText = true;
+                    setState(() {});
+                  },
+                ),
+              ],
+              const SizedBox(height: 12),
+              Text('Handwriting style', style: theme.textTheme.titleSmall),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final font in InkBeautifyFonts.values)
+                    ChoiceChip(
+                      key: ValueKey('beautify-font-${font.id}'),
+                      label: Text(font.label),
+                      selected: _font.id == font.id,
+                      onSelected: (_) {
+                        setState(() {
+                          _font = font;
+                        });
+                      },
+                    ),
                 ],
-              )
-            else if (_recognitionMessage case final message?)
-              Text(message)
-            else
-              const Text('Review the on-device suggestion before beautifying.'),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _controller,
-              autofocus: true,
-              minLines: 2,
-              maxLines: 4,
-              decoration: const InputDecoration(
-                labelText: 'Recognized text',
-                border: OutlineInputBorder(),
               ),
-              onChanged: (_) {
-                _userEditedText = true;
-                setState(() {});
-              },
-            ),
-            const SizedBox(height: 8),
-            CheckboxListTile(
-              value: _replaceSelectedInk,
-              onChanged: (value) {
-                setState(() {
-                  _replaceSelectedInk = value ?? true;
-                });
-              },
-              contentPadding: EdgeInsets.zero,
-              controlAffinity: ListTileControlAffinity.leading,
-              title: const Text('Replace selected ink'),
-            ),
-          ],
+              const SizedBox(height: 12),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: EditorWorkspaceTokens.paper,
+                  borderRadius: BorderRadius.circular(
+                    EditorWorkspaceTokens.controlRadius,
+                  ),
+                  border: Border.all(color: EditorWorkspaceTokens.divider),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: Text(
+                      previewText,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontFamily: _font.fontFamily,
+                        fontSize: 28,
+                        color: EditorWorkspaceTokens.ink,
+                        height: 1.2,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
       actions: [
@@ -2909,12 +3032,14 @@ class _SmartInkConfirmationDialogState
           child: const Text('Cancel'),
         ),
         FilledButton.icon(
+          key: const ValueKey('beautify-confirm'),
           onPressed: text.isEmpty
               ? null
               : () => Navigator.of(context).pop(
                   _SmartInkConfirmation(
                     text: text,
-                    replaceSelectedInk: _replaceSelectedInk,
+                    font: _font,
+                    replaceSelectedInk: true,
                   ),
                 ),
           icon: const Icon(Icons.auto_fix_high),

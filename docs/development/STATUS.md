@@ -4,9 +4,8 @@
 
 - Milestone: Editor Workspace Interaction Polish (delivered)
 - Next task: Run real-iPad Pencil/rotation/Split View QA for the redesigned and polished editor; then decide whether legacy app-container recovery and a verified raw archive/conversion flow are required for non-empty v0 pages.
-- Last completed: Unified editor header + tool dock chrome; shortened property
-  chip labels; quiet primary Pages badge; shared EditorChrome for editor
-  popovers/menus/sheets.
+- Last completed: Beautify selected ink into handwriting strokes using bundled
+  OFL fonts (刘建毛草 / 龙藏 / 芝麻行) instead of inserting a text box.
 
 ## Decisions
 

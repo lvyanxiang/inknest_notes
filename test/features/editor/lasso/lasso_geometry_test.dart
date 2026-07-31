@@ -59,16 +59,24 @@ void main() {
     expect(scaled.points.first.pressure, stroke.points.first.pressure);
   });
 
-  test('stroke copyWith supports recoloring without changing geometry', () {
-    final stroke = _stroke(
-      id: 'stroke-1',
-      offsets: const [Offset(10, 20), Offset(30, 40)],
+  test('hit-tests the nearest stroke for tap selection', () {
+    final near = _stroke(
+      id: 'near',
+      offsets: const [Offset(20, 20), Offset(40, 20)],
+    );
+    final far = _stroke(
+      id: 'far',
+      offsets: const [Offset(200, 200), Offset(220, 200)],
     );
 
-    final recolored = stroke.copyWith(color: const Color(0xFFC24B3A));
-
-    expect(recolored.color, const Color(0xFFC24B3A));
-    expect(recolored.points, same(stroke.points));
+    expect(
+      LassoGeometry.hitTestNearestStroke([near, far], const Offset(30, 22)),
+      'near',
+    );
+    expect(
+      LassoGeometry.hitTestNearestStroke([near, far], const Offset(120, 120)),
+      isNull,
+    );
   });
 }
 

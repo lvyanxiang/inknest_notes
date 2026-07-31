@@ -1749,9 +1749,9 @@ class _LassoProperties extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const _SelectedSettingRow(
-      icon: Icons.gesture,
-      title: 'Ink-only selection',
-      subtitle: 'Draw around handwriting, then use its contextual actions.',
+      icon: Icons.crop_free,
+      title: 'Select ink',
+      subtitle: 'Drag a box around ink, or tap a stroke, then Beautify.',
     );
   }
 }

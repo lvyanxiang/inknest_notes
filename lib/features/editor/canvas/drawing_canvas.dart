@@ -285,15 +285,44 @@ class _StrokePainter extends CustomPainter {
     Paint paint,
   ) {
     if (points.length == 1) {
+      final pointWidth = width * _pressureFactor(points.first.pressure);
       canvas.drawCircle(
         points.first.offset,
-        width / 2,
+        pointWidth / 2,
         paint..style = PaintingStyle.fill,
       );
       return;
     }
 
-    canvas.drawPath(StrokeGeometry.buildSmoothPath(points), paint);
+    // Draw segment-by-segment so local pressure can express brush thickness.
+    for (var index = 1; index < points.length; index += 1) {
+      final previous = points[index - 1];
+      final current = points[index];
+      final segmentWidth =
+          width *
+          ((_pressureFactor(previous.pressure) +
+                  _pressureFactor(current.pressure)) /
+              2);
+      canvas.drawLine(
+        previous.offset,
+        current.offset,
+        Paint()
+          ..color = paint.color
+          ..strokeWidth = segmentWidth
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round
+          ..blendMode = paint.blendMode
+          ..style = PaintingStyle.stroke
+          ..maskFilter = paint.maskFilter,
+      );
+    }
+  }
+
+  double _pressureFactor(double pressure) {
+    if (pressure <= 0) {
+      return 1;
+    }
+    return pressure.clamp(0.18, 1.35).toDouble();
   }
 
   List<StrokePoint> _highlightedPoints(Stroke stroke) {

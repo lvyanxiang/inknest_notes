@@ -578,7 +578,7 @@ void main() {
     expect(find.text('Typed note'), findsNothing);
   });
 
-  testWidgets('beautifies selected handwriting with Smart Ink', (
+  testWidgets('beautifies selected handwriting into ink strokes', (
     WidgetTester tester,
   ) async {
     final messenger =
@@ -606,22 +606,40 @@ void main() {
     expect(
       find.descendant(
         of: find.byType(AlertDialog),
-        matching: find.text('Smart Ink'),
+        matching: find.text('Beautify ink'),
       ),
       findsOneWidget,
     );
-    expect(find.text('Selected 1 strokes'), findsOneWidget);
+    expect(find.text('Selected 1 strokes'), findsNothing);
+    expect(find.byType(TextField), findsOneWidget);
+    expect(find.byKey(const ValueKey('beautify-font-liu_jian_mao_cao')), findsOneWidget);
+    expect(find.byKey(const ValueKey('beautify-font-long_cang')), findsOneWidget);
+    expect(find.byKey(const ValueKey('beautify-font-zhi_mang_xing')), findsOneWidget);
 
-    await tester.enterText(find.byType(TextField), 'Neat note');
+    await tester.enterText(find.byType(TextField), '美');
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, 'Beautify'));
+    await tester.tap(find.byKey(const ValueKey('beautify-font-long_cang')));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('beautify-confirm')));
+    await tester.pump();
+    // Glyph thinning can take multiple frames; avoid pumpAndSettle hanging on
+    // transient overlays.
+    for (var i = 0; i < 80; i += 1) {
+      await tester.pump(const Duration(milliseconds: 50));
+      if (find.text('Redrawing as ink...').evaluate().isEmpty &&
+          find.byType(AlertDialog).evaluate().isEmpty) {
+        break;
+      }
+    }
+    await tester.pump();
 
-    expect(find.text('Neat note'), findsOneWidget);
-    expect(find.byTooltip('Plain text'), findsOneWidget);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.text('美'), findsNothing);
+    expect(find.byTooltip('Plain text'), findsNothing);
+    expect(find.byKey(const ValueKey('lasso-selection-toolbar')), findsOneWidget);
   });
 
-  testWidgets('prefills Smart Ink with an on-device recognition suggestion', (
+  testWidgets('prefills Beautify with an on-device recognition suggestion', (
     WidgetTester tester,
   ) async {
     final messenger =
@@ -650,14 +668,25 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('lasso-smart-ink')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Recognized note'), findsOneWidget);
+    expect(find.text('Recognized note'), findsWidgets);
     expect(
-      find.text('Review the on-device suggestion before beautifying.'),
+      find.text('Choose a style to redraw the selected ink.'),
       findsOneWidget,
     );
-    await tester.tap(find.widgetWithText(FilledButton, 'Beautify'));
-    await tester.pumpAndSettle();
-    expect(find.text('Recognized note'), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+    expect(find.byKey(const ValueKey('beautify-edit-text')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('beautify-confirm')));
+    await tester.pump();
+    for (var i = 0; i < 80; i += 1) {
+      await tester.pump(const Duration(milliseconds: 50));
+      if (find.text('Redrawing as ink...').evaluate().isEmpty &&
+          find.byType(AlertDialog).evaluate().isEmpty) {
+        break;
+      }
+    }
+    await tester.pump();
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byKey(const ValueKey('lasso-selection-toolbar')), findsOneWidget);
   });
 
   testWidgets('selects non-contiguous pages for PDF export', (

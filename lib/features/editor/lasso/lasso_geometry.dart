@@ -22,6 +22,68 @@ class LassoGeometry {
     };
   }
 
+  /// Returns the nearest stroke under [point], or null if nothing is close.
+  static String? hitTestNearestStroke(
+    Iterable<Stroke> strokes,
+    Offset point, {
+    double maxDistance = 28,
+  }) {
+    String? bestId;
+    var bestDistance = maxDistance;
+    for (final stroke in strokes) {
+      final strokeBounds = boundsForStroke(stroke);
+      if (strokeBounds == null ||
+          !strokeBounds.inflate(maxDistance).contains(point)) {
+        continue;
+      }
+      final distance = _distanceToStroke(stroke, point);
+      if (distance <= bestDistance) {
+        bestDistance = distance;
+        bestId = stroke.id;
+      }
+    }
+    return bestId;
+  }
+
+  static List<Offset> rectPolygon(Rect rect) {
+    return [
+      rect.topLeft,
+      rect.topRight,
+      rect.bottomRight,
+      rect.bottomLeft,
+    ];
+  }
+
+  static double _distanceToStroke(Stroke stroke, Offset point) {
+    if (stroke.points.isEmpty) {
+      return double.infinity;
+    }
+    if (stroke.points.length == 1) {
+      return (stroke.points.first.offset - point).distance;
+    }
+    var best = double.infinity;
+    for (var index = 1; index < stroke.points.length; index += 1) {
+      final start = stroke.points[index - 1].offset;
+      final end = stroke.points[index].offset;
+      best = math.min(best, _distanceToSegment(point, start, end));
+    }
+    return best;
+  }
+
+  static double _distanceToSegment(Offset point, Offset start, Offset end) {
+    final dx = end.dx - start.dx;
+    final dy = end.dy - start.dy;
+    if (dx == 0 && dy == 0) {
+      return (point - start).distance;
+    }
+    final t =
+        ((point.dx - start.dx) * dx + (point.dy - start.dy) * dy) /
+        (dx * dx + dy * dy);
+    final clamped = t.clamp(0.0, 1.0).toDouble();
+    final projection = Offset(start.dx + dx * clamped, start.dy + dy * clamped);
+    return (point - projection).distance;
+  }
+
   static Rect? boundsForStrokes(Iterable<Stroke> strokes) {
     Rect? bounds;
     for (final stroke in strokes) {
