@@ -79,17 +79,12 @@ void main() {
     );
     expect(reloadedPage.strokes.map((stroke) => stroke.id), ['legacy-stroke']);
 
-    await tester.tap(find.byKey(const ValueKey('editor-more-actions')));
+    await tester.tap(find.byKey(const ValueKey('editor-pages-button')));
     await tester.pump(const Duration(milliseconds: 240));
-    final rotateAction = find.text('Rotate page clockwise');
+    final rotateAction = find.byKey(const ValueKey('pages-rotate-button'));
     expect(rotateAction, findsOneWidget);
-    final rotateItem = find.ancestor(
-      of: rotateAction,
-      matching: find.byWidgetPredicate((widget) => widget is PopupMenuItem),
-    );
-    expect(rotateItem, findsOneWidget);
-    final PopupMenuItem item = tester.widget(rotateItem);
-    expect(item.enabled, isFalse);
+    expect(find.byTooltip('Rotate page unavailable'), findsOneWidget);
+    expect(tester.widget<IconButton>(rotateAction).onPressed, isNull);
     expect(repository.normalSaveAttempts, 0);
   });
 }

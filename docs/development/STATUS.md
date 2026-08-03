@@ -4,8 +4,9 @@
 
 - Milestone: Editor Workspace V2 (delivered)
 - Next task: Run real-iPad Pencil/rotation/Split View QA for the redesigned and polished editor; then decide whether legacy app-container recovery and a verified raw archive/conversion flow are required for non-empty v0 pages.
-- Last completed: Added width-adaptive Record/Export shortcuts and grouped the
-  editor More menu under Page, Document, Audio, and View.
+- Last completed: Split Pages, PDF Outline, and Bookmarks into independent
+  top-bar panels, and made every manual blank-page insertion choose a paper
+  style before creating the page.
 
 ## Decisions
 
@@ -34,9 +35,11 @@
 - Prefer collapsing on-canvas zoom chrome and keeping Fit Width / Fit Page discoverable from More → View so the paper stays primary while writing.
 - Prefer anchored tool-property popovers on regular/wide iPad widths; keep bottom sheets only for compact Split View.
 - Keep notebook location and ink history in the document bar; show Record at
-  ≥720px and Export at ≥1000px; group overflow actions by Page, Document, Audio,
-  and View; keep direct tools, contextual style, and touch mode in the editing
-  dock; keep presets inside properties instead of persistent chrome.
+  ≥720px and Export at ≥1000px; use the header pager for adjacent page work,
+  give Pages, Outline, and Bookmarks separate focused panels, and group
+  remaining overflow actions by Document, Audio, and View; keep direct tools,
+  contextual style, and touch mode in the editing dock; keep presets inside
+  properties instead of persistent chrome.
 - Treat Finger writes as the quiet default and Finger moves as the strongly selected touch mode.
 - Use `docs/development/SUBSCRIPTION_PLAN.md` as the product reference for Free, InkNest Cloud, and future Pro monetization.
 - Long-term product direction: iPad handwriting/PDF study, phone capture/review, and Web Yuque-like knowledge base.
@@ -47,7 +50,7 @@
 - Apply Finger Writing Assist only after a touch stroke completes; preserve its endpoints, pressure samples, and timestamps so persistence, audio replay, export, and recognition continue to share the same stroke model.
 - Keep Finger Writing Assist enabled by default with an editor toolbar toggle, and never apply it to Apple Pencil/stylus or mouse strokes.
 - Use corner-aware smoothing for Finger Writing Assist so small sampling jitter is reduced without rounding intentional handwriting corners aggressively.
-- Keep page thumbnails lightweight, but show them through a collapsible wide navigator or an on-demand Pages/Outline/Bookmarks panel instead of a permanent bottom strip.
+- Keep page thumbnails lightweight, but show them through a collapsible wide Pages navigator or an on-demand Pages panel instead of a permanent bottom strip; Outline and Bookmarks use separate focused panels.
 - Store a backward-compatible template enum on `NotePage`; older or unknown JSON values fall back to blank.
 - Support Blank, Ruled, Dotted, Grid, Cornell, and Planner templates through one shared geometry layout used by the editor, page thumbnails, and PDF export.
 - Let added and inserted non-PDF pages inherit the nearest prior template, preserve templates when duplicating pages, and keep PDF background pages template-free.
@@ -78,7 +81,7 @@
 - Store blank-page insertion in the repository layer; inserted pages inherit the nearest page size but start without PDF background or strokes.
 - Store imported PDF outlines on `Notebook.pdfOutlines`, keyed to notebook page IDs so page insertion and reordering do not break outline navigation.
 - Store user page bookmarks on `Notebook.bookmarkedPageIds` and persist them through the repository layer.
-- Let PDF import continue when outline loading fails; the Outline tab simply starts empty.
+- Let PDF import continue when outline loading fails; the Outline panel simply starts empty.
 - Track Smart Ink in the existing post-MVP roadmap rather than a separate plan for now: rough finger handwriting -> recognition -> user confirmation -> neat handwriting-style editable text.
 - Use `docs/development/SMART_INK_PLAN.md` as the dedicated Smart Ink planning document while keeping implementation after the current PDF workflow and Rich Notes prerequisites.
 - Export PDF opens a scope dialog before the save flow and can export the full notebook, current page, or an ordered page/range expression.
@@ -124,13 +127,15 @@
 
 ## Verification
 
-- `flutter test` passed with 131 tests after the adaptive Editor Workspace V2
-  command update.
+- `flutter test` passed with 133 tests after splitting Pages, Outline, and
+  Bookmarks and adding paper-style-first page insertion.
 - `flutter analyze` passed with no issues after Editor Workspace V2.
 - Focused responsive and toolbar tests passed at 600×800, 834×1194, and
   1194×834, covering document/history hierarchy, direct Pen/Highlighter
   switching, selected-tool properties, contextual presets, adaptive
-  Record/Export visibility, and labelled More sections.
+  Record/Export visibility, focused navigation panels, insertion cancellation
+  and selected paper styles, persistent Pages management, and labelled More
+  sections without duplicate page actions.
 - `git diff --check` passed after Editor Workspace V2.
 - `dart format` passed for the editor interaction polish changes on 2026-07-27.
 - `flutter test` passed with 126 tests after editor interaction polish.
@@ -369,7 +374,7 @@
 - Editor toolbar includes Finger pan mode; when enabled, touch drags the page and stylus input still writes.
 - Editor toolbar includes default-on Finger assist; completed touch strokes are smoothed before saving while stylus and mouse strokes remain unchanged.
 - Editor app bar includes a Page template picker for Blank, Ruled, Dotted, Grid, Cornell, and Planner pages; the selected template persists and appears in previews and PDF exports.
-- Editor Pages/Outline/Bookmarks navigator shows page thumbnails with selection state, page numbers, handwriting previews, and PDF page markers on demand; wide layouts can pin it at the left.
+- Editor Pages panel shows page thumbnails with selection state, page numbers, handwriting previews, and PDF page markers on demand; wide layouts can pin it at the left, while Outline and Bookmarks open independently.
 - Editor page thumbnails include actions to duplicate, delete with confirmation, and move pages left or right.
 - Editor page thumbnail actions include clockwise page rotation; orientation persists, updates editor and page previews, keeps drawing hit testing aligned, and is preserved in PDF export.
 - Editor toolbar includes Lasso; draw around strokes to select them, drag the selection to move it, drag its corner handle to resize proportionally, or use the upright floating toolbar to recolor, delete, and clear the selection.
@@ -381,7 +386,7 @@
 - Library supports visible search, notebook and folder sorting, folder/archive navigation, and gapless page-weighted spine rows without loading first-page cover previews.
 - Library notebook spines briefly pull forward and scale before opening; long press, hover, or focus can hold inspection, and only truncated titles receive a full-title tip.
 - Editor page thumbnails can insert blank pages before or after any page, including between imported PDF pages.
-- Editor page thumbnails render PDF page backgrounds, and the editor has an Outline/Bookmarks panel plus per-page bookmark toggling.
+- Editor page thumbnails render PDF page backgrounds, and the editor has separate Outline and Bookmarks panels plus current-page bookmark toggling.
 - Editor export can save the full notebook, current page, or an ordered page/range expression such as `1,3,5-7`, with filenames suffixed by exported scope.
 - Editor export offers Compact, Balanced, and Best quality presets; Balanced is the default, Compact prioritizes sharing size, and Best preserves lossless PDF background detail.
 - PDF export now avoids rerendering duplicate backgrounds in the same export and renders imported PDF backgrounds at a higher default pixel density.

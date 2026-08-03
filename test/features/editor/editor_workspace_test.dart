@@ -49,32 +49,65 @@ void main() {
       },
     );
 
-    testWidgets(
-      'opens Pages Outline and Bookmarks on demand in a compact workspace',
-      (tester) async {
-        await _createFixture(tester, const Size(600, 800));
+    testWidgets('opens Pages Outline and Bookmarks as focused compact panels', (
+      tester,
+    ) async {
+      await _createFixture(tester, const Size(600, 800));
 
-        expect(
-          find.byKey(const ValueKey('editor-pages-button')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const ValueKey('page-thumbnail-page-1')),
-          findsNothing,
-        );
+      expect(find.byKey(const ValueKey('editor-pages-button')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('editor-outline-button')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('editor-bookmarks-button')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('page-thumbnail-page-1')), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('editor-pages-button')),
+          matching: find.byIcon(Icons.library_books_outlined),
+        ),
+        findsOneWidget,
+      );
 
-        await tester.tap(find.byKey(const ValueKey('editor-pages-button')));
-        await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('editor-pages-button')));
+      await tester.pumpAndSettle();
 
-        expect(find.text('Pages'), findsOneWidget);
-        expect(find.text('Outline'), findsOneWidget);
-        expect(find.text('Bookmarks'), findsOneWidget);
-        expect(
-          find.byKey(const ValueKey('page-thumbnail-page-1')),
-          findsOneWidget,
-        );
-      },
-    );
+      expect(find.byKey(const ValueKey('editor-pages-panel')), findsOneWidget);
+      expect(find.byType(TabBar), findsNothing);
+      expect(
+        find.byKey(const ValueKey('page-thumbnail-page-1')),
+        findsOneWidget,
+      );
+
+      await tester.tapAt(const Offset(10, 100));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('editor-outline-button')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('editor-outline-panel')),
+        findsOneWidget,
+      );
+      expect(find.text('No PDF outline'), findsOneWidget);
+      expect(find.byType(TabBar), findsNothing);
+
+      await tester.tapAt(const Offset(10, 100));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('editor-bookmarks-button')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('editor-bookmarks-panel')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('bookmarks-toggle-current-page')),
+        findsOneWidget,
+      );
+      expect(find.text('No bookmarks'), findsOneWidget);
+      expect(find.byType(TabBar), findsNothing);
+    });
 
     testWidgets(
       'keeps page navigation in the header without a floating page chip',
@@ -89,9 +122,111 @@ void main() {
           find.byKey(const ValueKey('editor-page-position-button')),
           findsNothing,
         );
+        expect(
+          tester
+              .getRect(find.byKey(const ValueKey('editor-document-context')))
+              .right,
+          lessThan(
+            tester
+                .getRect(find.byKey(const ValueKey('editor-pages-button')))
+                .left,
+          ),
+        );
         expect(find.byKey(const ValueKey('editor-zoom-chip')), findsOneWidget);
       },
     );
+
+    testWidgets('uses the header pager for adjacent navigation and quick add', (
+      tester,
+    ) async {
+      await _createFixture(tester, const Size(600, 800));
+
+      final previous = find.byKey(
+        const ValueKey('editor-previous-page-button'),
+      );
+      final next = find.byKey(const ValueKey('editor-next-page-button'));
+      final add = find.byKey(const ValueKey('editor-add-page-button'));
+
+      expect(tester.widget<IconButton>(previous).onPressed, isNull);
+      expect(tester.widget<IconButton>(next).onPressed, isNull);
+      expect(find.text('1 / 1'), findsOneWidget);
+      expect(tester.getSize(previous).width, greaterThanOrEqualTo(44));
+      expect(tester.getSize(previous).height, greaterThanOrEqualTo(44));
+      expect(tester.getSize(add).width, greaterThanOrEqualTo(44));
+      expect(tester.getSize(add).height, greaterThanOrEqualTo(44));
+
+      await tester.tap(add);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Add page'), findsOneWidget);
+      await tester.tap(find.byTooltip('Close paper styles'));
+      await tester.pumpAndSettle();
+      expect(find.text('1 / 1'), findsOneWidget);
+
+      await tester.tap(add);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('page-template-blank')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('2 / 2'), findsOneWidget);
+      expect(tester.widget<IconButton>(previous).onPressed, isNotNull);
+      expect(tester.widget<IconButton>(next).onPressed, isNull);
+
+      await tester.tap(previous);
+      await tester.pumpAndSettle();
+      expect(find.text('1 / 2'), findsOneWidget);
+      expect(tester.widget<IconButton>(next).onPressed, isNotNull);
+
+      await tester.tap(next);
+      await tester.pumpAndSettle();
+      expect(find.text('2 / 2'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('centralizes current-page actions in the Pages panel', (
+      tester,
+    ) async {
+      await _createFixture(tester, const Size(834, 1194));
+
+      await tester.tap(find.byKey(const ValueKey('editor-pages-button')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Page 1 of 1'), findsWidgets);
+      expect(
+        find.byKey(const ValueKey('pages-add-page-button')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('pages-template-button')), findsNothing);
+      expect(find.byKey(const ValueKey('pages-bookmark-button')), findsNothing);
+      expect(find.byKey(const ValueKey('pages-rotate-button')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('page-thumbnail-page-1')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('pages-add-page-button')));
+      await tester.pumpAndSettle();
+      expect(find.text('Add page'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('page-template-ruled')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Page 2 of 2'), findsWidgets);
+      expect(
+        find.byKey(const ValueKey('page-thumbnail-page-2')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('page-template-layer-page-2-ruled')),
+        findsOneWidget,
+      );
+      expect(find.text('Pages'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Page 1'));
+      await tester.pumpAndSettle();
+      expect(find.text('Page 1 of 2'), findsWidgets);
+      expect(find.text('Pages'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
 
     testWidgets('separates document history from the editing dock', (
       tester,
@@ -123,9 +258,12 @@ void main() {
       expect(find.byKey(const ValueKey('editor-export-button')), findsNothing);
       await tester.tap(find.byKey(const ValueKey('editor-more-actions')));
       await tester.pumpAndSettle();
-      for (final section in const ['PAGE', 'DOCUMENT', 'AUDIO', 'VIEW']) {
+      for (final section in const ['DOCUMENT', 'AUDIO', 'VIEW']) {
         expect(find.text(section), findsOneWidget);
       }
+      expect(find.text('PAGE'), findsNothing);
+      expect(find.text('Add page'), findsNothing);
+      expect(find.text('Page template'), findsNothing);
       expect(find.text('Start recording'), findsOneWidget);
       expect(find.text('Export PDF'), findsOneWidget);
       await tester.tapAt(const Offset(12, 300));

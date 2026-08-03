@@ -124,6 +124,8 @@ Tasks:
 
 - [x] Add page list or page navigator.
 - [x] Add new-page action.
+- [x] Unify quick page switching/insertion in the header pager and centralize
+  page management in the Pages panel.
 - [x] Store multiple pages per notebook.
 - [x] Navigate between pages.
 - [x] Persist page order and page content.

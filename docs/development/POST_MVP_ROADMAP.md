@@ -47,8 +47,8 @@ The detailed plan lives in `docs/development/SMART_INK_PLAN.md`.
 - [x] Apple Pencil-focused input mode with finger pan and Pencil draw behavior.
 - [x] Finger Writing Assist for smoothing rough finger handwriting before any
   recognition step.
-- [x] On-demand Pages/Outline/Bookmarks navigator with a collapsible wide
-  sidebar and no permanent bottom strip.
+- [x] Independent on-demand Pages, Outline, and Bookmarks panels with a
+  collapsible wide Pages sidebar and no permanent bottom strip.
 - [x] Page templates: blank, ruled, dotted, grid, Cornell, planner.
 - [x] Page actions: duplicate, delete, reorder, and insert before/after.
 - [x] Page rotation.
@@ -170,8 +170,9 @@ The detailed plan lives in `docs/development/SMART_INK_PLAN.md`.
   adapt Record/Export shortcuts to width, and group More actions by purpose.
 - Add keyboard shortcuts for undo, redo, tool switching, and export.
 - Add undo/redo history per page with clearer state.
-- [x] Move page thumbnails into one Pages/Outline/Bookmarks navigator that can
-  overlay compact layouts or pin on wide layouts.
+- [x] Move page thumbnails into a focused Pages navigator that can overlay
+  compact layouts or pin on wide layouts; keep Outline and Bookmarks separate.
+- [x] Choose a paper style before every manual blank-page insertion.
 - Add accessibility labels for all important controls.
 
 ### Testing And Release Quality

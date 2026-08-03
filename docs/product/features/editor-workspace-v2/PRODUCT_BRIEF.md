@@ -32,8 +32,8 @@ the icon order.
 
 Adopt a calmer two-level editor command model:
 
-1. The **document bar** owns location and page-level actions: Back, Pages,
-   notebook title/page position, Undo, Redo, Search, and More.
+1. The **document bar** owns location and page-level actions: Back, notebook
+   title/page position, Pages controls, Undo, Redo, Search, and More.
 2. The **contextual tool dock** owns only editing mode: Pen, Highlighter,
    Eraser, Lasso, Insert, active tool style, and Finger input mode.
 3. Pen and Highlighter are separate one-tap tools and remember independent
@@ -45,6 +45,12 @@ Adopt a calmer two-level editor command model:
 6. Time-sensitive document actions adapt to available width: Record appears at
    720px and above, Export appears at 1000px and above, and both remain in a
    labelled More menu for compact layouts and discoverability.
+7. Page work uses one coherent system: a compact header pager owns Previous,
+   Pages, Next, and Add; Outline and Bookmarks are separate header entries with
+   focused panels; the Pages panel owns thumbnail management without mixing in
+   outline, bookmark, or current-page template configuration.
+8. Every manual blank-page insertion first asks for a paper style, then creates
+   the page only after selection. Cancelling the picker creates nothing.
 
 This keeps all existing features and page-coordinate behavior intact while
 shortening the highest-frequency tool paths and restoring a clear information
@@ -53,8 +59,8 @@ hierarchy.
 ## Scope
 
 - In scope:
-  - Reorder the document bar around Back → Pages → notebook context → history →
-    Search → More.
+  - Reorder the document bar around Back → notebook context → Pages controls →
+    history → Search → More.
   - Move Undo and Redo from the tool dock into the document bar.
   - Expose Pen and Highlighter as separate primary tools.
   - Remove persistent preset buttons and the preset overflow from the dock.
@@ -65,10 +71,23 @@ hierarchy.
     control after Insert → Shape.
   - Preserve current iPad width breakpoints, minimum targets, canvas transforms,
     page navigation, search, audio, import, export, and write-protection rules.
-  - Group More actions under Page, Document, Audio, and View headings instead
-    of relying on unlabelled dividers.
+  - Group More actions under Document, Audio, and View headings instead of
+    relying on unlabelled dividers; page commands belong to the pager and Pages.
   - Show a direct Record control at ≥720px and a direct Export control at
     ≥1000px; preserve their More-menu entries at every width.
+  - Replace the page-count badge with Previous / page position / Next / Add
+    controls, with disabled edge states and explicit semantics.
+  - Make quick Add ask for a paper style, insert after the current page, and
+    navigate to the new page.
+  - Move the Pages-tab Add control to a fixed toolbar instead of the end of the
+    thumbnail grid, retaining current-page Rotate while moving Bookmarks to its
+    own focused panel and removing current-page Template.
+  - Expose Outline and Bookmarks as separate top-bar entry points, each opening
+    its own focused panel instead of tabs in the Pages navigator.
+  - Apply paper-style selection to toolbar Add, Pages-panel Add, and advanced
+    blank-page insertion commands.
+  - Remove the Page section from More; retain advanced per-page insertion,
+    duplication, deletion, movement, and rotation in thumbnail action menus.
 - Non-goals:
   - New drawing engines, tools, content types, persisted preset customization,
     or a unified undo model.
@@ -92,7 +111,7 @@ hierarchy.
 
 ## Acceptance Criteria
 
-- [x] Back, Pages, notebook context, Undo, Redo, Search, and More appear in that
+- [x] Back, notebook context, Pages controls, Undo, Redo, Search, and More appear in that
   hierarchy without overflow at 600, 834, and 1194 logical pixels.
 - [x] Pen and Highlighter are both one-tap primary tools and retain independent
   remembered settings.
@@ -109,8 +128,16 @@ hierarchy.
   targets at supported iPad and Split View widths.
 - [x] Record is directly reachable at ≥720px, Export is directly reachable at
   ≥1000px, and neither crowds the 600px Split View document bar.
-- [x] More groups every existing action under Page, Document, Audio, or View,
-  while disabled/busy states remain visible and understandable.
+- [x] More groups non-page actions under Document, Audio, or View while
+  disabled/busy states remain visible and understandable.
+- [x] Previous and Next switch adjacent pages directly, expose disabled first/
+  last states, and preserve the current page's session viewport.
+- [x] Pages, Outline, and Bookmarks have separate top-bar entry points and open
+  focused panels without a shared tab bar.
+- [x] Every manual blank-page insertion asks for a paper style first; cancelling
+  creates no page, while selection inserts and navigates to the new page.
+- [x] Pages centralizes thumbnails and page operations without current-page
+  Template or Bookmark controls; Bookmark management lives in Bookmarks.
 
 ## Alternatives And Tradeoffs
 
@@ -142,8 +169,9 @@ hierarchy.
 - UI/UX spec:
   `docs/product/features/editor-workspace-v2/UI_UX_SPEC.md`
 - Implementation status: Delivered on 2026-08-03
-- Verification: Focused responsive/tool tests and the full 131-test Flutter
+- Verification: Focused responsive/tool/page-navigation tests and the full 133-test Flutter
   suite pass; `flutter analyze` and `git diff --check` pass. Responsive coverage
-  confirms compact, regular, and wide direct-action visibility plus labelled
-  More sections. Real-iPad Pencil, rotation, and Split View QA remains a release
-  follow-up.
+  confirms compact, regular, and wide direct-action visibility, independent
+  Pages/Outline/Bookmarks panels, paper-style-first insertion and cancellation,
+  persistent regular-width management, and labelled More sections. Real-iPad
+  Pencil, rotation, and Split View QA remains a release follow-up.

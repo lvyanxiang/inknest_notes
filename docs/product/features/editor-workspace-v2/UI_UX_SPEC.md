@@ -18,8 +18,8 @@ than adding new controls or another visual layer over the paper.
 
 ## User Flow
 
-1. From the library, enter a notebook. Focus order starts with Back, Pages,
-   notebook title/page position, then document actions.
+1. From the library, enter a notebook. Focus order starts with Back, notebook
+   title/page position, Pages controls, then document actions.
 2. Pen is ready. Tap Highlighter, Eraser, Lasso, or Insert directly.
 3. Tap an already-selected Pen, Highlighter, or Eraser control to open
    settings; use the style preview for the same settings and for Shape.
@@ -28,7 +28,13 @@ than adding new controls or another visual layer over the paper.
 5. Undo/Redo from the document row. Search and More remain at the trailing edge.
 6. At regular widths, start or stop recording from the document row; at wide
    landscape widths, export from the same row. Compact layouts use More.
-7. On cancellation or picker failure, retain tool, viewport, and page content;
+7. Use Previous/Next in the compact pager for adjacent pages; tap Pages,
+   Outline, or Bookmarks to open one focused panel at a time.
+8. Tap any blank-page Add/Insert action, choose a paper style, then create and
+   navigate to the inserted page. Cancel returns without adding a page.
+9. Manage rotation and advanced thumbnail actions inside Pages; manage current
+   bookmark state and bookmarked-page navigation inside Bookmarks.
+9. On cancellation or picker failure, retain tool, viewport, and page content;
    existing snackbars explain errors.
 
 ## State Matrix
@@ -44,6 +50,12 @@ than adding new controls or another visual layer over the paper.
 | Compact document bar (<720) | History, Search, More; no direct Record/Export | Record and Export through labelled More sections | Notebook title keeps usable width |
 | Regular document bar (≥720) | Direct Record plus History, Search, More | Start/stop recording in one tap | Busy spinner; active recording banner remains visible |
 | Wide document bar (≥1000) | Direct Record and Export | Time-sensitive recording and completion action in one tap | Export progress replaces the share icon |
+| First or last page | Corresponding pager arrow disabled | Open Pages or move in the available direction | Disabled state is visible and semantic |
+| Paper picker open | Paper styles with nearby style selected | Select style or cancel | Cancel preserves page count and current page |
+| Quick page insertion | Chosen-style blank page appears after current and becomes active | Start writing immediately | Inherits nearby size/orientation; uses explicit chosen template |
+| Pages panel open | Pages header, fixed current-page toolbar, thumbnails | Add, Rotate, select, or open thumbnail actions | Current selection remains visibly outlined |
+| Outline panel open | PDF outline only | Jump to an outlined page | Empty state says no PDF outline |
+| Bookmarks panel open | Current-page bookmark control plus bookmark list | Toggle current page or jump to a bookmark | Empty state remains actionable through the toggle |
 
 ## Layout And Components
 
@@ -52,8 +64,15 @@ than adding new controls or another visual layer over the paper.
 - Height: 52px, existing chrome surface and divider.
 - Leading order:
   1. Back, 48px navigation target.
-  2. Pages button, 44px target with page-count badge.
-  3. Notebook context: title on the first line, `Page n of total` below.
+  2. Notebook context: title on one line; compact widths may truncate it.
+  3. Compact pager: Previous, visible Pages icon with `n / total`, Next, Add.
+  4. Outline and Bookmarks as independent 44px icon actions.
+- Pager behavior:
+  - Previous/Next call the same manual page-selection path as thumbnails.
+  - The visible Pages icon and `n / total` open the Pages-only panel.
+  - Outline and Bookmarks each open their own panel; no shared tab bar remains.
+  - Add opens paper-style selection and, after selection, inserts after current.
+  - All four segments retain at least 44px targets; edge arrows are disabled.
 - Trailing order:
   1. Undo ink stroke.
   2. Redo ink stroke.
@@ -69,13 +88,24 @@ than adding new controls or another visual layer over the paper.
 ### More menu
 
 - Use labelled sections in this order:
-  1. **Page:** Add page, Page template, Bookmark/Remove bookmark, Rotate page.
-  2. **Document:** Import PDF, Export PDF.
-  3. **Audio:** Audio library/recordings, Start/Stop recording.
-  4. **View:** Fit width, Fit page.
+  1. **Document:** Import PDF, Export PDF.
+  2. **Audio:** Audio library/recordings, Start/Stop recording.
+  3. **View:** Fit width, Fit page.
 - Section labels are non-interactive and visually quieter than action rows.
 - Keep disabled actions visible when they explain a state, such as an
-  unavailable template or an import blocked during recording.
+  import blocked during recording.
+
+### Pages panel
+
+- Pages starts with a fixed current-page toolbar above the thumbnail grid; Add
+  is never placed as a trailing pseudo-thumbnail.
+- Toolbar order: page position, Add after current, Rotate.
+- Add first opens paper-style selection. Rotate is disabled for write-protected
+  pages. Current-page Template and Bookmark controls are absent.
+- Thumbnail overflow retains Insert before/after, Duplicate, Delete, Move left/
+  right, and Rotate for precise per-page management.
+- Regular overlay and pinned layouts keep the navigator visible while changing
+  pages; compact bottom sheets close after selection to return space to paper.
 
 ### Contextual tool dock
 
@@ -136,6 +166,8 @@ than adding new controls or another visual layer over the paper.
   never clips or removes the action targets.
 - Pages, properties, and menus provide non-gesture alternatives to navigation,
   zoom, and editing configuration.
+- Pages, Outline, and Bookmarks each have a unique icon, tooltip, focus target,
+  and focused panel; discovery never depends on a shared tab strip.
 
 ## UI Acceptance Criteria
 
@@ -149,14 +181,24 @@ than adding new controls or another visual layer over the paper.
   coherent with existing editor feedback.
 - [x] No supported layout overflows or introduces a scrolling toolbar.
 - [x] Direct Record/Export visibility follows the 720px/1000px breakpoints.
-- [x] More has readable Page, Document, Audio, and View sections and preserves
-  every existing action and enabled/disabled state.
+- [x] More has readable Document, Audio, and View sections and preserves every
+  non-page action and enabled/disabled state.
+- [x] The compact pager provides direct Previous, Pages, Next, and Add actions
+  without overflow at 600, 834, and 1194 widths.
+- [x] Pages, Outline, and Bookmarks open independently from the top bar with no
+  shared tab strip.
+- [x] Add/Insert opens paper-style selection; cancel adds nothing and selection
+  creates the chosen-style page.
+- [x] Pages has a fixed toolbar with Add and Rotate, no Template/Bookmark
+  controls, and no trailing Add tile.
+- [x] More contains only Document, Audio, and View sections; page operations
+  remain fully reachable from the pager or Pages panel.
 
 ## Verification
 
 - Widget tests: direct Pen/Highlighter switching, selected-tool settings,
-  presets inside properties, Undo/Redo document placement, and absence of
-  persistent presets.
+  presets inside properties, Undo/Redo placement, pager edge states and page
+  insertion, Pages-toolbar management, and absence of persistent presets.
 - Responsive tests: 600×800, 834×1194, and 1194×834; semantics and minimum
   target checks.
 - Visual check: 11-inch iPad landscape render before and after implementation.

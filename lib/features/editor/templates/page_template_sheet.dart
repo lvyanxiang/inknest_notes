@@ -7,18 +7,29 @@ import 'package:inknest_notes/models/note_page_template.dart';
 Future<NotePageTemplate?> showPageTemplateSheet({
   required BuildContext context,
   required NotePageTemplate selectedTemplate,
+  String title = 'Page template',
+  String subtitle = 'Choose a paper style for this page',
 }) {
   return EditorChrome.showSheet<NotePageTemplate>(
     context: context,
-    builder: (context) =>
-        _PageTemplateSheet(selectedTemplate: selectedTemplate),
+    builder: (context) => _PageTemplateSheet(
+      selectedTemplate: selectedTemplate,
+      title: title,
+      subtitle: subtitle,
+    ),
   );
 }
 
 class _PageTemplateSheet extends StatelessWidget {
-  const _PageTemplateSheet({required this.selectedTemplate});
+  const _PageTemplateSheet({
+    required this.selectedTemplate,
+    required this.title,
+    required this.subtitle,
+  });
 
   final NotePageTemplate selectedTemplate;
+  final String title;
+  final String subtitle;
 
   @override
   Widget build(BuildContext context) {
@@ -33,10 +44,10 @@ class _PageTemplateSheet extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 12, 12),
             child: EditorChromeHeader(
-              title: 'Page template',
-              subtitle: 'Choose a paper style for this page',
+              title: title,
+              subtitle: subtitle,
               onClose: () => Navigator.pop(context),
-              closeTooltip: 'Close page templates',
+              closeTooltip: 'Close paper styles',
             ),
           ),
           Expanded(

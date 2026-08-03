@@ -41,6 +41,19 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  Future<void> dismissEditorPages(WidgetTester tester) async {
+    final logicalSize = tester.view.physicalSize / tester.view.devicePixelRatio;
+    await tester.tapAt(Offset(logicalSize.width - 12, logicalSize.height / 2));
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> addPageAfterCurrent(WidgetTester tester) async {
+    await tester.tap(find.byKey(const ValueKey('editor-add-page-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('page-template-blank')));
+    await tester.pumpAndSettle();
+  }
+
   Future<void> selectInsertAction(WidgetTester tester, String label) async {
     await tester.tap(find.byKey(const ValueKey('editor-insert-menu')));
     await tester.pumpAndSettle();
@@ -214,7 +227,7 @@ void main() {
     expect(find.text('Imported 2 PDFs · 2 pages'), findsOneWidget);
   });
 
-  testWidgets('selects persists and inherits page templates', (
+  testWidgets('chooses a paper style before adding a page', (
     WidgetTester tester,
   ) async {
     final repository = InMemoryNotebookRepository();
@@ -225,8 +238,10 @@ void main() {
     await tester.tap(find.text(notebook.title));
     await tester.pumpAndSettle();
 
-    await selectEditorMoreAction(tester, 'Page template');
+    await tester.tap(find.byKey(const ValueKey('editor-add-page-button')));
+    await tester.pumpAndSettle();
 
+    expect(find.text('Add page'), findsOneWidget);
     for (final template in NotePageTemplate.values) {
       expect(find.text(template.label), findsOneWidget);
     }
@@ -234,19 +249,16 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.byKey(const ValueKey('page-template-layer-page-1-grid')),
+      find.byKey(const ValueKey('page-template-layer-page-2-grid')),
       findsOneWidget,
     );
     expect(
-      (await repository.loadPage(notebook, 'page-1')).template,
-      NotePageTemplate.grid,
-    );
-
-    await selectEditorMoreAction(tester, 'Add page');
-
-    expect(
       (await repository.loadPage(notebook, 'page-2')).template,
       NotePageTemplate.grid,
+    );
+    expect(
+      (await repository.loadPage(notebook, 'page-1')).template,
+      NotePageTemplate.blank,
     );
   });
 
@@ -286,6 +298,8 @@ void main() {
       (await repository.loadPage(notebook, 'page-1')).rotationQuarterTurns,
       1,
     );
+
+    await dismissEditorPages(tester);
 
     await drawVisibleStroke(tester);
 
@@ -570,10 +584,11 @@ void main() {
 
     expect(find.byTooltip('Plain text'), findsOneWidget);
 
-    await selectEditorMoreAction(tester, 'Add page');
+    await addPageAfterCurrent(tester);
     await openEditorPages(tester);
     await tester.tap(find.byTooltip('Page 1'));
     await tester.pumpAndSettle();
+    await dismissEditorPages(tester);
 
     expect(find.text('Typed note'), findsOneWidget);
 
@@ -617,9 +632,18 @@ void main() {
     );
     expect(find.text('Selected 1 strokes'), findsNothing);
     expect(find.byType(TextField), findsOneWidget);
-    expect(find.byKey(const ValueKey('beautify-font-liu_jian_mao_cao')), findsOneWidget);
-    expect(find.byKey(const ValueKey('beautify-font-long_cang')), findsOneWidget);
-    expect(find.byKey(const ValueKey('beautify-font-zhi_mang_xing')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('beautify-font-liu_jian_mao_cao')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('beautify-font-long_cang')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('beautify-font-zhi_mang_xing')),
+      findsOneWidget,
+    );
 
     await tester.enterText(find.byType(TextField), '美');
     await tester.pumpAndSettle();
@@ -641,7 +665,10 @@ void main() {
     expect(find.byType(AlertDialog), findsNothing);
     expect(find.text('美'), findsNothing);
     expect(find.byTooltip('Plain text'), findsNothing);
-    expect(find.byKey(const ValueKey('lasso-selection-toolbar')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('lasso-selection-toolbar')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('prefills Beautify with an on-device recognition suggestion', (
@@ -691,7 +718,10 @@ void main() {
     }
     await tester.pump();
     expect(find.byType(AlertDialog), findsNothing);
-    expect(find.byKey(const ValueKey('lasso-selection-toolbar')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('lasso-selection-toolbar')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('selects non-contiguous pages for PDF export', (
@@ -702,7 +732,7 @@ void main() {
     await tester.tap(find.text('New notebook'));
     await tester.pumpAndSettle();
     for (var index = 0; index < 3; index++) {
-      await selectEditorMoreAction(tester, 'Add page');
+      await addPageAfterCurrent(tester);
     }
 
     await selectEditorMoreAction(tester, 'Export PDF');
@@ -1133,13 +1163,14 @@ void main() {
     await tester.tap(find.bySemanticsLabel('Open notebook Growing notes'));
     await tester.pumpAndSettle();
     for (var index = 0; index < 5; index++) {
-      await selectEditorMoreAction(tester, 'Add page');
+      await addPageAfterCurrent(tester);
     }
     await openEditorPages(tester);
     expect(find.byKey(const ValueKey('page-thumbnail-page-6')), findsOneWidget);
     await tester.tap(find.byTooltip('Page 6'));
     await tester.pumpAndSettle();
 
+    await dismissEditorPages(tester);
     await tester.pageBack();
     await tester.pumpAndSettle();
 
@@ -1372,7 +1403,7 @@ void main() {
 
     expect(tester.widget<IconButton>(undoButton).onPressed, isNotNull);
 
-    await selectEditorMoreAction(tester, 'Add page');
+    await addPageAfterCurrent(tester);
 
     await openEditorPages(tester);
     expect(find.byKey(const ValueKey('page-thumbnail-page-1')), findsOneWidget);
@@ -1395,23 +1426,27 @@ void main() {
     await tester.tap(find.text('New notebook'));
     await tester.pumpAndSettle();
 
-    await selectEditorMoreAction(tester, 'Bookmark page');
-    await openEditorPages(tester);
-
-    await tester.tap(find.text('Bookmarks'));
+    await tester.tap(find.byKey(const ValueKey('editor-bookmarks-button')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('editor-bookmarks-panel')),
+      findsOneWidget,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('bookmarks-toggle-current-page')),
+    );
     await tester.pumpAndSettle();
     expect(find.text('Bookmarks'), findsOneWidget);
-    expect(find.text('Page 1'), findsOneWidget);
+    expect(find.text('Page 1'), findsNWidgets(2));
 
-    await tester.tap(find.text('Page 1'));
+    await tester.tap(find.text('Page 1').last);
     await tester.pumpAndSettle();
 
-    expect(find.text('Page 1'), findsNothing);
-
-    await selectEditorMoreAction(tester, 'Remove bookmark');
-    await tester.tap(find.byKey(const ValueKey('editor-more-actions')));
+    await tester.tap(
+      find.byKey(const ValueKey('bookmarks-toggle-current-page')),
+    );
     await tester.pumpAndSettle();
-    expect(find.text('Bookmark page'), findsOneWidget);
+    expect(find.text('No bookmarks'), findsOneWidget);
   });
 
   testWidgets('inserts blank pages before and after selected pages', (
@@ -1427,8 +1462,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Insert page after'));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('page-template-blank')));
+    await tester.pumpAndSettle();
 
-    await openEditorPages(tester);
     expect(find.byKey(const ValueKey('page-thumbnail-page-1')), findsOneWidget);
     expect(find.byKey(const ValueKey('page-thumbnail-page-2')), findsOneWidget);
 
@@ -1436,8 +1472,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Insert page before'));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('page-template-blank')));
+    await tester.pumpAndSettle();
 
-    await openEditorPages(tester);
     expect(find.byKey(const ValueKey('page-thumbnail-page-3')), findsOneWidget);
 
     final page1Left = tester.getTopLeft(
@@ -1468,7 +1505,6 @@ void main() {
     await tester.tap(find.text('Duplicate page'));
     await tester.pumpAndSettle();
 
-    await openEditorPages(tester);
     expect(find.byKey(const ValueKey('page-thumbnail-page-1')), findsOneWidget);
     expect(find.byKey(const ValueKey('page-thumbnail-page-2')), findsOneWidget);
 
@@ -1477,7 +1513,6 @@ void main() {
     await tester.tap(find.text('Move page left'));
     await tester.pumpAndSettle();
 
-    await openEditorPages(tester);
     final page1Left = tester.getTopLeft(
       find.byKey(const ValueKey('page-thumbnail-page-1')),
     );
@@ -1493,7 +1528,6 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
     await tester.pumpAndSettle();
 
-    await openEditorPages(tester);
     expect(find.byKey(const ValueKey('page-thumbnail-page-1')), findsOneWidget);
     expect(find.byKey(const ValueKey('page-thumbnail-page-2')), findsNothing);
   });

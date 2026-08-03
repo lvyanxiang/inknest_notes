@@ -1397,45 +1397,82 @@ class _EditorScreenState extends State<EditorScreen> {
       });
       return;
     }
-    _showNavigationSheet();
+    _showNavigationSheet(_EditorNavigationPanel.pages);
   }
 
-  void _showNavigationSheet() {
-    Widget buildNavigator(BuildContext navigatorContext, {bool fill = false}) {
-      return _PdfNavigationSheet(
-        fillAvailableHeight: fill,
-        notebook: _notebook,
-        pagesById: _pagesById,
-        currentPageId: _currentPageId,
-        onAddPage: () {
-          Navigator.of(navigatorContext).pop();
-          unawaited(_addPage());
-        },
-        onInsertPage: (index) {
-          Navigator.of(navigatorContext).pop();
-          unawaited(_insertPage(index));
-        },
-        onDuplicatePage: (pageId) {
-          Navigator.of(navigatorContext).pop();
-          unawaited(_duplicatePage(pageId));
-        },
-        onDeletePage: (pageId) {
-          Navigator.of(navigatorContext).pop();
-          unawaited(_deletePage(pageId));
-        },
-        onMovePage: (pageId, newIndex) {
-          Navigator.of(navigatorContext).pop();
-          unawaited(_movePage(pageId, newIndex));
-        },
-        onRotatePage: (pageId) {
-          Navigator.of(navigatorContext).pop();
-          unawaited(_rotatePageClockwise(pageId));
-        },
-        onSelectPage: (pageId) {
-          Navigator.of(navigatorContext).pop();
-          unawaited(_selectPageManually(pageId));
-        },
-      );
+  void _showNavigationSheet(_EditorNavigationPanel panel) {
+    Future<void> runNavigatorAction(
+      BuildContext navigatorContext,
+      Future<void> Function() action, {
+      required bool dismissAfterAction,
+      VoidCallback? refresh,
+    }) async {
+      if (dismissAfterAction) {
+        Navigator.of(navigatorContext).pop();
+      }
+      await action();
+      if (!dismissAfterAction && navigatorContext.mounted) {
+        refresh?.call();
+      }
+    }
+
+    Widget buildNavigator(
+      BuildContext navigatorContext, {
+      bool fill = false,
+      required bool dismissAfterAction,
+      VoidCallback? refresh,
+    }) {
+      void run(Future<void> Function() action) {
+        unawaited(
+          runNavigatorAction(
+            navigatorContext,
+            action,
+            dismissAfterAction: dismissAfterAction,
+            refresh: refresh,
+          ),
+        );
+      }
+
+      void selectPage(String pageId) {
+        run(() => _selectPageManually(pageId));
+      }
+
+      return switch (panel) {
+        _EditorNavigationPanel.pages => _PagesNavigationPanel(
+          fillAvailableHeight: fill,
+          notebook: _notebook,
+          pagesById: _pagesById,
+          currentPageId: _currentPageId,
+          onSelectPage: selectPage,
+          onAddPage: () => run(_chooseTemplateAndInsertPageAfterCurrent),
+          onRotateCurrentPage: () =>
+              run(() => _rotatePageClockwise(_currentPageId)),
+          onInsertPage: (index) =>
+              run(() => _chooseTemplateAndInsertPage(index)),
+          onDuplicatePage: (pageId) => run(() => _duplicatePage(pageId)),
+          onDeletePage: (pageId) => run(() => _deletePage(pageId)),
+          onMovePage: (pageId, newIndex) =>
+              run(() => _movePage(pageId, newIndex)),
+          onRotatePage: (pageId) => run(() => _rotatePageClockwise(pageId)),
+        ),
+        _EditorNavigationPanel.outline => _OutlineNavigationPanel(
+          fillAvailableHeight: fill,
+          notebook: _notebook,
+          currentPageId: _currentPageId,
+          onSelectPage: selectPage,
+        ),
+        _EditorNavigationPanel.bookmarks => _BookmarksNavigationPanel(
+          fillAvailableHeight: fill,
+          notebook: _notebook,
+          currentPageId: _currentPageId,
+          onSelectPage: selectPage,
+          onToggleCurrentPage: () => run(
+            () => _setCurrentPageBookmarked(
+              !_notebook.bookmarkedPageIds.contains(_currentPageId),
+            ),
+          ),
+        ),
+      };
     }
 
     final width = MediaQuery.sizeOf(context).width;
@@ -1443,7 +1480,7 @@ class _EditorScreenState extends State<EditorScreen> {
       showGeneralDialog<void>(
         context: context,
         barrierDismissible: true,
-        barrierLabel: 'Dismiss page navigator',
+        barrierLabel: 'Dismiss ${panel.label} panel',
         barrierColor: Colors.black38,
         transitionDuration: const Duration(milliseconds: 180),
         pageBuilder: (dialogContext, _, _) {
@@ -1460,7 +1497,16 @@ class _EditorScreenState extends State<EditorScreen> {
                 child: SizedBox(
                   width: math.min(380, width * 0.82),
                   height: double.infinity,
-                  child: buildNavigator(dialogContext, fill: true),
+                  child: StatefulBuilder(
+                    builder: (navigatorContext, setNavigatorState) {
+                      return buildNavigator(
+                        navigatorContext,
+                        fill: true,
+                        dismissAfterAction: false,
+                        refresh: () => setNavigatorState(() {}),
+                      );
+                    },
+                  ),
                 ),
               ),
             ),
@@ -1491,7 +1537,7 @@ class _EditorScreenState extends State<EditorScreen> {
       context: context,
       isScrollControlled: true,
       builder: (sheetContext) {
-        return buildNavigator(sheetContext);
+        return buildNavigator(sheetContext, dismissAfterAction: true);
       },
     );
   }
@@ -1514,32 +1560,10 @@ class _EditorScreenState extends State<EditorScreen> {
           await _importPdfsIntoNotebook();
         }
         break;
-      case _EditorMenuAction.pageTemplate:
-        if (page != null &&
-            !page.isCoordinateSpaceWriteProtected &&
-            page.pdfBackground == null) {
-          await _showPageTemplatePicker();
-        }
-        break;
-      case _EditorMenuAction.toggleBookmark:
-        if (page != null) {
-          await _setCurrentPageBookmarked(
-            !_notebook.bookmarkedPageIds.contains(_currentPageId),
-          );
-        }
-        break;
-      case _EditorMenuAction.rotatePage:
-        if (page != null && !page.isCoordinateSpaceWriteProtected) {
-          await _rotatePageClockwise(page.id);
-        }
-        break;
       case _EditorMenuAction.exportPdf:
         if (page != null && !_isExporting) {
           await _exportPdf();
         }
-        break;
-      case _EditorMenuAction.addPage:
-        await _addPage();
         break;
       case _EditorMenuAction.fitWidth:
         _viewportKey.currentState?.fitWidth();
@@ -1550,25 +1574,32 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
-  Future<void> _addPage() async {
-    final updatedNotebook = await widget.notebookRepository.addPage(_notebook);
+  Future<void> _chooseTemplateAndInsertPageAfterCurrent() {
+    final currentIndex = _notebook.pageIds.indexOf(_currentPageId);
+    final insertionIndex = currentIndex < 0
+        ? _notebook.pageIds.length
+        : currentIndex + 1;
+    return _chooseTemplateAndInsertPage(insertionIndex);
+  }
 
-    if (!mounted) {
+  Future<void> _chooseTemplateAndInsertPage(int index) async {
+    final template = await showPageTemplateSheet(
+      context: context,
+      selectedTemplate: _page?.template ?? NotePageTemplate.blank,
+      title: 'Add page',
+      subtitle: 'Choose a paper style for the new page',
+    );
+    if (!mounted || template == null) {
       return;
     }
 
-    setState(() {
-      _notebook = updatedNotebook;
-      _currentPageId = updatedNotebook.pageIds.last;
-      _page = null;
-      _redoStack.clear();
-    });
-
-    await _loadPage();
-    unawaited(_loadPageThumbnails());
+    await _insertPage(index, template: template);
   }
 
-  Future<void> _insertPage(int index) async {
+  Future<void> _insertPage(
+    int index, {
+    required NotePageTemplate template,
+  }) async {
     await _savePage();
 
     final previousPageIds = _notebook.pageIds.toSet();
@@ -1597,6 +1628,15 @@ class _EditorScreenState extends State<EditorScreen> {
     });
 
     await _loadPage();
+    final insertedPage = _page;
+    if (insertedPage != null && insertedPage.template != template) {
+      final styledPage = insertedPage.copyWith(template: template);
+      setState(() {
+        _page = styledPage;
+        _pagesById[styledPage.id] = styledPage;
+      });
+      await _savePage(styledPage);
+    }
     unawaited(_loadPageThumbnails());
   }
 
@@ -1885,28 +1925,6 @@ class _EditorScreenState extends State<EditorScreen> {
     await _selectPage(result.pageId);
   }
 
-  Future<void> _showPageTemplatePicker() async {
-    final page = _page;
-    if (page == null || page.pdfBackground != null) {
-      return;
-    }
-
-    final template = await showPageTemplateSheet(
-      context: context,
-      selectedTemplate: page.template,
-    );
-    if (!mounted || template == null || template == page.template) {
-      return;
-    }
-
-    final updatedPage = page.copyWith(template: template);
-    setState(() {
-      _page = updatedPage;
-      _pagesById[updatedPage.id] = updatedPage;
-    });
-    await _savePage(updatedPage);
-  }
-
   void _handleNotebookSearchQueryChanged(String query) {
     final queryChanged = query != _notebookSearchQuery;
     _notebookSearchQuery = query;
@@ -1952,9 +1970,6 @@ class _EditorScreenState extends State<EditorScreen> {
   @override
   Widget build(BuildContext context) {
     final page = _page;
-    final isCurrentPageBookmarked = _notebook.bookmarkedPageIds.contains(
-      _currentPageId,
-    );
     final isRecording = _activeAudioRecording != null;
     final playbackRecording = _audioPlaybackRecording;
     final playbackRecordingIndex = playbackRecording == null
@@ -1965,10 +1980,8 @@ class _EditorScreenState extends State<EditorScreen> {
     final screenWidth = MediaQuery.sizeOf(context).width;
     final showRecordAction = screenWidth >= 720;
     final showExportAction = screenWidth >= 1000;
-    final currentPageNumber = math.max(
-      1,
-      _notebook.pageIds.indexOf(_currentPageId) + 1,
-    );
+    final currentPageIndex = _notebook.pageIds.indexOf(_currentPageId);
+    final currentPageNumber = math.max(1, currentPageIndex + 1);
 
     return Scaffold(
       appBar: AppBar(
@@ -1978,24 +1991,6 @@ class _EditorScreenState extends State<EditorScreen> {
         surfaceTintColor: Colors.transparent,
         title: Row(
           children: [
-            IconButton(
-              key: const ValueKey('editor-pages-button'),
-              onPressed: () => _showPagesForWidth(screenWidth),
-              tooltip: screenWidth >= 1100 && _isPageRailOpen
-                  ? 'Hide pages, page $currentPageNumber of ${_notebook.pageIds.length}'
-                  : 'Show pages, page $currentPageNumber of ${_notebook.pageIds.length}',
-              icon: Badge(
-                backgroundColor: EditorWorkspaceTokens.primary,
-                textColor: Colors.white,
-                label: Text(_notebook.pageIds.length.toString()),
-                child: Icon(
-                  screenWidth >= 1100 && _isPageRailOpen
-                      ? Icons.view_sidebar
-                      : Icons.library_books_outlined,
-                ),
-              ),
-            ),
-            const SizedBox(width: 4),
             Expanded(
               key: const ValueKey('editor-document-context'),
               child: Column(
@@ -2019,6 +2014,57 @@ class _EditorScreenState extends State<EditorScreen> {
                     ),
                   ),
                 ],
+              ),
+            ),
+            const SizedBox(width: 4),
+            _EditorPagePager(
+              currentPageNumber: currentPageNumber,
+              pageCount: _notebook.pageIds.length,
+              onPrevious: currentPageIndex > 0
+                  ? () => unawaited(
+                      _selectPageManually(
+                        _notebook.pageIds[currentPageIndex - 1],
+                      ),
+                    )
+                  : null,
+              onOpenPages: () => _showPagesForWidth(screenWidth),
+              onNext:
+                  currentPageIndex >= 0 &&
+                      currentPageIndex < _notebook.pageIds.length - 1
+                  ? () => unawaited(
+                      _selectPageManually(
+                        _notebook.pageIds[currentPageIndex + 1],
+                      ),
+                    )
+                  : null,
+              onAddPage: page == null
+                  ? null
+                  : () => unawaited(_chooseTemplateAndInsertPageAfterCurrent()),
+            ),
+            IconButton(
+              key: const ValueKey('editor-outline-button'),
+              onPressed: () =>
+                  _showNavigationSheet(_EditorNavigationPanel.outline),
+              tooltip: 'PDF outline',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+              icon: const Icon(Icons.format_list_bulleted, size: 20),
+            ),
+            IconButton(
+              key: const ValueKey('editor-bookmarks-button'),
+              onPressed: () =>
+                  _showNavigationSheet(_EditorNavigationPanel.bookmarks),
+              tooltip: 'Bookmarks',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+              icon: Icon(
+                _notebook.bookmarkedPageIds.contains(_currentPageId)
+                    ? Icons.bookmark
+                    : Icons.bookmark_border,
+                size: 20,
+                color: _notebook.bookmarkedPageIds.contains(_currentPageId)
+                    ? EditorWorkspaceTokens.primary
+                    : null,
               ),
             ),
           ],
@@ -2088,8 +2134,6 @@ class _EditorScreenState extends State<EditorScreen> {
             isImportingPdfs: _isImportingPdfs,
             isExporting: _isExporting,
             hasAudioRecordings: _notebook.audioRecordings.isNotEmpty,
-            isBookmarked: isCurrentPageBookmarked,
-            isPageWriteProtected: _isCurrentPageWriteProtected,
             onSelected: (action) => unawaited(_handleEditorMenuAction(action)),
           ),
           const SizedBox(width: 6),
@@ -2172,14 +2216,18 @@ class _EditorScreenState extends State<EditorScreen> {
       shape: Border(right: BorderSide(color: colorScheme.outlineVariant)),
       child: SizedBox(
         width: 280,
-        child: _PdfNavigationSheet(
+        child: _PagesNavigationPanel(
           fillAvailableHeight: true,
           notebook: _notebook,
           pagesById: _pagesById,
           currentPageId: _currentPageId,
           onSelectPage: (pageId) => unawaited(_selectPageManually(pageId)),
-          onAddPage: () => unawaited(_addPage()),
-          onInsertPage: (index) => unawaited(_insertPage(index)),
+          onAddPage: () =>
+              unawaited(_chooseTemplateAndInsertPageAfterCurrent()),
+          onRotateCurrentPage: () =>
+              unawaited(_rotatePageClockwise(_currentPageId)),
+          onInsertPage: (index) =>
+              unawaited(_chooseTemplateAndInsertPage(index)),
           onDuplicatePage: (pageId) => unawaited(_duplicatePage(pageId)),
           onDeletePage: (pageId) => unawaited(_deletePage(pageId)),
           onMovePage: (pageId, newIndex) =>
@@ -2402,15 +2450,133 @@ class _CoordinateSpaceReadOnlyBanner extends StatelessWidget {
   }
 }
 
+enum _EditorNavigationPanel {
+  pages('Pages'),
+  outline('Outline'),
+  bookmarks('Bookmarks');
+
+  const _EditorNavigationPanel(this.label);
+
+  final String label;
+}
+
+class _EditorPagePager extends StatelessWidget {
+  const _EditorPagePager({
+    required this.currentPageNumber,
+    required this.pageCount,
+    required this.onPrevious,
+    required this.onOpenPages,
+    required this.onNext,
+    required this.onAddPage,
+  });
+
+  final int currentPageNumber;
+  final int pageCount;
+  final VoidCallback? onPrevious;
+  final VoidCallback onOpenPages;
+  final VoidCallback? onNext;
+  final VoidCallback? onAddPage;
+
+  @override
+  Widget build(BuildContext context) {
+    const targetSize = 44.0;
+    final divider = Container(
+      width: 1,
+      height: 24,
+      color: EditorWorkspaceTokens.divider,
+    );
+
+    return Material(
+      color: EditorWorkspaceTokens.chrome,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(
+          EditorWorkspaceTokens.controlRadius,
+        ),
+        side: const BorderSide(color: EditorWorkspaceTokens.divider),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: SizedBox(
+        height: targetSize,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              key: const ValueKey('editor-previous-page-button'),
+              onPressed: onPrevious,
+              tooltip: 'Previous page',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints.tightFor(
+                width: targetSize,
+                height: targetSize,
+              ),
+              icon: const Icon(Icons.chevron_left, size: 22),
+            ),
+            divider,
+            Tooltip(
+              message: 'Open Pages; page $currentPageNumber of $pageCount',
+              child: TextButton(
+                key: const ValueKey('editor-pages-button'),
+                onPressed: onOpenPages,
+                style: TextButton.styleFrom(
+                  foregroundColor: EditorWorkspaceTokens.ink,
+                  minimumSize: const Size(68, targetSize),
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  shape: const RoundedRectangleBorder(),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.library_books_outlined, size: 17),
+                    const SizedBox(width: 4),
+                    Text(
+                      '$currentPageNumber / $pageCount',
+                      maxLines: 1,
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: EditorWorkspaceTokens.ink,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            divider,
+            IconButton(
+              key: const ValueKey('editor-next-page-button'),
+              onPressed: onNext,
+              tooltip: 'Next page',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints.tightFor(
+                width: targetSize,
+                height: targetSize,
+              ),
+              icon: const Icon(Icons.chevron_right, size: 22),
+            ),
+            divider,
+            IconButton(
+              key: const ValueKey('editor-add-page-button'),
+              onPressed: onAddPage,
+              tooltip: 'Add page after current',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints.tightFor(
+                width: targetSize,
+                height: targetSize,
+              ),
+              icon: const Icon(Icons.note_add_outlined, size: 20),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 enum _EditorMenuAction {
   audioLibrary,
   toggleRecording,
   importPdf,
-  pageTemplate,
-  toggleBookmark,
-  rotatePage,
   exportPdf,
-  addPage,
   fitWidth,
   fitPage,
 }
@@ -2423,8 +2589,6 @@ class _EditorOverflowMenu extends StatelessWidget {
     required this.isImportingPdfs,
     required this.isExporting,
     required this.hasAudioRecordings,
-    required this.isBookmarked,
-    required this.isPageWriteProtected,
     required this.onSelected,
   });
 
@@ -2434,8 +2598,6 @@ class _EditorOverflowMenu extends StatelessWidget {
   final bool isImportingPdfs;
   final bool isExporting;
   final bool hasAudioRecordings;
-  final bool isBookmarked;
-  final bool isPageWriteProtected;
   final ValueChanged<_EditorMenuAction> onSelected;
 
   @override
@@ -2449,34 +2611,6 @@ class _EditorOverflowMenu extends StatelessWidget {
       onSelected: onSelected,
       itemBuilder: (context) {
         return [
-          _editorMenuSection('Page'),
-          _editorMenuItem(
-            value: _EditorMenuAction.addPage,
-            icon: Icons.note_add_outlined,
-            label: 'Add page',
-          ),
-          _editorMenuItem(
-            value: _EditorMenuAction.pageTemplate,
-            icon: Icons.dashboard_customize_outlined,
-            label: 'Page template',
-            enabled:
-                page != null &&
-                !isPageWriteProtected &&
-                page!.pdfBackground == null,
-          ),
-          _editorMenuItem(
-            value: _EditorMenuAction.toggleBookmark,
-            icon: isBookmarked ? Icons.bookmark : Icons.bookmark_border,
-            label: isBookmarked ? 'Remove bookmark' : 'Bookmark page',
-            enabled: page != null,
-          ),
-          _editorMenuItem(
-            value: _EditorMenuAction.rotatePage,
-            icon: Icons.rotate_right,
-            label: 'Rotate page clockwise',
-            enabled: page != null && !isPageWriteProtected,
-          ),
-          const PopupMenuDivider(height: 8),
           _editorMenuSection('Document'),
           _editorMenuItem(
             value: _EditorMenuAction.importPdf,
@@ -3334,14 +3468,74 @@ class _ExportOptionsDialogState extends State<_ExportOptionsDialog> {
   }
 }
 
-class _PdfNavigationSheet extends StatelessWidget {
-  const _PdfNavigationSheet({
+class _NavigationPanelFrame extends StatelessWidget {
+  const _NavigationPanelFrame({
+    required this.label,
+    required this.icon,
+    required this.fillAvailableHeight,
+    required this.child,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool fillAvailableHeight;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: SizedBox(
+        key: ValueKey('editor-${label.toLowerCase()}-panel'),
+        height: fillAvailableHeight
+            ? double.infinity
+            : MediaQuery.sizeOf(context).height * 0.72,
+        child: Column(
+          children: [
+            Material(
+              color: EditorWorkspaceTokens.chrome,
+              child: DecoratedBox(
+                decoration: const BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(color: EditorWorkspaceTokens.divider),
+                  ),
+                ),
+                child: SizedBox(
+                  height: 52,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      children: [
+                        Icon(icon, size: 20),
+                        const SizedBox(width: 10),
+                        Text(
+                          label,
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Expanded(child: child),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PagesNavigationPanel extends StatelessWidget {
+  const _PagesNavigationPanel({
     this.fillAvailableHeight = false,
     required this.notebook,
     required this.pagesById,
     required this.currentPageId,
     required this.onSelectPage,
     required this.onAddPage,
+    required this.onRotateCurrentPage,
     required this.onInsertPage,
     required this.onDuplicatePage,
     required this.onDeletePage,
@@ -3355,6 +3549,7 @@ class _PdfNavigationSheet extends StatelessWidget {
   final String currentPageId;
   final ValueChanged<String> onSelectPage;
   final VoidCallback onAddPage;
+  final VoidCallback onRotateCurrentPage;
   final ValueChanged<int> onInsertPage;
   final ValueChanged<String> onDuplicatePage;
   final ValueChanged<String> onDeletePage;
@@ -3363,55 +3558,23 @@ class _PdfNavigationSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 3,
-      child: SafeArea(
-        top: false,
-        child: SizedBox(
-          height: fillAvailableHeight
-              ? double.infinity
-              : MediaQuery.sizeOf(context).height * 0.72,
-          child: Column(
-            children: [
-              const TabBar(
-                tabs: [
-                  Tab(icon: Icon(Icons.layers_outlined), text: 'Pages'),
-                  Tab(icon: Icon(Icons.format_list_bulleted), text: 'Outline'),
-                  Tab(icon: Icon(Icons.bookmark_border), text: 'Bookmarks'),
-                ],
-              ),
-              Expanded(
-                child: TabBarView(
-                  children: [
-                    _PagesTab(
-                      pageIds: notebook.pageIds,
-                      pagesById: pagesById,
-                      currentPageId: currentPageId,
-                      bookmarkedPageIds: notebook.bookmarkedPageIds.toSet(),
-                      onSelectPage: onSelectPage,
-                      onAddPage: onAddPage,
-                      onInsertPage: onInsertPage,
-                      onDuplicatePage: onDuplicatePage,
-                      onDeletePage: onDeletePage,
-                      onMovePage: onMovePage,
-                      onRotatePage: onRotatePage,
-                    ),
-                    _OutlineTab(
-                      notebook: notebook,
-                      currentPageId: currentPageId,
-                      onSelectPage: onSelectPage,
-                    ),
-                    _BookmarksTab(
-                      notebook: notebook,
-                      currentPageId: currentPageId,
-                      onSelectPage: onSelectPage,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
+    return _NavigationPanelFrame(
+      label: 'Pages',
+      icon: Icons.layers_outlined,
+      fillAvailableHeight: fillAvailableHeight,
+      child: _PagesTab(
+        pageIds: notebook.pageIds,
+        pagesById: pagesById,
+        currentPageId: currentPageId,
+        bookmarkedPageIds: notebook.bookmarkedPageIds.toSet(),
+        onSelectPage: onSelectPage,
+        onAddPage: onAddPage,
+        onRotateCurrentPage: onRotateCurrentPage,
+        onInsertPage: onInsertPage,
+        onDuplicatePage: onDuplicatePage,
+        onDeletePage: onDeletePage,
+        onMovePage: onMovePage,
+        onRotatePage: onRotatePage,
       ),
     );
   }
@@ -3425,6 +3588,7 @@ class _PagesTab extends StatelessWidget {
     required this.bookmarkedPageIds,
     required this.onSelectPage,
     required this.onAddPage,
+    required this.onRotateCurrentPage,
     required this.onInsertPage,
     required this.onDuplicatePage,
     required this.onDeletePage,
@@ -3438,6 +3602,7 @@ class _PagesTab extends StatelessWidget {
   final Set<String> bookmarkedPageIds;
   final ValueChanged<String> onSelectPage;
   final VoidCallback onAddPage;
+  final VoidCallback onRotateCurrentPage;
   final ValueChanged<int> onInsertPage;
   final ValueChanged<String> onDuplicatePage;
   final ValueChanged<String> onDeletePage;
@@ -3446,56 +3611,192 @@ class _PagesTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final crossAxisCount = math.max(
-          3,
-          (constraints.maxWidth / 112).floor(),
-        );
-        return GridView.builder(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: crossAxisCount,
-            mainAxisExtent: 118,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-          ),
-          itemCount: pageIds.length + 1,
-          itemBuilder: (context, index) {
-            if (index == pageIds.length) {
-              return Center(
-                child: IconButton.filledTonal(
-                  onPressed: onAddPage,
-                  tooltip: 'Add page',
-                  icon: const Icon(Icons.add),
-                ),
-              );
-            }
+    final currentIndex = pageIds.indexOf(currentPageId);
+    final currentPage = pagesById[currentPageId];
+    final canRotate =
+        currentPage != null && !currentPage.isCoordinateSpaceWriteProtected;
+    const actionConstraints = BoxConstraints.tightFor(width: 44, height: 44);
 
-            final pageId = pageIds[index];
-            return Center(
-              child: _PageThumbnailButton(
-                pageId: pageId,
-                pageNumber: index + 1,
-                page: pagesById[pageId],
-                isSelected: pageId == currentPageId,
-                isBookmarked: bookmarkedPageIds.contains(pageId),
-                canDelete: pageIds.length > 1,
-                canMoveLeft: index > 0,
-                canMoveRight: index < pageIds.length - 1,
-                onPressed: () => onSelectPage(pageId),
-                onInsertBefore: () => onInsertPage(index),
-                onInsertAfter: () => onInsertPage(index + 1),
-                onDuplicate: () => onDuplicatePage(pageId),
-                onDelete: () => onDeletePage(pageId),
-                onMoveLeft: () => onMovePage(pageId, index - 1),
-                onMoveRight: () => onMovePage(pageId, index + 1),
-                onRotate: () => onRotatePage(pageId),
+    return Column(
+      children: [
+        Material(
+          color: EditorWorkspaceTokens.chrome,
+          child: DecoratedBox(
+            decoration: const BoxDecoration(
+              border: Border(
+                bottom: BorderSide(color: EditorWorkspaceTokens.divider),
               ),
-            );
-          },
-        );
-      },
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Page ${currentIndex < 0 ? 1 : currentIndex + 1} of ${pageIds.length}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: EditorWorkspaceTokens.ink,
+                      ),
+                    ),
+                  ),
+                  IconButton.filledTonal(
+                    key: const ValueKey('pages-add-page-button'),
+                    onPressed: onAddPage,
+                    tooltip: 'Add page after current',
+                    visualDensity: VisualDensity.compact,
+                    constraints: actionConstraints,
+                    icon: const Icon(Icons.note_add_outlined, size: 20),
+                  ),
+                  IconButton(
+                    key: const ValueKey('pages-rotate-button'),
+                    onPressed: canRotate ? onRotateCurrentPage : null,
+                    tooltip: canRotate
+                        ? 'Rotate current page clockwise'
+                        : 'Rotate page unavailable',
+                    visualDensity: VisualDensity.compact,
+                    constraints: actionConstraints,
+                    icon: const Icon(Icons.rotate_right),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final crossAxisCount = math.max(
+                3,
+                (constraints.maxWidth / 112).floor(),
+              );
+              return GridView.builder(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: crossAxisCount,
+                  mainAxisExtent: 118,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                ),
+                itemCount: pageIds.length,
+                itemBuilder: (context, index) {
+                  final pageId = pageIds[index];
+                  return Center(
+                    child: _PageThumbnailButton(
+                      pageId: pageId,
+                      pageNumber: index + 1,
+                      page: pagesById[pageId],
+                      isSelected: pageId == currentPageId,
+                      isBookmarked: bookmarkedPageIds.contains(pageId),
+                      canDelete: pageIds.length > 1,
+                      canMoveLeft: index > 0,
+                      canMoveRight: index < pageIds.length - 1,
+                      onPressed: () => onSelectPage(pageId),
+                      onInsertBefore: () => onInsertPage(index),
+                      onInsertAfter: () => onInsertPage(index + 1),
+                      onDuplicate: () => onDuplicatePage(pageId),
+                      onDelete: () => onDeletePage(pageId),
+                      onMoveLeft: () => onMovePage(pageId, index - 1),
+                      onMoveRight: () => onMovePage(pageId, index + 1),
+                      onRotate: () => onRotatePage(pageId),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _OutlineNavigationPanel extends StatelessWidget {
+  const _OutlineNavigationPanel({
+    required this.fillAvailableHeight,
+    required this.notebook,
+    required this.currentPageId,
+    required this.onSelectPage,
+  });
+
+  final bool fillAvailableHeight;
+  final Notebook notebook;
+  final String currentPageId;
+  final ValueChanged<String> onSelectPage;
+
+  @override
+  Widget build(BuildContext context) {
+    return _NavigationPanelFrame(
+      label: 'Outline',
+      icon: Icons.format_list_bulleted,
+      fillAvailableHeight: fillAvailableHeight,
+      child: _OutlineTab(
+        notebook: notebook,
+        currentPageId: currentPageId,
+        onSelectPage: onSelectPage,
+      ),
+    );
+  }
+}
+
+class _BookmarksNavigationPanel extends StatelessWidget {
+  const _BookmarksNavigationPanel({
+    required this.fillAvailableHeight,
+    required this.notebook,
+    required this.currentPageId,
+    required this.onSelectPage,
+    required this.onToggleCurrentPage,
+  });
+
+  final bool fillAvailableHeight;
+  final Notebook notebook;
+  final String currentPageId;
+  final ValueChanged<String> onSelectPage;
+  final VoidCallback onToggleCurrentPage;
+
+  @override
+  Widget build(BuildContext context) {
+    final isBookmarked = notebook.bookmarkedPageIds.contains(currentPageId);
+    final currentPageIndex = notebook.pageIds.indexOf(currentPageId);
+    return _NavigationPanelFrame(
+      label: 'Bookmarks',
+      icon: Icons.bookmark_border,
+      fillAvailableHeight: fillAvailableHeight,
+      child: Column(
+        children: [
+          Material(
+            color: EditorWorkspaceTokens.chrome,
+            child: ListTile(
+              key: const ValueKey('bookmarks-toggle-current-page'),
+              leading: Icon(
+                isBookmarked
+                    ? Icons.bookmark_remove
+                    : Icons.bookmark_add_outlined,
+                color: isBookmarked ? EditorWorkspaceTokens.primary : null,
+              ),
+              title: Text(
+                isBookmarked
+                    ? 'Remove current page bookmark'
+                    : 'Bookmark current page',
+              ),
+              subtitle: currentPageIndex < 0
+                  ? null
+                  : Text('Page ${currentPageIndex + 1}'),
+              onTap: currentPageIndex < 0 ? null : onToggleCurrentPage,
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: _BookmarksTab(
+              notebook: notebook,
+              currentPageId: currentPageId,
+              onSelectPage: onSelectPage,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
