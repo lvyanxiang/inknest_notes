@@ -2,8 +2,10 @@ import 'dart:io';
 import 'dart:ui';
 
 import 'package:inknest_notes/models/notebook.dart';
+import 'package:inknest_notes/models/infinite_canvas_document.dart';
 import 'package:inknest_notes/models/notebook_audio_recording.dart';
 import 'package:inknest_notes/models/notebook_folder.dart';
+import 'package:inknest_notes/models/notebook_layout_mode.dart';
 import 'package:inknest_notes/models/note_image.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/note_page_template.dart';
@@ -17,6 +19,7 @@ class InMemoryNotebookRepository implements NotebookRepository {
   final List<Notebook> _notebooks = [];
   final List<NotebookFolder> _folders = [];
   final Map<String, NotePage> _pages = {};
+  final Map<String, InfiniteCanvasDocument> _canvases = {};
   int _nextNotebookNumber = 1;
   int _nextFolderNumber = 1;
 
@@ -82,23 +85,47 @@ class InMemoryNotebookRepository implements NotebookRepository {
   }
 
   @override
-  Future<Notebook> createNotebook({String? title}) async {
+  Future<Notebook> createNotebook({
+    String? title,
+    NotebookLayoutMode layoutMode = NotebookLayoutMode.paged,
+  }) async {
     final now = DateTime.now();
     final notebook = Notebook(
       id: 'notebook-${now.microsecondsSinceEpoch}',
       title: title ?? 'Notebook ${_nextNotebookNumber++}',
       createdAt: now,
       updatedAt: now,
-      pageIds: const ['page-1'],
+      pageIds: layoutMode == NotebookLayoutMode.paged
+          ? const ['page-1']
+          : const [],
+      layoutMode: layoutMode,
     );
 
     _notebooks.add(notebook);
-    _pages['${notebook.id}/page-1'] = const NotePage(
-      id: 'page-1',
-      width: _pageWidth,
-      height: _pageHeight,
-    );
+    if (layoutMode == NotebookLayoutMode.paged) {
+      _pages['${notebook.id}/page-1'] = const NotePage(
+        id: 'page-1',
+        width: _pageWidth,
+        height: _pageHeight,
+      );
+    } else {
+      _canvases[notebook.id] = const InfiniteCanvasDocument();
+    }
     return notebook;
+  }
+
+  @override
+  Future<InfiniteCanvasDocument> loadInfiniteCanvas(Notebook notebook) async {
+    return _canvases[notebook.id] ?? const InfiniteCanvasDocument();
+  }
+
+  @override
+  Future<void> saveInfiniteCanvas(
+    Notebook notebook,
+    InfiniteCanvasDocument document,
+  ) async {
+    _canvases[notebook.id] = document;
+    _replaceNotebook(notebook.copyWith(updatedAt: DateTime.now()));
   }
 
   @override
@@ -181,12 +208,16 @@ class InMemoryNotebookRepository implements NotebookRepository {
       pdfOutlines: notebook.pdfOutlines,
       bookmarkedPageIds: notebook.bookmarkedPageIds,
       audioRecordings: notebook.audioRecordings,
+      layoutMode: notebook.layoutMode,
     );
 
     _notebooks.add(duplicatedNotebook);
     for (final pageId in notebook.pageIds) {
       final sourcePage = await loadPage(notebook, pageId);
       _pages[_pageKey(duplicatedNotebook, pageId)] = sourcePage;
+    }
+    if (notebook.layoutMode == NotebookLayoutMode.infiniteCanvas) {
+      _canvases[duplicatedNotebook.id] = await loadInfiniteCanvas(notebook);
     }
 
     return duplicatedNotebook;
@@ -211,6 +242,7 @@ class InMemoryNotebookRepository implements NotebookRepository {
     for (final pageId in notebook.pageIds) {
       _pages.remove(_pageKey(notebook, pageId));
     }
+    _canvases.remove(notebook.id);
   }
 
   @override

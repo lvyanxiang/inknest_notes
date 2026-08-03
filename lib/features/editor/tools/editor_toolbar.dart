@@ -22,6 +22,8 @@ class EditorToolbar extends StatefulWidget {
     required this.onFingerPanChanged,
     required this.onFingerWritingAssistChanged,
     required this.onInsertImage,
+    this.showLasso = true,
+    this.showInsert = true,
   });
 
   final DrawingTool tool;
@@ -31,6 +33,8 @@ class EditorToolbar extends StatefulWidget {
   final ValueChanged<bool> onFingerPanChanged;
   final ValueChanged<bool> onFingerWritingAssistChanged;
   final VoidCallback onInsertImage;
+  final bool showLasso;
+  final bool showInsert;
 
   static const _favoritePresets = [
     _FavoriteToolPreset(
@@ -246,20 +250,22 @@ class _EditorToolbarState extends State<EditorToolbar> {
                           label: 'Eraser',
                           showLabel: showPrimaryLabels,
                         ),
-                        _PrimaryToolButton(
-                          icon: Icons.select_all,
-                          label: 'Lasso',
-                          isSelected: widget.tool.type == ToolType.lasso,
-                          showLabel: showPrimaryLabels,
-                          onPressed: () => _selectTool(ToolType.lasso),
-                        ),
-                        _InsertMenuButton(
-                          isSelected:
-                              widget.tool.type == ToolType.text ||
-                              widget.tool.type == ToolType.shape,
-                          showLabel: showPrimaryLabels,
-                          onSelected: _selectInsertAction,
-                        ),
+                        if (widget.showLasso)
+                          _PrimaryToolButton(
+                            icon: Icons.select_all,
+                            label: 'Lasso',
+                            isSelected: widget.tool.type == ToolType.lasso,
+                            showLabel: showPrimaryLabels,
+                            onPressed: () => _selectTool(ToolType.lasso),
+                          ),
+                        if (widget.showInsert)
+                          _InsertMenuButton(
+                            isSelected:
+                                widget.tool.type == ToolType.text ||
+                                widget.tool.type == ToolType.shape,
+                            showLabel: showPrimaryLabels,
+                            onSelected: _selectInsertAction,
+                          ),
                         const _ToolbarDivider(),
                         _PropertyButton(
                           tool: widget.tool,

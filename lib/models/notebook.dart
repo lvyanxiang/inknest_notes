@@ -1,4 +1,5 @@
 import 'package:inknest_notes/models/notebook_audio_recording.dart';
+import 'package:inknest_notes/models/notebook_layout_mode.dart';
 import 'package:inknest_notes/models/pdf_outline_entry.dart';
 
 class Notebook {
@@ -13,6 +14,7 @@ class Notebook {
     this.pdfOutlines = const [],
     this.bookmarkedPageIds = const [],
     this.audioRecordings = const [],
+    this.layoutMode = NotebookLayoutMode.paged,
   });
 
   final String id;
@@ -25,6 +27,7 @@ class Notebook {
   final List<PdfOutlineEntry> pdfOutlines;
   final List<String> bookmarkedPageIds;
   final List<NotebookAudioRecording> audioRecordings;
+  final NotebookLayoutMode layoutMode;
 
   factory Notebook.fromJson(Map<String, Object?> json) {
     return Notebook(
@@ -52,6 +55,7 @@ class Notebook {
               .map(NotebookAudioRecording.fromJson)
               .toList() ??
           const [],
+      layoutMode: notebookLayoutModeFromJson(json['layoutMode']),
     );
   }
 
@@ -71,6 +75,7 @@ class Notebook {
         'audioRecordings': audioRecordings
             .map((recording) => recording.toJson())
             .toList(),
+      'layoutMode': layoutMode.name,
     };
   }
 
@@ -83,6 +88,7 @@ class Notebook {
     List<PdfOutlineEntry>? pdfOutlines,
     List<String>? bookmarkedPageIds,
     List<NotebookAudioRecording>? audioRecordings,
+    NotebookLayoutMode? layoutMode,
   }) {
     return Notebook(
       id: id,
@@ -97,6 +103,7 @@ class Notebook {
       pdfOutlines: pdfOutlines ?? this.pdfOutlines,
       bookmarkedPageIds: bookmarkedPageIds ?? this.bookmarkedPageIds,
       audioRecordings: audioRecordings ?? this.audioRecordings,
+      layoutMode: layoutMode ?? this.layoutMode,
     );
   }
 }

@@ -2,11 +2,12 @@
 
 ## Current
 
-- Milestone: Editor Workspace V2 (delivered)
-- Next task: Run real-iPad Pencil/rotation/Split View QA for the redesigned and polished editor; then decide whether legacy app-container recovery and a verified raw archive/conversion flow are required for non-empty v0 pages.
-- Last completed: Split Pages, PDF Outline, and Bookmarks into independent
-  top-bar panels, and made every manual blank-page insertion choose a paper
-  style before creating the page.
+- Milestone: Infinite Canvas V1 (delivered)
+- Next task: Real-device iPad QA for Pencil plus two-finger gesture feel, then
+  choose the next roadmap item.
+- Last completed: Added explicit Paged notebook / Infinite canvas creation,
+  independent world-coordinate canvas persistence, focused writing tools,
+  background choices, undo/redo, zoom/pan, autosave, and viewport restoration.
 
 ## Decisions
 

@@ -13,6 +13,8 @@ import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/note_page_template.dart';
 import 'package:inknest_notes/models/note_text_box.dart';
 import 'package:inknest_notes/models/notebook_audio_recording.dart';
+import 'package:inknest_notes/models/infinite_canvas_document.dart';
+import 'package:inknest_notes/models/notebook_layout_mode.dart';
 import 'package:inknest_notes/models/stroke.dart';
 import 'package:inknest_notes/models/stroke_point.dart';
 import 'package:inknest_notes/models/tool.dart';
@@ -23,6 +25,20 @@ void main() {
     await tester.pumpWidget(
       InkNestApp(notebookRepository: InMemoryNotebookRepository()),
     );
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> createPagedNotebook(
+    WidgetTester tester, {
+    bool useTooltip = false,
+  }) async {
+    await tester.tap(
+      useTooltip
+          ? find.byTooltip('New notebook')
+          : find.text('New notebook').first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('create-paged-notebook')));
     await tester.pumpAndSettle();
   }
 
@@ -122,8 +138,7 @@ void main() {
   testWidgets('creates and opens a notebook', (WidgetTester tester) async {
     await pumpInkNestApp(tester);
 
-    await tester.tap(find.text('New notebook'));
-    await tester.pumpAndSettle();
+    await createPagedNotebook(tester);
 
     expect(find.text('Notebook 1'), findsOneWidget);
     expect(find.byTooltip('Start audio recording'), findsOneWidget);
@@ -161,12 +176,84 @@ void main() {
     expect(find.text('No notebooks yet'), findsNothing);
   });
 
+  testWidgets('creates, draws, and configures an infinite canvas', (
+    WidgetTester tester,
+  ) async {
+    final repository = InMemoryNotebookRepository();
+    await tester.pumpWidget(InkNestApp(notebookRepository: repository));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('New notebook').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Paged notebook'), findsOneWidget);
+    expect(find.text('Infinite canvas'), findsOneWidget);
+
+    await tester.tapAt(const Offset(8, 8));
+    await tester.pumpAndSettle();
+    expect(await repository.listNotebooks(), isEmpty);
+
+    await tester.tap(find.text('New notebook').first);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('create-infinite-canvas')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Infinite canvas'), findsOneWidget);
+    expect(find.byKey(const ValueKey('editor-pages-button')), findsNothing);
+    expect(find.byKey(const ValueKey('editor-bookmarks-button')), findsNothing);
+    expect(find.byTooltip('Lasso'), findsNothing);
+
+    final viewport = find.byKey(const ValueKey('infinite-canvas-viewport'));
+    final center = tester.getCenter(viewport);
+    final gesture = await tester.startGesture(center);
+    await gesture.moveBy(const Offset(64, 24));
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    final notebook = (await repository.listNotebooks()).single;
+    expect(notebook.layoutMode, NotebookLayoutMode.infiniteCanvas);
+    expect(notebook.pageIds, isEmpty);
+    expect(
+      (await repository.loadInfiniteCanvas(notebook)).strokes,
+      hasLength(1),
+    );
+
+    final firstFinger = await tester.startGesture(
+      center - const Offset(28, 0),
+      pointer: 17,
+    );
+    final secondFinger = await tester.startGesture(
+      center + const Offset(28, 0),
+      pointer: 18,
+    );
+    await firstFinger.moveBy(const Offset(-24, 8));
+    await secondFinger.moveBy(const Offset(24, 8));
+    await firstFinger.up();
+    await secondFinger.up();
+    await tester.pumpAndSettle();
+    final transformed = await repository.loadInfiniteCanvas(notebook);
+    expect(transformed.strokes, hasLength(1));
+    expect(transformed.viewportScale, greaterThan(1));
+
+    await tester.tap(find.byKey(const ValueKey('infinite-canvas-background')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Grid').last);
+    await tester.pumpAndSettle();
+    expect(
+      (await repository.loadInfiniteCanvas(notebook)).background,
+      InfiniteCanvasBackground.grid,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('infinite-canvas-undo')));
+    await tester.pumpAndSettle();
+    expect((await repository.loadInfiniteCanvas(notebook)).strokes, isEmpty);
+  });
+
   testWidgets('opens notebook search from the editor app bar', (
     WidgetTester tester,
   ) async {
     await pumpInkNestApp(tester);
-    await tester.tap(find.text('New notebook'));
-    await tester.pumpAndSettle();
+    await createPagedNotebook(tester);
 
     await tester.tap(find.byTooltip('Search notebook'));
     await tester.pumpAndSettle();
@@ -564,8 +651,7 @@ void main() {
   ) async {
     await pumpInkNestApp(tester);
 
-    await tester.tap(find.text('New notebook'));
-    await tester.pumpAndSettle();
+    await createPagedNotebook(tester);
     await selectInsertAction(tester, 'Text');
 
     await tester.tapAt(visibleCanvasPoint(tester));
@@ -615,8 +701,7 @@ void main() {
     );
     await pumpInkNestApp(tester);
 
-    await tester.tap(find.text('New notebook'));
-    await tester.pumpAndSettle();
+    await createPagedNotebook(tester);
 
     await drawVisibleStroke(tester);
     await selectVisibleStrokeWithLasso(tester);
@@ -693,8 +778,7 @@ void main() {
     );
     await pumpInkNestApp(tester);
 
-    await tester.tap(find.text('New notebook'));
-    await tester.pumpAndSettle();
+    await createPagedNotebook(tester);
     await drawVisibleStroke(tester);
     await selectVisibleStrokeWithLasso(tester);
     await tester.tap(find.byKey(const ValueKey('lasso-smart-ink')));
@@ -729,8 +813,7 @@ void main() {
   ) async {
     await pumpInkNestApp(tester);
 
-    await tester.tap(find.text('New notebook'));
-    await tester.pumpAndSettle();
+    await createPagedNotebook(tester);
     for (var index = 0; index < 3; index++) {
       await addPageAfterCurrent(tester);
     }
@@ -796,8 +879,7 @@ void main() {
   ) async {
     await pumpInkNestApp(tester);
 
-    await tester.tap(find.text('New notebook'));
-    await tester.pumpAndSettle();
+    await createPagedNotebook(tester);
     await tester.pageBack();
     await tester.pumpAndSettle();
 
@@ -869,8 +951,7 @@ void main() {
   ) async {
     await pumpInkNestApp(tester);
 
-    await tester.tap(find.text('New notebook'));
-    await tester.pumpAndSettle();
+    await createPagedNotebook(tester);
     await tester.pageBack();
     await tester.pumpAndSettle();
 
@@ -912,13 +993,11 @@ void main() {
   ) async {
     await pumpInkNestApp(tester);
 
-    await tester.tap(find.text('New notebook'));
-    await tester.pumpAndSettle();
+    await createPagedNotebook(tester);
     await tester.pageBack();
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('New notebook'));
-    await tester.pumpAndSettle();
+    await createPagedNotebook(tester, useTooltip: true);
     await tester.pageBack();
     await tester.pumpAndSettle();
 
@@ -1216,8 +1295,7 @@ void main() {
   ) async {
     await pumpInkNestApp(tester);
 
-    await tester.tap(find.text('New notebook'));
-    await tester.pumpAndSettle();
+    await createPagedNotebook(tester);
 
     final undoButton = find.widgetWithIcon(IconButton, Icons.undo);
     final redoButton = find.widgetWithIcon(IconButton, Icons.redo);
@@ -1246,8 +1324,7 @@ void main() {
   ) async {
     await pumpInkNestApp(tester);
 
-    await tester.tap(find.text('New notebook'));
-    await tester.pumpAndSettle();
+    await createPagedNotebook(tester);
 
     await tester.tap(find.byKey(const ValueKey('editor-zoom-chip')));
     await tester.pump();
@@ -1280,8 +1357,7 @@ void main() {
   ) async {
     await pumpInkNestApp(tester);
 
-    await tester.tap(find.text('New notebook'));
-    await tester.pumpAndSettle();
+    await createPagedNotebook(tester);
 
     final center = visibleCanvasPoint(tester);
     final firstFinger = await tester.startGesture(
@@ -1309,8 +1385,7 @@ void main() {
   ) async {
     await pumpInkNestApp(tester);
 
-    await tester.tap(find.text('New notebook'));
-    await tester.pumpAndSettle();
+    await createPagedNotebook(tester);
 
     expect(find.byTooltip('Pen'), findsOneWidget);
     expect(find.byTooltip('Highlighter'), findsOneWidget);
@@ -1362,8 +1437,7 @@ void main() {
   ) async {
     await pumpInkNestApp(tester);
 
-    await tester.tap(find.text('New notebook'));
-    await tester.pumpAndSettle();
+    await createPagedNotebook(tester);
 
     await tester.tap(find.byKey(const ValueKey('editor-finger-mode-menu')));
     await tester.pumpAndSettle();
@@ -1394,8 +1468,7 @@ void main() {
   testWidgets('adds and switches notebook pages', (WidgetTester tester) async {
     await pumpInkNestApp(tester);
 
-    await tester.tap(find.text('New notebook'));
-    await tester.pumpAndSettle();
+    await createPagedNotebook(tester);
 
     final undoButton = find.widgetWithIcon(IconButton, Icons.undo);
 
@@ -1423,8 +1496,7 @@ void main() {
   ) async {
     await pumpInkNestApp(tester);
 
-    await tester.tap(find.text('New notebook'));
-    await tester.pumpAndSettle();
+    await createPagedNotebook(tester);
 
     await tester.tap(find.byKey(const ValueKey('editor-bookmarks-button')));
     await tester.pumpAndSettle();
@@ -1454,8 +1526,7 @@ void main() {
   ) async {
     await pumpInkNestApp(tester);
 
-    await tester.tap(find.text('New notebook'));
-    await tester.pumpAndSettle();
+    await createPagedNotebook(tester);
 
     await openEditorPages(tester);
     await tester.tap(find.byTooltip('Page 1 actions'));
@@ -1496,8 +1567,7 @@ void main() {
   ) async {
     await pumpInkNestApp(tester);
 
-    await tester.tap(find.text('New notebook'));
-    await tester.pumpAndSettle();
+    await createPagedNotebook(tester);
 
     await openEditorPages(tester);
     await tester.tap(find.byTooltip('Page 1 actions'));

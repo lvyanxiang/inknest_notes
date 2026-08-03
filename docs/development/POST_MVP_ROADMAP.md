@@ -41,6 +41,8 @@ The detailed plan lives in `docs/development/SMART_INK_PLAN.md`.
 
 ### Editor Experience
 
+- [x] Explicit Paged notebook / Infinite canvas creation with an independent
+  world-coordinate V1 canvas, persisted viewport, and focused writing tools.
 - [x] Zoom and pan with two-finger gestures.
 - [x] Stable fixed-coordinate paper viewport with Fit Width, Fit Page,
   per-page session focus, and resize/rotation preservation.

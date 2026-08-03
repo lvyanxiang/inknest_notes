@@ -3,8 +3,10 @@ import 'dart:io';
 import 'dart:ui';
 
 import 'package:inknest_notes/models/notebook.dart';
+import 'package:inknest_notes/models/infinite_canvas_document.dart';
 import 'package:inknest_notes/models/notebook_audio_recording.dart';
 import 'package:inknest_notes/models/notebook_folder.dart';
+import 'package:inknest_notes/models/notebook_layout_mode.dart';
 import 'package:inknest_notes/models/note_image.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/note_page_template.dart';
@@ -106,7 +108,10 @@ class FileNotebookRepository implements NotebookRepository {
   }
 
   @override
-  Future<Notebook> createNotebook({String? title}) async {
+  Future<Notebook> createNotebook({
+    String? title,
+    NotebookLayoutMode layoutMode = NotebookLayoutMode.paged,
+  }) async {
     final notebooks = await _readIndex();
     final now = DateTime.now();
     final notebook = Notebook(
@@ -114,12 +119,54 @@ class FileNotebookRepository implements NotebookRepository {
       title: title ?? 'Notebook ${notebooks.length + 1}',
       createdAt: now,
       updatedAt: now,
-      pageIds: const ['page-1'],
+      pageIds: layoutMode == NotebookLayoutMode.paged
+          ? const ['page-1']
+          : const [],
+      layoutMode: layoutMode,
     );
 
     await _writeIndex([...notebooks, notebook]);
-    await savePage(notebook, _emptyPage('page-1'));
+    if (layoutMode == NotebookLayoutMode.paged) {
+      await savePage(notebook, _emptyPage('page-1'));
+    } else {
+      await saveInfiniteCanvas(notebook, const InfiniteCanvasDocument());
+    }
     return notebook;
+  }
+
+  @override
+  Future<InfiniteCanvasDocument> loadInfiniteCanvas(Notebook notebook) async {
+    final file = _infiniteCanvasFile(notebook);
+    if (!await file.exists()) {
+      return const InfiniteCanvasDocument();
+    }
+    final json = jsonDecode(await file.readAsString());
+    return InfiniteCanvasDocument.fromJson(json as Map<String, Object?>);
+  }
+
+  @override
+  Future<void> saveInfiniteCanvas(
+    Notebook notebook,
+    InfiniteCanvasDocument document,
+  ) async {
+    await _runStorageWrite(() async {
+      await _writeJsonFile(_infiniteCanvasFile(notebook), document.toJson());
+      final notebooks = await _readIndex();
+      final currentNotebook = notebooks.firstWhere(
+        (existingNotebook) => existingNotebook.id == notebook.id,
+        orElse: () => notebook,
+      );
+      final updatedNotebook = currentNotebook.copyWith(
+        updatedAt: DateTime.now(),
+      );
+      await _writeIndex([
+        for (final existingNotebook in notebooks)
+          if (existingNotebook.id == notebook.id)
+            updatedNotebook
+          else
+            existingNotebook,
+      ]);
+    });
   }
 
   @override
@@ -367,6 +414,7 @@ class FileNotebookRepository implements NotebookRepository {
       pdfOutlines: notebook.pdfOutlines,
       bookmarkedPageIds: notebook.bookmarkedPageIds,
       audioRecordings: notebook.audioRecordings,
+      layoutMode: notebook.layoutMode,
     );
     final sourceDirectory = _notebookDirectory(notebook);
     final destinationDirectory = _notebookDirectory(duplicatedNotebook);
@@ -753,6 +801,10 @@ class FileNotebookRepository implements NotebookRepository {
     return File(
       '${_notebooksDirectory.path}/${notebook.id}/pages/$pageId.json',
     );
+  }
+
+  File _infiniteCanvasFile(Notebook notebook) {
+    return File('${_notebookDirectory(notebook).path}/canvas.json');
   }
 
   Directory _notebookDirectory(Notebook notebook) {

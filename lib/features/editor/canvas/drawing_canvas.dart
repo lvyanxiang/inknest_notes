@@ -207,7 +207,6 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
   }
 }
 
-@visibleForTesting
 Stroke applyFingerWritingAssist({
   required Stroke stroke,
   required PointerDeviceKind? pointerKind,

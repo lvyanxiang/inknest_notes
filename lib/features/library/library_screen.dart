@@ -5,8 +5,10 @@ import 'dart:math' as math;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:inknest_notes/features/editor/editor_screen.dart';
+import 'package:inknest_notes/features/editor/infinite_canvas_screen.dart';
 import 'package:inknest_notes/models/notebook.dart';
 import 'package:inknest_notes/models/notebook_folder.dart';
+import 'package:inknest_notes/models/notebook_layout_mode.dart';
 import 'package:inknest_notes/storage/notebook_repository.dart';
 
 class LibraryScreen extends StatefulWidget {
@@ -32,6 +34,125 @@ extension _LibrarySortModeLabel on _LibrarySortMode {
       case _LibrarySortMode.updated:
         return 'Updated date';
     }
+  }
+}
+
+class _NotebookTypePicker extends StatelessWidget {
+  const _NotebookTypePicker();
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 640),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Create a notebook', style: textTheme.headlineSmall),
+              const SizedBox(height: 4),
+              Text(
+                'Choose how you want to organize this notebook.',
+                style: textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 20),
+              _NotebookTypeCard(
+                key: const ValueKey('create-paged-notebook'),
+                icon: Icons.auto_stories_outlined,
+                title: 'Paged notebook',
+                description:
+                    'Structured paper pages with page management, bookmarks, and PDF tools.',
+                onTap: () =>
+                    Navigator.of(context).pop(NotebookLayoutMode.paged),
+              ),
+              const SizedBox(height: 12),
+              _NotebookTypeCard(
+                key: const ValueKey('create-infinite-canvas'),
+                icon: Icons.gesture,
+                title: 'Infinite canvas',
+                description:
+                    'A flexible space for freeform thinking, zooming, and spatial notes.',
+                onTap: () => Navigator.of(
+                  context,
+                ).pop(NotebookLayoutMode.infiniteCanvas),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NotebookTypeCard extends StatelessWidget {
+  const _NotebookTypeCard({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.description,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String description;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Semantics(
+      button: true,
+      label: title,
+      child: Material(
+        color: colorScheme.surfaceContainerLow,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: BorderSide(color: colorScheme.outlineVariant),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Row(
+              children: [
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Icon(icon, color: colorScheme.onPrimaryContainer),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(description),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Icon(Icons.chevron_right),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -136,7 +257,19 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   Future<void> _createNotebook() async {
-    var notebook = await widget.notebookRepository.createNotebook();
+    final layoutMode = await showModalBottomSheet<NotebookLayoutMode>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) => const _NotebookTypePicker(),
+    );
+    if (layoutMode == null) {
+      return;
+    }
+
+    var notebook = await widget.notebookRepository.createNotebook(
+      layoutMode: layoutMode,
+    );
     final folderId = _showArchived ? null : _currentFolderId;
     if (folderId != null) {
       notebook = await widget.notebookRepository.moveNotebookToFolder(
@@ -187,10 +320,16 @@ class _LibraryScreenState extends State<LibraryScreen> {
   Future<void> _openNotebook(Notebook notebook) async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
-        builder: (context) => EditorScreen(
-          notebook: notebook,
-          notebookRepository: widget.notebookRepository,
-        ),
+        builder: (context) => switch (notebook.layoutMode) {
+          NotebookLayoutMode.paged => EditorScreen(
+            notebook: notebook,
+            notebookRepository: widget.notebookRepository,
+          ),
+          NotebookLayoutMode.infiniteCanvas => InfiniteCanvasScreen(
+            notebook: notebook,
+            notebookRepository: widget.notebookRepository,
+          ),
+        },
       ),
     );
 
@@ -1167,7 +1306,9 @@ class _LibraryBookshelf extends StatelessWidget {
     }
 
     final notebook = notebooks[index - folders.length];
-    final pageCount = math.max(1, notebook.pageIds.length);
+    final pageCount = notebook.layoutMode == NotebookLayoutMode.infiniteCanvas
+        ? 1
+        : math.max(1, notebook.pageIds.length);
     final width = minimumWidth + math.log(pageCount + 1) / math.ln10 * 10;
     return width.clamp(minimumWidth, maximumWidth).toDouble();
   }
@@ -1516,9 +1657,13 @@ class _NotebookCardState extends State<_NotebookCard> {
         leanAngle: _spineLeanAngle,
         leadingIcon: widget.showArchived
             ? Icons.inventory_2_outlined
+            : notebook.layoutMode == NotebookLayoutMode.infiniteCanvas
+            ? Icons.gesture
             : Icons.auto_stories_outlined,
         title: notebook.title,
-        metadata: '${notebook.pageIds.length}p',
+        metadata: notebook.layoutMode == NotebookLayoutMode.infiniteCanvas
+            ? 'Canvas'
+            : '${notebook.pageIds.length}p',
         action: _NotebookActionMenu(
           notebookTitle: notebook.title,
           showArchived: widget.showArchived,

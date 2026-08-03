@@ -2,8 +2,10 @@ import 'dart:io';
 import 'dart:ui';
 
 import 'package:inknest_notes/models/notebook.dart';
+import 'package:inknest_notes/models/infinite_canvas_document.dart';
 import 'package:inknest_notes/models/notebook_audio_recording.dart';
 import 'package:inknest_notes/models/notebook_folder.dart';
+import 'package:inknest_notes/models/notebook_layout_mode.dart';
 import 'package:inknest_notes/models/note_image.dart';
 import 'package:inknest_notes/models/note_page.dart';
 
@@ -61,7 +63,17 @@ abstract class NotebookRepository {
 
   Future<void> deleteFolder(NotebookFolder folder);
 
-  Future<Notebook> createNotebook({String? title});
+  Future<Notebook> createNotebook({
+    String? title,
+    NotebookLayoutMode layoutMode = NotebookLayoutMode.paged,
+  });
+
+  Future<InfiniteCanvasDocument> loadInfiniteCanvas(Notebook notebook);
+
+  Future<void> saveInfiniteCanvas(
+    Notebook notebook,
+    InfiniteCanvasDocument document,
+  );
 
   Future<Notebook> importPdf(File sourceFile);
 

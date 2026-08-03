@@ -5,6 +5,8 @@ import 'dart:ui';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as image;
 import 'package:inknest_notes/models/notebook_audio_recording.dart';
+import 'package:inknest_notes/models/infinite_canvas_document.dart';
+import 'package:inknest_notes/models/notebook_layout_mode.dart';
 import 'package:inknest_notes/models/note_image.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/note_page_template.dart';
@@ -24,6 +26,53 @@ void main() {
   setUp(() {
     tempDirectory = Directory.systemTemp.createTempSync('inknest-notes-test-');
     repository = FileNotebookRepository(rootDirectory: tempDirectory);
+  });
+
+  test('persists an infinite canvas separately from paged content', () async {
+    final notebook = await repository.createNotebook(
+      title: 'Ideas',
+      layoutMode: NotebookLayoutMode.infiniteCanvas,
+    );
+    expect(notebook.pageIds, isEmpty);
+
+    final document = InfiniteCanvasDocument(
+      background: InfiniteCanvasBackground.dotted,
+      viewportFocus: const Offset(400, -120),
+      viewportScale: 1.5,
+      strokes: [
+        Stroke(
+          id: 'stroke-canvas',
+          tool: ToolType.highlighter,
+          color: const Color(0x66FFCC00),
+          width: 12,
+          points: [
+            StrokePoint(
+              offset: const Offset(9000, -3000),
+              pressure: 1,
+              time: DateTime.utc(2026, 8, 3),
+            ),
+          ],
+        ),
+      ],
+    );
+    await repository.saveInfiniteCanvas(notebook, document);
+
+    final reloadedRepository = FileNotebookRepository(
+      rootDirectory: tempDirectory,
+    );
+    final reloadedNotebook = (await reloadedRepository.listNotebooks()).single;
+    final reloaded = await reloadedRepository.loadInfiniteCanvas(
+      reloadedNotebook,
+    );
+
+    expect(reloadedNotebook.layoutMode, NotebookLayoutMode.infiniteCanvas);
+    expect(reloadedNotebook.pageIds, isEmpty);
+    expect(reloaded.background, InfiniteCanvasBackground.dotted);
+    expect(reloaded.viewportFocus, const Offset(400, -120));
+    expect(
+      reloaded.strokes.single.points.single.offset,
+      const Offset(9000, -3000),
+    );
   });
 
   tearDown(() {
