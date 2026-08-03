@@ -26,7 +26,9 @@ than adding new controls or another visual layer over the paper.
 4. Change a preset, color, or width. The panel updates the page tool immediately
    and can be dismissed without changing canvas focus.
 5. Undo/Redo from the document row. Search and More remain at the trailing edge.
-6. On cancellation or picker failure, retain tool, viewport, and page content;
+6. At regular widths, start or stop recording from the document row; at wide
+   landscape widths, export from the same row. Compact layouts use More.
+7. On cancellation or picker failure, retain tool, viewport, and page content;
    existing snackbars explain errors.
 
 ## State Matrix
@@ -39,6 +41,9 @@ than adding new controls or another visual layer over the paper.
 | No ink history | Undo/Redo disabled in document bar | Other actions remain available | Disabled appearance and semantics |
 | Read-only legacy page | Tool dock dimmed and blocked; document navigation remains active | Pages, search, view/export actions | Existing write-protection explanation remains |
 | Busy audio/export/import | Existing progress/status feedback | Unrelated navigation where safe | Existing error snackbar/retry path |
+| Compact document bar (<720) | History, Search, More; no direct Record/Export | Record and Export through labelled More sections | Notebook title keeps usable width |
+| Regular document bar (≥720) | Direct Record plus History, Search, More | Start/stop recording in one tap | Busy spinner; active recording banner remains visible |
+| Wide document bar (≥1000) | Direct Record and Export | Time-sensitive recording and completion action in one tap | Export progress replaces the share icon |
 
 ## Layout And Components
 
@@ -52,12 +57,25 @@ than adding new controls or another visual layer over the paper.
 - Trailing order:
   1. Undo ink stroke.
   2. Redo ink stroke.
-  3. Search notebook.
-  4. More editor actions.
-- Record, Export, and all existing lower-frequency actions remain in More.
-  Active recording continues to use its existing visible status banner.
+  3. Record at ≥720px.
+  4. Search notebook.
+  5. Export at ≥1000px.
+  6. More editor actions.
+- Record and Export remain available in More at every width. Active recording
+  continues to use its existing visible status banner and stop action.
 - At compact widths, the notebook title flexes and truncates before any action
   target shrinks. No title interaction duplicates the Pages entry.
+
+### More menu
+
+- Use labelled sections in this order:
+  1. **Page:** Add page, Page template, Bookmark/Remove bookmark, Rotate page.
+  2. **Document:** Import PDF, Export PDF.
+  3. **Audio:** Audio library/recordings, Start/Stop recording.
+  4. **View:** Fit width, Fit page.
+- Section labels are non-interactive and visually quieter than action rows.
+- Keep disabled actions visible when they explain a state, such as an
+  unavailable template or an import blocked during recording.
 
 ### Contextual tool dock
 
@@ -101,8 +119,9 @@ than adding new controls or another visual layer over the paper.
 - Keyboard: existing keyboard behavior remains; Undo/Redo buttons expose honest
   ink-only semantics until unified history exists.
 - 600px Split View: all targets remain at least 44px; no horizontal scrolling.
-- 834px portrait and 1194px landscape: tool cluster remains centered and no
-  preset dots compete with tool icons.
+- 834px portrait: Record is direct; Export remains in More.
+- 1194px landscape: Record and Export are direct.
+- Tool cluster remains centered and no preset dots compete with tool icons.
 - Phone/Web are out of scope.
 
 ## Accessibility
@@ -129,6 +148,9 @@ than adding new controls or another visual layer over the paper.
 - [x] Read-only, busy, selected, disabled, and cancellation behavior remains
   coherent with existing editor feedback.
 - [x] No supported layout overflows or introduces a scrolling toolbar.
+- [x] Direct Record/Export visibility follows the 720px/1000px breakpoints.
+- [x] More has readable Page, Document, Audio, and View sections and preserves
+  every existing action and enabled/disabled state.
 
 ## Verification
 

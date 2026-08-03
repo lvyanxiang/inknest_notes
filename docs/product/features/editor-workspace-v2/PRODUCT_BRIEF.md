@@ -42,6 +42,9 @@ Adopt a calmer two-level editor command model:
    the persistent dock.
 5. Tapping an already-selected configurable tool opens its properties, while
    the visible style control remains the explicit alternative.
+6. Time-sensitive document actions adapt to available width: Record appears at
+   720px and above, Export appears at 1000px and above, and both remain in a
+   labelled More menu for compact layouts and discoverability.
 
 This keeps all existing features and page-coordinate behavior intact while
 shortening the highest-frequency tool paths and restoring a clear information
@@ -62,6 +65,10 @@ hierarchy.
     control after Insert → Shape.
   - Preserve current iPad width breakpoints, minimum targets, canvas transforms,
     page navigation, search, audio, import, export, and write-protection rules.
+  - Group More actions under Page, Document, Audio, and View headings instead
+    of relying on unlabelled dividers.
+  - Show a direct Record control at ≥720px and a direct Export control at
+    ≥1000px; preserve their More-menu entries at every width.
 - Non-goals:
   - New drawing engines, tools, content types, persisted preset customization,
     or a unified undo model.
@@ -100,6 +107,10 @@ hierarchy.
 - [x] Existing notebooks and page coordinates are unchanged.
 - [x] Important controls retain tooltips, selected semantics, and at least 44px
   targets at supported iPad and Split View widths.
+- [x] Record is directly reachable at ≥720px, Export is directly reachable at
+  ≥1000px, and neither crowds the 600px Split View document bar.
+- [x] More groups every existing action under Page, Document, Audio, or View,
+  while disabled/busy states remain visible and understandable.
 
 ## Alternatives And Tradeoffs
 
@@ -131,6 +142,8 @@ hierarchy.
 - UI/UX spec:
   `docs/product/features/editor-workspace-v2/UI_UX_SPEC.md`
 - Implementation status: Delivered on 2026-08-03
-- Verification: Focused responsive/tool tests and the full 130-test Flutter
-  suite pass; `flutter analyze` and `git diff --check` pass. Real-iPad Pencil,
-  rotation, and Split View QA remains a release follow-up.
+- Verification: Focused responsive/tool tests and the full 131-test Flutter
+  suite pass; `flutter analyze` and `git diff --check` pass. Responsive coverage
+  confirms compact, regular, and wide direct-action visibility plus labelled
+  More sections. Real-iPad Pencil, rotation, and Split View QA remains a release
+  follow-up.

@@ -114,6 +114,42 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets('adapts direct actions and groups the More menu by purpose', (
+      tester,
+    ) async {
+      await _createFixture(tester, const Size(600, 800));
+
+      expect(find.byKey(const ValueKey('editor-record-button')), findsNothing);
+      expect(find.byKey(const ValueKey('editor-export-button')), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('editor-more-actions')));
+      await tester.pumpAndSettle();
+      for (final section in const ['PAGE', 'DOCUMENT', 'AUDIO', 'VIEW']) {
+        expect(find.text(section), findsOneWidget);
+      }
+      expect(find.text('Start recording'), findsOneWidget);
+      expect(find.text('Export PDF'), findsOneWidget);
+      await tester.tapAt(const Offset(12, 300));
+      await tester.pumpAndSettle();
+
+      await _createFixture(tester, const Size(834, 1194));
+      expect(
+        find.byKey(const ValueKey('editor-record-button')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('editor-export-button')), findsNothing);
+
+      await _createFixture(tester, const Size(1194, 834));
+      expect(
+        find.byKey(const ValueKey('editor-record-button')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('editor-export-button')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('exposes Fit width and Fit page from the zoom menu', (
       tester,
     ) async {

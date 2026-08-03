@@ -1963,6 +1963,8 @@ class _EditorScreenState extends State<EditorScreen> {
             (recording) => recording.id == playbackRecording.id,
           );
     final screenWidth = MediaQuery.sizeOf(context).width;
+    final showRecordAction = screenWidth >= 720;
+    final showExportAction = screenWidth >= 1000;
     final currentPageNumber = math.max(
       1,
       _notebook.pageIds.indexOf(_currentPageId) + 1,
@@ -2034,6 +2036,27 @@ class _EditorScreenState extends State<EditorScreen> {
             tooltip: 'Redo ink stroke',
             icon: const Icon(Icons.redo),
           ),
+          if (showRecordAction)
+            IconButton(
+              key: const ValueKey('editor-record-button'),
+              onPressed: page == null || _isAudioBusy
+                  ? null
+                  : () => unawaited(_toggleAudioRecording()),
+              tooltip: isRecording
+                  ? 'Stop audio recording'
+                  : 'Start audio recording',
+              icon: _isAudioBusy
+                  ? const SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Icon(
+                      isRecording ? Icons.stop_circle : Icons.mic_none,
+                      color: isRecording
+                          ? Theme.of(context).colorScheme.error
+                          : null,
+                    ),
+            ),
           IconButton(
             onPressed: () => unawaited(_showNotebookSearch()),
             tooltip: 'Search notebook',
@@ -2044,6 +2067,20 @@ class _EditorScreenState extends State<EditorScreen> {
                   : Theme.of(context).colorScheme.primary,
             ),
           ),
+          if (showExportAction)
+            IconButton(
+              key: const ValueKey('editor-export-button'),
+              onPressed: page == null || _isExporting
+                  ? null
+                  : () => unawaited(_exportPdf()),
+              tooltip: 'Export PDF',
+              icon: _isExporting
+                  ? const SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.ios_share),
+            ),
           _EditorOverflowMenu(
             page: page,
             isRecording: isRecording,
@@ -2412,23 +2449,11 @@ class _EditorOverflowMenu extends StatelessWidget {
       onSelected: onSelected,
       itemBuilder: (context) {
         return [
+          _editorMenuSection('Page'),
           _editorMenuItem(
-            value: _EditorMenuAction.audioLibrary,
-            icon: Icons.library_music_outlined,
-            label: hasAudioRecordings ? 'Audio recordings' : 'Audio library',
-          ),
-          _editorMenuItem(
-            value: _EditorMenuAction.toggleRecording,
-            icon: isRecording ? Icons.stop_circle_outlined : Icons.mic_none,
-            label: isRecording ? 'Stop recording' : 'Start recording',
-            enabled: page != null && !isAudioBusy,
-          ),
-          const PopupMenuDivider(),
-          _editorMenuItem(
-            value: _EditorMenuAction.importPdf,
-            icon: Icons.picture_as_pdf_outlined,
-            label: isImportingPdfs ? 'Importing PDF…' : 'Import PDF',
-            enabled: page != null && !isImportingPdfs && !isRecording,
+            value: _EditorMenuAction.addPage,
+            icon: Icons.note_add_outlined,
+            label: 'Add page',
           ),
           _editorMenuItem(
             value: _EditorMenuAction.pageTemplate,
@@ -2451,12 +2476,35 @@ class _EditorOverflowMenu extends StatelessWidget {
             label: 'Rotate page clockwise',
             enabled: page != null && !isPageWriteProtected,
           ),
+          const PopupMenuDivider(height: 8),
+          _editorMenuSection('Document'),
           _editorMenuItem(
-            value: _EditorMenuAction.addPage,
-            icon: Icons.note_add_outlined,
-            label: 'Add page',
+            value: _EditorMenuAction.importPdf,
+            icon: Icons.picture_as_pdf_outlined,
+            label: isImportingPdfs ? 'Importing PDF…' : 'Import PDF',
+            enabled: page != null && !isImportingPdfs && !isRecording,
           ),
-          const PopupMenuDivider(),
+          _editorMenuItem(
+            value: _EditorMenuAction.exportPdf,
+            icon: Icons.ios_share,
+            label: isExporting ? 'Exporting…' : 'Export PDF',
+            enabled: page != null && !isExporting,
+          ),
+          const PopupMenuDivider(height: 8),
+          _editorMenuSection('Audio'),
+          _editorMenuItem(
+            value: _EditorMenuAction.audioLibrary,
+            icon: Icons.library_music_outlined,
+            label: hasAudioRecordings ? 'Audio recordings' : 'Audio library',
+          ),
+          _editorMenuItem(
+            value: _EditorMenuAction.toggleRecording,
+            icon: isRecording ? Icons.stop_circle_outlined : Icons.mic_none,
+            label: isRecording ? 'Stop recording' : 'Start recording',
+            enabled: page != null && !isAudioBusy,
+          ),
+          const PopupMenuDivider(height: 8),
+          _editorMenuSection('View'),
           _editorMenuItem(
             value: _EditorMenuAction.fitWidth,
             icon: Icons.fit_screen_outlined,
@@ -2468,13 +2516,6 @@ class _EditorOverflowMenu extends StatelessWidget {
             icon: Icons.center_focus_strong,
             label: 'Fit page',
             enabled: page != null,
-          ),
-          const PopupMenuDivider(),
-          _editorMenuItem(
-            value: _EditorMenuAction.exportPdf,
-            icon: Icons.ios_share,
-            label: isExporting ? 'Exporting…' : 'Export PDF',
-            enabled: page != null && !isExporting,
           ),
         ];
       },
@@ -2515,6 +2556,22 @@ PopupMenuItem<_EditorMenuAction> _editorMenuItem({
           ),
         ),
       ],
+    ),
+  );
+}
+
+PopupMenuItem<_EditorMenuAction> _editorMenuSection(String label) {
+  return PopupMenuItem<_EditorMenuAction>(
+    enabled: false,
+    height: 32,
+    child: Text(
+      label.toUpperCase(),
+      style: TextStyle(
+        color: EditorWorkspaceTokens.ink.withValues(alpha: 0.58),
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.8,
+      ),
     ),
   );
 }

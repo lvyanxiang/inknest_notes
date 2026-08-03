@@ -113,7 +113,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Notebook 1'), findsOneWidget);
-    expect(find.byTooltip('Start audio recording'), findsNothing);
+    expect(find.byTooltip('Start audio recording'), findsOneWidget);
     expect(find.byTooltip('Search notebook'), findsOneWidget);
     expect(find.byKey(const ValueKey('editor-more-actions')), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('editor-more-actions')));

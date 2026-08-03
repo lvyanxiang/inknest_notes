@@ -166,7 +166,8 @@ The detailed plan lives in `docs/development/SMART_INK_PLAN.md`.
 - [x] Make tool controls more compact and contextual for iPad portrait,
   landscape, and Split View without hidden horizontal scrolling.
 - [x] Reorganize editor commands into a document bar and contextual tool dock,
-  restore direct Pen/Highlighter switching, and move presets into properties.
+  restore direct Pen/Highlighter switching, move presets into properties,
+  adapt Record/Export shortcuts to width, and group More actions by purpose.
 - Add keyboard shortcuts for undo, redo, tool switching, and export.
 - Add undo/redo history per page with clearer state.
 - [x] Move page thumbnails into one Pages/Outline/Bookmarks navigator that can
