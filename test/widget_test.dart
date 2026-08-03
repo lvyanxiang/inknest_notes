@@ -113,11 +113,16 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Notebook 1'), findsOneWidget);
-    expect(find.byTooltip('Start audio recording'), findsOneWidget);
+    expect(find.byTooltip('Start audio recording'), findsNothing);
     expect(find.byTooltip('Search notebook'), findsOneWidget);
     expect(find.byKey(const ValueKey('editor-more-actions')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('editor-more-actions')));
+    await tester.pumpAndSettle();
+    expect(find.text('Start recording'), findsOneWidget);
+    await tester.tapAt(const Offset(300, 300));
+    await tester.pumpAndSettle();
     expect(find.byTooltip('Pen'), findsOneWidget);
-    expect(find.byTooltip('Highlighter'), findsNothing);
+    expect(find.byTooltip('Highlighter'), findsOneWidget);
     expect(find.byTooltip('Eraser'), findsOneWidget);
     expect(find.byTooltip('Lasso'), findsOneWidget);
     expect(find.byTooltip('Insert'), findsOneWidget);
@@ -1277,7 +1282,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byTooltip('Pen'), findsOneWidget);
-    expect(find.byTooltip('Highlighter'), findsNothing);
+    expect(find.byTooltip('Highlighter'), findsOneWidget);
     expect(find.byTooltip('Eraser'), findsOneWidget);
     expect(find.byTooltip('Finger writes'), findsOneWidget);
     expect(
@@ -1298,12 +1303,8 @@ void main() {
     await tester.tapAt(const Offset(8, 180));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey('editor-tool-properties')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('writing-style-highlighter')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Close tool properties'));
-    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('editor-highlighter-tool')));
+    await tester.pump();
 
     final start = visibleCanvasPoint(tester);
     final gesture = await tester.startGesture(start);

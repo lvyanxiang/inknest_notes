@@ -10,7 +10,8 @@ import 'package:inknest_notes/models/tool.dart';
 ///
 /// The dock deliberately uses a fixed [Row] instead of a horizontally
 /// scrolling toolbar. Primary tools remain visible at every supported iPad
-/// width, while presets and properties progressively disclose into menus.
+/// width, while presets and properties progressively disclose into the active
+/// tool's settings surface.
 class EditorToolbar extends StatefulWidget {
   const EditorToolbar({
     super.key,
@@ -21,10 +22,6 @@ class EditorToolbar extends StatefulWidget {
     required this.onFingerPanChanged,
     required this.onFingerWritingAssistChanged,
     required this.onInsertImage,
-    this.canUndo = false,
-    this.canRedo = false,
-    this.onUndo,
-    this.onRedo,
   });
 
   final DrawingTool tool;
@@ -34,10 +31,6 @@ class EditorToolbar extends StatefulWidget {
   final ValueChanged<bool> onFingerPanChanged;
   final ValueChanged<bool> onFingerWritingAssistChanged;
   final VoidCallback onInsertImage;
-  final bool canUndo;
-  final bool canRedo;
-  final VoidCallback? onUndo;
-  final VoidCallback? onRedo;
 
   static const _favoritePresets = [
     _FavoriteToolPreset(
@@ -85,8 +78,6 @@ class _EditorToolbarState extends State<EditorToolbar> {
       width: 3,
     ),
   };
-  ToolType _lastWritingToolType = ToolType.pen;
-
   @override
   void initState() {
     super.initState();
@@ -103,26 +94,12 @@ class _EditorToolbarState extends State<EditorToolbar> {
     if (_lastToolSettings.containsKey(tool.type)) {
       _lastToolSettings[tool.type] = tool;
     }
-    if (_isWritingTool(tool.type)) {
-      _lastWritingToolType = tool.type;
-    }
   }
 
   void _applyTool(DrawingTool tool) {
     _rememberTool(tool);
     widget.onToolChanged(tool);
   }
-
-  void _selectWritingTool() {
-    if (_isWritingTool(widget.tool.type)) {
-      return;
-    }
-    final remembered = _lastToolSettings[_lastWritingToolType];
-    _applyTool(remembered ?? EditorToolbar._favoritePresets.first.tool);
-  }
-
-  bool _isWritingTool(ToolType type) =>
-      type == ToolType.pen || type == ToolType.highlighter;
 
   void _selectTool(ToolType type) {
     final rememberedTool = _lastToolSettings[type];
@@ -181,6 +158,34 @@ class _EditorToolbarState extends State<EditorToolbar> {
     );
   }
 
+  Widget _buildConfigurableToolButton({
+    Key? key,
+    required ToolType type,
+    required IconData icon,
+    required String label,
+    required bool showLabel,
+  }) {
+    return Builder(
+      builder: (buttonContext) {
+        final isSelected = widget.tool.type == type;
+        return _PrimaryToolButton(
+          key: key,
+          icon: icon,
+          label: label,
+          isSelected: isSelected,
+          showLabel: showLabel,
+          onPressed: () {
+            if (isSelected) {
+              unawaited(_showToolProperties(buttonContext));
+              return;
+            }
+            _selectTool(type);
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Material(
@@ -205,12 +210,9 @@ class _EditorToolbarState extends State<EditorToolbar> {
                   >= 720 => _ToolbarDensity.standard,
                   _ => _ToolbarDensity.compact,
                 };
-                // Four presets remain visible from the wide breakpoint, but
-                // text labels on all five primary tools need more room than a
-                // typical 11-inch iPad landscape window provides.
-                final showPrimaryLabels = constraints.maxWidth >= 1320;
+                final showPrimaryLabels = constraints.maxWidth >= 1000;
                 final showFingerLabel = density == _ToolbarDensity.wide;
-                final showPropertyLabel = density == _ToolbarDensity.wide;
+                final showPropertyLabel = density != _ToolbarDensity.compact;
                 final horizontalPadding = density == _ToolbarDensity.compact
                     ? 4.0
                     : 10.0;
@@ -224,41 +226,25 @@ class _EditorToolbarState extends State<EditorToolbar> {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Builder(
-                          builder: (buttonContext) {
-                            final isWriting = _isWritingTool(widget.tool.type);
-                            final writingLabel =
-                                widget.tool.type == ToolType.highlighter
-                                ? 'Highlighter'
-                                : 'Pen';
-                            final writingIcon =
-                                widget.tool.type == ToolType.highlighter
-                                ? Icons.border_color
-                                : Icons.edit;
-                            return _PrimaryToolButton(
-                              key: const ValueKey('editor-writing-tool'),
-                              icon: writingIcon,
-                              label: writingLabel,
-                              isSelected: isWriting,
-                              showLabel: showPrimaryLabels,
-                              onPressed: () {
-                                if (isWriting) {
-                                  unawaited(
-                                    _showToolProperties(buttonContext),
-                                  );
-                                  return;
-                                }
-                                _selectWritingTool();
-                              },
-                            );
-                          },
-                        ),
-                        _PrimaryToolButton(
-                          icon: Icons.cleaning_services_outlined,
-                          label: 'Eraser',
-                          isSelected: widget.tool.type == ToolType.eraser,
+                        _buildConfigurableToolButton(
+                          key: const ValueKey('editor-pen-tool'),
+                          type: ToolType.pen,
+                          icon: Icons.edit,
+                          label: 'Pen',
                           showLabel: showPrimaryLabels,
-                          onPressed: () => _selectTool(ToolType.eraser),
+                        ),
+                        _buildConfigurableToolButton(
+                          key: const ValueKey('editor-highlighter-tool'),
+                          type: ToolType.highlighter,
+                          icon: Icons.border_color,
+                          label: 'Highlighter',
+                          showLabel: showPrimaryLabels,
+                        ),
+                        _buildConfigurableToolButton(
+                          icon: Icons.cleaning_services_outlined,
+                          type: ToolType.eraser,
+                          label: 'Eraser',
+                          showLabel: showPrimaryLabels,
                         ),
                         _PrimaryToolButton(
                           icon: Icons.select_all,
@@ -280,45 +266,6 @@ class _EditorToolbarState extends State<EditorToolbar> {
                           compact: !showPropertyLabel,
                           onPressed: _showToolProperties,
                         ),
-                        if (density == _ToolbarDensity.wide)
-                          for (final preset in EditorToolbar._favoritePresets)
-                            _PresetButton(
-                              preset: preset,
-                              isSelected: _toolMatches(
-                                widget.tool,
-                                preset.tool,
-                              ),
-                              onPressed: () => _applyTool(preset.tool),
-                            )
-                        else if (density == _ToolbarDensity.standard)
-                          _PresetMenuButton(
-                            tool: widget.tool,
-                            presets: EditorToolbar._favoritePresets,
-                            onSelected: _applyTool,
-                          ),
-                        if (widget.onUndo != null || widget.onRedo != null) ...[
-                          const _ToolbarDivider(),
-                          IconButton(
-                            onPressed: widget.canUndo ? widget.onUndo : null,
-                            tooltip: 'Undo ink stroke',
-                            visualDensity: VisualDensity.compact,
-                            constraints: const BoxConstraints.tightFor(
-                              width: EditorWorkspaceTokens.controlSize,
-                              height: EditorWorkspaceTokens.controlSize,
-                            ),
-                            icon: const Icon(Icons.undo, size: 21),
-                          ),
-                          IconButton(
-                            onPressed: widget.canRedo ? widget.onRedo : null,
-                            tooltip: 'Redo ink stroke',
-                            visualDensity: VisualDensity.compact,
-                            constraints: const BoxConstraints.tightFor(
-                              width: EditorWorkspaceTokens.controlSize,
-                              height: EditorWorkspaceTokens.controlSize,
-                            ),
-                            icon: const Icon(Icons.redo, size: 21),
-                          ),
-                        ],
                         const _ToolbarDivider(),
                         _FingerModeMenuButton(
                           fingerPanEnabled: widget.fingerPanEnabled,
@@ -346,7 +293,7 @@ enum _ToolbarDensity { wide, standard, compact }
 
 enum _InsertAction { text, image, shape }
 
-enum _SelectionEmphasis { primary, preset, quiet }
+enum _SelectionEmphasis { primary, quiet }
 
 class _PrimaryToolButton extends StatelessWidget {
   const _PrimaryToolButton({
@@ -434,9 +381,8 @@ class _InsertMenuButton extends StatelessWidget {
                     child: EditorChromeIconTile(
                       icon: Icons.text_fields,
                       label: 'Text',
-                      onTap: () => Navigator.of(
-                        dialogContext,
-                      ).pop(_InsertAction.text),
+                      onTap: () =>
+                          Navigator.of(dialogContext).pop(_InsertAction.text),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -444,9 +390,8 @@ class _InsertMenuButton extends StatelessWidget {
                     child: EditorChromeIconTile(
                       icon: Icons.add_photo_alternate_outlined,
                       label: 'Image',
-                      onTap: () => Navigator.of(
-                        dialogContext,
-                      ).pop(_InsertAction.image),
+                      onTap: () =>
+                          Navigator.of(dialogContext).pop(_InsertAction.image),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -454,9 +399,8 @@ class _InsertMenuButton extends StatelessWidget {
                     child: EditorChromeIconTile(
                       icon: Icons.category_outlined,
                       label: 'Shape',
-                      onTap: () => Navigator.of(
-                        dialogContext,
-                      ).pop(_InsertAction.shape),
+                      onTap: () =>
+                          Navigator.of(dialogContext).pop(_InsertAction.shape),
                     ),
                   ),
                 ],
@@ -563,171 +507,6 @@ class _PropertyButton extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _PresetButton extends StatelessWidget {
-  const _PresetButton({
-    required this.preset,
-    required this.isSelected,
-    required this.onPressed,
-  });
-
-  final _FavoriteToolPreset preset;
-  final bool isSelected;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 4),
-      child: Tooltip(
-        message: preset.label,
-        child: Semantics(
-          button: true,
-          selected: isSelected,
-          label: '${preset.label} preset${isSelected ? ', selected' : ''}',
-          excludeSemantics: true,
-          child: _DockControlSurface(
-            key: ValueKey('editor-preset-${preset.label}'),
-            isSelected: isSelected,
-            emphasis: _SelectionEmphasis.preset,
-            onTap: onPressed,
-            square: true,
-            child: _ToolPreview(tool: preset.tool),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _PresetMenuButton extends StatelessWidget {
-  const _PresetMenuButton({
-    required this.tool,
-    required this.presets,
-    required this.onSelected,
-  });
-
-  final DrawingTool tool;
-  final List<_FavoriteToolPreset> presets;
-  final ValueChanged<DrawingTool> onSelected;
-
-  Future<void> _showPresetPicker(BuildContext anchorContext) async {
-    await EditorChrome.showAnchoredPopover<void>(
-      anchorContext: anchorContext,
-      width: 260,
-      estimatedHeight: 220,
-      builder: (dialogContext) {
-        return _PresetPickerPanel(
-          tool: tool,
-          presets: presets,
-          onSelected: (presetTool) {
-            onSelected(presetTool);
-            Navigator.of(dialogContext).pop();
-          },
-        );
-      },
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final activePreset = _matchingPreset(tool);
-    return Padding(
-      padding: const EdgeInsets.only(left: 4),
-      child: Tooltip(
-        message: 'Presets',
-        child: _DockPopupControl(
-          child: Builder(
-            builder: (buttonContext) {
-              return Material(
-                color: Colors.transparent,
-                borderRadius: BorderRadius.circular(
-                  EditorWorkspaceTokens.controlRadius,
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: InkWell(
-                  key: const ValueKey('editor-presets-menu'),
-                  onTap: () => unawaited(_showPresetPicker(buttonContext)),
-                  borderRadius: BorderRadius.circular(
-                    EditorWorkspaceTokens.controlRadius,
-                  ),
-                  child: _DockControlVisual(
-                    isSelected: activePreset != null,
-                    emphasis: _SelectionEmphasis.preset,
-                    minWidth: 48,
-                    horizontalPadding: 7,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (activePreset == null)
-                          const Icon(Icons.palette_outlined, size: 21)
-                        else
-                          _ToolPreview(tool: activePreset.tool),
-                        const Icon(Icons.arrow_drop_down, size: 17),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _PresetPickerPanel extends StatelessWidget {
-  const _PresetPickerPanel({
-    required this.tool,
-    required this.presets,
-    required this.onSelected,
-  });
-
-  final DrawingTool tool;
-  final List<_FavoriteToolPreset> presets;
-  final ValueChanged<DrawingTool> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          EditorChromeHeader(
-            title: 'Presets',
-            subtitle: 'Tap a complete pen or highlighter style',
-            onClose: () => Navigator.of(context).pop(),
-            closeTooltip: 'Close presets',
-          ),
-          const SizedBox(height: 10),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: presets.length,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              mainAxisSpacing: 8,
-              crossAxisSpacing: 8,
-              childAspectRatio: 1.35,
-            ),
-            itemBuilder: (context, index) {
-              final preset = presets[index];
-              final isSelected = _toolMatches(tool, preset.tool);
-              return _PresetPickerCard(
-                preset: preset,
-                isSelected: isSelected,
-                onPressed: () => onSelected(preset.tool),
-              );
-            },
-          ),
-        ],
       ),
     );
   }
@@ -986,7 +765,6 @@ class _DockControlSurface extends StatelessWidget {
     required this.child,
     this.emphasis = _SelectionEmphasis.primary,
     this.minWidth,
-    this.horizontalPadding = 10,
     this.square = false,
   });
 
@@ -995,7 +773,6 @@ class _DockControlSurface extends StatelessWidget {
   final Widget child;
   final _SelectionEmphasis emphasis;
   final double? minWidth;
-  final double horizontalPadding;
   final bool square;
 
   @override
@@ -1016,7 +793,6 @@ class _DockControlSurface extends StatelessWidget {
             isSelected: isSelected,
             emphasis: emphasis,
             minWidth: minWidth,
-            horizontalPadding: horizontalPadding,
             square: square,
             child: child,
           ),
@@ -1050,14 +826,11 @@ class _DockControlVisual extends StatelessWidget {
     final fill = switch (emphasis) {
       _SelectionEmphasis.primary when selected =>
         EditorWorkspaceTokens.selectedFill,
-      _SelectionEmphasis.preset when selected =>
-        EditorWorkspaceTokens.selectedFill.withValues(alpha: 0.45),
       _ => Colors.transparent,
     };
     const size = EditorWorkspaceTokens.controlSize;
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 120),
+    return Container(
       width: square ? size : null,
       height: size,
       constraints: BoxConstraints(

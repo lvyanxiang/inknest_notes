@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:inknest_notes/app/theme.dart';
 import 'package:inknest_notes/features/editor/canvas/drawing_canvas.dart';
 import 'package:inknest_notes/features/editor/editor_screen.dart';
+import 'package:inknest_notes/features/editor/tools/editor_toolbar.dart';
 import 'package:inknest_notes/models/notebook.dart';
 import 'package:inknest_notes/storage/in_memory_notebook_repository.dart';
 
@@ -91,6 +92,27 @@ void main() {
         expect(find.byKey(const ValueKey('editor-zoom-chip')), findsOneWidget);
       },
     );
+
+    testWidgets('separates document history from the editing dock', (
+      tester,
+    ) async {
+      await _createFixture(tester, const Size(600, 800));
+
+      expect(
+        find.byKey(const ValueKey('editor-document-context')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('editor-undo-button')), findsOneWidget);
+      expect(find.byKey(const ValueKey('editor-redo-button')), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(EditorToolbar),
+          matching: find.byTooltip('Undo ink stroke'),
+        ),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+    });
 
     testWidgets('exposes Fit width and Fit page from the zoom menu', (
       tester,

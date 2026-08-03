@@ -62,15 +62,29 @@ void main() {
       );
 
       expect(tester.takeException(), isNull);
-      for (final label in const ['Pen', 'Eraser', 'Lasso', 'Insert']) {
+      for (final label in const [
+        'Pen',
+        'Highlighter',
+        'Eraser',
+        'Lasso',
+        'Insert',
+      ]) {
         expect(find.byTooltip(label), findsOneWidget);
         expect(
           tester.getSize(find.byTooltip(label)).height,
           greaterThanOrEqualTo(44),
         );
       }
-      expect(find.byTooltip('Highlighter'), findsNothing);
-      expect(find.byKey(const ValueKey('editor-writing-tool')), findsOneWidget);
+      expect(find.byKey(const ValueKey('editor-pen-tool')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('editor-highlighter-tool')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('editor-presets-menu')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('editor-preset-Teal pen, 5 pt')),
+        findsNothing,
+      );
       expect(
         find.descendant(
           of: find.byType(EditorToolbar),
@@ -124,7 +138,7 @@ void main() {
     expect(tool.type, ToolType.text);
   });
 
-  testWidgets('wide preset applies a complete tool configuration', (
+  testWidgets('keeps complete presets inside contextual properties', (
     tester,
   ) async {
     var tool = const DrawingTool(
@@ -141,9 +155,13 @@ void main() {
         tool = value;
       },
     );
-    await tester.tap(
-      find.byKey(const ValueKey('editor-preset-Teal pen, 5 pt')),
-    );
+    expect(find.text('Presets'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('editor-tool-properties')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Presets'), findsOneWidget);
+    expect(find.text('Teal · 5 pt'), findsOneWidget);
+    await tester.tap(find.text('Teal · 5 pt'));
     await tester.pump();
 
     expect(tool.type, ToolType.pen);
@@ -240,7 +258,7 @@ void main() {
     expect(find.text('Writing assist'), findsNothing);
   });
 
-  testWidgets('merges pen and highlighter into one writing tool', (
+  testWidgets('switches pen and highlighter directly and reopens settings', (
     tester,
   ) async {
     var tool = const DrawingTool(
@@ -262,18 +280,28 @@ void main() {
 
     await rebuild();
     expect(find.byTooltip('Pen'), findsOneWidget);
-    expect(find.byTooltip('Highlighter'), findsNothing);
+    expect(find.byTooltip('Highlighter'), findsOneWidget);
 
-    await tester.tap(find.byKey(const ValueKey('editor-writing-tool')));
-    await tester.pumpAndSettle();
-    expect(find.text('Style'), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('writing-style-highlighter')));
+    await tester.tap(find.byKey(const ValueKey('editor-highlighter-tool')));
     await tester.pump();
     expect(tool.type, ToolType.highlighter);
+    expect(tool.width, 12);
+
+    await rebuild();
+    await tester.tap(find.byKey(const ValueKey('editor-highlighter-tool')));
+    await tester.pumpAndSettle();
+    expect(find.text('Highlighter settings'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Close tool properties'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('editor-pen-tool')));
+    await tester.pump();
+    expect(tool.type, ToolType.pen);
+    expect(tool.width, 3);
 
     await rebuild();
     expect(find.byTooltip('Highlighter'), findsOneWidget);
-    expect(find.byTooltip('Pen'), findsNothing);
+    expect(find.byTooltip('Pen'), findsOneWidget);
   });
 
   testWidgets('opens tool properties as a popover on regular widths', (

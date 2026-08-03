@@ -2,10 +2,11 @@
 
 ## Current
 
-- Milestone: Editor Workspace Interaction Polish (delivered)
+- Milestone: Editor Workspace V2 (delivered)
 - Next task: Run real-iPad Pencil/rotation/Split View QA for the redesigned and polished editor; then decide whether legacy app-container recovery and a verified raw archive/conversion flow are required for non-empty v0 pages.
-- Last completed: Beautify selected ink into handwriting strokes using bundled
-  OFL fonts (刘建毛草 / 龙藏 / 芝麻行) instead of inserting a text box.
+- Last completed: Reorganized editor commands into a document bar and contextual
+  tool dock, restored direct Pen/Highlighter switching, and moved presets into
+  contextual properties.
 
 ## Decisions
 
@@ -33,6 +34,9 @@
 - Use `docs/development/POST_MVP_ROADMAP.md` for GoodNotes / Notability-style post-MVP planning.
 - Prefer collapsing on-canvas zoom chrome and keeping Fit Width / Fit Page discoverable from More → View so the paper stays primary while writing.
 - Prefer anchored tool-property popovers on regular/wide iPad widths; keep bottom sheets only for compact Split View.
+- Keep notebook location and ink history in the document bar; keep direct tools,
+  contextual style, and touch mode in the editing dock; keep presets inside
+  properties instead of persistent chrome.
 - Treat Finger writes as the quiet default and Finger moves as the strongly selected touch mode.
 - Use `docs/development/SUBSCRIPTION_PLAN.md` as the product reference for Free, InkNest Cloud, and future Pro monetization.
 - Long-term product direction: iPad handwriting/PDF study, phone capture/review, and Web Yuque-like knowledge base.
@@ -120,6 +124,12 @@
 
 ## Verification
 
+- `flutter test` passed with 130 tests after Editor Workspace V2.
+- `flutter analyze` passed with no issues after Editor Workspace V2.
+- Focused responsive and toolbar tests passed at 600×800, 834×1194, and
+  1194×834, covering document/history hierarchy, direct Pen/Highlighter
+  switching, selected-tool properties, and contextual presets.
+- `git diff --check` passed after Editor Workspace V2.
 - `dart format` passed for the editor interaction polish changes on 2026-07-27.
 - `flutter test` passed with 126 tests after editor interaction polish.
 - `flutter analyze` passed with no issues after editor interaction polish.

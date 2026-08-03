@@ -1963,8 +1963,6 @@ class _EditorScreenState extends State<EditorScreen> {
             (recording) => recording.id == playbackRecording.id,
           );
     final screenWidth = MediaQuery.sizeOf(context).width;
-    final showStandardHeaderActions = screenWidth >= 720;
-    final showWideHeaderActions = screenWidth >= 1000;
     final currentPageNumber = math.max(
       1,
       _notebook.pageIds.indexOf(_currentPageId) + 1,
@@ -1973,68 +1971,69 @@ class _EditorScreenState extends State<EditorScreen> {
     return Scaffold(
       appBar: AppBar(
         toolbarHeight: 52,
-        titleSpacing: 4,
+        titleSpacing: 0,
         backgroundColor: EditorWorkspaceTokens.chrome,
         surfaceTintColor: Colors.transparent,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
+        title: Row(
           children: [
-            Text(
-              _notebook.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            IconButton(
+              key: const ValueKey('editor-pages-button'),
+              onPressed: () => _showPagesForWidth(screenWidth),
+              tooltip: screenWidth >= 1100 && _isPageRailOpen
+                  ? 'Hide pages, page $currentPageNumber of ${_notebook.pageIds.length}'
+                  : 'Show pages, page $currentPageNumber of ${_notebook.pageIds.length}',
+              icon: Badge(
+                backgroundColor: EditorWorkspaceTokens.primary,
+                textColor: Colors.white,
+                label: Text(_notebook.pageIds.length.toString()),
+                child: Icon(
+                  screenWidth >= 1100 && _isPageRailOpen
+                      ? Icons.view_sidebar
+                      : Icons.library_books_outlined,
+                ),
+              ),
             ),
-            Text(
-              'Page $currentPageNumber of ${_notebook.pageIds.length}',
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
+            const SizedBox(width: 4),
+            Expanded(
+              key: const ValueKey('editor-document-context'),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _notebook.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  Text(
+                    'Page $currentPageNumber of ${_notebook.pageIds.length}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
         ),
         actions: [
           IconButton(
-            key: const ValueKey('editor-pages-button'),
-            onPressed: () => _showPagesForWidth(screenWidth),
-            tooltip: screenWidth >= 1100 && _isPageRailOpen
-                ? 'Hide pages'
-                : 'Show pages',
-            icon: Badge(
-              backgroundColor: EditorWorkspaceTokens.primary,
-              textColor: Colors.white,
-              label: Text(_notebook.pageIds.length.toString()),
-              child: Icon(
-                screenWidth >= 1100 && _isPageRailOpen
-                    ? Icons.view_sidebar
-                    : Icons.library_books_outlined,
-              ),
-            ),
+            key: const ValueKey('editor-undo-button'),
+            onPressed: page != null && page.strokes.isNotEmpty ? _undo : null,
+            tooltip: 'Undo ink stroke',
+            icon: const Icon(Icons.undo),
           ),
-          const SizedBox(width: 4),
-          if (showStandardHeaderActions)
-            IconButton(
-              onPressed: page == null || _isAudioBusy
-                  ? null
-                  : () => unawaited(_toggleAudioRecording()),
-              tooltip: isRecording
-                  ? 'Stop audio recording'
-                  : 'Start audio recording',
-              icon: _isAudioBusy
-                  ? const SizedBox.square(
-                      dimension: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Icon(
-                      isRecording ? Icons.stop_circle : Icons.mic_none,
-                      color: isRecording
-                          ? Theme.of(context).colorScheme.error
-                          : null,
-                    ),
-            ),
+          IconButton(
+            key: const ValueKey('editor-redo-button'),
+            onPressed: _redoStack.isNotEmpty ? _redo : null,
+            tooltip: 'Redo ink stroke',
+            icon: const Icon(Icons.redo),
+          ),
           IconButton(
             onPressed: () => unawaited(_showNotebookSearch()),
             tooltip: 'Search notebook',
@@ -2045,19 +2044,6 @@ class _EditorScreenState extends State<EditorScreen> {
                   : Theme.of(context).colorScheme.primary,
             ),
           ),
-          if (showWideHeaderActions)
-            IconButton(
-              onPressed: page == null || _isExporting
-                  ? null
-                  : () => unawaited(_exportPdf()),
-              tooltip: 'Export PDF',
-              icon: _isExporting
-                  ? const SizedBox.square(
-                      dimension: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.ios_share),
-            ),
           _EditorOverflowMenu(
             page: page,
             isRecording: isRecording,
@@ -2086,10 +2072,6 @@ class _EditorScreenState extends State<EditorScreen> {
                 onFingerPanChanged: _setFingerPanEnabled,
                 onFingerWritingAssistChanged: _setFingerWritingAssistEnabled,
                 onInsertImage: () => unawaited(_insertImage()),
-                canUndo: page != null && page.strokes.isNotEmpty,
-                canRedo: _redoStack.isNotEmpty,
-                onUndo: _undo,
-                onRedo: _redo,
               ),
             ),
           ),
