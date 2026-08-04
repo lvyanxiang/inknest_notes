@@ -1257,6 +1257,27 @@ void main() {
     expect(find.byTooltip('Show library'), findsOneWidget);
   });
 
+  testWidgets(
+    'labels infinite canvas spines with an accessible infinity mark',
+    (WidgetTester tester) async {
+      final repository = InMemoryNotebookRepository();
+      await repository.createNotebook(
+        title: 'Spatial map',
+        layoutMode: NotebookLayoutMode.infiniteCanvas,
+      );
+
+      await tester.pumpWidget(InkNestApp(notebookRepository: repository));
+      await tester.pumpAndSettle();
+
+      expect(find.text('∞'), findsOneWidget);
+      expect(find.text('Canvas'), findsNothing);
+      expect(
+        find.bySemanticsLabel('Open infinite canvas notebook Spatial map'),
+        findsOneWidget,
+      );
+    },
+  );
+
   testWidgets('searches sorts and displays adjacent notebook spines', (
     WidgetTester tester,
   ) async {

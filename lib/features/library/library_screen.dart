@@ -1645,7 +1645,9 @@ class _NotebookCardState extends State<_NotebookCard> {
       onTapOutside: (_) => _clearInspection(),
       child: _LibrarySpine(
         key: ValueKey('notebook-spine-${notebook.id}'),
-        semanticsLabel: 'Open notebook ${notebook.title}',
+        semanticsLabel: notebook.layoutMode == NotebookLayoutMode.infiniteCanvas
+            ? 'Open infinite canvas notebook ${notebook.title}'
+            : 'Open notebook ${notebook.title}',
         onTap: () => unawaited(_handleTap()),
         onLongPress: _inspect,
         onHover: _handleHover,
@@ -1662,7 +1664,7 @@ class _NotebookCardState extends State<_NotebookCard> {
             : Icons.auto_stories_outlined,
         title: notebook.title,
         metadata: notebook.layoutMode == NotebookLayoutMode.infiniteCanvas
-            ? 'Canvas'
+            ? '∞'
             : '${notebook.pageIds.length}p',
         action: _NotebookActionMenu(
           notebookTitle: notebook.title,

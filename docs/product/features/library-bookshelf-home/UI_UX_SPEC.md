@@ -75,8 +75,10 @@ perspective.
   notebooks remain narrow, thicker notebooks grow visibly, and very large
   notebooks stop growing before they dominate the shelf.
 - Title is rotated along the spine and truncated to one line when necessary.
-- Page count is abbreviated at the lower end; the overflow action remains a
-  separate 44px target.
+- Page count is abbreviated at the lower end. Infinite-canvas notebooks use a
+  compact `∞` marker instead of the technical `Canvas` label; the existing
+  gesture icon reinforces the type while semantics expose the full phrase.
+  The overflow action remains a separate 44px target.
 - Spines touch their neighbors with no layout gap and use stable muted colors,
   small deterministic height differences, and one 3-degree leftward lean
   around the bottom-center shelf contact point. This gives every book the same
@@ -112,8 +114,8 @@ perspective.
 ## Accessibility
 
 - Semantics and focus: Brand/title read before search and controls. Each spine is
-  a named button (`Open notebook ...` or `Open folder ...`); each overflow menu
-  retains its explicit action tooltip.
+  a named button (`Open notebook ...`, `Open infinite canvas notebook ...`, or
+  `Open folder ...`); each overflow menu retains its explicit action tooltip.
 - Text scaling and contrast: Location and command labels must not clip at common
   text scales; spine foreground is high-contrast and does not rely on color alone.
 - Motion: Respect the platform reduced-motion preference by skipping the wait

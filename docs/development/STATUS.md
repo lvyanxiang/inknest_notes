@@ -5,9 +5,8 @@
 - Milestone: Infinite Canvas V2 shared editing parity (first slice delivered)
 - Next task: Complete real-device gesture QA, then prioritize the next shared
   slice across audio, spatial search, Smart Ink, and canvas export.
-- Last completed: Added world-coordinate Lasso, text, image, and shape editing
-  with persistence, fit-content bounds, content undo/redo, and one responsive
-  top toolbar.
+- Last completed: Replaced the infinite-canvas spine `Canvas` label with `∞`
+  while preserving the full notebook type in accessibility semantics.
 
 ## Decisions
 
@@ -128,6 +127,9 @@
 
 ## Verification
 
+- `flutter analyze` and all 142 tests pass after replacing the Infinite canvas
+  spine metadata with a visible `∞` marker and full accessibility label;
+  paged notebooks retain compact page counts.
 - `flutter analyze` and all 141 tests pass after adding shared Lasso, text,
   image, and shape editing to Infinite canvas.
 - Infinite-canvas interaction coverage includes text create/edit/move/delete,

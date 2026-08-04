@@ -69,8 +69,8 @@ so recently edited work remains easiest to reach without a duplicate surface.
 - [x] Adjacent spines have no artificial gap, use the same clearly visible
   leftward angle from their shelf base, and become wider within safe bounds as
   page count grows.
-- [x] Spine titles, compact page counts, and action menus remain readable and
-  usable without front-facing page thumbnails.
+- [x] Spine titles, compact page counts, the infinite-canvas `∞` marker, and
+  action menus remain readable and usable without front-facing page thumbnails.
 - [x] Search, title/date/recent sorting, folders, archive, import, and creation
   flows retain their existing behavior.
 - [x] Empty and no-search-result states remain clear and actionable.
