@@ -24,6 +24,7 @@ class EditorToolbar extends StatefulWidget {
     required this.onInsertImage,
     this.showLasso = true,
     this.showInsert = true,
+    this.embedded = false,
   });
 
   final DrawingTool tool;
@@ -35,6 +36,7 @@ class EditorToolbar extends StatefulWidget {
   final VoidCallback onInsertImage;
   final bool showLasso;
   final bool showInsert;
+  final bool embedded;
 
   static const _favoritePresets = [
     _FavoriteToolPreset(
@@ -193,15 +195,22 @@ class _EditorToolbarState extends State<EditorToolbar> {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: EditorWorkspaceTokens.chrome,
+      color: widget.embedded
+          ? Colors.transparent
+          : EditorWorkspaceTokens.chrome,
       elevation: 0,
       child: DecoratedBox(
-        decoration: const BoxDecoration(
-          border: Border(
-            top: BorderSide(color: EditorWorkspaceTokens.divider, width: 0.5),
-            bottom: BorderSide(color: EditorWorkspaceTokens.divider),
-          ),
-        ),
+        decoration: widget.embedded
+            ? const BoxDecoration()
+            : const BoxDecoration(
+                border: Border(
+                  top: BorderSide(
+                    color: EditorWorkspaceTokens.divider,
+                    width: 0.5,
+                  ),
+                  bottom: BorderSide(color: EditorWorkspaceTokens.divider),
+                ),
+              ),
         child: SafeArea(
           top: false,
           bottom: false,
@@ -266,13 +275,15 @@ class _EditorToolbarState extends State<EditorToolbar> {
                             showLabel: showPrimaryLabels,
                             onSelected: _selectInsertAction,
                           ),
-                        const _ToolbarDivider(),
+                        if (density != _ToolbarDensity.compact)
+                          const _ToolbarDivider(),
                         _PropertyButton(
                           tool: widget.tool,
                           compact: !showPropertyLabel,
                           onPressed: _showToolProperties,
                         ),
-                        const _ToolbarDivider(),
+                        if (density != _ToolbarDensity.compact)
+                          const _ToolbarDivider(),
                         _FingerModeMenuButton(
                           fingerPanEnabled: widget.fingerPanEnabled,
                           fingerWritingAssistEnabled:

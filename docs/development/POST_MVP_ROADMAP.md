@@ -43,6 +43,8 @@ The detailed plan lives in `docs/development/SMART_INK_PLAN.md`.
 
 - [x] Explicit Paged notebook / Infinite canvas creation with an independent
   world-coordinate V1 canvas, persisted viewport, and focused writing tools.
+- [x] Extend Infinite canvas with shared Lasso, text, image, and shape editing
+  while keeping page-structured PDF and navigation features paged-only.
 - [x] Zoom and pan with two-finger gestures.
 - [x] Stable fixed-coordinate paper viewport with Fit Width, Fit Page,
   per-page session focus, and resize/rotation preservation.

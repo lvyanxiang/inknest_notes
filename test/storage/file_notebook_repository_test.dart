@@ -34,6 +34,15 @@ void main() {
       layoutMode: NotebookLayoutMode.infiniteCanvas,
     );
     expect(notebook.pageIds, isEmpty);
+    final sourceImage = File('${tempDirectory.path}/canvas-source.png');
+    await sourceImage.writeAsBytes(const [1, 2, 3, 4]);
+    final canvasImage = await repository.importImage(
+      notebook,
+      sourceImage,
+      position: const Offset(-200, 450),
+      width: 300,
+      height: 180,
+    );
 
     final document = InfiniteCanvasDocument(
       background: InfiniteCanvasBackground.dotted,
@@ -52,6 +61,22 @@ void main() {
               time: DateTime.utc(2026, 8, 3),
             ),
           ],
+        ),
+      ],
+      textBoxes: const [
+        NoteTextBox(
+          id: 'canvas-text',
+          position: Offset(-400, -120),
+          text: 'Spatial note',
+        ),
+      ],
+      images: [canvasImage],
+      shapes: const [
+        NoteShape(
+          id: 'canvas-shape',
+          type: NoteShapeType.rectangle,
+          start: Offset(-80, 40),
+          end: Offset(260, 300),
         ),
       ],
     );
@@ -73,6 +98,10 @@ void main() {
       reloaded.strokes.single.points.single.offset,
       const Offset(9000, -3000),
     );
+    expect(reloaded.textBoxes.single.text, 'Spatial note');
+    expect(reloaded.shapes.single.type, NoteShapeType.rectangle);
+    expect(reloaded.images.single.position, const Offset(-200, 450));
+    expect(File(reloaded.images.single.filePath).existsSync(), isTrue);
   });
 
   tearDown(() {

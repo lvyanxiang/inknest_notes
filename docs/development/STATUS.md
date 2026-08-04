@@ -2,12 +2,12 @@
 
 ## Current
 
-- Milestone: Infinite Canvas V1 (delivered)
-- Next task: Real-device iPad QA for Pencil plus two-finger gesture feel, then
-  choose the next roadmap item.
-- Last completed: Added explicit Paged notebook / Infinite canvas creation,
-  independent world-coordinate canvas persistence, focused writing tools,
-  background choices, undo/redo, zoom/pan, autosave, and viewport restoration.
+- Milestone: Infinite Canvas V2 shared editing parity (first slice delivered)
+- Next task: Complete real-device gesture QA, then prioritize the next shared
+  slice across audio, spatial search, Smart Ink, and canvas export.
+- Last completed: Added world-coordinate Lasso, text, image, and shape editing
+  with persistence, fit-content bounds, content undo/redo, and one responsive
+  top toolbar.
 
 ## Decisions
 
@@ -128,6 +128,17 @@
 
 ## Verification
 
+- `flutter analyze` and all 141 tests pass after adding shared Lasso, text,
+  image, and shape editing to Infinite canvas.
+- Infinite-canvas interaction coverage includes text create/edit/move/delete,
+  image insert/move/resize/delete, shape drawing, ink Lasso deletion,
+  rich-content persistence, fit-content bounds, and content undo/redo.
+- The shared single top bar passes at 600×800, 834×1194, and 1194×834 with
+  Pen, Highlighter, Eraser, Lasso, and Insert available without overflow.
+- `flutter analyze` and all 138 tests pass after merging the infinite-canvas
+  editing tools into one responsive top bar.
+- Infinite-canvas single-bar widget coverage passes at 600×800, 834×1194, and
+  1194×834 without overflow or loss of core controls.
 - `flutter test` passed with 133 tests after splitting Pages, Outline, and
   Bookmarks and adding paper-style-first page insertion.
 - `flutter analyze` passed with no issues after Editor Workspace V2.

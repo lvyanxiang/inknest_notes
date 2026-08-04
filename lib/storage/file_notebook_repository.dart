@@ -141,7 +141,18 @@ class FileNotebookRepository implements NotebookRepository {
       return const InfiniteCanvasDocument();
     }
     final json = jsonDecode(await file.readAsString());
-    return InfiniteCanvasDocument.fromJson(json as Map<String, Object?>);
+    final document = InfiniteCanvasDocument.fromJson(
+      json as Map<String, Object?>,
+    );
+    return document.copyWith(
+      images: [
+        for (final image in document.images)
+          image.copyWith(
+            assetPath: _normalizeImageAssetPath(image.assetPath),
+            resolvedFilePath: _resolveImageAssetPath(notebook, image.assetPath),
+          ),
+      ],
+    );
   }
 
   @override

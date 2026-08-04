@@ -2,7 +2,7 @@
 
 - Status: Delivered
 - Size: Large
-- Updated: 2026-08-03
+- Updated: 2026-08-04
 - Roadmap link: `docs/development/POST_MVP_ROADMAP.md` — Editor Experience
 
 ## Problem
@@ -74,4 +74,50 @@ backgrounds, and persisted content plus viewport restoration.
 ## Delivery
 
 - UI/UX spec: `docs/product/features/infinite-canvas-v1/UI_UX_SPEC.md`
-- Implementation status: Delivered; `flutter analyze` and all 137 tests pass.
+- Implementation status: Delivered; `flutter analyze` and all 138 tests pass.
+
+## V2 Shared Editing Parity
+
+- Status: First delivery slice delivered; broader shared capabilities remain
+  planned.
+- Product rule: paged and infinite notebooks share editing capabilities by
+  default; only features whose meaning depends on pages are excluded.
+
+### First delivery slice
+
+- Reuse the existing Lasso behavior for selecting, moving, resizing,
+  recoloring, and deleting ink in world coordinates.
+- Reuse Insert for editable text boxes, notebook-relative images, and clean
+  line, arrow, rectangle, and ellipse shapes.
+- Persist text, images, and shapes in the independent canvas document and
+  include them in fit-content bounds and content undo/redo.
+- Preserve the single responsive top bar and expose Lasso and Insert there.
+
+### Deferred shared capabilities
+
+- Smart Ink, audio recording/playback, spatial text search, and canvas export
+  follow after the shared content model is stable.
+
+### Still page-specific
+
+- Pages management, page templates, page bookmarks, page rotation, PDF import,
+  PDF Outline, and page-range export.
+
+### V2 acceptance criteria
+
+- [x] Existing V1 canvas JSON without rich content remains readable.
+- [x] Text boxes can be created, edited, moved, deleted, saved, and reopened.
+- [x] Images can be inserted, moved, resized, deleted, saved, and reopened.
+- [x] Shapes can be drawn with the same shape choices and properties as paged
+  notebooks, including negative world coordinates.
+- [x] Lasso selects and transforms canvas ink without conflicting with pan or
+  pinch gestures.
+- [x] Fit content and undo/redo include all delivered canvas content types.
+- [x] The single top bar remains usable at supported iPad widths.
+
+### V2 first-slice verification
+
+- `flutter analyze` passes with no issues.
+- All 141 tests pass, including rich-content JSON compatibility, file-backed
+  image restoration, world-coordinate object editing, Lasso, undo/redo, and
+  responsive toolbar coverage.

@@ -1,7 +1,7 @@
 # Infinite Canvas V1 UI/UX Specification
 
 - Status: Delivered
-- Updated: 2026-08-03
+- Updated: 2026-08-04
 - Product brief: `docs/product/features/infinite-canvas-v1/PRODUCT_BRIEF.md`
 - Affected surfaces: Library create flow, notebook routing, infinite editor
 
@@ -36,12 +36,18 @@ the existing writing workspace without showing page-only controls.
 
 ## Layout
 
-- Document bar: Back, notebook title with `Infinite canvas` subtitle, Undo,
-  Redo, background menu, and recenter action.
+- Use one continuous top bar: Back and notebook identity on the left; Pen,
+  Highlighter, Eraser, properties, and Finger mode in the middle; Undo, Redo,
+  background, and recenter on the right.
+- The embedded tool group has no separate dock border or background, so the
+  header reads as one bar rather than two nested toolbars.
+- At compact Split View widths, hide notebook identity and tool labels before
+  hiding any core control. The top bar must not scroll horizontally.
 - No Pages, page count, Add page, Outline, Bookmarks, PDF import, or page export
   actions.
-- Tool dock reuses Pen, Highlighter, Eraser, properties, and Finger modes.
-  Lasso and Insert are hidden until their canvas-specific implementations exist.
+- The middle tool group reuses Pen, Highlighter, Eraser, properties, and Finger
+  modes. Lasso and Insert are hidden until their canvas-specific implementations
+  exist.
 - Canvas occupies the remaining area and clips rendering to the viewport.
 
 ## Interaction And Accessibility
@@ -63,6 +69,8 @@ the existing writing workspace without showing page-only controls.
 - [x] Pinch/pan never commits accidental ink.
 - [x] Recenter and restored viewport keep existing content recoverable.
 - [x] Supported iPad widths render without toolbar overflow.
+- [x] Infinite-canvas editing and document controls share one top bar; no
+  second toolbar remains below the canvas.
 
 ## Verification
 
@@ -74,4 +82,24 @@ the existing writing workspace without showing page-only controls.
 ## Implementation Review
 
 - Status: Delivered
-- Intentional deviations: None.
+- Intentional deviations: The original bottom tool dock was merged into the
+  document bar after simulator review to reduce split attention and palm
+  obstruction.
+
+## V2 Shared Editing UI
+
+- Status: First delivery slice delivered.
+- Show Lasso and Insert in the same middle tool group as paged notebooks.
+- Insert exposes Text, Image, and Shape with the existing labels and property
+  surfaces; inserting content keeps the current viewport stable.
+- Text mode taps create an editable text box in world coordinates. Existing
+  text boxes expose edit, move, handwriting-style, and delete controls.
+- Inserted images appear at the viewport focus and expose move, resize, and
+  delete handles without adding finite canvas boundaries.
+- Shape mode draws directly in world coordinates and retains two-finger
+  gesture cancellation.
+- Lasso temporarily owns one-finger input and disables Finger moves; selection
+  controls stay upright in viewport chrome while selected ink remains in world
+  coordinates.
+- At compact widths, tool labels and notebook identity collapse before Lasso,
+  Insert, or core document actions are removed.

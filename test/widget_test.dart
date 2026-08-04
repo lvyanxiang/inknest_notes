@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -8,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:inknest_notes/app/app.dart';
 import 'package:inknest_notes/features/editor/canvas/drawing_canvas.dart';
 import 'package:inknest_notes/features/editor/editor_screen.dart';
+import 'package:inknest_notes/features/editor/infinite_canvas_screen.dart';
 import 'package:inknest_notes/features/editor/recognition/text_recognition_provider.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/note_page_template.dart';
@@ -201,9 +203,22 @@ void main() {
     expect(find.text('Infinite canvas'), findsOneWidget);
     expect(find.byKey(const ValueKey('editor-pages-button')), findsNothing);
     expect(find.byKey(const ValueKey('editor-bookmarks-button')), findsNothing);
-    expect(find.byTooltip('Lasso'), findsNothing);
+    expect(find.byTooltip('Lasso'), findsOneWidget);
+    expect(find.byTooltip('Insert'), findsOneWidget);
+    final topToolbar = find.byKey(
+      const ValueKey('infinite-canvas-top-toolbar'),
+    );
+    expect(topToolbar, findsOneWidget);
+    expect(
+      find.ancestor(of: topToolbar, matching: find.byType(AppBar)),
+      findsOneWidget,
+    );
 
     final viewport = find.byKey(const ValueKey('infinite-canvas-viewport'));
+    expect(
+      tester.getBottomLeft(topToolbar).dy,
+      lessThanOrEqualTo(tester.getTopLeft(viewport).dy),
+    );
     final center = tester.getCenter(viewport);
     final gesture = await tester.startGesture(center);
     await gesture.moveBy(const Offset(64, 24));
@@ -247,6 +262,260 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('infinite-canvas-undo')));
     await tester.pumpAndSettle();
     expect((await repository.loadInfiniteCanvas(notebook)).strokes, isEmpty);
+  });
+
+  testWidgets('keeps the infinite canvas single top bar responsive', (
+    WidgetTester tester,
+  ) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    for (final size in const [
+      Size(600, 800),
+      Size(834, 1194),
+      Size(1194, 834),
+    ]) {
+      await tester.binding.setSurfaceSize(size);
+      final repository = InMemoryNotebookRepository();
+      final notebook = await repository.createNotebook(
+        title: 'Spatial notes',
+        layoutMode: NotebookLayoutMode.infiniteCanvas,
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: InfiniteCanvasScreen(
+            notebook: notebook,
+            notebookRepository: repository,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      final toolbar = find.byKey(const ValueKey('infinite-canvas-top-toolbar'));
+      final viewport = find.byKey(const ValueKey('infinite-canvas-viewport'));
+      expect(toolbar, findsOneWidget);
+      expect(
+        find.ancestor(of: toolbar, matching: find.byType(AppBar)),
+        findsOneWidget,
+      );
+      expect(
+        tester.getBottomLeft(toolbar).dy,
+        lessThanOrEqualTo(tester.getTopLeft(viewport).dy),
+      );
+      expect(find.byTooltip('Pen'), findsOneWidget);
+      expect(find.byTooltip('Highlighter'), findsOneWidget);
+      expect(find.byTooltip('Eraser'), findsOneWidget);
+      expect(find.byTooltip('Lasso'), findsOneWidget);
+      expect(find.byKey(const ValueKey('editor-insert-menu')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('infinite-canvas-undo')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('infinite-canvas-recenter')),
+        findsOneWidget,
+      );
+    }
+  });
+
+  testWidgets('adds and persists infinite canvas text and shapes', (
+    WidgetTester tester,
+  ) async {
+    final repository = InMemoryNotebookRepository();
+    final notebook = await repository.createNotebook(
+      title: 'Rich canvas',
+      layoutMode: NotebookLayoutMode.infiniteCanvas,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: InfiniteCanvasScreen(
+          notebook: notebook,
+          notebookRepository: repository,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await selectInsertAction(tester, 'Text');
+    final viewport = find.byKey(const ValueKey('infinite-canvas-viewport'));
+    final center = tester.getCenter(viewport);
+    await tester.tapAt(center - const Offset(120, 80));
+    await tester.pumpAndSettle();
+    final textField = find.byKey(
+      const ValueKey('text-box-field-text-placeholder'),
+    );
+    final actualTextField = find.byType(TextField).last;
+    expect(actualTextField, findsOneWidget);
+    expect(textField, findsNothing);
+    await tester.enterText(actualTextField, 'Spatial idea');
+    await tester.pump();
+
+    var document = await repository.loadInfiniteCanvas(notebook);
+    expect(document.textBoxes.single.text, 'Spatial idea');
+    final initialTextPosition = document.textBoxes.single.position;
+    await tester.drag(find.byTooltip('Move text box'), const Offset(44, 28));
+    await tester.pump();
+    document = await repository.loadInfiniteCanvas(notebook);
+    expect(document.textBoxes.single.position, isNot(initialTextPosition));
+
+    await selectInsertAction(tester, 'Shape');
+    final shapeGesture = await tester.startGesture(
+      center + const Offset(80, 80),
+      kind: ui.PointerDeviceKind.stylus,
+    );
+    await shapeGesture.moveBy(const Offset(120, 72));
+    await shapeGesture.up();
+    await tester.pumpAndSettle();
+
+    document = await repository.loadInfiniteCanvas(notebook);
+    expect(document.shapes, hasLength(1));
+    expect(
+      document.shapes.single.start.dx,
+      isNot(document.shapes.single.end.dx),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('infinite-canvas-undo')));
+    await tester.pumpAndSettle();
+    document = await repository.loadInfiniteCanvas(notebook);
+    expect(document.shapes, isEmpty);
+    expect(document.textBoxes.single.text, 'Spatial idea');
+
+    await tester.tap(find.byKey(const ValueKey('infinite-canvas-redo')));
+    await tester.pumpAndSettle();
+    document = await repository.loadInfiniteCanvas(notebook);
+    expect(document.shapes, hasLength(1));
+
+    await tester.tap(find.byTooltip('Delete text box'));
+    await tester.pumpAndSettle();
+    expect((await repository.loadInfiniteCanvas(notebook)).textBoxes, isEmpty);
+  });
+
+  testWidgets('infinite canvas lasso selects and deletes ink', (
+    WidgetTester tester,
+  ) async {
+    final repository = InMemoryNotebookRepository();
+    final notebook = await repository.createNotebook(
+      title: 'Lasso canvas',
+      layoutMode: NotebookLayoutMode.infiniteCanvas,
+    );
+    await repository.saveInfiniteCanvas(
+      notebook,
+      InfiniteCanvasDocument(
+        strokes: [
+          Stroke(
+            id: 'canvas-ink',
+            tool: ToolType.pen,
+            color: const Color(0xFF1E2526),
+            width: 4,
+            points: [
+              StrokePoint(
+                offset: const Offset(-24, 0),
+                pressure: 1,
+                time: DateTime.utc(2026, 8, 4),
+              ),
+              StrokePoint(
+                offset: const Offset(24, 0),
+                pressure: 1,
+                time: DateTime.utc(2026, 8, 4),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: InfiniteCanvasScreen(
+          notebook: notebook,
+          notebookRepository: repository,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Lasso'));
+    await tester.pumpAndSettle();
+    final center = tester.getCenter(
+      find.byKey(const ValueKey('infinite-canvas-viewport')),
+    );
+    final lasso = await tester.startGesture(center - const Offset(60, 50));
+    await lasso.moveTo(center + const Offset(60, -50));
+    await lasso.moveTo(center + const Offset(60, 50));
+    await lasso.moveTo(center + const Offset(-60, 50));
+    await lasso.moveTo(center - const Offset(60, 50));
+    await lasso.up();
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('lasso-selection-toolbar')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('lasso-smart-ink')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('lasso-delete-selection')));
+    await tester.pumpAndSettle();
+    expect((await repository.loadInfiniteCanvas(notebook)).strokes, isEmpty);
+  });
+
+  testWidgets('infinite canvas inserts moves resizes and deletes an image', (
+    WidgetTester tester,
+  ) async {
+    final tempDirectory = Directory.systemTemp.createTempSync(
+      'inknest-canvas-widget-',
+    );
+    addTearDown(() {
+      if (tempDirectory.existsSync()) {
+        tempDirectory.deleteSync(recursive: true);
+      }
+    });
+    final sourceFile = File('${tempDirectory.path}/source.png');
+    sourceFile.writeAsBytesSync(
+      base64Decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMA'
+        'ASsJTYQAAAAASUVORK5CYII=',
+      ),
+    );
+    final repository = InMemoryNotebookRepository();
+    final notebook = await repository.createNotebook(
+      title: 'Image canvas',
+      layoutMode: NotebookLayoutMode.infiniteCanvas,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: InfiniteCanvasScreen(
+          notebook: notebook,
+          notebookRepository: repository,
+          imageFilePicker: () async => sourceFile,
+          imageSizeReader: (_) async => const Size(1, 1),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('editor-insert-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Image').last);
+    await tester.pumpAndSettle(
+      const Duration(milliseconds: 50),
+      EnginePhase.sendSemanticsUpdate,
+      const Duration(seconds: 3),
+    );
+    var document = await repository.loadInfiniteCanvas(notebook);
+    expect(document.images, hasLength(1));
+    final initial = document.images.single;
+
+    await tester.drag(find.byTooltip('Move image'), const Offset(48, 32));
+    await tester.pump();
+    document = await repository.loadInfiniteCanvas(notebook);
+    expect(document.images.single.position, isNot(initial.position));
+
+    final beforeResize = document.images.single.width;
+    await tester.drag(find.byTooltip('Resize image'), const Offset(36, 20));
+    await tester.pump();
+    document = await repository.loadInfiniteCanvas(notebook);
+    expect(document.images.single.width, greaterThan(beforeResize));
+
+    await tester.tap(find.byTooltip('Delete image'));
+    await tester.pump();
+    expect((await repository.loadInfiniteCanvas(notebook)).images, isEmpty);
   });
 
   testWidgets('opens notebook search from the editor app bar', (

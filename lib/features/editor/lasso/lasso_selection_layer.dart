@@ -382,7 +382,7 @@ class LassoSelectionToolbar extends StatelessWidget {
   });
 
   final int selectedStrokeCount;
-  final VoidCallback onSmartInk;
+  final VoidCallback? onSmartInk;
   final ValueChanged<Color> onColorChanged;
   final VoidCallback onDelete;
   final VoidCallback onClearSelection;
@@ -408,17 +408,19 @@ class LassoSelectionToolbar extends StatelessWidget {
               style: Theme.of(context).textTheme.labelMedium,
             ),
             const SizedBox(width: 6),
-            FilledButton.tonalIcon(
-              key: const ValueKey('lasso-smart-ink'),
-              onPressed: onSmartInk,
-              icon: const Icon(Icons.auto_fix_high, size: 19),
-              label: const Text('Beautify'),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size(44, 44),
-                padding: const EdgeInsets.symmetric(horizontal: 12),
+            if (onSmartInk != null) ...[
+              FilledButton.tonalIcon(
+                key: const ValueKey('lasso-smart-ink'),
+                onPressed: onSmartInk,
+                icon: const Icon(Icons.auto_fix_high, size: 19),
+                label: const Text('Beautify'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(44, 44),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                ),
               ),
-            ),
-            const SizedBox(width: 4),
+              const SizedBox(width: 4),
+            ],
             for (final colorChoice in _colorChoices)
               _LassoColorButton(
                 color: colorChoice.color,
