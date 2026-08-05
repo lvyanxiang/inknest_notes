@@ -3,6 +3,7 @@ from collections.abc import AsyncIterator
 import pytest
 from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from inknest_server import models  # noqa: F401
 from inknest_server.config import Settings
@@ -33,10 +34,24 @@ def test_settings() -> Settings:
 
 
 @pytest.fixture
-async def client(test_settings: Settings) -> AsyncIterator[AsyncClient]:
+async def database(test_settings: Settings) -> AsyncIterator[Database]:
     database = Database(test_settings.database_url)
     async with database.engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
+    yield database
+    await database.close()
+
+
+@pytest.fixture
+async def db_session(database: Database) -> AsyncIterator[AsyncSession]:
+    async with database.session() as session:
+        yield session
+
+
+@pytest.fixture
+async def client(
+    test_settings: Settings, database: Database
+) -> AsyncIterator[AsyncClient]:
     app = create_app(
         settings=test_settings,
         readiness_checker=HealthyReadinessChecker(),

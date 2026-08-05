@@ -4,8 +4,9 @@
 
 InkNest Server is the Python/FastAPI backend for account-backed backup and
 local-first synchronization. It currently provides the service skeleton,
-PostgreSQL and MinIO adapters, health endpoints, and the first account/session
-API. Notebook synchronization is not implemented yet.
+PostgreSQL and MinIO adapters, health endpoints, the first account/session API,
+and user-scoped library metadata persistence. Notebook synchronization routes
+are not implemented yet.
 
 ## Requirements
 
@@ -193,9 +194,15 @@ docker compose config
 
 ## Database migrations
 
-The initial migration is an intentionally empty baseline. The next migration
-creates `users`, `devices`, and `refresh_tokens`. Future schema work must add a
-new revision instead of rewriting an applied revision.
+The migration history currently contains:
+
+- `20260805_0001`: intentionally empty baseline.
+- `20260805_0002`: `users`, `devices`, and `refresh_tokens`.
+- `20260805_0003`: `folders`, `notebooks`, `pages`, `infinite_canvases`, and
+  `assets` metadata.
+
+Future schema work must add a new revision instead of rewriting an applied
+revision.
 
 ```bash
 uv run alembic upgrade head
@@ -212,6 +219,30 @@ Always inspect the generated `upgrade()` and `downgrade()` before applying it.
 To safely undo only the newest development migration, first back up important
 data, then run `uv run alembic downgrade -1`. Downgrading can delete tables or
 columns and is not a routine cleanup command.
+
+## Library metadata persistence
+
+SQLAlchemy models in `src/inknest_server/models/library.py` define folders,
+notebooks, pages, infinite canvases, and asset metadata. The repository in
+`src/inknest_server/repositories/library.py` is the database-access boundary.
+It requires a `user_id` for every read and validates ownership before creating
+children, so a missing resource and another user's resource have the same
+not-found outcome.
+
+Client-created IDs are stored as stable strings and form a composite key with
+`user_id`. Two users can therefore both upload a local object named
+`page-local-1` without collision. Page `coordinate_space_version` uses JSON so
+an unknown future representation can be preserved without server rewriting.
+The `assets` table stores only object metadata and MinIO object keys; file bytes
+remain in MinIO.
+
+There are no public library or synchronization routes yet. Inspect these tables
+in Navicat/pgAdmin, or run the repository tests from `server/`:
+
+```bash
+uv run pytest tests/unit/test_library_repository.py
+INKNEST_RUN_INTEGRATION=1 uv run pytest tests/integration
+```
 
 ## Authentication API
 

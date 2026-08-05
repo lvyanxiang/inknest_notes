@@ -2,13 +2,13 @@
 
 ## Current
 
-- Milestone: Backend Phase 2 accounts, sessions, and devices (completed)
-- Next task: Start Phase 3 with the folder, notebook, page, infinite-canvas, and
-  attachment-metadata schema plus user-scoped repository layer; do not start
-  Flutter account UI yet.
-- Last completed: Split runtime configuration into Pydantic defaults, ignored
-  host and Compose API env files, root Compose interpolation, and a small
-  explicit container-only `environment` allowlist.
+- Milestone: Backend Phase 3 cloud library and assets (in progress)
+- Next task: Add current content storage, server-owned revisions, revision
+  history, and canonical content hashes for notebooks, pages, and infinite
+  canvases; do not add sync endpoints yet.
+- Last completed: Added user-scoped folder, notebook, page, infinite-canvas,
+  and attachment-metadata SQLAlchemy models and repository layer, then applied
+  Alembic `20260805_0003`.
 
 ## Decisions
 
@@ -149,6 +149,18 @@
 
 ## Verification
 
+- Backend formatting, linting, and typing pass with `ruff format --check`,
+  `ruff check`, and `mypy` across 38 Python source/test files; all 19 unit tests
+  pass.
+- Both PostgreSQL/MinIO integration tests pass, including real PostgreSQL
+  persistence of identical client IDs under two different users with isolated
+  reads.
+- Alembic upgraded the real development database to `20260805_0003 (head)`,
+  `alembic check` reports no pending operations, and PostgreSQL contains the
+  new `folders`, `notebooks`, `pages`, `infinite_canvases`, and `assets` tables.
+- An independent empty scratch database upgraded through migrations `0001`,
+  `0002`, and `0003`; all nine expected tables and the final version were
+  inspected before the scratch database was deleted.
 - Backend formatting, linting, and typing pass with `ruff format --check`,
   `ruff check`, and `mypy` across 34 checked Python source/test files.
 - All 15 backend unit tests pass, including login-limit account/client,

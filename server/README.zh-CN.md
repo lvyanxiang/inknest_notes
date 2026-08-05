@@ -3,8 +3,8 @@
 [English](README.md) | [简体中文](README.zh-CN.md)
 
 InkNest 服务端是为账号备份和 local-first（本地优先）同步提供支持的
-Python/FastAPI 后端。目前已经包含服务骨架、PostgreSQL、MinIO、健康检查以及第一版
-账号、会话和设备接口；笔记同步尚未实现。
+Python/FastAPI 后端。目前已经包含服务骨架、PostgreSQL、MinIO、健康检查、第一版
+账号/会话/设备接口，以及按用户隔离的资料库元数据持久化；笔记同步接口尚未实现。
 
 ## 环境要求
 
@@ -185,8 +185,14 @@ docker compose config
 
 ## 数据库迁移
 
-`20260805_0001` 是空基线，`20260805_0002` 创建了 `users`、`devices` 和
-`refresh_tokens`。后续表结构变化必须创建新迁移，不能修改已经应用过的迁移文件。
+当前迁移历史为：
+
+- `20260805_0001`：空基线。
+- `20260805_0002`：创建 `users`、`devices` 和 `refresh_tokens`。
+- `20260805_0003`：创建 `folders`、`notebooks`、`pages`、
+  `infinite_canvases` 和 `assets` 元数据表。
+
+后续表结构变化必须创建新迁移，不能修改已经应用过的迁移文件。
 
 应用迁移并查看当前版本：
 
@@ -212,6 +218,26 @@ uv run alembic downgrade -1
 ```
 
 这个命令可能删除表、字段及数据，必须先备份，不应作为日常清理命令。
+
+## 资料库元数据持久化
+
+`src/inknest_server/models/library.py` 中的 SQLAlchemy Model 定义文件夹、笔记本、
+页面、无限画布和附件元数据；`src/inknest_server/repositories/library.py` 是统一数据库
+访问边界。每次读取都必须传入 `user_id`，创建页面、画布或附件前也会校验父级资源归属。
+因此“资源不存在”和“资源属于其他用户”都会表现为相同的未找到结果，不会泄露他人数据。
+
+App 生成的 ID 以稳定字符串保存，并与 `user_id` 组成联合主键。因此两个用户都拥有
+`page-local-1` 也不会冲突。页面的 `coordinate_space_version` 使用 JSON 保存，服务端
+可以原样保留未来或未知格式，不进行危险改写。`assets` 表只保存文件名、类型、大小、
+SHA-256 和 MinIO Object Key，PDF、图片、音频等文件本体仍存放在 MinIO。
+
+当前还没有公开的资料库或同步 HTTP 接口。可以先在 Navicat/pgAdmin 查看这些表，或在
+`server/` 目录运行仓库层测试：
+
+```bash
+uv run pytest tests/unit/test_library_repository.py
+INKNEST_RUN_INTEGRATION=1 uv run pytest tests/integration
+```
 
 ## 认证机制
 
