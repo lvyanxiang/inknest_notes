@@ -98,6 +98,49 @@ production topology, or the accepted local/cloud merge policy.
 Do not mark plan work complete for scaffolding, TODOs, mocked success paths, or
 unverified migrations.
 
+## Teach The Manual Workflow
+
+Treat the user as an experienced software learner who is new to Python backend
+development. After changing backend code, explain how the same work would be
+done without AI instead of reporting only the finished diff.
+
+Read `references/python-backend-workflows.md` completely whenever the selected
+slice changes Python dependencies, application startup, FastAPI routes,
+SQLAlchemy models, Alembic migrations, PostgreSQL, MinIO, or Compose. Tailor
+the relevant workflow to the actual change; do not paste unrelated commands.
+
+For every affected subsystem, include:
+
+1. Its role and, when useful, the closest Node.js ecosystem analogy.
+2. The source files a developer would normally edit and why.
+3. Exact commands, including the directory from which to run them.
+4. Which commands are one-time setup versus routine development commands.
+5. The expected observable result and how to inspect it in Swagger, PostgreSQL,
+   MinIO Console, logs, or tests.
+6. A safe failure or rollback path. Label destructive or data-losing commands
+   explicitly and never present them as routine cleanup.
+
+When a database schema changes, always explain this sequence explicitly:
+
+- Change or add the SQLAlchemy model.
+- Make the model metadata discoverable by Alembic.
+- Generate an Alembic revision; do not imply that changing a model updates the
+  database automatically.
+- Inspect both `upgrade()` and `downgrade()` before execution.
+- Apply the migration, check `alembic current`, inspect the schema, and run the
+  relevant tests.
+
+Use `uv add` and `uv sync` rather than ad-hoc `pip install` commands. Keep the
+host-versus-container address distinction explicit: host API development uses
+`localhost`, while the containerized API uses Compose service names such as
+`postgres` and `minio`. Update `server/README.md` whenever an operator or daily
+development command changes.
+
+Never assume that tracked `.env.example` credentials equal the user's ignored
+local `.env` values. Use placeholders or commands that read container/local
+environment variables, and do not print passwords, tokens, or MinIO secrets in
+the handoff.
+
 ## Verify
 
 Run checks proportional to the files changed:
@@ -137,5 +180,7 @@ Report:
 - The completed slice and user-visible or architectural outcome.
 - Important files changed.
 - Validation executed and any checks not run.
+- A concise "without AI" workflow for reproducing the affected Python backend
+  work, including commands, expected results, and safe recovery guidance.
 - The exact next unchecked backend task.
 - Any unresolved decision that must be made before continuing.

@@ -1,4 +1,4 @@
 interface:
   display_name: "InkNest Backend"
-  short_description: "Deliver the InkNest backend plan safely"
-  default_prompt: "Use $inknest-backend to implement the next unfinished backend slice, verify it, and update project records."
+  short_description: "Deliver and teach the InkNest backend safely"
+  default_prompt: "Use $inknest-backend to implement the next backend slice, verify it, update project records, and explain how I would reproduce the Python workflow without AI."
