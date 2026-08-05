@@ -85,6 +85,16 @@ uv run uvicorn inknest_server.main:app --reload
 cp .env.example .env
 ```
 
+API 已经提供非敏感默认值。只有 Compose API 容器需要覆盖普通可选配置时，才创建被
+Git 忽略的容器配置文件：
+
+```bash
+cp server/.env.compose.example server/.env.compose
+```
+
+不要为了重复默认值而创建这个文件。容器专属网络地址和服务间凭据映射仍显式保留在
+`compose.yaml` 中。
+
 不要用这个命令覆盖已有 `.env`。配置完成后，在仓库根目录执行：
 
 ```bash
@@ -133,6 +143,11 @@ API 在宿主机运行或使用默认 Compose 端口映射时，以下地址相�
 ```http
 Authorization: Bearer <access-token>
 ```
+
+失败登录使用 5 分钟滑动窗口。默认情况下，同一客户端 IP 与规范化邮箱组合最多允许
+失败 5 次，同一客户端 IP 总计最多失败 25 次。超过限制时返回
+`429 Too Many Requests`、结构化错误码 `login_rate_limited` 和 `Retry-After` 响应头。
+成功登录会清除当前 IP 与账号组合的失败记录。
 
 ### PostgreSQL 与 MinIO
 
@@ -209,13 +224,32 @@ uv run alembic downgrade -1
 - PostgreSQL 只保存 Refresh Token 的 SHA-256 哈希。
 - Refresh Token 重复使用时撤销同一个 Token Family。
 - 撤销设备时，使该设备的 Access Token 和 Refresh Token 失效。
+- 登录失败限流：默认同一 IP+邮箱 5 次、同一 IP 总计 25 次，窗口为 5 分钟。
 
-第一版尚未发送邮箱验证邮件，也尚未实现登录限流。
+当前限流记录保存在单个 API 进程内，符合目前单进程开发方式。生产环境扩展为多个 API
+实例前，需要把限流存储替换为共享实现，确保所有实例看到同一个尝试窗口。
 
-## 环境变量
+第一版尚未发送邮箱验证邮件。
 
-应用配置统一使用 `INKNEST_` 前缀。本地宿主机配置参考 `server/.env.example`，Compose
-配置参考根目录 `.env.example`。
+## 配置分层
+
+应用配置统一使用 `INKNEST_` 前缀。配置按职责拆分，新增普通可选配置时不需要继续复制
+到 `compose.yaml`。
+
+| 文件或来源 | 作用 | 是否跟踪 |
+| --- | --- | --- |
+| Pydantic `Settings` | 非敏感应用默认值和配置校验。 | 是 |
+| `server/.env` | 宿主机 FastAPI 配置，例如使用 `localhost` 的依赖地址。 | 否 |
+| 根目录 `.env` | Compose 基础设施、端口、服务凭据和变量替换。 | 否 |
+| `server/.env.compose` | Compose API 容器的普通可选覆盖配置。 | 否 |
+| `compose.yaml` 的 `environment` | 容器专属地址和显式服务间凭据映射。 | 是 |
+
+对应示例为 `.env.example`、`server/.env.example` 和
+`server/.env.compose.example`。当同一个变量同时存在时，`environment` 会覆盖
+`env_file`；PostgreSQL 容器主机名 `postgres` 和 MinIO 主机名 `minio` 就使用这个机制。
+
+新增普通可选 API 配置时，应增加 Pydantic 默认值与校验、示例和文档。只有容器必须
+使用不同值或需要显式映射密钥时，才修改 `compose.yaml`。
 
 重要配置：
 
@@ -228,3 +262,7 @@ uv run alembic downgrade -1
 - `INKNEST_JWT_SECRET`：至少 32 位的服务端签名密钥，不能暴露给 Flutter 或提交生产值。
 - `INKNEST_ACCESS_TOKEN_MINUTES`：Access Token 有效分钟数，默认 15。
 - `INKNEST_REFRESH_TOKEN_DAYS`：Refresh Token 有效天数，默认 30。
+- `INKNEST_LOGIN_RATE_LIMIT_ACCOUNT_ATTEMPTS`：每个 IP+邮箱组合在窗口内允许的失败次数，
+  默认 5。
+- `INKNEST_LOGIN_RATE_LIMIT_IP_ATTEMPTS`：每个 IP 在窗口内允许的总失败次数，默认 25。
+- `INKNEST_LOGIN_RATE_LIMIT_WINDOW_SECONDS`：登录限流滑动窗口秒数，默认 300。

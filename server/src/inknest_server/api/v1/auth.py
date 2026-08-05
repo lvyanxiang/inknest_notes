@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Response, status
+from fastapi import APIRouter, Request, Response, status
 
 from inknest_server.api.dependencies import (
     AuthServiceDependency,
@@ -40,6 +40,7 @@ async def register(
 
 @router.post("/auth/login", response_model=TokenResponse)
 async def login(
+    request: Request,
     payload: LoginRequest,
     service: AuthServiceDependency,
 ) -> TokenResponse:
@@ -48,6 +49,7 @@ async def login(
         password=payload.password,
         device_name=payload.device_name,
         platform=payload.platform,
+        client_id=request.client.host if request.client is not None else "unknown",
     )
     return _token_response(result, service)
 

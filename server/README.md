@@ -88,6 +88,16 @@ development credentials. Do not overwrite an existing `.env`:
 cp .env.example .env
 ```
 
+The API already has non-secret defaults. Only when the Compose API container
+needs different optional values, create its ignored override file:
+
+```bash
+cp server/.env.compose.example server/.env.compose
+```
+
+Do not create this file merely to duplicate defaults. Container-only network
+addresses and service credential mappings remain explicit in `compose.yaml`.
+
 Then, from the repository root:
 
 ```bash
@@ -139,6 +149,12 @@ or refresh:
 ```http
 Authorization: Bearer <access-token>
 ```
+
+Failed login attempts use a five-minute sliding window. By default, the API
+allows five failures for the same client IP and normalized email, and 25 total
+failures from one client IP. A blocked request returns `429 Too Many Requests`,
+the structured error code `login_rate_limited`, and a `Retry-After` header.
+Successful login clears the account/client failure bucket.
 
 ### PostgreSQL and MinIO
 
@@ -214,14 +230,34 @@ each refresh token is stored in PostgreSQL.
   tokens.
 
 Use Swagger at `http://localhost:8000/docs` to inspect request examples and
-responses. The first API slice does not send verification email and does not
-yet include login rate limiting.
+responses. The first API slice does not send verification email.
 
-## Environment variables
+The current limiter is process-local, matching the single-process development
+topology. Before running multiple API instances, replace its storage with a
+shared implementation so every instance observes the same attempt window.
 
-All application settings use the `INKNEST_` prefix. See
-`server/.env.example` for local host values and the root `.env.example` for
-Compose values.
+## Configuration layers
+
+All application settings use the `INKNEST_` prefix. Configuration is split by
+responsibility so new optional settings do not have to be copied into
+`compose.yaml`.
+
+| File or source | Purpose | Tracked |
+| --- | --- | --- |
+| Pydantic `Settings` | Non-secret application defaults and validation. | Yes |
+| `server/.env` | Host-run FastAPI values such as `localhost` dependency addresses. | No |
+| Root `.env` | Compose infrastructure, ports, service credentials, and interpolation. | No |
+| `server/.env.compose` | Optional non-secret overrides for the Compose API container. | No |
+| `compose.yaml` `environment` | Container-only addresses and explicit service-to-service credential mapping. | Yes |
+
+Examples are provided by `.env.example`, `server/.env.example`, and
+`server/.env.compose.example`. `environment` overrides the same key from
+`env_file`; this is intentional for container-only values such as the
+PostgreSQL host `postgres` and MinIO host `minio`.
+
+When adding a normal optional API setting, add its Pydantic default, validation,
+example, and documentation. Add it to `compose.yaml` only when the container
+must receive a different value or an explicitly mapped secret.
 
 Important settings:
 
@@ -235,3 +271,9 @@ Important settings:
   never expose it to Flutter or commit a production value.
 - `INKNEST_ACCESS_TOKEN_MINUTES`: access-token lifetime, default 15 minutes.
 - `INKNEST_REFRESH_TOKEN_DAYS`: refresh-token lifetime, default 30 days.
+- `INKNEST_LOGIN_RATE_LIMIT_ACCOUNT_ATTEMPTS`: failures allowed for one client
+  IP and normalized email per window, default 5.
+- `INKNEST_LOGIN_RATE_LIMIT_IP_ATTEMPTS`: total failures allowed for one client
+  IP per window, default 25.
+- `INKNEST_LOGIN_RATE_LIMIT_WINDOW_SECONDS`: login-limit sliding-window length,
+  default 300 seconds.

@@ -56,9 +56,10 @@ services:
   api:
     build:
       context: ./server
+    env_file:
+      - path: ./server/.env.compose
+        required: false
     environment:
-      INKNEST_ENVIRONMENT: development
-      INKNEST_LOG_LEVEL: ${INKNEST_LOG_LEVEL:-INFO}
       INKNEST_DATABASE_URL: >-
         postgresql+psycopg://${POSTGRES_USER:-inknest}:${POSTGRES_PASSWORD:-inknest-postgres-dev}@postgres:5432/${POSTGRES_DB:-inknest}
       INKNEST_MINIO_ENDPOINT: minio:9000

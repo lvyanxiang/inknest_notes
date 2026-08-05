@@ -7,6 +7,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from inknest_server.auth.passwords import PasswordManager
+from inknest_server.auth.rate_limit import (
+    LoginAttempt,
+    LoginRateLimiter,
+    LoginRateLimitExceededError,
+)
 from inknest_server.auth.tokens import TokenManager
 from inknest_server.errors import ApiError
 from inknest_server.models import Device, RefreshToken, User
@@ -26,10 +31,12 @@ class AuthService:
         session: AsyncSession,
         password_manager: PasswordManager,
         token_manager: TokenManager,
+        login_rate_limiter: LoginRateLimiter,
     ) -> None:
         self._session = session
         self._passwords = password_manager
         self._tokens = token_manager
+        self._login_rate_limiter = login_rate_limiter
 
     @property
     def access_token_seconds(self) -> int:
@@ -81,13 +88,24 @@ class AuthService:
         password: str,
         device_name: str,
         platform: str,
+        client_id: str,
     ) -> AuthResult:
-        user = await self._find_user_by_email(email.strip().lower())
-        password_hash = user.password_hash if user is not None else None
-        if not await self._passwords.verify(password_hash, password):
+        normalized_email = email.strip().lower()
+        attempt = await self._acquire_login_attempt(
+            email=normalized_email,
+            client_id=client_id,
+        )
+        try:
+            user = await self._find_user_by_email(normalized_email)
+            password_hash = user.password_hash if user is not None else None
+            password_is_valid = await self._passwords.verify(password_hash, password)
+        except Exception:
+            await self._login_rate_limiter.cancel(attempt)
+            raise
+
+        if not password_is_valid or user is None or not user.is_active:
             raise self._invalid_credentials()
-        if user is None or not user.is_active:
-            raise self._invalid_credentials()
+        await self._login_rate_limiter.mark_succeeded(attempt)
 
         device = Device(
             user=user,
@@ -99,6 +117,27 @@ class AuthService:
         result = self._issue_session(user=user, device=device, family_id=uuid4())
         await self._session.commit()
         return result
+
+    async def _acquire_login_attempt(
+        self,
+        *,
+        email: str,
+        client_id: str,
+    ) -> LoginAttempt:
+        try:
+            return await self._login_rate_limiter.acquire(
+                email=email,
+                client_id=client_id,
+            )
+        except LoginRateLimitExceededError as error:
+            retry_after = error.retry_after_seconds
+            raise ApiError(
+                code="login_rate_limited",
+                message="Too many login attempts. Try again later.",
+                status_code=429,
+                details={"retryAfterSeconds": retry_after},
+                headers={"Retry-After": str(retry_after)},
+            ) from error
 
     async def refresh(self, raw_token: str) -> AuthResult:
         token_hash = self._tokens.hash_refresh_token(raw_token)

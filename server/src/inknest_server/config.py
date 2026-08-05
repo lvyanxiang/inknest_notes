@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import SecretStr, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     jwt_issuer: str = "inknest-server"
     access_token_minutes: int = 15
     refresh_token_days: int = 30
+    login_rate_limit_account_attempts: int = Field(default=5, ge=1)
+    login_rate_limit_ip_attempts: int = Field(default=25, ge=1)
+    login_rate_limit_window_seconds: int = Field(default=300, ge=1)
 
     @model_validator(mode="after")
     def reject_development_secret_in_production(self) -> "Settings":

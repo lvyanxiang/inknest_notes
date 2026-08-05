@@ -26,6 +26,9 @@ def test_settings() -> Settings:
         environment="test",
         database_url="sqlite+aiosqlite:///:memory:",
         jwt_secret=SecretStr("test-only-jwt-secret-that-is-at-least-32-characters"),
+        login_rate_limit_account_attempts=2,
+        login_rate_limit_ip_attempts=100,
+        login_rate_limit_window_seconds=60,
     )
 
 

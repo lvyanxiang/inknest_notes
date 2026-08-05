@@ -2,12 +2,13 @@
 
 ## Current
 
-- Milestone: Backend Phase 2 accounts, sessions, and devices (in progress)
-- Next task: Add login rate limiting and its tests to complete the remaining
-  Phase 2 checklist item; do not start Flutter account UI yet.
-- Last completed: Added email/password registration and login, Argon2id password
-  hashing, JWT access tokens, rotating hashed refresh tokens, logout, owned
-  device listing/revocation, the PostgreSQL auth migration, and isolation tests.
+- Milestone: Backend Phase 2 accounts, sessions, and devices (completed)
+- Next task: Start Phase 3 with the folder, notebook, page, infinite-canvas, and
+  attachment-metadata schema plus user-scoped repository layer; do not start
+  Flutter account UI yet.
+- Last completed: Split runtime configuration into Pydantic defaults, ignored
+  host and Compose API env files, root Compose interpolation, and a small
+  explicit container-only `environment` allowlist.
 
 ## Decisions
 
@@ -45,6 +46,13 @@
   verification during initial development. Use short-lived JWT access tokens
   and rotating opaque refresh tokens; store only refresh-token hashes and bind
   sessions to server-revocable devices.
+- Keep the development login limiter process-local while the API uses a single
+  process; require shared limiter storage before a multi-instance production
+  topology so limits cannot be bypassed across instances.
+- Keep non-secret defaults in Pydantic, host overrides in `server/.env`,
+  optional container API overrides in ignored `server/.env.compose`, and only
+  container topology or explicit service credential mappings in Compose
+  `environment`; do not mirror every new application setting into Compose.
 - Use `docs/development/POST_MVP_ROADMAP.md` for GoodNotes / Notability-style post-MVP planning.
 - Prefer collapsing on-canvas zoom chrome and keeping Fit Width / Fit Page discoverable from More → View so the paper stays primary while writing.
 - Prefer anchored tool-property popovers on regular/wide iPad widths; keep bottom sheets only for compact Split View.
@@ -142,8 +150,9 @@
 ## Verification
 
 - Backend formatting, linting, and typing pass with `ruff format --check`,
-  `ruff check`, and `mypy` across 32 checked Python source/test files.
-- All 10 backend unit tests pass, including six account/session/device tests;
+  `ruff check`, and `mypy` across 34 checked Python source/test files.
+- All 15 backend unit tests pass, including login-limit account/client,
+  cross-account IP, expiry, cancellation, and successful-login reset coverage;
   the PostgreSQL/MinIO integration test also passes.
 - Alembic upgraded the real local PostgreSQL database from `20260805_0001` to
   `20260805_0002 (head)`; `alembic check` reports no pending schema operations,
@@ -155,6 +164,9 @@
 - `docker compose config --quiet` passes, the user confirmed the complete stack
   starts successfully, and `/api/v1/health/ready` reports both PostgreSQL and
   MinIO available. The Alembic empty baseline is present in the real database.
+- Compose also resolves successfully when the optional
+  `server/.env.compose` file is absent; the API container's explicit
+  environment is limited to database, MinIO, and JWT container mappings.
 - Uvicorn reached application startup on the host runtime, but sandbox network
   isolation prevented an HTTP probe; the temporary validation process was
   stopped afterward.

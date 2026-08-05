@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from inknest_server.api.v1.router import router as api_v1_router
-from inknest_server.auth import PasswordManager, TokenManager
+from inknest_server.auth import LoginRateLimiter, PasswordManager, TokenManager
 from inknest_server.config import Settings, get_settings
 from inknest_server.db import Database
 from inknest_server.errors import register_error_handlers
@@ -50,6 +50,7 @@ def create_app(
     app.state.readiness_checker = resolved_readiness
     app.state.password_manager = PasswordManager()
     app.state.token_manager = TokenManager(resolved_settings)
+    app.state.login_rate_limiter = LoginRateLimiter.from_settings(resolved_settings)
     app.add_middleware(RequestIdMiddleware)
     register_error_handlers(app)
     app.include_router(api_v1_router, prefix=resolved_settings.api_prefix)

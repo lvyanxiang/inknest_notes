@@ -7,7 +7,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from inknest_server.auth import PasswordManager, TokenManager
+from inknest_server.auth import LoginRateLimiter, PasswordManager, TokenManager
 from inknest_server.auth.service import AuthService
 from inknest_server.auth.tokens import InvalidAccessTokenError
 from inknest_server.db import Database
@@ -37,6 +37,7 @@ def get_auth_service(request: Request, session: DbSession) -> AuthService:
         session,
         cast(PasswordManager, request.app.state.password_manager),
         cast(TokenManager, request.app.state.token_manager),
+        cast(LoginRateLimiter, request.app.state.login_rate_limiter),
     )
 
 

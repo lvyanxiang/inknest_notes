@@ -42,6 +42,7 @@ migrate_working_dir/
 *.egg-info/
 .env
 server/.env
+server/.env.compose
 
 # Symbolication related
 app.*.symbols

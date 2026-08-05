@@ -85,6 +85,47 @@ async def test_login_creates_a_separate_device_session(client: AsyncClient) -> N
     }
 
 
+async def test_failed_logins_are_rate_limited(client: AsyncClient) -> None:
+    assert (await register(client)).status_code == 201
+    payload = registration_payload()
+    payload["password"] = "wrong-password"
+
+    first = await client.post("/api/v1/auth/login", json=payload)
+    second = await client.post("/api/v1/auth/login", json=payload)
+    limited = await client.post("/api/v1/auth/login", json=payload)
+
+    assert first.status_code == 401
+    assert second.status_code == 401
+    assert limited.status_code == 429
+    assert limited.headers["retry-after"] == "60"
+    assert limited.json()["error"]["code"] == "login_rate_limited"
+    assert limited.json()["error"]["details"] == {"retryAfterSeconds": 60}
+
+
+async def test_successful_login_clears_account_client_failures(
+    client: AsyncClient,
+) -> None:
+    assert (await register(client)).status_code == 201
+    wrong_payload = registration_payload()
+    wrong_payload["password"] = "wrong-password"
+
+    assert (
+        await client.post("/api/v1/auth/login", json=wrong_payload)
+    ).status_code == 401
+    assert (
+        await client.post("/api/v1/auth/login", json=registration_payload())
+    ).status_code == 200
+    assert (
+        await client.post("/api/v1/auth/login", json=wrong_payload)
+    ).status_code == 401
+    assert (
+        await client.post("/api/v1/auth/login", json=wrong_payload)
+    ).status_code == 401
+    limited = await client.post("/api/v1/auth/login", json=wrong_payload)
+
+    assert limited.status_code == 429
+
+
 async def test_refresh_rotates_token_and_reuse_revokes_family(
     client: AsyncClient,
 ) -> None:

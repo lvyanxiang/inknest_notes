@@ -1,6 +1,6 @@
 # InkNest Notes 服务端实施计划
 
-- 状态：实施中（Phase 2）
+- 状态：Phase 2 已完成，待实施 Phase 3
 - 更新时间：2026-08-05
 - 产品 Brief：`docs/product/features/inknest-cloud-backend/PRODUCT_BRIEF.md`
 - 对应路线图：Milestone 8 / Post-MVP 6 Sync And Backup
@@ -343,7 +343,7 @@ checksums.sha256
 
 - [x] 用户注册、登录、Refresh Token 轮换和退出。
 - [x] Argon2 密码哈希。
-- [ ] 登录限流。
+- [x] 登录限流。
 - [x] 设备注册、设备列表和远程撤销。
 - [x] 用户资源归属测试。
 - [x] 敏感配置通过环境变量注入。
