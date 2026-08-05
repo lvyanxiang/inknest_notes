@@ -331,9 +331,9 @@ checksums.sha256
 
 - [x] 创建 `server/pyproject.toml` 和 `src` 布局。
 - [x] 配置 FastAPI、设置管理、结构化日志和统一错误响应。
-- [ ] 配置 PostgreSQL、SQLAlchemy、Alembic。
-- [ ] 配置 MinIO Storage Adapter。
-- [ ] 创建根级 `compose.yaml`，启动 API、PostgreSQL、MinIO。
+- [x] 配置 PostgreSQL、SQLAlchemy、Alembic。
+- [x] 配置 MinIO Storage Adapter。
+- [x] 创建根级 `compose.yaml`，启动 API、PostgreSQL、MinIO。
 - [x] 添加 `/health/live`、`/health/ready`。
 - [x] 建立 pytest 单元和集成测试入口。
 
