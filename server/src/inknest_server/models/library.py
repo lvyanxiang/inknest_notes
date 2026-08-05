@@ -222,6 +222,71 @@ class Asset(Base):
     )
 
 
+class AssetUpload(Base):
+    __tablename__ = "asset_uploads"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "asset_id", name="uq_asset_uploads_user_id_asset_id"
+        ),
+        UniqueConstraint("object_key", name="uq_asset_uploads_object_key"),
+        ForeignKeyConstraint(
+            ["notebook_id", "user_id"],
+            ["notebooks.id", "notebooks.user_id"],
+            name="fk_asset_uploads_notebook_owner",
+            ondelete="CASCADE",
+        ),
+        CheckConstraint(
+            "kind IN ('pdf', 'image', 'audio')", name="ck_asset_uploads_kind"
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'cancelled', 'completed', 'expired')",
+            name="ck_asset_uploads_status",
+        ),
+        CheckConstraint(
+            "expected_byte_size > 0", name="ck_asset_uploads_expected_byte_size"
+        ),
+        CheckConstraint(
+            "length(expected_sha256) = 64",
+            name="ck_asset_uploads_expected_sha256_length",
+        ),
+        Index(
+            "ix_asset_uploads_user_notebook_status",
+            "user_id",
+            "notebook_id",
+            "status",
+        ),
+        Index("ix_asset_uploads_status_expires_at", "status", "expires_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    device_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("devices.id", ondelete="SET NULL"), index=True
+    )
+    notebook_id: Mapped[str] = mapped_column(String(128))
+    asset_id: Mapped[str] = mapped_column(String(128))
+    kind: Mapped[str] = mapped_column(String(32))
+    original_filename: Mapped[str] = mapped_column(String(255))
+    object_key: Mapped[str] = mapped_column(String(1024))
+    content_type: Mapped[str] = mapped_column(String(255))
+    expected_byte_size: Mapped[int] = mapped_column(BigInteger)
+    expected_sha256: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(
+        String(32), default="pending", server_default="pending"
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    upload_url_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class ContentRevision(Base):
     __tablename__ = "revisions"
     __table_args__ = (

@@ -5,8 +5,8 @@
 InkNest Server is the Python/FastAPI backend for account-backed backup and
 local-first synchronization. It currently provides the service skeleton,
 PostgreSQL and MinIO adapters, health endpoints, the first account/session API,
-and user-scoped library metadata persistence. Notebook synchronization routes
-are not implemented yet.
+user-scoped library metadata persistence, and presigned asset upload sessions.
+Notebook synchronization and upload completion verification are not implemented yet.
 
 ## Requirements
 
@@ -143,6 +143,8 @@ All application routes use the base URL `http://127.0.0.1:8000/api/v1`.
 | `GET` | `/me` | Bearer Access Token | Return the current user. |
 | `GET` | `/devices` | Bearer Access Token | List the current user's devices. |
 | `DELETE` | `/devices/{device_id}` | Bearer Access Token | Revoke one device owned by the current user. |
+| `POST` | `/assets/upload-sessions` | Bearer Access Token | Create or retry an upload session and return a MinIO presigned PUT URL. |
+| `DELETE` | `/assets/upload-sessions/{upload_id}` | Bearer Access Token | Cancel one pending upload session owned by the current user. |
 
 For Bearer-protected routes, send the Access Token returned by register, login,
 or refresh:
@@ -156,6 +158,28 @@ allows five failures for the same client IP and normalized email, and 25 total
 failures from one client IP. A blocked request returns `429 Too Many Requests`,
 the structured error code `login_rate_limited`, and a `Retry-After` header.
 Successful login clears the account/client failure bucket.
+
+### Presigned asset uploads
+
+An owned notebook must already exist before an upload session can be created.
+There is no public notebook CRUD API yet, so use repository code, test data, or
+a database tool to prepare one during this phase.
+
+The App submits its stable local asset ID, notebook ID, filename, media type,
+byte length, and SHA-256 to `POST /assets/upload-sessions`. The response contains
+a short-lived `uploadUrl`, `PUT` method, and required `Content-Type` header. Send
+the bytes directly to that private MinIO URL. Treat the signed URL as a temporary
+secret and never log or persist it long-term.
+
+Retrying the same asset ID with identical metadata reuses the pending session
+and signs a fresh URL. Different metadata returns `409` instead of silently
+overwriting a different local file. A successful MinIO PUT intentionally leaves
+`asset_uploads.status` as `pending` and creates no `assets` row. The next backend
+slice will verify the stored object's actual size and SHA-256 before making it
+ready.
+Cancelling a session prevents later server-side completion but cannot revoke an
+already issued URL before that URL expires. Scheduled cleanup of incomplete and
+orphaned objects is a later phase.
 
 ### PostgreSQL and MinIO
 
@@ -202,6 +226,8 @@ The migration history currently contains:
   `assets` metadata.
 - `20260805_0004`: current JSON content and hashes on notebooks, pages, and
   infinite canvases, plus immutable `revisions` history.
+- `20260805_0005`: pending `asset_uploads` sessions with expected size,
+  SHA-256, object key, state, and expiry timestamps.
 
 Future schema work must add a new revision instead of rewriting an applied
 revision.
@@ -238,8 +264,9 @@ an unknown future representation can be preserved without server rewriting.
 The `assets` table stores only object metadata and MinIO object keys; file bytes
 remain in MinIO.
 
-There are no public library or synchronization routes yet. Inspect these tables
-in Navicat/pgAdmin, or run the repository tests from `server/`:
+There are no public library CRUD or synchronization routes yet; upload sessions
+are the only public library-related routes. Inspect these tables in
+Navicat/pgAdmin, or run the repository tests from `server/`:
 
 ```bash
 uv run pytest tests/unit/test_library_repository.py
@@ -317,10 +344,18 @@ Important settings:
 
 - `INKNEST_DATABASE_URL`: SQLAlchemy PostgreSQL URL.
 - `INKNEST_MINIO_ENDPOINT`: MinIO host and port without a URL scheme.
+- `INKNEST_MINIO_PUBLIC_ENDPOINT`: client-visible MinIO host and port embedded
+  in signed URLs. Compose normally uses `localhost:9000` here and `minio:9000`
+  for the internal endpoint. For a physical device, configure a LAN-reachable
+  host or HTTPS domain instead of `localhost`.
 - `INKNEST_MINIO_ACCESS_KEY` and `INKNEST_MINIO_SECRET_KEY`: server-only
   credentials; never expose them to Flutter.
 - `INKNEST_MINIO_BUCKET`: private object bucket checked by readiness.
 - `INKNEST_MINIO_SECURE`: enable TLS for non-local storage endpoints.
+- `INKNEST_MINIO_PUBLIC_SECURE`: use HTTPS in client-visible signed URLs.
+- `INKNEST_ASSET_UPLOAD_URL_MINUTES`: signed upload URL lifetime, default 15.
+- `INKNEST_ASSET_UPLOAD_SESSION_HOURS`: pending-session lifetime, default 24.
+- `INKNEST_MAX_ASSET_UPLOAD_BYTES`: per-asset limit, default 512 MiB.
 - `INKNEST_JWT_SECRET`: server-only signing secret, at least 32 characters;
   never expose it to Flutter or commit a production value.
 - `INKNEST_ACCESS_TOKEN_MINUTES`: access-token lifetime, default 15 minutes.

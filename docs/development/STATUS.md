@@ -3,13 +3,14 @@
 ## Current
 
 - Milestone: Backend Phase 3 cloud library and assets (in progress)
-- Next task: Create attachment upload sessions and MinIO presigned upload URLs;
-  do not mark assets ready until a later completion step verifies size and
-  SHA-256.
-- Last completed: Added canonical current JSON, server-owned monotonic
-  revisions, immutable revision history, content hashes, stale-base conflict
-  protection, and idempotent same-content retries, then applied Alembic
-  `20260805_0004`.
+- Next task: Add upload completion verification and attachment references. The
+  service must read the uploaded MinIO object's size, stream and verify its
+  SHA-256, and only then create ready `assets` metadata.
+- Last completed: Added authenticated, owner-scoped and idempotent attachment
+  upload sessions, short-lived MinIO presigned PUT URLs, cancellation, safe
+  object keys, internal/public MinIO endpoint separation, and Alembic
+  `20260805_0005`. Uploaded objects remain pending until the next completion
+  step verifies size and SHA-256.
 
 ## Decisions
 
@@ -155,6 +156,17 @@
 
 ## Verification
 
+- Backend formatting, linting, and strict typing pass across 48 Python
+  source/test files; all 26 non-integration tests pass.
+- All four PostgreSQL/MinIO integration tests pass. The new test creates a real
+  presigned URL, uploads bytes directly to private MinIO, confirms the upload
+  remains `pending` with no ready `assets` row, and deletes the test object.
+- Alembic upgraded the real development database to `20260805_0005 (head)`,
+  `alembic check` reports no pending operations, and an independent empty
+  scratch database upgraded from `0001` through `0005` with the expected 11
+  public tables before being deleted.
+- `docker compose config --quiet` passes with separate internal MinIO and
+  client-visible signing endpoints.
 - Backend formatting, linting, and typing pass with `ruff format --check`,
   `ruff check`, and `mypy` across 42 Python source/test files; all 23 unit tests
   pass.

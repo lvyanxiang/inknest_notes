@@ -1,4 +1,5 @@
 from collections.abc import AsyncIterator
+from datetime import timedelta
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -11,6 +12,25 @@ from inknest_server.db import Database
 from inknest_server.db.base import Base
 from inknest_server.main import create_app
 from inknest_server.services.readiness import ReadinessChecks
+
+
+class FakeObjectStorage:
+    def __init__(self) -> None:
+        self.upload_requests: list[tuple[str, timedelta]] = []
+        self.deleted_objects: list[str] = []
+
+    async def ping(self) -> None:
+        return None
+
+    async def create_upload_url(self, object_key: str, *, expires: timedelta) -> str:
+        self.upload_requests.append((object_key, expires))
+        return f"http://object-storage.test/upload/{object_key}"
+
+    async def create_download_url(self, object_key: str, *, expires: timedelta) -> str:
+        return f"http://object-storage.test/download/{object_key}"
+
+    async def delete_object(self, object_key: str) -> None:
+        self.deleted_objects.append(object_key)
 
 
 class HealthyReadinessChecker:
@@ -49,13 +69,21 @@ async def db_session(database: Database) -> AsyncIterator[AsyncSession]:
 
 
 @pytest.fixture
+def object_storage() -> FakeObjectStorage:
+    return FakeObjectStorage()
+
+
+@pytest.fixture
 async def client(
-    test_settings: Settings, database: Database
+    test_settings: Settings,
+    database: Database,
+    object_storage: FakeObjectStorage,
 ) -> AsyncIterator[AsyncClient]:
     app = create_app(
         settings=test_settings,
         readiness_checker=HealthyReadinessChecker(),
         database=database,
+        object_storage=object_storage,
     )
     transport = ASGITransport(app=app)
     async with app.router.lifespan_context(app):

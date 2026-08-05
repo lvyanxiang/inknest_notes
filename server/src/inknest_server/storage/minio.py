@@ -9,9 +9,12 @@ class MinioStorage:
         self,
         *,
         endpoint: str,
+        public_endpoint: str | None = None,
         access_key: str,
         secret_key: str,
         secure: bool,
+        public_secure: bool | None = None,
+        region: str = "us-east-1",
         bucket: str,
     ) -> None:
         self._bucket = bucket
@@ -20,6 +23,14 @@ class MinioStorage:
             access_key=access_key,
             secret_key=secret_key,
             secure=secure,
+            region=region,
+        )
+        self._signing_client = Minio(
+            public_endpoint or endpoint,
+            access_key=access_key,
+            secret_key=secret_key,
+            secure=secure if public_secure is None else public_secure,
+            region=region,
         )
 
     async def ping(self) -> None:
@@ -36,7 +47,7 @@ class MinioStorage:
         expires: timedelta,
     ) -> str:
         return await to_thread.run_sync(
-            lambda: self._client.presigned_put_object(
+            lambda: self._signing_client.presigned_put_object(
                 self._bucket,
                 object_key,
                 expires=expires,
@@ -50,9 +61,14 @@ class MinioStorage:
         expires: timedelta,
     ) -> str:
         return await to_thread.run_sync(
-            lambda: self._client.presigned_get_object(
+            lambda: self._signing_client.presigned_get_object(
                 self._bucket,
                 object_key,
                 expires=expires,
             )
+        )
+
+    async def delete_object(self, object_key: str) -> None:
+        await to_thread.run_sync(
+            lambda: self._client.remove_object(self._bucket, object_key)
         )

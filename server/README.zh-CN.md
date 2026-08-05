@@ -4,7 +4,8 @@
 
 InkNest 服务端是为账号备份和 local-first（本地优先）同步提供支持的
 Python/FastAPI 后端。目前已经包含服务骨架、PostgreSQL、MinIO、健康检查、第一版
-账号/会话/设备接口，以及按用户隔离的资料库元数据持久化；笔记同步接口尚未实现。
+账号/会话/设备接口、按用户隔离的资料库元数据持久化，以及附件预签名上传会话；笔记
+同步接口和上传完成校验尚未实现。
 
 ## 环境要求
 
@@ -137,6 +138,8 @@ API 在宿主机运行或使用默认 Compose 端口映射时，以下地址相�
 | `GET` | `/me` | Bearer Access Token | 获取当前用户。 |
 | `GET` | `/devices` | Bearer Access Token | 获取当前用户的登录设备。 |
 | `DELETE` | `/devices/{device_id}` | Bearer Access Token | 撤销当前用户拥有的指定设备。 |
+| `POST` | `/assets/upload-sessions` | Bearer Access Token | 创建或重试附件上传会话，返回 MinIO 预签名 PUT URL。 |
+| `DELETE` | `/assets/upload-sessions/{upload_id}` | Bearer Access Token | 取消当前用户拥有的待上传会话。 |
 
 访问 Bearer 鉴权接口时，使用注册、登录或刷新接口返回的 Access Token：
 
@@ -148,6 +151,43 @@ Authorization: Bearer <access-token>
 失败 5 次，同一客户端 IP 总计最多失败 25 次。超过限制时返回
 `429 Too Many Requests`、结构化错误码 `login_rate_limited` 和 `Retry-After` 响应头。
 成功登录会清除当前 IP 与账号组合的失败记录。
+
+### 附件预签名上传
+
+调用上传会话接口前，数据库中必须已有属于当前用户的笔记本。当前还没有公开的笔记本
+CRUD API，所以现阶段可使用仓库层、测试数据或数据库工具准备笔记本。
+
+创建上传会话时，App 提交稳定的本地 `assetId`、所属笔记本、文件名、MIME、字节数和
+SHA-256：
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/assets/upload-sessions \
+  -H "Authorization: Bearer <access-token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "notebookId": "<notebook-id>",
+    "assetId": "<stable-local-asset-id>",
+    "kind": "image",
+    "filename": "note.png",
+    "contentType": "image/png",
+    "byteSize": 1234,
+    "sha256": "<64位十六进制SHA-256>"
+  }'
+```
+
+响应中的 `uploadUrl` 是短期敏感凭据，不应记录到日志或长期保存。按照响应中的
+`method` 和 `requiredHeaders` 把文件直接上传到 MinIO，例如：
+
+```bash
+curl -X PUT '<uploadUrl>' -H 'Content-Type: image/png' --data-binary '@note.png'
+```
+
+同一个用户使用相同 `assetId` 和相同元数据重试时，会复用同一个会话并重新签发 URL；
+元数据不同会返回 `409`，避免静默覆盖另一个本地文件。当前上传成功后
+`asset_uploads.status` 仍是 `pending`，`assets` 表不会新增记录，这是刻意的安全边界。
+下一步完成接口会从 MinIO 校验真实大小和 SHA-256，通过后才把附件标记为可用。
+取消会话只阻止服务端后续完成该会话，不能撤销已经签发且尚未过期的 URL；未完成对象
+及孤儿对象的定时清理将在后续步骤实现。
 
 ### PostgreSQL 与 MinIO
 
@@ -193,6 +233,8 @@ docker compose config
   `infinite_canvases` 和 `assets` 元数据表。
 - `20260805_0004`：为笔记本、页面和无限画布增加当前 JSON、Revision、内容哈希，并
   创建不可变的 `revisions` 历史表。
+- `20260805_0005`：创建 `asset_uploads` 上传会话表，记录预期大小、SHA-256、对象 Key、
+  状态和有效期。
 
 后续表结构变化必须创建新迁移，不能修改已经应用过的迁移文件。
 
@@ -233,7 +275,8 @@ App 生成的 ID 以稳定字符串保存，并与 `user_id` 组成联合主键�
 可以原样保留未来或未知格式，不进行危险改写。`assets` 表只保存文件名、类型、大小、
 SHA-256 和 MinIO Object Key，PDF、图片、音频等文件本体仍存放在 MinIO。
 
-当前还没有公开的资料库或同步 HTTP 接口。可以先在 Navicat/pgAdmin 查看这些表，或在
+当前还没有公开的资料库 CRUD 或同步 HTTP 接口；附件上传会话是目前唯一公开的资料库
+相关接口。可以先在 Navicat/pgAdmin 查看这些表，或在
 `server/` 目录运行仓库层测试：
 
 ```bash
@@ -304,10 +347,17 @@ INKNEST_RUN_INTEGRATION=1 uv run pytest tests/integration
 
 - `INKNEST_DATABASE_URL`：SQLAlchemy PostgreSQL 连接地址。
 - `INKNEST_MINIO_ENDPOINT`：不包含 URL Scheme 的 MinIO 主机和端口。
+- `INKNEST_MINIO_PUBLIC_ENDPOINT`：写入预签名 URL、供 App 访问的 MinIO 主机和端口；
+  Compose 中通常是 `localhost:9000`，而内部地址是 `minio:9000`。
+  真机调试时不能使用 `localhost`，应改为手机可访问的电脑局域网地址或 HTTPS 域名。
 - `INKNEST_MINIO_ACCESS_KEY`、`INKNEST_MINIO_SECRET_KEY`：仅限服务端使用，不能暴露给
   Flutter。
 - `INKNEST_MINIO_BUCKET`：就绪检查使用的私有对象 Bucket。
 - `INKNEST_MINIO_SECURE`：非本地环境是否为 MinIO 启用 TLS。
+- `INKNEST_MINIO_PUBLIC_SECURE`：客户端访问预签名 URL 时是否使用 HTTPS。
+- `INKNEST_ASSET_UPLOAD_URL_MINUTES`：预签名 URL 有效分钟数，默认 15。
+- `INKNEST_ASSET_UPLOAD_SESSION_HOURS`：待上传会话有效小时数，默认 24。
+- `INKNEST_MAX_ASSET_UPLOAD_BYTES`：单个附件允许的最大字节数，默认 512 MiB。
 - `INKNEST_JWT_SECRET`：至少 32 位的服务端签名密钥，不能暴露给 Flutter 或提交生产值。
 - `INKNEST_ACCESS_TOKEN_MINUTES`：Access Token 有效分钟数，默认 15。
 - `INKNEST_REFRESH_TOKEN_DAYS`：Refresh Token 有效天数，默认 30。

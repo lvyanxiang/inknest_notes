@@ -1,13 +1,16 @@
 import asyncio
+import hashlib
 import os
 from uuid import uuid4
 
 import pytest
+from httpx import AsyncClient
 from sqlalchemy import delete
 
+from inknest_server.assets import AssetUploadService
 from inknest_server.config import Settings
 from inknest_server.db import Database
-from inknest_server.models.auth import User
+from inknest_server.models import Asset, AssetUpload, Device, User
 from inknest_server.repositories import (
     ContentRepository,
     ContentSaveResult,
@@ -32,9 +35,12 @@ async def test_postgres_and_minio_are_ready() -> None:
     database = Database(settings.database_url)
     storage = MinioStorage(
         endpoint=settings.minio_endpoint,
+        public_endpoint=settings.minio_public_endpoint,
         access_key=settings.minio_access_key.get_secret_value(),
         secret_key=settings.minio_secret_key.get_secret_value(),
         secure=settings.minio_secure,
+        public_secure=settings.minio_public_secure,
+        region=settings.minio_region,
         bucket=settings.minio_bucket,
     )
     readiness = ReadinessService(database, storage)
@@ -48,6 +54,85 @@ async def test_postgres_and_minio_are_ready() -> None:
         "database": {"status": "ok"},
         "objectStorage": {"status": "ok"},
     }
+
+
+@pytest.mark.asyncio
+async def test_presigned_upload_reaches_minio_but_remains_pending() -> None:
+    settings = Settings()
+    database = Database(settings.database_url)
+    storage = MinioStorage(
+        endpoint=settings.minio_endpoint,
+        public_endpoint=settings.minio_public_endpoint,
+        access_key=settings.minio_access_key.get_secret_value(),
+        secret_key=settings.minio_secret_key.get_secret_value(),
+        secure=settings.minio_secure,
+        public_secure=settings.minio_public_secure,
+        region=settings.minio_region,
+        bucket=settings.minio_bucket,
+    )
+    suffix = uuid4().hex
+    user_id = None
+    object_key = None
+    content = b"inknest presigned upload integration test"
+
+    try:
+        async with database.session() as session:
+            user = User(
+                email=f"phase3-upload-{suffix}@example.com",
+                password_hash="integration-test-password-hash",
+            )
+            session.add(user)
+            await session.flush()
+            user_id = user.id
+            device = Device(user_id=user.id, name="Integration iPad", platform="ios")
+            session.add(device)
+            await session.flush()
+            notebook = await LibraryRepository(session).create_notebook(
+                user_id=user.id,
+                notebook_id=f"upload-{suffix}",
+                title="Presigned upload test",
+                layout_mode="paged",
+            )
+            await session.commit()
+
+            result = await AssetUploadService(
+                session, storage, settings
+            ).create_upload_session(
+                user_id=user.id,
+                device_id=device.id,
+                notebook_id=notebook.id,
+                asset_id=f"asset-{suffix}",
+                kind="image",
+                filename="integration.png",
+                content_type="image/png",
+                byte_size=len(content),
+                sha256=hashlib.sha256(content).hexdigest(),
+            )
+            object_key = result.upload.object_key
+
+            async with AsyncClient() as http_client:
+                response = await http_client.put(
+                    result.upload_url,
+                    content=content,
+                    headers={"Content-Type": "image/png"},
+                )
+
+            await session.refresh(result.upload)
+            asset = await session.get(Asset, (f"asset-{suffix}", user.id))
+            persisted_upload = await session.get(AssetUpload, result.upload.id)
+
+            assert response.status_code == 200
+            assert persisted_upload is not None
+            assert persisted_upload.status == "pending"
+            assert asset is None
+    finally:
+        if object_key is not None:
+            await storage.delete_object(object_key)
+        if user_id is not None:
+            async with database.session() as cleanup_session:
+                await cleanup_session.execute(delete(User).where(User.id == user_id))
+                await cleanup_session.commit()
+        await database.close()
 
 
 @pytest.mark.asyncio

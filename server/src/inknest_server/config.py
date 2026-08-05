@@ -22,10 +22,16 @@ class Settings(BaseSettings):
     )
 
     minio_endpoint: str = "localhost:9000"
+    minio_public_endpoint: str | None = None
     minio_access_key: SecretStr = SecretStr("inknest-minio")
     minio_secret_key: SecretStr = SecretStr("inknest-minio-dev")
     minio_secure: bool = False
+    minio_public_secure: bool | None = None
+    minio_region: str = "us-east-1"
     minio_bucket: str = "inknest-private"
+    asset_upload_url_minutes: int = Field(default=15, ge=1, le=60)
+    asset_upload_session_hours: int = Field(default=24, ge=1, le=168)
+    max_asset_upload_bytes: int = Field(default=536_870_912, ge=1)
 
     jwt_secret: SecretStr = SecretStr(
         "development-only-replace-this-jwt-secret-before-production"

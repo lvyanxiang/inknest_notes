@@ -7,12 +7,15 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from inknest_server.assets import AssetUploadService
 from inknest_server.auth import LoginRateLimiter, PasswordManager, TokenManager
 from inknest_server.auth.service import AuthService
 from inknest_server.auth.tokens import InvalidAccessTokenError
+from inknest_server.config import Settings
 from inknest_server.db import Database
 from inknest_server.errors import ApiError
 from inknest_server.models import Device, User
+from inknest_server.storage import ObjectStorage
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -42,6 +45,21 @@ def get_auth_service(request: Request, session: DbSession) -> AuthService:
 
 
 AuthServiceDependency = Annotated[AuthService, Depends(get_auth_service)]
+
+
+def get_asset_upload_service(
+    request: Request, session: DbSession
+) -> AssetUploadService:
+    return AssetUploadService(
+        session,
+        cast(ObjectStorage, request.app.state.object_storage),
+        cast(Settings, request.app.state.settings),
+    )
+
+
+AssetUploadServiceDependency = Annotated[
+    AssetUploadService, Depends(get_asset_upload_service)
+]
 
 
 async def get_current_session(
