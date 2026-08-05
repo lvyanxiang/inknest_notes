@@ -191,6 +191,8 @@ docker compose config
 - `20260805_0002`：创建 `users`、`devices` 和 `refresh_tokens`。
 - `20260805_0003`：创建 `folders`、`notebooks`、`pages`、
   `infinite_canvases` 和 `assets` 元数据表。
+- `20260805_0004`：为笔记本、页面和无限画布增加当前 JSON、Revision、内容哈希，并
+  创建不可变的 `revisions` 历史表。
 
 后续表结构变化必须创建新迁移，不能修改已经应用过的迁移文件。
 
@@ -238,6 +240,27 @@ SHA-256 和 MinIO Object Key，PDF、图片、音频等文件本体仍存放在 
 uv run pytest tests/unit/test_library_repository.py
 INKNEST_RUN_INTEGRATION=1 uv run pytest tests/integration
 ```
+
+## 带历史版本的 JSON 内容
+
+`notebooks`、`pages` 和 `infinite_canvases` 现在使用以下三个字段保存当前状态：
+
+- `content`：当前完整 JSON。
+- `revision`：服务端生成的单调递增版本号。
+- `content_hash`：规范化 JSON 的 SHA-256。
+
+对页面来说，画笔笔迹、文本框、图片位置、图形、PDF 背景引用以及未知字段都包含在
+`pages.content` 的完整页面 JSON 中。内容发生变化时，同一个快照还会追加到
+`revisions.content`，用于历史恢复。服务端不会把每一笔拆成单独一行数据库记录。
+
+哈希输入采用 UTF-8 JSON：对象 Key 递归排序、移除无意义空格、保持数组顺序和 Unicode，
+并拒绝 NaN/Infinity。服务端只规范化、保存和计算哈希，不解释或改写未知的
+`coordinateSpaceVersion`。
+
+保存时调用方必须提交当前 `base_revision`。PostgreSQL 会锁定资源行，服务端再生成下一
+版本；不同内容使用过期版本会得到明确冲突。相同内容的重复请求即使仍携带旧版本，也会
+作为幂等重试返回，不会重复创建历史记录。这些能力目前只在仓库层，尚未开放为同步 HTTP
+接口。
 
 ## 认证机制
 

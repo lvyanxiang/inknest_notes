@@ -200,6 +200,8 @@ The migration history currently contains:
 - `20260805_0002`: `users`, `devices`, and `refresh_tokens`.
 - `20260805_0003`: `folders`, `notebooks`, `pages`, `infinite_canvases`, and
   `assets` metadata.
+- `20260805_0004`: current JSON content and hashes on notebooks, pages, and
+  infinite canvases, plus immutable `revisions` history.
 
 Future schema work must add a new revision instead of rewriting an applied
 revision.
@@ -243,6 +245,27 @@ in Navicat/pgAdmin, or run the repository tests from `server/`:
 uv run pytest tests/unit/test_library_repository.py
 INKNEST_RUN_INTEGRATION=1 uv run pytest tests/integration
 ```
+
+## Revisioned JSON content
+
+Notebook, page, and infinite-canvas rows now hold the latest complete JSON
+object in `content`, its server-owned `revision`, and a SHA-256 `content_hash`.
+For a page, this JSON is where strokes, text boxes, image placement, shapes,
+PDF-background references, and unknown fields are preserved together. Every
+changed save also appends the same snapshot to the immutable `revisions` table;
+the server does not store one database row per pen stroke.
+
+Hashes use UTF-8 JSON with recursively sorted object keys, no insignificant
+whitespace, preserved array order and Unicode, and rejected NaN/Infinity
+values. The server normalizes and hashes content without interpreting or
+rewriting unknown `coordinateSpaceVersion` values.
+
+Content writes require the caller's current `base_revision`. PostgreSQL locks
+the resource row, the server assigns the next revision, and a stale base with
+different content raises a revision conflict. Retrying identical content is a
+no-op even if the retry still carries the previous base revision, so it does
+not create duplicate history. This repository behavior is ready for a future
+sync service but is not exposed through HTTP yet.
 
 ## Authentication API
 

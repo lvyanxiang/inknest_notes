@@ -1,5 +1,5 @@
 from datetime import datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import (
     JSON,
@@ -51,6 +51,12 @@ class Notebook(Base):
             "layout_mode IN ('paged', 'infiniteCanvas')",
             name="ck_notebooks_layout_mode",
         ),
+        CheckConstraint("revision >= 0", name="ck_notebooks_revision"),
+        CheckConstraint(
+            "(revision = 0 AND content_hash = '') OR "
+            "(revision > 0 AND length(content_hash) = 64)",
+            name="ck_notebooks_content_version",
+        ),
         Index("ix_notebooks_user_id_updated_at", "user_id", "updated_at"),
         Index("ix_notebooks_user_id_folder_id", "user_id", "folder_id"),
     )
@@ -66,6 +72,11 @@ class Notebook(Base):
     )
     is_archived: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=false()
+    )
+    revision: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
+    content_hash: Mapped[str] = mapped_column(String(64), default="", server_default="")
+    content: Mapped[dict[str, object]] = mapped_column(
+        JSON, default=dict, server_default="{}"
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -97,6 +108,12 @@ class Page(Base):
             "rotation_quarter_turns BETWEEN 0 AND 3",
             name="ck_pages_rotation_quarter_turns",
         ),
+        CheckConstraint("revision >= 0", name="ck_pages_revision"),
+        CheckConstraint(
+            "(revision = 0 AND content_hash = '') OR "
+            "(revision > 0 AND length(content_hash) = 64)",
+            name="ck_pages_content_version",
+        ),
         Index("ix_pages_user_id_notebook_id", "user_id", "notebook_id"),
     )
 
@@ -114,6 +131,11 @@ class Page(Base):
     )
     template: Mapped[str] = mapped_column(
         String(32), default="blank", server_default="blank"
+    )
+    revision: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
+    content_hash: Mapped[str] = mapped_column(String(64), default="", server_default="")
+    content: Mapped[dict[str, object]] = mapped_column(
+        JSON, default=dict, server_default="{}"
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -135,6 +157,12 @@ class InfiniteCanvas(Base):
             name="fk_infinite_canvases_notebook_owner",
             ondelete="CASCADE",
         ),
+        CheckConstraint("revision >= 0", name="ck_infinite_canvases_revision"),
+        CheckConstraint(
+            "(revision = 0 AND content_hash = '') OR "
+            "(revision > 0 AND length(content_hash) = 64)",
+            name="ck_infinite_canvases_content_version",
+        ),
         Index("ix_infinite_canvases_user_id_notebook_id", "user_id", "notebook_id"),
     )
 
@@ -145,6 +173,11 @@ class InfiniteCanvas(Base):
     notebook_id: Mapped[str] = mapped_column(String(128))
     background: Mapped[str] = mapped_column(
         String(32), default="blank", server_default="blank"
+    )
+    revision: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
+    content_hash: Mapped[str] = mapped_column(String(64), default="", server_default="")
+    content: Mapped[dict[str, object]] = mapped_column(
+        JSON, default=dict, server_default="{}"
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -186,4 +219,48 @@ class Asset(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ContentRevision(Base):
+    __tablename__ = "revisions"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "resource_type",
+            "resource_id",
+            "revision",
+            name="uq_revisions_resource_revision",
+        ),
+        CheckConstraint(
+            "resource_type IN ('notebook', 'page', 'infinite_canvas')",
+            name="ck_revisions_resource_type",
+        ),
+        CheckConstraint("revision > 0", name="ck_revisions_revision"),
+        CheckConstraint(
+            "length(content_hash) = 64", name="ck_revisions_content_hash_length"
+        ),
+        Index(
+            "ix_revisions_user_resource",
+            "user_id",
+            "resource_type",
+            "resource_id",
+            "revision",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    resource_type: Mapped[str] = mapped_column(String(32))
+    resource_id: Mapped[str] = mapped_column(String(128))
+    revision: Mapped[int] = mapped_column(BigInteger)
+    content_hash: Mapped[str] = mapped_column(String(64))
+    content: Mapped[dict[str, object]] = mapped_column(JSON)
+    device_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("devices.id", ondelete="SET NULL"), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
     )

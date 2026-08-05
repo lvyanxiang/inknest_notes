@@ -3,12 +3,13 @@
 ## Current
 
 - Milestone: Backend Phase 3 cloud library and assets (in progress)
-- Next task: Add current content storage, server-owned revisions, revision
-  history, and canonical content hashes for notebooks, pages, and infinite
-  canvases; do not add sync endpoints yet.
-- Last completed: Added user-scoped folder, notebook, page, infinite-canvas,
-  and attachment-metadata SQLAlchemy models and repository layer, then applied
-  Alembic `20260805_0003`.
+- Next task: Create attachment upload sessions and MinIO presigned upload URLs;
+  do not mark assets ready until a later completion step verifies size and
+  SHA-256.
+- Last completed: Added canonical current JSON, server-owned monotonic
+  revisions, immutable revision history, content hashes, stale-base conflict
+  protection, and idempotent same-content retries, then applied Alembic
+  `20260805_0004`.
 
 ## Decisions
 
@@ -42,6 +43,11 @@
 - Keep cloud sync local-first: first sign-in defaults to merging local and
   cloud libraries, uncertain or concurrent edits create recoverable conflict
   copies, and no restore path silently overwrites local notes.
+- Treat revision numbers and content hashes as server-owned. For the current
+  backend slice, hash UTF-8 JSON with recursively sorted keys, compact
+  separators, preserved Unicode/array order, and rejected non-finite numbers;
+  freeze matching cross-client numeric serialization before Flutter computes
+  or compares canonical hashes itself.
 - Use email/password for the first account flow without mandatory email
   verification during initial development. Use short-lived JWT access tokens
   and rotating opaque refresh tokens; store only refresh-token hashes and bind
@@ -149,6 +155,19 @@
 
 ## Verification
 
+- Backend formatting, linting, and typing pass with `ruff format --check`,
+  `ruff check`, and `mypy` across 42 Python source/test files; all 23 unit tests
+  pass.
+- All three PostgreSQL/MinIO integration tests pass, including real revision
+  history persistence and concurrent different-content writes from the same
+  base: one creates Revision 1 and the other receives an explicit conflict.
+- Alembic upgraded the real development database to `20260805_0004 (head)`,
+  `alembic check` reports no pending operations, and PostgreSQL contains the
+  `revisions` table plus current `content`, `revision`, and `content_hash`
+  columns on notebooks, pages, and infinite canvases.
+- An independent empty scratch database upgraded through migrations `0001` to
+  `0004`; the expected ten tables and twelve revision-content columns were
+  inspected before the scratch database was deleted.
 - Backend formatting, linting, and typing pass with `ruff format --check`,
   `ruff check`, and `mypy` across 38 Python source/test files; all 19 unit tests
   pass.

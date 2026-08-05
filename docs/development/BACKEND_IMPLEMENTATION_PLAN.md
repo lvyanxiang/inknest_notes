@@ -353,7 +353,7 @@ checksums.sha256
 ### Phase 3：云端资料库与附件
 
 - [x] 文件夹、笔记本、页面和无限画布表与仓库层。
-- [ ] 当前版本、历史 Revision、Content Hash。
+- [x] 当前版本、历史 Revision、Content Hash。
 - [ ] 创建附件上传会话和预签名 URL。
 - [ ] 上传完成校验和附件引用。
 - [ ] PDF、图片、音频端到端上传下载测试。
