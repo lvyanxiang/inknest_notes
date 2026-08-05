@@ -257,11 +257,12 @@ notebooks before broader OCR indexing is added.
 Goal: resume the paused data protection milestone once local editing and
 document workflows are stable.
 
-- Choose sync target.
-- Define sync metadata.
-- Add notebook archive format.
-- Implement backup and restore.
-- Add conflict detection and explicit recovery behavior.
+- [x] Choose a custom Python backend with PostgreSQL and MinIO, delivered as a
+  `server/` project in the existing repository.
+- [ ] Define sync metadata.
+- [ ] Add notebook archive format.
+- [ ] Implement backup and restore.
+- [ ] Add conflict detection and explicit recovery behavior.
 
 ### Post-MVP 7: Mobile Companion
 

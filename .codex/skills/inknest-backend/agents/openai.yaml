@@ -1,0 +1,4 @@
+interface:
+  display_name: "InkNest Backend"
+  short_description: "Deliver the InkNest backend plan safely"
+  default_prompt: "Use $inknest-backend to implement the next unfinished backend slice, verify it, and update project records."

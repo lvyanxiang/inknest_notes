@@ -184,7 +184,8 @@ Acceptance criteria:
 
 Tasks:
 
-- [ ] Choose sync target: iCloud, WebDAV, or custom backend.
+- [x] Choose a custom Python backend with PostgreSQL and MinIO; keep the
+  Flutter app local-first and the storage provider behind an S3-style adapter.
 - [ ] Define sync metadata.
 - [ ] Add backup/export archive format.
 - [ ] Implement first sync prototype.

@@ -14,6 +14,8 @@
 - Use this file as the short resume point for future sessions.
 - Keep the first product direction iPadOS/iOS-first, handwriting-first, and paged-notebook based.
 - Use project skill `.codex/skills/inknest-project` to recover context without rereading the whole repo.
+- Use project skill `.codex/skills/inknest-backend` to start, continue, verify,
+  and record Python/PostgreSQL/MinIO backend delivery from the accepted plan.
 - Use `$inknest-project` as the single entry for new or changed requirements: always run `$inknest-product-manager`, and also run `$inknest-ui-ux` when visible or interactive behavior changes.
 - Keep small requirement analysis in the task response; create `PRODUCT_BRIEF.md` and `UI_UX_SPEC.md` under `docs/product/features/<feature-slug>/` for medium or large work, and record only accepted durable decisions in the global product/design logs.
 - When no implementation task is selected, product analysis may recommend candidates but must not automatically start Post-MVP 6-9 or infer work from plain roadmap bullets.
@@ -31,6 +33,13 @@
 - Use the `pdf` package for PDF export, `image` for rendered PDF background encoding, and `file_picker.saveFile` for the first save/share action.
 - Exported annotated PDFs rasterize imported PDF backgrounds and overlay editable strokes as vector paths in the generated output.
 - Pause sync and backup until the editor, PDF, and library workflows are more polished.
+- When backend implementation begins, keep Flutter at the repository root and
+  add a same-repository `server/` Python project; use PostgreSQL for
+  authoritative metadata and revisions, MinIO for binary objects, and a
+  storage adapter that can later target OSS/S3.
+- Keep cloud sync local-first: first sign-in defaults to merging local and
+  cloud libraries, uncertain or concurrent edits create recoverable conflict
+  copies, and no restore path silently overwrites local notes.
 - Use `docs/development/POST_MVP_ROADMAP.md` for GoodNotes / Notability-style post-MVP planning.
 - Prefer collapsing on-canvas zoom chrome and keeping Fit Width / Fit Page discoverable from More → View so the paper stays primary while writing.
 - Prefer anchored tool-property popovers on regular/wide iPad widths; keep bottom sheets only for compact Split View.
@@ -127,6 +136,12 @@
 
 ## Verification
 
+- The project-local `inknest-backend` Skill passes the official
+  `quick_validate.py` check; PyYAML was installed only under `/tmp` to run the
+  validator and was not added to project dependencies.
+- `git diff --check` and trailing-whitespace checks passed for the accepted
+  Python/PostgreSQL/MinIO backend product brief, implementation plan, roadmap,
+  decision log, and status updates; no application code changed.
 - `flutter analyze` and all 142 tests pass after replacing the Infinite canvas
   spine metadata with a visible `∞` marker and full accessibility label;
   paged notebooks retain compact page counts.
@@ -418,6 +433,12 @@
 - Handwriting recognition, scanned-page OCR, caching, and iPadOS 27 PencilKit follow-up decisions live in `docs/development/RECOGNITION_OCR_SPIKE.md`.
 - Post-MVP feature gaps and optimization areas are documented in `docs/development/POST_MVP_ROADMAP.md`.
 - Subscription packaging, platform behavior, and local/cloud merge rules are documented in `docs/development/SUBSCRIPTION_PLAN.md`.
+- The accepted custom Python/PostgreSQL/MinIO backend scope is recorded under
+  `docs/product/features/inknest-cloud-backend/`; the phased same-repository
+  implementation plan lives in `docs/development/BACKEND_IMPLEMENTATION_PLAN.md`.
+- Backend delivery can be resumed explicitly with `$inknest-backend`; the
+  Skill reads the plan and status, selects one verified slice, and updates the
+  durable records after implementation.
 - Web knowledge-base, mobile companion, collaboration, and AI directions are captured as later post-MVP milestones.
 - Graduation task book and opening report Markdown drafts live in `docs/academic/GRADUATION_TASK_BOOK.md` and `docs/academic/OPENING_REPORT.md`; maintain them with `$inknest-academic-docs`, not as an automatic side effect of development tasks.
 - Python details in the graduation docs are described as formal module design, interface planning, and extension scope; implementation-specific project details should be added when available.
