@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import SecretStr
+from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -26,6 +26,22 @@ class Settings(BaseSettings):
     minio_secret_key: SecretStr = SecretStr("inknest-minio-dev")
     minio_secure: bool = False
     minio_bucket: str = "inknest-private"
+
+    jwt_secret: SecretStr = SecretStr(
+        "development-only-replace-this-jwt-secret-before-production"
+    )
+    jwt_issuer: str = "inknest-server"
+    access_token_minutes: int = 15
+    refresh_token_days: int = 30
+
+    @model_validator(mode="after")
+    def reject_development_secret_in_production(self) -> "Settings":
+        secret = self.jwt_secret.get_secret_value()
+        if len(secret) < 32:
+            raise ValueError("INKNEST_JWT_SECRET must contain at least 32 characters")
+        if self.environment == "production" and secret.startswith("development-only"):
+            raise ValueError("set a unique INKNEST_JWT_SECRET in production")
+        return self
 
 
 @lru_cache

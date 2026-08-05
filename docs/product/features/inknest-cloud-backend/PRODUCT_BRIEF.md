@@ -29,6 +29,9 @@ stroke-level merging or real-time collaboration.
 
 - In scope:
   - InkNest accounts, sessions, and registered devices.
+  - Email/password as the first sign-in method, initially without mandatory
+    email verification; short-lived JWT access tokens and rotated,
+    server-revocable refresh tokens.
   - PostgreSQL-backed folders, notebooks, pages, revisions, tombstones,
     synchronization changes, conflicts, backups, and storage usage.
   - MinIO-backed PDF, image, audio, thumbnail, export, and backup objects.
@@ -62,7 +65,7 @@ stroke-level merging or real-time collaboration.
 
 ## Acceptance Criteria
 
-- [ ] A user can register, sign in, refresh a session, sign out, and revoke a
+- [x] A user can register, sign in, refresh a session, sign out, and revoke a
   device without exposing another user's data.
 - [ ] A device can upload and download notebook metadata, pages, infinite
   canvases, and referenced assets without requiring a full-library transfer on
@@ -127,14 +130,17 @@ stroke-level merging or real-time collaboration.
 
 - Choose the first production hosting region and whether production remains on
   MinIO or switches behind the same storage interface to OSS/S3.
-- Choose email delivery and the first sign-in method before account UI work.
+- Choose the production email provider and verification-enforcement policy
+  before public launch; initial account development does not require email
+  verification.
 - Set cloud quota and version-retention limits before a public launch.
 
 ## Delivery
 
 - UI/UX spec: Required before Flutter account, merge, sync, conflict, and
   restore integration; not part of this backend planning task.
-- Implementation status: Planned in
+- Implementation status: Phase 2 account/session work is in progress in
   `docs/development/BACKEND_IMPLEMENTATION_PLAN.md`.
-- Verification: Documentation review and `git diff --check` for this planning
-  delivery; code verification begins with the server scaffold milestone.
+- Verification: Authentication unit tests cover account creation, login,
+  refresh rotation and replay, logout, device ownership, and device revocation;
+  the PostgreSQL migration and dependency integration test also pass.

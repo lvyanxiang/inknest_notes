@@ -2,13 +2,12 @@
 
 ## Current
 
-- Milestone: Backend Phase 1 service skeleton (completed)
-- Next task: Define the first Phase 2 account/session slice, including the
-  initial sign-in method, then add the user, device, and refresh-token schema
-  and authentication API without starting Flutter account UI.
-- Last completed: Verified the Compose stack and `/api/v1/health/ready` against
-  the real local PostgreSQL database and private MinIO bucket, completing the
-  Phase 1 service skeleton.
+- Milestone: Backend Phase 2 accounts, sessions, and devices (in progress)
+- Next task: Add login rate limiting and its tests to complete the remaining
+  Phase 2 checklist item; do not start Flutter account UI yet.
+- Last completed: Added email/password registration and login, Argon2id password
+  hashing, JWT access tokens, rotating hashed refresh tokens, logout, owned
+  device listing/revocation, the PostgreSQL auth migration, and isolation tests.
 
 ## Decisions
 
@@ -42,6 +41,10 @@
 - Keep cloud sync local-first: first sign-in defaults to merging local and
   cloud libraries, uncertain or concurrent edits create recoverable conflict
   copies, and no restore path silently overwrites local notes.
+- Use email/password for the first account flow without mandatory email
+  verification during initial development. Use short-lived JWT access tokens
+  and rotating opaque refresh tokens; store only refresh-token hashes and bind
+  sessions to server-revocable devices.
 - Use `docs/development/POST_MVP_ROADMAP.md` for GoodNotes / Notability-style post-MVP planning.
 - Prefer collapsing on-canvas zoom chrome and keeping Fit Width / Fit Page discoverable from More → View so the paper stays primary while writing.
 - Prefer anchored tool-property popovers on regular/wide iPad widths; keep bottom sheets only for compact Split View.
@@ -139,10 +142,16 @@
 ## Verification
 
 - Backend formatting, linting, and typing pass with `ruff format --check`,
-  `ruff check`, and `mypy` across 22 Python source files.
-- Backend tests previously passed with 4 unit tests; the dedicated
-  PostgreSQL/MinIO pytest integration test was not rerun during the later
-  status-only readiness confirmation.
+  `ruff check`, and `mypy` across 32 checked Python source/test files.
+- All 10 backend unit tests pass, including six account/session/device tests;
+  the PostgreSQL/MinIO integration test also passes.
+- Alembic upgraded the real local PostgreSQL database from `20260805_0001` to
+  `20260805_0002 (head)`; `alembic check` reports no pending schema operations,
+  and PostgreSQL contains `users`, `devices`, and `refresh_tokens` alongside
+  `alembic_version`.
+- Alembic also upgraded an independent empty scratch database through
+  `20260805_0001` and `20260805_0002`; the expected four tables and migration
+  head were verified, then the scratch database was deleted successfully.
 - `docker compose config --quiet` passes, the user confirmed the complete stack
   starts successfully, and `/api/v1/health/ready` reports both PostgreSQL and
   MinIO available. The Alembic empty baseline is present in the real database.

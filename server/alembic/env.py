@@ -3,6 +3,7 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 
 from alembic import context
+from inknest_server import models  # noqa: F401
 from inknest_server.config import get_settings
 from inknest_server.db.base import Base
 

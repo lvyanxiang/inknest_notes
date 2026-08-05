@@ -2,8 +2,12 @@ from collections.abc import AsyncIterator
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from pydantic import SecretStr
 
+from inknest_server import models  # noqa: F401
 from inknest_server.config import Settings
+from inknest_server.db import Database
+from inknest_server.db.base import Base
 from inknest_server.main import create_app
 from inknest_server.services.readiness import ReadinessChecks
 
@@ -18,14 +22,22 @@ class HealthyReadinessChecker:
 
 @pytest.fixture
 def test_settings() -> Settings:
-    return Settings(environment="test")
+    return Settings(
+        environment="test",
+        database_url="sqlite+aiosqlite:///:memory:",
+        jwt_secret=SecretStr("test-only-jwt-secret-that-is-at-least-32-characters"),
+    )
 
 
 @pytest.fixture
 async def client(test_settings: Settings) -> AsyncIterator[AsyncClient]:
+    database = Database(test_settings.database_url)
+    async with database.engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
     app = create_app(
         settings=test_settings,
         readiness_checker=HealthyReadinessChecker(),
+        database=database,
     )
     transport = ASGITransport(app=app)
     async with app.router.lifespan_context(app):

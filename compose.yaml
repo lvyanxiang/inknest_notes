@@ -66,6 +66,8 @@ services:
       INKNEST_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-inknest-minio-dev}
       INKNEST_MINIO_SECURE: "false"
       INKNEST_MINIO_BUCKET: ${MINIO_BUCKET:-inknest-private}
+      INKNEST_JWT_SECRET: >-
+        ${INKNEST_JWT_SECRET:-development-only-replace-this-jwt-secret-before-production}
     command:
       - /bin/sh
       - -c

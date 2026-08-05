@@ -1,5 +1,13 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 
 class Database:
@@ -8,6 +16,19 @@ class Database:
             url,
             pool_pre_ping=True,
         )
+        self._session_factory = async_sessionmaker(
+            self._engine,
+            expire_on_commit=False,
+        )
+
+    @property
+    def engine(self) -> AsyncEngine:
+        return self._engine
+
+    @asynccontextmanager
+    async def session(self) -> AsyncIterator[AsyncSession]:
+        async with self._session_factory() as session:
+            yield session
 
     async def ping(self) -> None:
         async with self._engine.connect() as connection:

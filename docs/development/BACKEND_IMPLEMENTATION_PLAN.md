@@ -1,6 +1,6 @@
 # InkNest Notes 服务端实施计划
 
-- 状态：已接受，待实施
+- 状态：实施中（Phase 2）
 - 更新时间：2026-08-05
 - 产品 Brief：`docs/product/features/inknest-cloud-backend/PRODUCT_BRIEF.md`
 - 对应路线图：Milestone 8 / Post-MVP 6 Sync And Backup
@@ -341,11 +341,12 @@ checksums.sha256
 
 ### Phase 2：账号、会话和设备
 
-- [ ] 用户注册、登录、Refresh Token 轮换和退出。
-- [ ] Argon2 密码哈希和登录限流。
-- [ ] 设备注册、设备列表和远程撤销。
-- [ ] 用户资源归属测试。
-- [ ] 敏感配置通过环境变量注入。
+- [x] 用户注册、登录、Refresh Token 轮换和退出。
+- [x] Argon2 密码哈希。
+- [ ] 登录限流。
+- [x] 设备注册、设备列表和远程撤销。
+- [x] 用户资源归属测试。
+- [x] 敏感配置通过环境变量注入。
 
 完成标准：两名用户无法访问彼此的任何元数据和文件地址，被撤销设备无法刷新会话。
 

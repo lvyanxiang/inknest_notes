@@ -1,9 +1,11 @@
 # InkNest Server
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 InkNest Server is the Python/FastAPI backend for account-backed backup and
-local-first synchronization. Phase 1 provides the service skeleton,
-PostgreSQL and MinIO adapters, Alembic baseline, health endpoints, and tests;
-it does not yet implement accounts or notebook sync.
+local-first synchronization. It currently provides the service skeleton,
+PostgreSQL and MinIO adapters, health endpoints, and the first account/session
+API. Notebook synchronization is not implemented yet.
 
 ## Requirements
 
@@ -45,6 +47,16 @@ cp server/.env.example server/.env
 Do not run that copy command again when `server/.env` already contains the
 desired local credentials.
 
+Also set `INKNEST_JWT_SECRET` in `server/.env` to a random value of at least 32
+characters. Generate one without printing it into source control, for example:
+
+```bash
+openssl rand -hex 32
+```
+
+Store the generated value only in the ignored `.env` files or a production
+secrets manager.
+
 Install dependencies, apply migrations, and start the API:
 
 ```bash
@@ -82,18 +94,63 @@ Then, from the repository root:
 docker compose up -d --build
 ```
 
-The default development endpoints are:
-
-- API: `http://localhost:8000`
-- OpenAPI: `http://localhost:8000/docs`
-- Liveness: `http://localhost:8000/api/v1/health/live`
-- Readiness: `http://localhost:8000/api/v1/health/ready`
-- MinIO API: `http://localhost:9000`
-- MinIO Console: `http://localhost:9001`
-- PostgreSQL: `localhost:5432`
-
 The values in `.env.example` are development-only. Set unique credentials and
 use a secrets manager before any public deployment.
+
+## Local access map
+
+These addresses are the same whether the API runs on the host or through the
+default Compose port mapping. `127.0.0.1` and `localhost` are interchangeable
+for normal local development.
+
+### API documentation and health
+
+| Content | Address | Notes |
+| --- | --- | --- |
+| Swagger UI | `http://127.0.0.1:8000/docs` | Interactive API documentation and request testing. |
+| Authentication section | `http://127.0.0.1:8000/docs#/authentication` | Swagger section for account and device routes. |
+| ReDoc | `http://127.0.0.1:8000/redoc` | Read-only alternative API documentation. |
+| OpenAPI JSON | `http://127.0.0.1:8000/openapi.json` | Machine-readable API contract. |
+| Liveness | `http://127.0.0.1:8000/api/v1/health/live` | Confirms that the API process is running; it does not check PostgreSQL or MinIO. |
+| Readiness | `http://127.0.0.1:8000/api/v1/health/ready` | Confirms that PostgreSQL and the private MinIO bucket are reachable. |
+
+There is currently no route at `/`, so `http://127.0.0.1:8000/` returning
+`404 Not Found` is expected. Use `/docs` as the browser entry point.
+
+### API routes
+
+All application routes use the base URL `http://127.0.0.1:8000/api/v1`.
+
+| Method | Route | Authentication | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/health/live` | No | API process liveness. |
+| `GET` | `/health/ready` | No | PostgreSQL and MinIO readiness. |
+| `POST` | `/auth/register` | No | Create a user, device, and session. |
+| `POST` | `/auth/login` | No | Sign in and create a device session. |
+| `POST` | `/auth/refresh` | Refresh Token in body | Rotate the Refresh Token and issue a new Access Token. |
+| `POST` | `/auth/logout` | Refresh Token in body | Revoke the supplied Refresh Token. |
+| `GET` | `/me` | Bearer Access Token | Return the current user. |
+| `GET` | `/devices` | Bearer Access Token | List the current user's devices. |
+| `DELETE` | `/devices/{device_id}` | Bearer Access Token | Revoke one device owned by the current user. |
+
+For Bearer-protected routes, send the Access Token returned by register, login,
+or refresh:
+
+```http
+Authorization: Bearer <access-token>
+```
+
+### PostgreSQL and MinIO
+
+| Service | Address | How to access |
+| --- | --- | --- |
+| PostgreSQL | `localhost:5432` | Connect with Navicat, pgAdmin, or `psql`; read database name, user, and password from the ignored root `.env`. |
+| MinIO Console | `http://localhost:9001` | Browser administration UI; use the ignored root `.env` MinIO credentials. |
+| MinIO S3 API | `http://localhost:9000` | S3-compatible API used by the backend; it is not a normal browser file page. |
+
+The MinIO bucket is private. Files will be accessed through backend-controlled
+operations or time-limited signed URLs when asset APIs are implemented, not by
+making the bucket publicly browsable.
 
 ## Validate
 
@@ -120,14 +177,45 @@ docker compose config
 
 ## Database migrations
 
-The initial migration is an intentionally empty baseline. Future schema work
-must add a new revision instead of rewriting an applied revision.
+The initial migration is an intentionally empty baseline. The next migration
+creates `users`, `devices`, and `refresh_tokens`. Future schema work must add a
+new revision instead of rewriting an applied revision.
 
 ```bash
 uv run alembic upgrade head
 uv run alembic current
-uv run alembic downgrade base
 ```
+
+To create a migration after changing SQLAlchemy models:
+
+```bash
+uv run alembic revision --autogenerate -m "describe the schema change"
+```
+
+Always inspect the generated `upgrade()` and `downgrade()` before applying it.
+To safely undo only the newest development migration, first back up important
+data, then run `uv run alembic downgrade -1`. Downgrading can delete tables or
+columns and is not a routine cleanup command.
+
+## Authentication API
+
+The API uses email/password accounts, Argon2id password hashes, short-lived
+JWT access tokens, and rotating opaque refresh tokens. Only a SHA-256 hash of
+each refresh token is stored in PostgreSQL.
+
+- `POST /api/v1/auth/register`: create a user, device, and session.
+- `POST /api/v1/auth/login`: verify credentials and create a device session.
+- `POST /api/v1/auth/refresh`: rotate the refresh token and issue a new access
+  token.
+- `POST /api/v1/auth/logout`: revoke the supplied refresh token.
+- `GET /api/v1/me`: inspect the current user with a Bearer access token.
+- `GET /api/v1/devices`: list only the current user's devices.
+- `DELETE /api/v1/devices/{device_id}`: revoke one owned device and its refresh
+  tokens.
+
+Use Swagger at `http://localhost:8000/docs` to inspect request examples and
+responses. The first API slice does not send verification email and does not
+yet include login rate limiting.
 
 ## Environment variables
 
@@ -143,3 +231,7 @@ Important settings:
   credentials; never expose them to Flutter.
 - `INKNEST_MINIO_BUCKET`: private object bucket checked by readiness.
 - `INKNEST_MINIO_SECURE`: enable TLS for non-local storage endpoints.
+- `INKNEST_JWT_SECRET`: server-only signing secret, at least 32 characters;
+  never expose it to Flutter or commit a production value.
+- `INKNEST_ACCESS_TOKEN_MINUTES`: access-token lifetime, default 15 minutes.
+- `INKNEST_REFRESH_TOKEN_DAYS`: refresh-token lifetime, default 30 days.
