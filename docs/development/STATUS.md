@@ -2,11 +2,13 @@
 
 ## Current
 
-- Milestone: Infinite Canvas V2 shared editing parity (first slice delivered)
-- Next task: Complete real-device gesture QA, then prioritize the next shared
-  slice across audio, spatial search, Smart Ink, and canvas export.
-- Last completed: Replaced the infinite-canvas spine `Canvas` label with `∞`
-  while preserving the full notebook type in accessibility semantics.
+- Milestone: Backend Phase 1 service skeleton (partially delivered)
+- Next task: Start the Compose stack with Docker access, run the real
+  PostgreSQL/MinIO integration test, and complete the remaining Phase 1
+  infrastructure checks.
+- Last completed: Added the same-repository FastAPI service skeleton, typed
+  settings, structured errors/logging, PostgreSQL and MinIO adapters, Alembic
+  baseline, Compose definition, versioned health endpoints, and test suites.
 
 ## Decisions
 
@@ -136,6 +138,16 @@
 
 ## Verification
 
+- Backend formatting, linting, and typing pass with `ruff format --check`,
+  `ruff check`, and `mypy` across 22 Python source files.
+- Backend tests pass with 4 unit tests; the one real PostgreSQL/MinIO
+  integration test remains skipped because Docker execution was not approved
+  in this task.
+- `docker compose config --quiet` passes, and the Alembic empty baseline
+  upgrades to `20260805_0001 (head)` against a temporary SQLite database.
+- Uvicorn reached application startup on the host runtime, but sandbox network
+  isolation prevented an HTTP probe; the temporary validation process was
+  stopped afterward.
 - The project-local `inknest-backend` Skill passes the official
   `quick_validate.py` check; PyYAML was installed only under `/tmp` to run the
   validator and was not added to project dependencies.
@@ -378,6 +390,11 @@
 
 ## Notes
 
+- Backend code now lives under `server/` in the same repository as Flutter;
+  its setup and validation commands are documented in `server/README.md`.
+- Root `compose.yaml` defines the API, PostgreSQL 17, private MinIO storage,
+  and idempotent bucket initialization. Actual dependency startup remains to
+  be verified when Docker daemon access is available.
 - `lib/main.dart` now starts `InkNestApp`.
 - App/theme code lives under `lib/app`.
 - Library, notebook, and editor feature folders exist under `lib/features`.

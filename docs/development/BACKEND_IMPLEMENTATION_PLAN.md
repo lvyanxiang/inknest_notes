@@ -329,13 +329,13 @@ checksums.sha256
 
 ### Phase 1：Python 服务骨架
 
-- [ ] 创建 `server/pyproject.toml` 和 `src` 布局。
-- [ ] 配置 FastAPI、设置管理、结构化日志和统一错误响应。
+- [x] 创建 `server/pyproject.toml` 和 `src` 布局。
+- [x] 配置 FastAPI、设置管理、结构化日志和统一错误响应。
 - [ ] 配置 PostgreSQL、SQLAlchemy、Alembic。
 - [ ] 配置 MinIO Storage Adapter。
 - [ ] 创建根级 `compose.yaml`，启动 API、PostgreSQL、MinIO。
-- [ ] 添加 `/health/live`、`/health/ready`。
-- [ ] 建立 pytest 单元和集成测试入口。
+- [x] 添加 `/health/live`、`/health/ready`。
+- [x] 建立 pytest 单元和集成测试入口。
 
 完成标准：新环境通过一条编排命令启动，健康检查验证数据库和 MinIO 可用。
 
