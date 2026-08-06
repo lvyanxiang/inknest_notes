@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
@@ -95,6 +96,72 @@ void main() {
       expect(bootstrap.pages.single.id, 'page-1');
       expect(bootstrap.infiniteCanvases.single.id, 'canvas-1');
       expect(bootstrap.assets.single.id, 'asset-1');
+    },
+  );
+
+  test(
+    'asset download URL is authenticated but signed object GET is not',
+    () async {
+      final dio = Dio();
+      final transferDio = Dio();
+      final store = MemoryAuthSessionStore(
+        StoredAuthSession.fromSession(
+          InkNestAuthSession.fromJson(_authJson()),
+          issuedAt: DateTime.utc(2026, 8, 6),
+        ),
+      );
+      final client = InkNestApiClient(
+        config: InkNestApiConfig.fromEnvironment(
+          overrideBaseUrl: 'https://api.example.com',
+        ),
+        dio: dio,
+        refreshDio: transferDio,
+        sessionStore: store,
+        clock: () => DateTime.utc(2026, 8, 6, 0, 1),
+      );
+      late RequestOptions descriptorRequest;
+      late RequestOptions objectRequest;
+      _resolveRequests(dio, (options) {
+        descriptorRequest = options;
+        return (
+          status: 200,
+          data: {
+            'assetId': 'asset-1',
+            'filename': 'notes.pdf',
+            'relativePath': 'assets/imported.pdf',
+            'contentType': 'application/pdf',
+            'byteSize': 4,
+            'sha256': 'c' * 64,
+            'downloadUrl': 'https://objects.example.com/signed-object?secret=x',
+            'method': 'GET',
+            'expiresAt': '2026-08-06T00:05:00Z',
+          },
+        );
+      });
+      transferDio.httpClientAdapter = _BytesAdapter((options) {
+        objectRequest = options;
+        return [1, 2, 3, 4];
+      });
+      final temporaryDirectory = await Directory.systemTemp.createTemp(
+        'inknest-api-download-',
+      );
+      addTearDown(() => temporaryDirectory.delete(recursive: true));
+
+      final download = await client.createAssetDownload('asset-1');
+      final destination = File('${temporaryDirectory.path}/asset.pdf');
+      await client.downloadAssetToFile(download, destination);
+
+      expect(
+        descriptorRequest.uri.toString(),
+        'https://api.example.com/api/v1/assets/asset-1/download-url',
+      );
+      expect(
+        descriptorRequest.headers['Authorization'],
+        'Bearer access-token-value',
+      );
+      expect(objectRequest.uri.host, 'objects.example.com');
+      expect(objectRequest.headers['Authorization'], isNull);
+      expect(await destination.readAsBytes(), [1, 2, 3, 4]);
     },
   );
 
@@ -350,6 +417,24 @@ class _CallbackAdapter implements HttpClientAdapter {
   void close({bool force = false}) {}
 }
 
+class _BytesAdapter implements HttpClientAdapter {
+  _BytesAdapter(this.bytesFor);
+
+  final List<int> Function(RequestOptions options) bytesFor;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    return ResponseBody.fromBytes(bytesFor(options), 200);
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
 Map<String, Object?> _authJson({
   String accessToken = 'access-token-value',
   String refreshToken = 'refresh-token-value-that-is-long-enough',
@@ -455,6 +540,7 @@ Map<String, Object?> _bootstrapJson() {
         'notebookId': 'notebook-1',
         'kind': 'pdf',
         'originalFilename': 'notes.pdf',
+        'relativePath': 'assets/imported.pdf',
         'contentType': 'application/pdf',
         'byteSize': 42,
         'sha256': 'c' * 64,

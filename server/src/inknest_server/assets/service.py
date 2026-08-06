@@ -94,6 +94,7 @@ class AssetUploadService:
         asset_id: str,
         kind: str,
         filename: str,
+        relative_path: str,
         content_type: str,
         byte_size: int,
         sha256: str,
@@ -119,6 +120,7 @@ class AssetUploadService:
                 notebook_id=notebook_id,
                 kind=kind,
                 filename=filename,
+                relative_path=relative_path,
                 content_type=content_type,
                 byte_size=byte_size,
                 sha256=sha256,
@@ -134,6 +136,7 @@ class AssetUploadService:
             asset_id=asset_id,
             kind=kind,
             original_filename=filename,
+            relative_path=relative_path,
             staging_object_key=build_asset_upload_object_key(
                 user_id=str(user_id),
                 upload_id=str(upload_id),
@@ -159,6 +162,7 @@ class AssetUploadService:
                 notebook_id=notebook_id,
                 kind=kind,
                 filename=filename,
+                relative_path=relative_path,
                 content_type=content_type,
                 byte_size=byte_size,
                 sha256=sha256,
@@ -272,6 +276,7 @@ class AssetUploadService:
             notebook_id=upload.notebook_id,
             kind=upload.kind,
             original_filename=upload.original_filename,
+            relative_path=upload.relative_path,
             object_key=final_object_key,
             content_type=upload.content_type,
             byte_size=final_metadata.byte_size,
@@ -367,6 +372,7 @@ class AssetUploadService:
         notebook_id: str,
         kind: str,
         filename: str,
+        relative_path: str,
         content_type: str,
         byte_size: int,
         sha256: str,
@@ -375,11 +381,20 @@ class AssetUploadService:
             upload.notebook_id,
             upload.kind,
             upload.original_filename,
+            upload.relative_path,
             upload.content_type,
             upload.expected_byte_size,
             upload.expected_sha256,
         )
-        received = (notebook_id, kind, filename, content_type, byte_size, sha256)
+        received = (
+            notebook_id,
+            kind,
+            filename,
+            relative_path,
+            content_type,
+            byte_size,
+            sha256,
+        )
         if expected != received:
             raise ApiError(
                 code="asset_upload_mismatch",

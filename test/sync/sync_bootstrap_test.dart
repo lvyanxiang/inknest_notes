@@ -54,6 +54,29 @@ void main() {
       expect(() => CloudSyncBootstrap.fromJson(json), throwsFormatException);
     });
 
+    test('rejects resource IDs and asset paths that could escape storage', () {
+      final unsafePage = _bootstrapJson();
+      final page = Map<String, Object?>.from(
+        (unsafePage['pages']! as List<Object?>).single! as Map<String, Object?>,
+      )..['id'] = '../outside';
+      unsafePage['pages'] = [page];
+      expect(
+        () => CloudSyncBootstrap.fromJson(unsafePage),
+        throwsFormatException,
+      );
+
+      final unsafeAsset = _bootstrapJson();
+      final asset = Map<String, Object?>.from(
+        (unsafeAsset['assets']! as List<Object?>).single!
+            as Map<String, Object?>,
+      )..['relativePath'] = 'assets/images/../../outside.png';
+      unsafeAsset['assets'] = [asset];
+      expect(
+        () => CloudSyncBootstrap.fromJson(unsafeAsset),
+        throwsFormatException,
+      );
+    });
+
     test('rejects unknown folders and content in the wrong layout', () {
       final unknownFolder = _bootstrapJson();
       final notebook = Map<String, Object?>.from(
@@ -217,6 +240,7 @@ Map<String, Object?> _bootstrapJson() {
         'notebookId': 'notebook-cloud',
         'kind': 'image',
         'originalFilename': 'diagram.png',
+        'relativePath': 'assets/images/diagram.png',
         'contentType': 'image/png',
         'byteSize': 4,
         'sha256': 'a' * 64,

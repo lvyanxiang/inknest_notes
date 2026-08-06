@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:inknest_notes/auth/auth_service.dart';
@@ -24,7 +25,20 @@ class InkNestApiException implements Exception {
   String toString() => 'InkNestApiException($statusCode, $code)';
 }
 
-class InkNestApiClient implements AuthService, AuthSessionInvalidationSource {
+abstract interface class CloudAssetTransferClient {
+  Future<CloudAssetDownload> createAssetDownload(String assetId);
+
+  Future<void> downloadAssetToFile(
+    CloudAssetDownload download,
+    File destination,
+  );
+}
+
+class InkNestApiClient
+    implements
+        AuthService,
+        AuthSessionInvalidationSource,
+        CloudAssetTransferClient {
   InkNestApiClient({
     InkNestApiConfig? config,
     Dio? dio,
@@ -142,6 +156,36 @@ class InkNestApiClient implements AuthService, AuthSessionInvalidationSource {
     return CloudSyncBootstrap.fromJson(
       await _getObject('sync/bootstrap', expectedStatus: 200),
     );
+  }
+
+  @override
+  Future<CloudAssetDownload> createAssetDownload(String assetId) async {
+    if (assetId.isEmpty || assetId.contains('/')) {
+      throw ArgumentError.value(assetId, 'assetId', 'Invalid asset ID.');
+    }
+    return CloudAssetDownload.fromJson(
+      await _getObject(
+        'assets/${Uri.encodeComponent(assetId)}/download-url',
+        expectedStatus: 200,
+      ),
+    );
+  }
+
+  @override
+  Future<void> downloadAssetToFile(
+    CloudAssetDownload download,
+    File destination,
+  ) async {
+    await destination.parent.create(recursive: true);
+    try {
+      await _refreshDio.download(
+        download.downloadUrl.toString(),
+        destination.path,
+        options: Options(responseType: ResponseType.bytes),
+      );
+    } on DioException catch (error) {
+      throw _exceptionFromDio(error);
+    }
   }
 
   Future<void> clearLocalSession() => _sessionStore.clear();

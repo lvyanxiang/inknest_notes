@@ -168,8 +168,9 @@ Authorization: Bearer <access-token>
 调用上传会话接口前，数据库中必须已有属于当前用户的笔记本。当前还没有公开的笔记本
 CRUD API，所以现阶段可使用仓库层、测试数据或数据库工具准备笔记本。
 
-创建上传会话时，App 提交稳定的本地 `assetId`、所属笔记本、文件名、MIME、字节数和
-SHA-256：
+创建上传会话时，App 提交稳定的本地 `assetId`、所属笔记本、文件名、笔记本内相对路径
+`relativePath`、MIME、字节数和 SHA-256。图片路径必须位于 `assets/images/`，音频路径
+必须位于 `assets/audio/`，绝对路径和包含 `..` 的路径会直接拒绝：
 
 ```bash
 curl -X POST http://127.0.0.1:8000/api/v1/assets/upload-sessions \
@@ -180,6 +181,7 @@ curl -X POST http://127.0.0.1:8000/api/v1/assets/upload-sessions \
     "assetId": "<stable-local-asset-id>",
     "kind": "image",
     "filename": "note.png",
+    "relativePath": "assets/images/note.png",
     "contentType": "image/png",
     "byteSize": 1234,
     "sha256": "<64位十六进制SHA-256>"
@@ -222,9 +224,10 @@ curl \
 ```
 
 服务端只会为当前用户拥有的 `assets` 记录签名，并先确认 MinIO 对象仍存在且大小、MIME
-与数据库一致。响应包含 `downloadUrl`、`expiresAt`、`byteSize` 和 `sha256`。App 下载时
-应先写入临时文件，核对大小和 SHA-256 后再原子替换正式本地文件。不要记录或长期保存
-完整预签名 URL。
+与数据库一致。响应包含 `downloadUrl`、`expiresAt`、`relativePath`、`byteSize` 和
+`sha256`。App 必须先核对下载响应与 bootstrap 元数据，再在临时目录校验实际大小和
+SHA-256；只有整批成功后才能应用到资料库并保存 Cursor。
+不要记录或长期保存完整预签名 URL。
 
 ### 首次登录 bootstrap 清单
 
@@ -528,6 +531,8 @@ docker compose config
   状态的 `conflicts` 表，并允许 `sync_changes` 传递冲突事件。
 - `20260806_0011`：为笔记本、页面和无限画布增加软删除时间，创建保存完整快照及
   恢复/冲突审计状态的 `tombstones` 表，并允许 `sync_changes` 传递 Tombstone 事件。
+- `20260806_0012`：为附件和上传会话增加必填的笔记本内相对路径，并对同一用户、同一
+  笔记本内的路径增加唯一约束，防止恢复时两个附件写入同一个本地文件。
 
 后续表结构变化必须创建新迁移，不能修改已经应用过的迁移文件。
 

@@ -30,6 +30,7 @@ async def create_asset_download_url(
     return AssetDownloadUrlResponse(
         asset_id=asset.id,
         filename=asset.original_filename,
+        relative_path=asset.relative_path,
         content_type=asset.content_type,
         byte_size=asset.byte_size,
         sha256=asset.sha256,
@@ -55,6 +56,7 @@ async def create_asset_upload_session(
         asset_id=payload.asset_id,
         kind=payload.kind,
         filename=payload.filename,
+        relative_path=payload.relative_path,
         content_type=payload.content_type,
         byte_size=payload.byte_size,
         sha256=payload.sha256,
@@ -90,6 +92,7 @@ async def complete_asset_upload_session(
         notebook_id=asset.notebook_id,
         kind=asset.kind,
         filename=asset.original_filename,
+        relative_path=asset.relative_path,
         content_type=asset.content_type,
         byte_size=asset.byte_size,
         sha256=asset.sha256,

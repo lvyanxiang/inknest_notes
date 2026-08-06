@@ -103,6 +103,16 @@ class CloudSyncBootstrap {
       'infiniteCanvases',
     );
     validateUniqueResourceIds(assets.map((item) => item.id), 'assets');
+    _validateStableIds(pages.map((item) => item.id).toList(), field: 'pages');
+    _validateStableIds(
+      infiniteCanvases.map((item) => item.id).toList(),
+      field: 'infiniteCanvases',
+    );
+    _validateStableIds(assets.map((item) => item.id).toList(), field: 'assets');
+    validateUniqueResourceIds(
+      assets.map((item) => '${item.notebookId}:${item.relativePath}'),
+      'asset relative paths',
+    );
     if (!sameStringSet(folderIds, folders.map((item) => item.id)) ||
         !sameStringSet(notebookIds, notebooks.map((item) => item.id))) {
       throw const FormatException(
@@ -333,6 +343,7 @@ class CloudSyncAsset {
     required this.notebookId,
     required this.kind,
     required this.originalFilename,
+    required this.relativePath,
     required this.contentType,
     required this.byteSize,
     required this.sha256,
@@ -344,6 +355,7 @@ class CloudSyncAsset {
   final String notebookId;
   final String kind;
   final String originalFilename;
+  final String relativePath;
   final String contentType;
   final int byteSize;
   final String sha256;
@@ -352,23 +364,112 @@ class CloudSyncAsset {
 
   factory CloudSyncAsset.fromJson(Map<String, Object?> json) {
     final kind = requiredString(json, 'kind');
+    final relativePath = requiredString(json, 'relativePath');
     final byteSize = json['byteSize'];
     if (!const {'pdf', 'image', 'audio'}.contains(kind) ||
         byteSize is! int ||
         byteSize <= 0) {
       throw const FormatException('Invalid asset snapshot metadata.');
     }
+    validateNotebookAssetPath(relativePath, kind: kind);
     return CloudSyncAsset(
       id: requiredString(json, 'id'),
       notebookId: requiredString(json, 'notebookId'),
       kind: kind,
       originalFilename: requiredString(json, 'originalFilename'),
+      relativePath: relativePath,
       contentType: requiredString(json, 'contentType'),
       byteSize: byteSize,
       sha256: requiredSha256(json, 'sha256'),
       createdAt: requiredDateTime(json, 'createdAt'),
       updatedAt: requiredDateTime(json, 'updatedAt'),
     );
+  }
+}
+
+class CloudAssetDownload {
+  const CloudAssetDownload({
+    required this.assetId,
+    required this.filename,
+    required this.relativePath,
+    required this.contentType,
+    required this.byteSize,
+    required this.sha256,
+    required this.downloadUrl,
+    required this.expiresAt,
+  });
+
+  final String assetId;
+  final String filename;
+  final String relativePath;
+  final String contentType;
+  final int byteSize;
+  final String sha256;
+  final Uri downloadUrl;
+  final DateTime expiresAt;
+
+  factory CloudAssetDownload.fromJson(Map<String, Object?> json) {
+    final byteSize = json['byteSize'];
+    final method = json['method'];
+    final rawUrl = requiredString(json, 'downloadUrl');
+    final downloadUrl = Uri.tryParse(rawUrl);
+    final relativePath = requiredString(json, 'relativePath');
+    if (byteSize is! int ||
+        byteSize <= 0 ||
+        method != 'GET' ||
+        downloadUrl == null ||
+        !downloadUrl.hasAuthority ||
+        !const {'http', 'https'}.contains(downloadUrl.scheme)) {
+      throw const FormatException('Invalid asset download response.');
+    }
+    return CloudAssetDownload(
+      assetId: requiredString(json, 'assetId'),
+      filename: requiredString(json, 'filename'),
+      relativePath: relativePath,
+      contentType: requiredString(json, 'contentType'),
+      byteSize: byteSize,
+      sha256: requiredSha256(json, 'sha256'),
+      downloadUrl: downloadUrl,
+      expiresAt: requiredDateTime(json, 'expiresAt'),
+    );
+  }
+
+  void verifyMatches(CloudSyncAsset asset) {
+    validateNotebookAssetPath(relativePath, kind: asset.kind);
+    if (assetId != asset.id ||
+        filename != asset.originalFilename ||
+        relativePath != asset.relativePath ||
+        contentType != asset.contentType ||
+        byteSize != asset.byteSize ||
+        sha256 != asset.sha256) {
+      throw const FormatException(
+        'Asset download metadata does not match the bootstrap snapshot.',
+      );
+    }
+  }
+}
+
+void validateNotebookAssetPath(String value, {required String kind}) {
+  if (value.isEmpty ||
+      value.length > 1024 ||
+      value.trim() != value ||
+      value.contains('\\') ||
+      value.startsWith('/') ||
+      value
+          .split('/')
+          .any((part) => part.isEmpty || part == '.' || part == '..') ||
+      !value.startsWith('assets/')) {
+    throw const FormatException('Invalid notebook-relative asset path.');
+  }
+  final segments = value.split('/');
+  final requiredDirectory = switch (kind) {
+    'image' => 'images',
+    'audio' => 'audio',
+    _ => null,
+  };
+  if (requiredDirectory != null &&
+      (segments.length < 3 || segments[1] != requiredDirectory)) {
+    throw const FormatException('Asset path does not match its kind.');
   }
 }
 
@@ -465,8 +566,15 @@ Object? _copyJsonValue(Object? value) {
 }
 
 void _validateStableIds(List<String> items, {required String field}) {
-  if (items.any((item) => item.isEmpty) ||
+  final safeId = RegExp(r'^[A-Za-z0-9._-]+$');
+  if (items.any(
+        (item) =>
+            item.isEmpty ||
+            item.length > 128 ||
+            item.trim() != item ||
+            !safeId.hasMatch(item),
+      ) ||
       items.toSet().length != items.length) {
-    throw FormatException('$field must contain unique, non-empty IDs.');
+    throw FormatException('$field must contain unique, path-safe stable IDs.');
   }
 }

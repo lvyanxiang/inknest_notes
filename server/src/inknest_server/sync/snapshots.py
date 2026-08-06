@@ -70,6 +70,7 @@ def asset_snapshot(asset: Asset) -> dict[str, object]:
         "notebookId": asset.notebook_id,
         "kind": asset.kind,
         "filename": asset.original_filename,
+        "relativePath": asset.relative_path,
         "contentType": asset.content_type,
         "byteSize": asset.byte_size,
         "sha256": asset.sha256,

@@ -74,6 +74,7 @@
       "notebookId": "notebook-paged-contract",
       "kind": "pdf",
       "originalFilename": "contract.pdf",
+      "relativePath": "assets/imported.pdf",
       "contentType": "application/pdf",
       "byteSize": 42,
       "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",

@@ -51,6 +51,7 @@ async def test_library_metadata_preserves_client_ids_and_unknown_coordinate_vers
         asset_id="asset-local-1",
         kind="pdf",
         original_filename="教材.pdf",
+        relative_path="assets/imported.pdf",
         object_key=(
             f"users/{user_id}/notebooks/{notebook.id}/pdfs/asset-local-1/textbook.pdf"
         ),
@@ -144,6 +145,7 @@ async def test_cross_user_parent_resources_are_hidden(
         asset_id="asset-private",
         kind="image",
         original_filename="private.png",
+        relative_path="assets/images/private.png",
         object_key=f"users/{owner_id}/notebooks/{notebook.id}/images/private.png",
         content_type="image/png",
         byte_size=128,

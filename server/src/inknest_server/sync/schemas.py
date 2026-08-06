@@ -104,6 +104,7 @@ class SyncBootstrapAsset(SyncApiModel):
     notebook_id: str
     kind: Literal["pdf", "image", "audio"]
     original_filename: str
+    relative_path: str
     content_type: str
     byte_size: int
     sha256: str

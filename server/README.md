@@ -179,8 +179,11 @@ An owned notebook must already exist before an upload session can be created.
 There is no public notebook CRUD API yet, so use repository code, test data, or
 a database tool to prepare one during this phase.
 
-The App submits its stable local asset ID, notebook ID, filename, media type,
-byte length, and SHA-256 to `POST /assets/upload-sessions`. The response contains
+The App submits its stable local asset ID, notebook ID, filename, validated
+notebook-relative `relativePath`, media type, byte length, and SHA-256 to
+`POST /assets/upload-sessions`. Image paths must stay under `assets/images/`,
+audio paths under `assets/audio/`, and every path must reject absolute or `..`
+segments. The response contains
 a short-lived `uploadUrl`, `PUT` method, and required `Content-Type` header. Send
 the bytes directly to that private MinIO URL. Then call
 `POST /assets/upload-sessions/{upload_id}/complete`. Treat the signed URL as a
@@ -202,8 +205,9 @@ window.
 After completion, request `GET /assets/{asset_id}/download-url`. The server only
 signs a ready asset owned by the authenticated user and first checks that its
 MinIO object still matches the stored size and media type. The response includes
-the URL, expiry, byte length, and SHA-256. Clients must download to temporary
-storage, verify size and SHA-256, and only then atomically replace local data.
+the URL, expiry, notebook-relative path, byte length, and SHA-256. Clients must
+download to temporary storage, verify every returned field against bootstrap
+metadata plus size and SHA-256, and only then atomically apply local data.
 Never log or retain the complete signed URL.
 
 ### First-sign-in bootstrap inventory
@@ -547,6 +551,9 @@ The migration history currently contains:
 - `20260806_0011`: nullable soft-deletion timestamps on revisioned resources,
   durable full-snapshot `tombstones`, recovery/conflict audit state, and
   Tombstone events in `sync_changes`.
+- `20260806_0012`: required notebook-relative paths on ready assets and upload
+  sessions, plus per-notebook path uniqueness so restore cannot map two objects
+  onto the same local file.
 
 Future schema work must add a new revision instead of rewriting an applied
 revision.

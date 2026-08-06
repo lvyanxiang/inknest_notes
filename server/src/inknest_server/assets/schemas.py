@@ -1,8 +1,9 @@
 from datetime import datetime
+from pathlib import PurePosixPath
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic.alias_generators import to_camel
 
 
@@ -19,6 +20,7 @@ class CreateAssetUploadRequest(AssetApiModel):
     asset_id: str = Field(min_length=1, max_length=128)
     kind: Literal["pdf", "image", "audio"]
     filename: str = Field(min_length=1, max_length=255)
+    relative_path: str = Field(min_length=1, max_length=1024)
     content_type: str = Field(min_length=1, max_length=255)
     byte_size: int = Field(gt=0)
     sha256: str = Field(pattern=r"^[0-9a-fA-F]{64}$")
@@ -41,6 +43,37 @@ class CreateAssetUploadRequest(AssetApiModel):
     def normalize_sha256(cls, value: str) -> str:
         return value.lower()
 
+    @field_validator("relative_path")
+    @classmethod
+    def validate_relative_path(cls, value: str) -> str:
+        normalized = value.strip()
+        path = PurePosixPath(normalized)
+        if (
+            normalized != value
+            or "\\" in normalized
+            or path.is_absolute()
+            or not path.parts
+            or path.parts[0] != "assets"
+            or len(path.parts) < 2
+            or str(path) != normalized
+            or any(part in {"", ".", ".."} for part in path.parts)
+        ):
+            raise ValueError("must be a normalized notebook-relative assets path")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_kind_path(self) -> "CreateAssetUploadRequest":
+        parts = PurePosixPath(self.relative_path).parts
+        required_prefix = {
+            "image": ("assets", "images"),
+            "audio": ("assets", "audio"),
+        }.get(self.kind)
+        if required_prefix is not None and parts[:2] != required_prefix:
+            raise ValueError(
+                f"{self.kind} assets must use {'/'.join(required_prefix)}/"
+            )
+        return self
+
 
 class AssetUploadSessionResponse(AssetApiModel):
     upload_id: UUID
@@ -59,6 +92,7 @@ class AssetResponse(AssetApiModel):
     notebook_id: str
     kind: str
     filename: str
+    relative_path: str
     content_type: str
     byte_size: int
     sha256: str
@@ -69,6 +103,7 @@ class AssetResponse(AssetApiModel):
 class AssetDownloadUrlResponse(AssetApiModel):
     asset_id: str
     filename: str
+    relative_path: str
     content_type: str
     byte_size: int
     sha256: str

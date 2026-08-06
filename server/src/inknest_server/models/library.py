@@ -208,6 +208,12 @@ class Asset(Base):
     __tablename__ = "assets"
     __table_args__ = (
         UniqueConstraint("object_key", name="uq_assets_object_key"),
+        UniqueConstraint(
+            "user_id",
+            "notebook_id",
+            "relative_path",
+            name="uq_assets_user_notebook_relative_path",
+        ),
         ForeignKeyConstraint(
             ["notebook_id", "user_id"],
             ["notebooks.id", "notebooks.user_id"],
@@ -227,6 +233,7 @@ class Asset(Base):
     notebook_id: Mapped[str] = mapped_column(String(128))
     kind: Mapped[str] = mapped_column(String(32))
     original_filename: Mapped[str] = mapped_column(String(255))
+    relative_path: Mapped[str] = mapped_column(String(1024))
     object_key: Mapped[str] = mapped_column(String(1024))
     content_type: Mapped[str] = mapped_column(String(255))
     byte_size: Mapped[int] = mapped_column(BigInteger)
@@ -288,6 +295,7 @@ class AssetUpload(Base):
     asset_id: Mapped[str] = mapped_column(String(128))
     kind: Mapped[str] = mapped_column(String(32))
     original_filename: Mapped[str] = mapped_column(String(255))
+    relative_path: Mapped[str] = mapped_column(String(1024))
     staging_object_key: Mapped[str] = mapped_column(String(1024))
     content_type: Mapped[str] = mapped_column(String(255))
     expected_byte_size: Mapped[int] = mapped_column(BigInteger)

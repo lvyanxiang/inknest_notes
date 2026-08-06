@@ -37,6 +37,7 @@ def upload_payload(**overrides: object) -> dict[str, object]:
         "assetId": "asset-1",
         "kind": "image",
         "filename": "../../课堂 笔记.png",
+        "relativePath": "assets/images/asset-1.png",
         "contentType": "image/png",
         "byteSize": 4,
         "sha256": SHA256,
@@ -173,12 +174,17 @@ async def test_complete_upload_verifies_and_creates_one_ready_asset(
     assert download.json()["method"] == "GET"
     assert download.json()["assetId"] == "asset-1"
     assert download.json()["filename"] == "../../课堂 笔记.png"
+    assert download.json()["relativePath"] == "assets/images/asset-1.png"
     assert download.json()["contentType"] == "image/png"
     assert download.json()["byteSize"] == len(CONTENT)
     assert download.json()["sha256"] == SHA256
     assert ready_bootstrap.status_code == 200
     assert [asset["id"] for asset in ready_bootstrap.json()["assets"]] == ["asset-1"]
     assert ready_bootstrap.json()["assets"][0]["notebookId"] == "notebook-1"
+    assert (
+        ready_bootstrap.json()["assets"][0]["relativePath"]
+        == "assets/images/asset-1.png"
+    )
     assert ready_bootstrap.json()["assets"][0]["byteSize"] == len(CONTENT)
     assert ready_bootstrap.json()["assets"][0]["sha256"] == SHA256
     assert "objectKey" not in ready_bootstrap.json()["assets"][0]
@@ -331,6 +337,18 @@ async def test_rejects_mismatched_retry_and_invalid_uploads(
         headers=headers,
         json=upload_payload(assetId="asset-4", byteSize=536_870_913),
     )
+    traversal_path = await client.post(
+        "/api/v1/assets/upload-sessions",
+        headers=headers,
+        json=upload_payload(
+            assetId="asset-5", relativePath="assets/images/../../outside.png"
+        ),
+    )
+    wrong_kind_path = await client.post(
+        "/api/v1/assets/upload-sessions",
+        headers=headers,
+        json=upload_payload(assetId="asset-6", relativePath="assets/audio/image.png"),
+    )
 
     assert mismatch.status_code == 409
     assert mismatch.json()["error"]["code"] == "asset_upload_mismatch"
@@ -338,6 +356,8 @@ async def test_rejects_mismatched_retry_and_invalid_uploads(
     assert wrong_extension.status_code == 415
     assert wrong_extension.json()["error"]["code"] == "unsupported_asset_extension"
     assert too_large.status_code == 413
+    assert traversal_path.status_code == 422
+    assert wrong_kind_path.status_code == 422
 
 
 async def test_upload_session_is_owner_scoped_and_can_be_cancelled(

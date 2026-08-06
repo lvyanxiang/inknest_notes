@@ -153,8 +153,11 @@ The first slice sets no retention period and performs no physical cleanup.
   or content, an occupied placement, or an incompatible notebook layout
   produces an explicit error and rolls back every operation in the batch.
 - Asset bytes use the separate verified transfer contract below. The App does
-  not yet stage or atomically apply downloaded snapshots, so the overall
-  upload/download acceptance criterion remains incomplete.
+  stage cloud-only snapshots and atomically apply them only after every asset
+  passes metadata, byte-size, and SHA-256 verification. The overall
+  upload/download acceptance criterion remains incomplete until local-only
+  upload and shared-Revision orchestration are wired into the first-sign-in
+  flow.
 
 ### Ready asset transfer foundation
 
@@ -162,15 +165,20 @@ The first slice sets no retention period and performs no physical cleanup.
   assets attached to active notebooks. Pending, cancelled, expired, or failed
   upload sessions never appear as restorable assets.
 - The snapshot exposes stable asset/notebook IDs, kind, original filename,
-  media type, byte size, and SHA-256. It never exposes an internal MinIO object
-  key or a reusable signed URL.
+  validated notebook-relative path, media type, byte size, and SHA-256. It
+  never exposes an internal MinIO object key or a reusable signed URL. Paths
+  are unique inside one account/notebook and reject absolute/traversal input so
+  restore never guesses a destination or writes outside the notebook.
 - Local-only bytes use the existing retryable upload-session flow and become
   visible only after MinIO size, media type, and SHA-256 verification succeeds.
   Cloud-only bytes use the stable asset ID to request a short-lived download
   URL, after which the App must verify size and SHA-256 before local use.
-- Server-side PDF, image, and audio transfer is now complete. Flutter temporary
-  staging and atomic local application remain required before the overall
-  first-merge upload/download criterion can be accepted.
+- Flutter now requests a fresh signed URL per asset, downloads into disposable
+  staging, verifies the signed response against bootstrap metadata plus the
+  actual size and SHA-256, and rolls back every new directory/index mutation if
+  application fails. Pure cloud-only restores persist the bootstrap Cursor
+  after success; mixed libraries deliberately keep it unapplied until upload
+  and shared-Revision work finishes.
 
 ## Acceptance Criteria
 
@@ -270,8 +278,9 @@ The first slice sets no retention period and performs no physical cleanup.
   contracts through page/infinite-canvas JSON and ready asset bytes are
   delivered in the implementation plan. Flutter now also has Dio-backed typed
   transport, platform-secure session persistence, shared automatic token
-  refresh, Account UI, and full-snapshot parsing; atomic local bootstrap
-  application remains.
+  refresh, Account UI, full-snapshot parsing, verified attachment downloads,
+  and rollback-safe cloud-only bootstrap application. First-sign-in UI,
+  local-only upload orchestration, and shared-Revision reconciliation remain.
 - Verification: Backend tests cover authentication, account isolation,
   revisioned content, asset transfer, cursors, atomic/idempotent commits, page
   and notebook conflicts, all resolution choices, soft delete/restore, both
@@ -288,10 +297,11 @@ The first slice sets no retention period and performs no physical cleanup.
   ordering, conflicting stable-ID rollback, full bootstrap snapshots, initial
   Revision/Content Hash creation, same-content retry, and real PostgreSQL
   duplicate prevention for pages and infinite canvases. PostgreSQL migration
-  `20260806_0011` remains current; this slice reuses existing tables and
-  requires no schema migration. A shared bootstrap JSON fixture is parsed by
+  `20260806_0012` is current and adds restorable, unique notebook-relative
+  asset paths. A shared bootstrap JSON fixture is parsed by
   both the Flutter DTOs and the FastAPI response schema so client/server field
   drift fails in tests. The complete backend run passes 49
   non-integration tests and 15 PostgreSQL/MinIO integration tests, including
   ready-only bootstrap visibility and real PDF/image/audio byte round trips;
-  the complete Flutter test suite and static analysis pass.
+  the complete Flutter test suite passes; staging tests cover verified success,
+  corrupt downloads, and mid-apply rollback, and static analysis passes.

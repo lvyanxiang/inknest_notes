@@ -93,6 +93,7 @@ async def test_bootstrap_inventory_is_read_only_active_and_account_scoped(
         asset_id="first-asset",
         kind="image",
         original_filename="diagram.png",
+        relative_path="assets/images/diagram.png",
         object_key=(
             f"users/{first_user_id}/notebooks/{paged_notebook.id}/"
             "images/first-asset/diagram.png"

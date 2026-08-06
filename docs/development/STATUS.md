@@ -4,15 +4,15 @@
 
 - Milestone: Backend Phase 5 first-sign-in merge and new-device restore is in
   progress; server-side upload/download contracts now cover complete library
-  structure, JSON content, and verified PDF/image/audio assets; Flutter account
-  authentication is now connected to the real versioned API client.
-- Next task: Implement Flutter temporary bootstrap staging, asset size/SHA-256
-  validation, and atomic local application before any bootstrap Cursor is
-  persisted; then wire the first-sign-in Merge preview.
-- Last completed: Flutter migrated its project-owned transport from `http` to
-  Dio, stores rotated access/refresh sessions in platform secure storage,
-  refreshes concurrent authenticated requests once, and exposes responsive
-  Sign in/Create account/Sign out flows from the local-first library header.
+  structure, JSON content, and verified PDF/image/audio assets; Flutter can now
+  safely apply a cloud-only bootstrap to its file-backed library.
+- Next task: Use `$inknest-ui-ux` to finalize the first-sign-in Merge preview
+  and progress/error states, then wire bootstrap, local-only upload, cloud-only
+  restore, and shared-Revision reconciliation from the signed-in App flow.
+- Last completed: Attachment contracts now retain a validated notebook-relative
+  path. Flutter downloads signed asset URLs into disposable staging, verifies
+  metadata/size/SHA-256, rolls back a failed local batch, and saves the bootstrap
+  Cursor only after a complete pure-cloud restore.
 
 ## Decisions
 
@@ -100,9 +100,10 @@
   waits 1 hour, final orphans are quarantined for 7 days, and every final object
   is rechecked against `assets.object_key` immediately before deletion.
 - Treat `assets` rows as the ready/restorable boundary. Bootstrap exposes their
-  stable IDs, media metadata, byte size, and SHA-256 only; it excludes upload
-  sessions, object keys, and signed URLs. Clients obtain a fresh per-asset URL
-  and must verify downloaded bytes before local application.
+  stable IDs, notebook-relative paths, media metadata, byte size, and SHA-256
+  only; it excludes upload sessions, object keys, and signed URLs. Clients
+  obtain a fresh per-asset URL and must verify downloaded bytes before local
+  application.
 - Treat revision numbers and content hashes as server-owned. For the current
   backend slice, hash UTF-8 JSON with recursively sorted keys, compact
   separators, preserved Unicode/array order, and rejected non-finite numbers;
@@ -214,6 +215,17 @@
 - Keep unresolved legacy content viewable, navigable, zoomable, searchable, and exportable without allowing normal save, rotate, copy, or duplicate paths to overwrite its source JSON.
 
 ## Verification
+
+- Flutter's full 183-test suite passes and `flutter analyze` reports no issues.
+  New restore tests cover a complete cloud-only restore, size/SHA failure with
+  zero local mutation, apply-time rollback, Cursor gating, and signed object
+  download without leaking the API Authorization header.
+- Python formatting, Ruff linting, and mypy pass. All 49 non-integration and 15
+  PostgreSQL/MinIO integration tests pass, including path traversal/kind
+  rejection and ready-asset bootstrap transfer.
+- Alembic upgraded both the development database and an independent empty
+  verification database to `20260806_0012 (head)`; `alembic check` reports no
+  pending schema operations.
 
 - Flutter formatting, all 178 tests, and `flutter analyze` pass after the Dio,
   secure-session, automatic-refresh, and Account UI integration. Focused tests

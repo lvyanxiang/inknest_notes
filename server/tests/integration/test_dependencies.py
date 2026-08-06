@@ -357,6 +357,9 @@ async def test_presigned_asset_round_trip(
                 asset_id=f"asset-{kind}-{suffix}",
                 kind=kind,
                 filename=filename,
+                relative_path=(
+                    f"assets/{'images' if kind == 'image' else kind}/{filename}"
+                ),
                 content_type=content_type,
                 byte_size=len(content),
                 sha256=hashlib.sha256(content).hexdigest(),
@@ -479,6 +482,7 @@ async def test_asset_cleanup_tracks_and_deletes_real_minio_objects() -> None:
                     asset_id=f"unfinished-{suffix}",
                     kind="image",
                     original_filename="unfinished.png",
+                    relative_path="assets/images/unfinished.png",
                     staging_object_key=staging_key,
                     content_type="image/png",
                     expected_byte_size=4,
