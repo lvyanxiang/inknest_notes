@@ -4,8 +4,9 @@
 
 InkNest 服务端是为账号备份和 local-first（本地优先）同步提供支持的
 Python/FastAPI 后端。目前已经包含服务骨架、PostgreSQL、MinIO、健康检查、第一版
-账号/会话/设备接口、按用户隔离的资料库元数据持久化，以及经过大小和 SHA-256 校验的
-附件预签名上传与下载流程；笔记同步接口尚未实现。
+账号/会话/设备接口、按用户隔离的资料库元数据持久化、经过大小和 SHA-256 校验的附件
+预签名上传与下载流程，以及使用不透明 Cursor 的增量同步变更流；批量同步提交和冲突处理
+尚未实现。
 
 ## 环境要求
 
@@ -142,6 +143,7 @@ API 在宿主机运行或使用默认 Compose 端口映射时，以下地址相�
 | `POST` | `/assets/upload-sessions/{upload_id}/complete` | Bearer Access Token | 校验暂存对象并创建可用附件元数据。 |
 | `DELETE` | `/assets/upload-sessions/{upload_id}` | Bearer Access Token | 取消当前用户拥有的待上传会话。 |
 | `GET` | `/assets/{asset_id}/download-url` | Bearer Access Token | 为当前用户拥有的可用附件签发短期下载 URL。 |
+| `GET` | `/sync/changes?cursor=...&limit=...` | Bearer Access Token | 按顺序读取当前用户的增量变更，并返回下一个不透明 Cursor。 |
 
 访问 Bearer 鉴权接口时，使用注册、登录或刷新接口返回的 Access Token：
 
@@ -216,6 +218,33 @@ curl \
 与数据库一致。响应包含 `downloadUrl`、`expiresAt`、`byteSize` 和 `sha256`。App 下载时
 应先写入临时文件，核对大小和 SHA-256 后再原子替换正式本地文件。不要记录或长期保存
 完整预签名 URL。
+
+### 增量同步变更
+
+`GET /api/v1/sync/changes` 只返回当前登录用户的追加式变更，并按照服务端顺序分页。默认
+每页 100 条，允许范围为 1–500：
+
+```bash
+curl 'http://127.0.0.1:8000/api/v1/sync/changes?limit=100' \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+App 应在整页变更安全写入本地后才保存 `nextCursor`，下一次请求必须原样回传：
+
+```bash
+curl --get 'http://127.0.0.1:8000/api/v1/sync/changes' \
+  -H 'Authorization: Bearer <access-token>' \
+  --data-urlencode 'cursor=<next-cursor>' \
+  --data-urlencode 'limit=100'
+```
+
+事件包含公开变更 ID、资源类型、稳定资源 ID、操作、可选 Revision 和哈希、来源设备、
+客户端快照以及服务端时间。内部数字序列不是 API 字段。Cursor 带签名并绑定账号；格式
+错误、被修改或跨账号 Cursor 返回 `400 sync_cursor_invalid`。没有新变更时仍会返回供下次
+轮询保存的 Cursor。
+
+资料库创建、新内容 Revision 和附件完成会在权威写入的同一个 PostgreSQL 事务中追加
+事件；相同内容重试不会重复追加。删除事件、批量 `/sync/commit` 和冲突处理属于后续切片。
 
 ### 安全清理附件对象
 
@@ -300,6 +329,8 @@ docker compose config
   `assets` 附件引用。
 - `20260806_0007`：为上传会话增加清理审计字段，并创建带 7 天隔离状态的
   `asset_gc_candidates`，用于可恢复的 MinIO 垃圾回收。
+- `20260806_0008`：创建追加式 `sync_changes`，使用 PostgreSQL Identity 顺序、归属字段、
+  不可变快照和 Cursor 查询索引。
 
 后续表结构变化必须创建新迁移，不能修改已经应用过的迁移文件。
 
@@ -340,8 +371,8 @@ App 生成的 ID 以稳定字符串保存，并与 `user_id` 组成联合主键�
 可以原样保留未来或未知格式，不进行危险改写。`assets` 表只保存文件名、类型、大小、
 SHA-256 和 MinIO Object Key，PDF、图片、音频等文件本体仍存放在 MinIO。
 
-当前还没有公开的资料库 CRUD 或同步 HTTP 接口；附件上传会话是目前唯一公开的资料库
-相关接口。可以先在 Navicat/pgAdmin 查看这些表，或在
+当前还没有公开的资料库 CRUD 或同步提交接口；只读增量变更流和附件上传会话是目前公开的
+资料库相关接口。可以先在 Navicat/pgAdmin 查看这些表，或在
 `server/` 目录运行仓库层测试：
 
 ```bash
@@ -367,8 +398,8 @@ INKNEST_RUN_INTEGRATION=1 uv run pytest tests/integration
 
 保存时调用方必须提交当前 `base_revision`。PostgreSQL 会锁定资源行，服务端再生成下一
 版本；不同内容使用过期版本会得到明确冲突。相同内容的重复请求即使仍携带旧版本，也会
-作为幂等重试返回，不会重复创建历史记录。这些能力目前只在仓库层，尚未开放为同步 HTTP
-接口。
+作为幂等重试返回，不会重复创建历史记录。成功的新 Revision 现在会追加到
+`sync_changes` 并通过只读增量变更接口返回；通过 `/sync/commit` 写入仍属于下一切片。
 
 ## 认证机制
 

@@ -1,6 +1,6 @@
 # InkNest Notes 服务端实施计划
 
-- 状态：Phase 3 已完成，Phase 4 待开始
+- 状态：Phase 4 实施中
 - 更新时间：2026-08-06
 - 产品 Brief：`docs/product/features/inknest-cloud-backend/PRODUCT_BRIEF.md`
 - 对应路线图：Milestone 8 / Post-MVP 6 Sync And Backup
@@ -363,7 +363,7 @@ checksums.sha256
 
 ### Phase 4：增量同步与冲突
 
-- [ ] 同步变更日志和不透明 Cursor。
+- [x] 同步变更日志和不透明 Cursor。
 - [ ] 批量、幂等 `/sync/commit`。
 - [ ] Flutter 本地待同步队列和最后成功 Cursor。
 - [ ] Revision 乐观锁。

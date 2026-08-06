@@ -8,6 +8,7 @@ from inknest_server.models.library import (
     InfiniteCanvas,
     Notebook,
     Page,
+    SyncChange,
 )
 
 __all__ = [
@@ -21,5 +22,6 @@ __all__ = [
     "Notebook",
     "Page",
     "RefreshToken",
+    "SyncChange",
     "User",
 ]

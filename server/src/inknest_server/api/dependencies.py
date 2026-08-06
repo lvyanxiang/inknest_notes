@@ -15,7 +15,9 @@ from inknest_server.config import Settings
 from inknest_server.db import Database
 from inknest_server.errors import ApiError
 from inknest_server.models import Device, User
+from inknest_server.repositories.sync import SyncChangeRepository
 from inknest_server.storage import ObjectStorage
+from inknest_server.sync import SyncCursorCodec, SyncService
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -60,6 +62,16 @@ def get_asset_upload_service(
 AssetUploadServiceDependency = Annotated[
     AssetUploadService, Depends(get_asset_upload_service)
 ]
+
+
+def get_sync_service(request: Request, session: DbSession) -> SyncService:
+    return SyncService(
+        SyncChangeRepository(session),
+        SyncCursorCodec(cast(Settings, request.app.state.settings)),
+    )
+
+
+SyncServiceDependency = Annotated[SyncService, Depends(get_sync_service)]
 
 
 async def get_current_session(

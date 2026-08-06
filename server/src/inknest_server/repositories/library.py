@@ -10,6 +10,14 @@ from inknest_server.models.library import (
     Notebook,
     Page,
 )
+from inknest_server.repositories.sync import SyncChangeRepository
+from inknest_server.sync.snapshots import (
+    asset_snapshot,
+    folder_snapshot,
+    infinite_canvas_snapshot,
+    notebook_snapshot,
+    page_snapshot,
+)
 
 VALID_LAYOUT_MODES = frozenset({"paged", "infiniteCanvas"})
 
@@ -28,6 +36,7 @@ class LibraryRepository:
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
+        self._changes = SyncChangeRepository(session)
 
     async def create_folder(
         self, *, user_id: UUID, folder_id: str, name: str
@@ -35,6 +44,12 @@ class LibraryRepository:
         folder = Folder(id=folder_id, user_id=user_id, name=name)
         self._session.add(folder)
         await self._session.flush()
+        await self._changes.append_upsert(
+            user_id=user_id,
+            resource_type="folder",
+            resource_id=folder.id,
+            payload=folder_snapshot(folder),
+        )
         return folder
 
     async def get_folder(self, *, user_id: UUID, folder_id: str) -> Folder:
@@ -78,6 +93,13 @@ class LibraryRepository:
         )
         self._session.add(notebook)
         await self._session.flush()
+        await self._changes.append_upsert(
+            user_id=user_id,
+            resource_type="notebook",
+            resource_id=notebook.id,
+            payload=notebook_snapshot(notebook),
+            revision=notebook.revision,
+        )
         return notebook
 
     async def get_notebook(self, *, user_id: UUID, notebook_id: str) -> Notebook:
@@ -126,6 +148,13 @@ class LibraryRepository:
         )
         self._session.add(page)
         await self._session.flush()
+        await self._changes.append_upsert(
+            user_id=user_id,
+            resource_type="page",
+            resource_id=page.id,
+            payload=page_snapshot(page),
+            revision=page.revision,
+        )
         return page
 
     async def get_page(self, *, user_id: UUID, page_id: str) -> Page:
@@ -163,6 +192,13 @@ class LibraryRepository:
         )
         self._session.add(canvas)
         await self._session.flush()
+        await self._changes.append_upsert(
+            user_id=user_id,
+            resource_type="infinite_canvas",
+            resource_id=canvas.id,
+            payload=infinite_canvas_snapshot(canvas),
+            revision=canvas.revision,
+        )
         return canvas
 
     async def get_infinite_canvas(
@@ -200,6 +236,12 @@ class LibraryRepository:
         )
         self._session.add(asset)
         await self._session.flush()
+        await self._changes.append_upsert(
+            user_id=user_id,
+            resource_type="asset",
+            resource_id=asset.id,
+            payload=asset_snapshot(asset),
+        )
         return asset
 
     async def get_asset(self, *, user_id: UUID, asset_id: str) -> Asset:

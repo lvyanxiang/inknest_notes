@@ -10,6 +10,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     ForeignKeyConstraint,
+    Identity,
     Index,
     Integer,
     String,
@@ -330,6 +331,57 @@ class AssetGarbageCollectionCandidate(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class SyncChange(Base):
+    __tablename__ = "sync_changes"
+    __table_args__ = (
+        CheckConstraint(
+            "resource_type IN "
+            "('folder', 'notebook', 'page', 'infinite_canvas', 'asset')",
+            name="ck_sync_changes_resource_type",
+        ),
+        CheckConstraint(
+            "operation IN ('upsert', 'delete')",
+            name="ck_sync_changes_operation",
+        ),
+        CheckConstraint(
+            "revision IS NULL OR revision >= 0",
+            name="ck_sync_changes_revision",
+        ),
+        CheckConstraint(
+            "content_hash IS NULL OR length(content_hash) = 64",
+            name="ck_sync_changes_content_hash_length",
+        ),
+        CheckConstraint(
+            "(operation = 'upsert' AND payload IS NOT NULL) OR "
+            "(operation = 'delete' AND payload IS NULL)",
+            name="ck_sync_changes_operation_payload",
+        ),
+        Index("ix_sync_changes_user_sequence", "user_id", "sequence"),
+    )
+
+    sequence: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        Identity(),
+        primary_key=True,
+    )
+    change_id: Mapped[UUID] = mapped_column(default=uuid4, unique=True)
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    device_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("devices.id", ondelete="SET NULL"), index=True
+    )
+    resource_type: Mapped[str] = mapped_column(String(32))
+    resource_id: Mapped[str] = mapped_column(String(128))
+    operation: Mapped[str] = mapped_column(String(16))
+    revision: Mapped[int | None] = mapped_column(BigInteger)
+    content_hash: Mapped[str | None] = mapped_column(String(64))
+    payload: Mapped[dict[str, object] | None] = mapped_column(JSON(none_as_null=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
     )
 
 

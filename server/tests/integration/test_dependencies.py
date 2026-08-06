@@ -25,6 +25,7 @@ from inknest_server.repositories import (
     ContentSaveResult,
     LibraryRepository,
     RevisionConflictError,
+    SyncChangeRepository,
 )
 from inknest_server.services.readiness import ReadinessService
 from inknest_server.storage import MinioStorage
@@ -307,6 +308,77 @@ async def test_asset_cleanup_tracks_and_deletes_real_minio_objects() -> None:
                 )
             if user_id is not None:
                 await cleanup_session.execute(delete(User).where(User.id == user_id))
+            await cleanup_session.commit()
+        await database.close()
+
+
+@pytest.mark.asyncio
+async def test_sync_change_sequence_is_persisted_and_user_scoped() -> None:
+    database = Database(Settings().database_url)
+    suffix = uuid4().hex
+    first_user_id = None
+    second_user_id = None
+    try:
+        async with database.session() as session:
+            first_user = User(
+                email=f"sync-first-{suffix}@example.com",
+                password_hash="integration-test-password-hash",
+            )
+            second_user = User(
+                email=f"sync-second-{suffix}@example.com",
+                password_hash="integration-test-password-hash",
+            )
+            session.add_all([first_user, second_user])
+            await session.flush()
+            first_user_id = first_user.id
+            second_user_id = second_user.id
+            repository = SyncChangeRepository(session)
+            first = await repository.append_upsert(
+                user_id=first_user.id,
+                resource_type="folder",
+                resource_id="folder-1",
+                payload={"id": "folder-1", "name": "First"},
+            )
+            second = await repository.append_upsert(
+                user_id=first_user.id,
+                resource_type="folder",
+                resource_id="folder-2",
+                payload={"id": "folder-2", "name": "Second"},
+            )
+            await repository.append_upsert(
+                user_id=second_user.id,
+                resource_type="folder",
+                resource_id="private-folder",
+                payload={"id": "private-folder", "name": "Private"},
+            )
+            await session.commit()
+
+            first_user_changes = await repository.list_after(
+                user_id=first_user.id,
+                after_sequence=first.sequence,
+                limit=10,
+            )
+            second_user_changes = await repository.list_after(
+                user_id=second_user.id,
+                after_sequence=0,
+                limit=10,
+            )
+
+            assert second.sequence > first.sequence
+            assert [item.change_id for item in first_user_changes] == [second.change_id]
+            assert [item.resource_id for item in second_user_changes] == [
+                "private-folder"
+            ]
+    finally:
+        async with database.session() as cleanup_session:
+            if first_user_id is not None:
+                await cleanup_session.execute(
+                    delete(User).where(User.id == first_user_id)
+                )
+            if second_user_id is not None:
+                await cleanup_session.execute(
+                    delete(User).where(User.id == second_user_id)
+                )
             await cleanup_session.commit()
         await database.close()
 

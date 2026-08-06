@@ -143,7 +143,7 @@ stroke-level merging or real-time collaboration.
 
 - UI/UX spec: Required before Flutter account, merge, sync, conflict, and
   restore integration; not part of this backend planning task.
-- Implementation status: Phase 3 cloud-library and asset work is complete in
+- Implementation status: Phase 4 incremental synchronization is in progress in
   `docs/development/BACKEND_IMPLEMENTATION_PLAN.md`.
 - Verification: Authentication unit tests cover account creation, login,
   refresh rotation and replay, logout, device ownership, and device revocation;

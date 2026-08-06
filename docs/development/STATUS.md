@@ -2,14 +2,15 @@
 
 ## Current
 
-- Milestone: Backend Phase 4 incremental synchronization and conflicts (ready
-  to start)
-- Next task: Add the synchronization change log and opaque cursor foundation,
-  with user-scoped ordering and tests before exposing batch commit behavior.
-- Last completed: Finished Phase 3 asset cleanup with dry-run-by-default manual
-  maintenance, upload staging audit fields, a 7-day orphan quarantine table,
-  final reference rechecks, bounded idempotent deletion, and real MinIO tests.
-  Alembic is at `20260806_0007`.
+- Milestone: Backend Phase 4 incremental synchronization and conflicts (in
+  progress)
+- Next task: Implement transactional, idempotent `POST /sync/commit` batches
+  with device ownership, idempotency keys, base Cursor validation, and per-
+  operation results; do not add conflict-copy semantics until its later item.
+- Last completed: Added the user-scoped append-only `sync_changes` log,
+  transactional events for library/revision/asset writes, signed account-bound
+  opaque Cursors, and paginated `GET /api/v1/sync/changes`. Alembic is at
+  `20260806_0008`.
 
 ## Decisions
 
@@ -43,6 +44,8 @@
 - Keep cloud sync local-first: first sign-in defaults to merging local and
   cloud libraries, uncertain or concurrent edits create recoverable conflict
   copies, and no restore path silently overwrites local notes.
+- Keep sync Cursors server-owned, signed, account-bound, and opaque to clients;
+  the App persists a page Cursor only after applying the complete page locally.
 - Keep asset cleanup operator-run and dry-run by default: expired pending
   uploads receive a 24-hour staging grace period, cancelled/completed residue
   waits 1 hour, final orphans are quarantined for 7 days, and every final object
@@ -159,6 +162,16 @@
 
 ## Verification
 
+- Backend formatting, linting, and strict typing pass across 60 Python
+  source/test files; all 33 non-integration tests pass.
+- All eight PostgreSQL/MinIO integration tests pass, including real PostgreSQL
+  Identity ordering and account-scoped sync change reads.
+- Alembic upgraded the development database to `20260806_0008 (head)` and
+  reports no schema drift. An independent empty database upgraded through
+  `0008`, exposed the expected 13 public tables including `sync_changes`, and
+  was deleted after verification.
+- OpenAPI exposes 14 application operations, including the authenticated,
+  paginated `GET /api/v1/sync/changes` feed.
 - Backend formatting, linting, and strict typing pass across 52 Python
   source/test files; all 30 non-integration tests pass.
 - All seven PostgreSQL/MinIO integration tests pass, including real staging

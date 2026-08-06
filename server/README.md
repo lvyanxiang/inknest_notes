@@ -5,8 +5,9 @@
 InkNest Server is the Python/FastAPI backend for account-backed backup and
 local-first synchronization. It currently provides the service skeleton,
 PostgreSQL and MinIO adapters, health endpoints, the first account/session API,
-user-scoped library metadata persistence, and verified presigned asset upload
-and download flows. Notebook synchronization routes are not implemented yet.
+user-scoped library metadata persistence, verified presigned asset upload and
+download flows, and an incremental sync change feed with opaque cursors. Batch
+sync commits and conflict handling are not implemented yet.
 
 ## Requirements
 
@@ -147,6 +148,7 @@ All application routes use the base URL `http://127.0.0.1:8000/api/v1`.
 | `POST` | `/assets/upload-sessions/{upload_id}/complete` | Bearer Access Token | Verify the staged object and create ready asset metadata. |
 | `DELETE` | `/assets/upload-sessions/{upload_id}` | Bearer Access Token | Cancel one pending upload session owned by the current user. |
 | `GET` | `/assets/{asset_id}/download-url` | Bearer Access Token | Sign a short-lived download URL for one ready, owned asset. |
+| `GET` | `/sync/changes?cursor=...&limit=...` | Bearer Access Token | Read ordered changes for the current user and receive the next opaque cursor. |
 
 For Bearer-protected routes, send the Access Token returned by register, login,
 or refresh:
@@ -193,6 +195,39 @@ MinIO object still matches the stored size and media type. The response includes
 the URL, expiry, byte length, and SHA-256. Clients must download to temporary
 storage, verify size and SHA-256, and only then atomically replace local data.
 Never log or retain the complete signed URL.
+
+### Incremental synchronization changes
+
+`GET /api/v1/sync/changes` returns only the authenticated user's append-only
+events in server order. The default page size is 100 and the accepted range is
+1–500:
+
+```bash
+curl 'http://127.0.0.1:8000/api/v1/sync/changes?limit=100' \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+Persist `nextCursor` only after the App has safely applied the whole page, then
+send it back unchanged:
+
+```bash
+curl --get 'http://127.0.0.1:8000/api/v1/sync/changes' \
+  -H 'Authorization: Bearer <access-token>' \
+  --data-urlencode 'cursor=<next-cursor>' \
+  --data-urlencode 'limit=100'
+```
+
+Events contain a public change ID, resource type and stable ID, operation,
+optional revision/hash, source device, client-facing snapshot, and server
+timestamp. The internal numeric sequence is not an API field. Cursors are
+signed and account-bound; malformed, modified, or cross-account cursors return
+`400 sync_cursor_invalid`. An empty page still returns a cursor for the next
+poll.
+
+Library creates, new content revisions, and completed assets append an event in
+the same PostgreSQL transaction as the authoritative write. Identical content
+retries do not append duplicates. Delete events, batch `/sync/commit`, and
+conflict handling are following slices.
 
 ### Safe asset cleanup
 
@@ -284,6 +319,8 @@ The migration history currently contains:
   verification-driven promotion into ready `assets` references.
 - `20260806_0007`: upload cleanup audit fields and quarantined
   `asset_gc_candidates` tracking for recoverable MinIO garbage collection.
+- `20260806_0008`: append-only `sync_changes` with a PostgreSQL identity
+  sequence, ownership fields, immutable payloads, and cursor indexes.
 
 Future schema work must add a new revision instead of rewriting an applied
 revision.
@@ -320,8 +357,9 @@ an unknown future representation can be preserved without server rewriting.
 The `assets` table stores only object metadata and MinIO object keys; file bytes
 remain in MinIO.
 
-There are no public library CRUD or synchronization routes yet; upload sessions
-are the only public library-related routes. Inspect these tables in
+There are no public library CRUD or sync-commit routes yet; the read-only
+incremental feed and upload sessions are the current library-related routes.
+Inspect these tables in
 Navicat/pgAdmin, or run the repository tests from `server/`:
 
 ```bash
@@ -347,8 +385,9 @@ Content writes require the caller's current `base_revision`. PostgreSQL locks
 the resource row, the server assigns the next revision, and a stale base with
 different content raises a revision conflict. Retrying identical content is a
 no-op even if the retry still carries the previous base revision, so it does
-not create duplicate history. This repository behavior is ready for a future
-sync service but is not exposed through HTTP yet.
+not create duplicate history. Successful new revisions now append to
+`sync_changes` and appear in the read-only incremental feed; writing through
+`/sync/commit` is still a following slice.
 
 ## Authentication API
 

@@ -16,12 +16,14 @@ from inknest_server.assets.object_keys import (
 from inknest_server.config import Settings
 from inknest_server.errors import ApiError
 from inknest_server.models import Asset, AssetUpload, Notebook
+from inknest_server.repositories.sync import SyncChangeRepository
 from inknest_server.storage import (
     ObjectStorage,
     StoredObjectChangedError,
     StoredObjectMetadata,
     StoredObjectNotFoundError,
 )
+from inknest_server.sync.snapshots import asset_snapshot
 
 logger = structlog.get_logger(__name__)
 
@@ -278,6 +280,14 @@ class AssetUploadService:
         self._session.add(asset)
         upload.status = "completed"
         upload.completed_at = datetime.now(UTC)
+        await self._session.flush()
+        await SyncChangeRepository(self._session).append_upsert(
+            user_id=user_id,
+            resource_type="asset",
+            resource_id=asset.id,
+            payload=asset_snapshot(asset),
+            device_id=upload.device_id,
+        )
         await self._session.commit()
         await self._delete_object_best_effort(upload.staging_object_key)
         return asset

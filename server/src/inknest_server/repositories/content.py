@@ -17,6 +17,12 @@ from inknest_server.models.library import (
     Page,
 )
 from inknest_server.repositories.library import LibraryResourceNotFoundError
+from inknest_server.repositories.sync import SyncChangeRepository
+from inknest_server.sync.snapshots import (
+    infinite_canvas_snapshot,
+    notebook_snapshot,
+    page_snapshot,
+)
 
 ResourceType = Literal["notebook", "page", "infinite_canvas"]
 RevisionedResource = Notebook | Page | InfiniteCanvas
@@ -44,6 +50,7 @@ class ContentRepository:
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
+        self._changes = SyncChangeRepository(session)
 
     async def save_notebook_content(
         self,
@@ -190,6 +197,21 @@ class ContentRepository:
         resource.content = normalized_content
         self._session.add(revision)
         await self._session.flush()
+        if isinstance(resource, Notebook):
+            payload = notebook_snapshot(resource)
+        elif isinstance(resource, Page):
+            payload = page_snapshot(resource)
+        else:
+            payload = infinite_canvas_snapshot(resource)
+        await self._changes.append_upsert(
+            user_id=user_id,
+            resource_type=resource_type,
+            resource_id=resource.id,
+            payload=payload,
+            revision=next_revision,
+            content_hash=new_hash,
+            device_id=device_id,
+        )
         return ContentSaveResult(
             revision=next_revision,
             content_hash=new_hash,
