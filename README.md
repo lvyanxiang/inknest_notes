@@ -34,6 +34,23 @@ Then run the app:
 flutter run
 ```
 
+To point the Flutter API client at the local FastAPI service, pass the service
+origin at run time. For the iOS Simulator and macOS desktop:
+
+```sh
+flutter run --dart-define=INKNEST_API_BASE_URL=http://127.0.0.1:8000
+```
+
+For an Android emulator, use its host-machine alias instead:
+
+```sh
+flutter run --dart-define=INKNEST_API_BASE_URL=http://10.0.2.2:8000
+```
+
+The value is only the origin; do not append `/api/v1`. The API client owns the
+versioned route prefix. This client foundation is not connected to a visible
+login screen yet.
+
 If more than one device is available, list the devices and select one by ID:
 
 ```sh

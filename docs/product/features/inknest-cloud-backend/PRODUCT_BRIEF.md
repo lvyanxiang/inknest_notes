@@ -92,6 +92,10 @@ The first slice sets no retention period and performs no physical cleanup.
   hand-off point for a later full-bootstrap implementation and must not be
   persisted as the App's applied pull Cursor until all corresponding cloud
   snapshots have been downloaded, validated, and committed locally.
+- The Flutter API boundary parses the complete bootstrap snapshot before any
+  local mutation. Duplicate IDs, count mismatches, invalid resource fields, or
+  unknown parent notebook references reject the snapshot; unknown structured
+  coordinate-space versions remain intact for a later compatibility decision.
 - Cancelling, going offline, receiving `401`, or receiving a server error makes
   no local mutations and leaves the existing local library usable.
 
@@ -236,7 +240,9 @@ The first slice sets no retention period and performs no physical cleanup.
 - Implementation status: Phase 4 incremental synchronization is complete and
   Phase 5 library-presence detection, Merge planning, and server-side transfer
   contracts through page/infinite-canvas JSON and ready asset bytes are
-  delivered in the implementation plan.
+  delivered in the implementation plan. Flutter now also has typed
+  register/login/refresh/logout/bootstrap transport and full-snapshot parsing;
+  secure session persistence and atomic local bootstrap application remain.
 - Verification: Backend tests cover authentication, account isolation,
   revisioned content, asset transfer, cursors, atomic/idempotent commits, page
   and notebook conflicts, all resolution choices, soft delete/restore, both
@@ -254,6 +260,9 @@ The first slice sets no retention period and performs no physical cleanup.
   Revision/Content Hash creation, same-content retry, and real PostgreSQL
   duplicate prevention for pages and infinite canvases. PostgreSQL migration
   `20260806_0011` remains current; this slice reuses existing tables and
-  requires no schema migration. The complete backend run passes 48
+  requires no schema migration. A shared bootstrap JSON fixture is parsed by
+  both the Flutter DTOs and the FastAPI response schema so client/server field
+  drift fails in tests. The complete backend run passes 49
   non-integration tests and 15 PostgreSQL/MinIO integration tests, including
-  ready-only bootstrap visibility and real PDF/image/audio byte round trips.
+  ready-only bootstrap visibility and real PDF/image/audio byte round trips;
+  the complete Flutter test suite and static analysis pass.

@@ -1,0 +1,92 @@
+{
+  "hasCloudLibrary": true,
+  "folderIds": ["folder-contract"],
+  "notebookIds": ["notebook-paged-contract", "notebook-canvas-contract"],
+  "folders": [
+    {
+      "id": "folder-contract",
+      "name": "Contract Folder",
+      "createdAt": "2026-08-06T00:00:00Z",
+      "updatedAt": "2026-08-06T00:00:00Z"
+    }
+  ],
+  "notebooks": [
+    {
+      "id": "notebook-paged-contract",
+      "folderId": "folder-contract",
+      "title": "Paged Contract",
+      "layoutMode": "paged",
+      "isArchived": false,
+      "revision": 0,
+      "contentHash": "",
+      "content": {},
+      "conflictOf": null,
+      "createdAt": "2026-08-06T00:00:00Z",
+      "updatedAt": "2026-08-06T00:00:00Z"
+    },
+    {
+      "id": "notebook-canvas-contract",
+      "folderId": null,
+      "title": "Canvas Contract",
+      "layoutMode": "infiniteCanvas",
+      "isArchived": false,
+      "revision": 0,
+      "contentHash": "",
+      "content": {},
+      "conflictOf": null,
+      "createdAt": "2026-08-06T00:00:00Z",
+      "updatedAt": "2026-08-06T00:00:00Z"
+    }
+  ],
+  "pages": [
+    {
+      "id": "page-contract",
+      "notebookId": "notebook-paged-contract",
+      "position": 0,
+      "width": 768,
+      "height": 1024,
+      "coordinateSpaceVersion": {"future": 2},
+      "rotationQuarterTurns": 0,
+      "template": "blank",
+      "revision": 1,
+      "contentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "content": {"strokes": []},
+      "conflictOf": null,
+      "createdAt": "2026-08-06T00:00:00Z",
+      "updatedAt": "2026-08-06T00:00:00Z"
+    }
+  ],
+  "infiniteCanvases": [
+    {
+      "id": "canvas-contract",
+      "notebookId": "notebook-canvas-contract",
+      "background": "grid",
+      "revision": 1,
+      "contentHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "content": {"strokes": []},
+      "createdAt": "2026-08-06T00:00:00Z",
+      "updatedAt": "2026-08-06T00:00:00Z"
+    }
+  ],
+  "assets": [
+    {
+      "id": "asset-contract",
+      "notebookId": "notebook-paged-contract",
+      "kind": "pdf",
+      "originalFilename": "contract.pdf",
+      "contentType": "application/pdf",
+      "byteSize": 42,
+      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "createdAt": "2026-08-06T00:00:00Z",
+      "updatedAt": "2026-08-06T00:00:00Z"
+    }
+  ],
+  "counts": {
+    "folders": 1,
+    "notebooks": 2,
+    "pages": 1,
+    "infiniteCanvases": 1,
+    "assets": 1
+  },
+  "baseCursor": "opaque-contract-cursor"
+}

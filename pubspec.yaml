@@ -41,6 +41,7 @@ dependencies:
   image: ^4.8.0
   record: ^7.1.1
   just_audio: ^0.10.6
+  http: ^1.6.0
 
 dev_dependencies:
   flutter_test:

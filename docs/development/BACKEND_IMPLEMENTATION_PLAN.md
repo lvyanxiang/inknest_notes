@@ -397,6 +397,9 @@ checksums.sha256
   - [x] 附件服务端传输：bootstrap 仅返回已完成校验的附件元数据；本地独有附件复用
     上传会话与完成校验，云端独有附件按稳定 ID 申请短期下载 URL，内部 Object Key
     和签名地址不进入同步快照。
+  - [x] Flutter API/合同基础：提供可配置服务地址的认证与 bootstrap 客户端，严格解析
+    完整快照，并由 Dart 与 FastAPI 共用合同样例验证字段兼容性；本切片不写本地资料库
+    或 bootstrap Cursor。
   - [ ] Flutter 临时落地、大小/SHA-256 校验和原子应用。
 - [ ] 显示同步进度、失败项和重试状态。
 - [ ] 新设备全量 bootstrap 后切换至增量同步。

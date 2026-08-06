@@ -4,14 +4,15 @@
 
 - Milestone: Backend Phase 5 first-sign-in merge and new-device restore is in
   progress; server-side upload/download contracts now cover complete library
-  structure, JSON content, and verified PDF/image/audio assets.
-- Next task: Implement Flutter temporary bootstrap staging, size/SHA-256
-  validation, and atomic local application before any bootstrap Cursor is
-  persisted.
-- Last completed: `GET /api/v1/sync/bootstrap` now includes metadata for ready
-  assets on active notebooks. Pending uploads remain invisible; clients request
-  short-lived download URLs by stable asset ID, while internal MinIO keys and
-  signed URLs never enter the bootstrap snapshot.
+  structure, JSON content, and verified PDF/image/audio assets; Flutter now has
+  the typed API-contract foundation needed to consume that snapshot.
+- Next task: Persist the authenticated Flutter session securely, then implement
+  temporary bootstrap staging, asset size/SHA-256 validation, and atomic local
+  application before any bootstrap Cursor is persisted.
+- Last completed: Flutter now provides a configurable versioned API client for
+  register/login/refresh/logout/bootstrap, strict auth and full-bootstrap DTOs,
+  and a shared bootstrap fixture validated by both Dart and FastAPI tests. No
+  UI, local library data, or applied sync Cursor changed in this slice.
 
 ## Decisions
 
@@ -26,6 +27,12 @@
 - Treat `/sync/bootstrap`'s current `baseCursor` as a bootstrap hand-off point,
   not an applied pull Cursor; save it only after a later full-bootstrap flow
   has downloaded, verified, and atomically applied the matching cloud state.
+- Configure the Flutter service origin at build/run time with
+  `--dart-define=INKNEST_API_BASE_URL=<origin>`; keep versioned `/api/v1` paths
+  inside the API client instead of duplicating them at call sites.
+- Parse bootstrap payloads strictly and preserve unknown structured
+  `coordinateSpaceVersion` values without rewriting them. A malformed or
+  internally inconsistent snapshot fails before local writes begin.
 - Build first-sign-in Merge actions deterministically from resource type,
   action kind, and stable ID. Local-only resources upload, cloud-only resources
   download, and shared IDs enter Revision/ancestry reconciliation; planning
