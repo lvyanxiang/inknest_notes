@@ -228,7 +228,9 @@ class AssetUpload(Base):
         UniqueConstraint(
             "user_id", "asset_id", name="uq_asset_uploads_user_id_asset_id"
         ),
-        UniqueConstraint("object_key", name="uq_asset_uploads_object_key"),
+        UniqueConstraint(
+            "staging_object_key", name="uq_asset_uploads_staging_object_key"
+        ),
         ForeignKeyConstraint(
             ["notebook_id", "user_id"],
             ["notebooks.id", "notebooks.user_id"],
@@ -269,7 +271,7 @@ class AssetUpload(Base):
     asset_id: Mapped[str] = mapped_column(String(128))
     kind: Mapped[str] = mapped_column(String(32))
     original_filename: Mapped[str] = mapped_column(String(255))
-    object_key: Mapped[str] = mapped_column(String(1024))
+    staging_object_key: Mapped[str] = mapped_column(String(1024))
     content_type: Mapped[str] = mapped_column(String(255))
     expected_byte_size: Mapped[int] = mapped_column(BigInteger)
     expected_sha256: Mapped[str] = mapped_column(String(64))
@@ -279,6 +281,7 @@ class AssetUpload(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     upload_url_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

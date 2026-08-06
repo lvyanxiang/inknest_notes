@@ -1,4 +1,5 @@
 from inknest_server.assets.schemas import (
+    AssetResponse,
     AssetUploadSessionResponse,
     CreateAssetUploadRequest,
 )
@@ -6,6 +7,7 @@ from inknest_server.assets.service import AssetUploadService, UploadSessionResul
 
 __all__ = [
     "AssetUploadService",
+    "AssetResponse",
     "AssetUploadSessionResponse",
     "CreateAssetUploadRequest",
     "UploadSessionResult",

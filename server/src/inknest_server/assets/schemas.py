@@ -52,3 +52,15 @@ class AssetUploadSessionResponse(AssetApiModel):
     required_headers: dict[str, str]
     upload_url_expires_at: datetime
     session_expires_at: datetime
+
+
+class AssetResponse(AssetApiModel):
+    asset_id: str
+    notebook_id: str
+    kind: str
+    filename: str
+    content_type: str
+    byte_size: int
+    sha256: str
+    status: Literal["ready"] = "ready"
+    created_at: datetime

@@ -7,6 +7,7 @@ from inknest_server.api.dependencies import (
     CurrentSessionDependency,
 )
 from inknest_server.assets import (
+    AssetResponse,
     AssetUploadSessionResponse,
     CreateAssetUploadRequest,
 )
@@ -40,11 +41,36 @@ async def create_asset_upload_session(
         upload_id=upload.id,
         asset_id=upload.asset_id,
         status=upload.status,
-        object_key=upload.object_key,
+        object_key=upload.staging_object_key,
         upload_url=result.upload_url,
         required_headers={"Content-Type": upload.content_type},
         upload_url_expires_at=upload.upload_url_expires_at,
         session_expires_at=upload.expires_at,
+    )
+
+
+@router.post(
+    "/upload-sessions/{upload_id}/complete",
+    response_model=AssetResponse,
+)
+async def complete_asset_upload_session(
+    upload_id: UUID,
+    current: CurrentSessionDependency,
+    service: AssetUploadServiceDependency,
+) -> AssetResponse:
+    asset = await service.complete_upload_session(
+        user_id=current.user.id,
+        upload_id=upload_id,
+    )
+    return AssetResponse(
+        asset_id=asset.id,
+        notebook_id=asset.notebook_id,
+        kind=asset.kind,
+        filename=asset.original_filename,
+        content_type=asset.content_type,
+        byte_size=asset.byte_size,
+        sha256=asset.sha256,
+        created_at=asset.created_at,
     )
 
 

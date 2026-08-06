@@ -3,14 +3,13 @@
 ## Current
 
 - Milestone: Backend Phase 3 cloud library and assets (in progress)
-- Next task: Add upload completion verification and attachment references. The
-  service must read the uploaded MinIO object's size, stream and verify its
-  SHA-256, and only then create ready `assets` metadata.
-- Last completed: Added authenticated, owner-scoped and idempotent attachment
-  upload sessions, short-lived MinIO presigned PUT URLs, cancellation, safe
-  object keys, internal/public MinIO endpoint separation, and Alembic
-  `20260805_0005`. Uploaded objects remain pending until the next completion
-  step verifies size and SHA-256.
+- Next task: Add PDF, image, and audio end-to-end upload/download coverage,
+  including an authenticated download-URL endpoint that only signs ready,
+  user-owned assets.
+- Last completed: Added idempotent upload completion with real MinIO MIME,
+  byte-size, and streaming SHA-256 verification. Uploads now use writable
+  staging keys, are conditionally promoted to server-only final keys, and only
+  then create ready `assets` metadata; Alembic is at `20260806_0006`.
 
 ## Decisions
 
@@ -156,6 +155,16 @@
 
 ## Verification
 
+- Backend formatting, linting, and strict typing pass across 48 Python
+  source/test files; all 28 non-integration tests pass.
+- All four PostgreSQL/MinIO integration tests pass. The asset test now uploads
+  through a real presigned PUT URL, confirms the pending boundary, conditionally
+  promotes and hashes the object, creates one ready asset, and verifies a
+  repeated completion is idempotent.
+- Alembic upgraded the development database to `20260806_0006 (head)` and
+  reports no schema drift. An independent empty database upgraded from `0001`
+  through `0006`, exposing 11 tables plus `staging_object_key` and
+  `completed_at`, before the scratch database was deleted.
 - Backend formatting, linting, and strict typing pass across 48 Python
   source/test files; all 26 non-integration tests pass.
 - All four PostgreSQL/MinIO integration tests pass. The new test creates a real

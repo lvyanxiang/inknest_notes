@@ -5,8 +5,8 @@
 InkNest Server is the Python/FastAPI backend for account-backed backup and
 local-first synchronization. It currently provides the service skeleton,
 PostgreSQL and MinIO adapters, health endpoints, the first account/session API,
-user-scoped library metadata persistence, and presigned asset upload sessions.
-Notebook synchronization and upload completion verification are not implemented yet.
+user-scoped library metadata persistence, and verified presigned asset uploads.
+Notebook synchronization and asset download routes are not implemented yet.
 
 ## Requirements
 
@@ -144,6 +144,7 @@ All application routes use the base URL `http://127.0.0.1:8000/api/v1`.
 | `GET` | `/devices` | Bearer Access Token | List the current user's devices. |
 | `DELETE` | `/devices/{device_id}` | Bearer Access Token | Revoke one device owned by the current user. |
 | `POST` | `/assets/upload-sessions` | Bearer Access Token | Create or retry an upload session and return a MinIO presigned PUT URL. |
+| `POST` | `/assets/upload-sessions/{upload_id}/complete` | Bearer Access Token | Verify the staged object and create ready asset metadata. |
 | `DELETE` | `/assets/upload-sessions/{upload_id}` | Bearer Access Token | Cancel one pending upload session owned by the current user. |
 
 For Bearer-protected routes, send the Access Token returned by register, login,
@@ -168,15 +169,18 @@ a database tool to prepare one during this phase.
 The App submits its stable local asset ID, notebook ID, filename, media type,
 byte length, and SHA-256 to `POST /assets/upload-sessions`. The response contains
 a short-lived `uploadUrl`, `PUT` method, and required `Content-Type` header. Send
-the bytes directly to that private MinIO URL. Treat the signed URL as a temporary
-secret and never log or persist it long-term.
+the bytes directly to that private MinIO URL. Then call
+`POST /assets/upload-sessions/{upload_id}/complete`. Treat the signed URL as a
+temporary secret and never log or persist it long-term.
 
 Retrying the same asset ID with identical metadata reuses the pending session
 and signs a fresh URL. Different metadata returns `409` instead of silently
 overwriting a different local file. A successful MinIO PUT intentionally leaves
-`asset_uploads.status` as `pending` and creates no `assets` row. The next backend
-slice will verify the stored object's actual size and SHA-256 before making it
-ready.
+the session pending. Completion checks the stored MIME and byte length, copies
+the staging object to a server-only final key, streams that copy through
+SHA-256, and only then creates one ready `assets` row. Completion retries return
+the same asset. A mismatch returns `422`, creates no ready asset, and retains the
+staging object so the client can upload corrected bytes and retry.
 Cancelling a session prevents later server-side completion but cannot revoke an
 already issued URL before that URL expires. Scheduled cleanup of incomplete and
 orphaned objects is a later phase.
@@ -228,6 +232,8 @@ The migration history currently contains:
   infinite canvases, plus immutable `revisions` history.
 - `20260805_0005`: pending `asset_uploads` sessions with expected size,
   SHA-256, object key, state, and expiry timestamps.
+- `20260806_0006`: explicit staging object keys and completion timestamps for
+  verification-driven promotion into ready `assets` references.
 
 Future schema work must add a new revision instead of rewriting an applied
 revision.

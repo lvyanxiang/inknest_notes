@@ -28,6 +28,22 @@ def build_asset_object_key(
     )
 
 
+def build_asset_upload_object_key(
+    *,
+    user_id: str,
+    upload_id: str,
+    original_filename: str,
+) -> str:
+    safe_upload_id = quote(upload_id, safe="-_.~")
+    safe_filename = sanitize_filename(original_filename)
+    return f"users/{user_id}/uploads/{safe_upload_id}/{safe_filename}"
+
+
+def build_legacy_verified_object_key(final_object_key: str) -> str:
+    directory, _, filename = final_object_key.rpartition("/")
+    return f"{directory}/verified/{filename}"
+
+
 def sanitize_filename(filename: str) -> str:
     normalized = unicodedata.normalize("NFKC", filename).replace("\\", "/")
     basename = normalized.rsplit("/", maxsplit=1)[-1].strip()

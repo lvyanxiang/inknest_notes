@@ -1,4 +1,6 @@
+import hashlib
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from datetime import timedelta
 
 import pytest
@@ -12,12 +14,32 @@ from inknest_server.db import Database
 from inknest_server.db.base import Base
 from inknest_server.main import create_app
 from inknest_server.services.readiness import ReadinessChecks
+from inknest_server.storage import (
+    StoredObjectChangedError,
+    StoredObjectMetadata,
+    StoredObjectNotFoundError,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class FakeStoredObject:
+    content: bytes
+    content_type: str
+    etag: str
 
 
 class FakeObjectStorage:
     def __init__(self) -> None:
         self.upload_requests: list[tuple[str, timedelta]] = []
         self.deleted_objects: list[str] = []
+        self.objects: dict[str, FakeStoredObject] = {}
+
+    def put_object(self, object_key: str, content: bytes, *, content_type: str) -> None:
+        self.objects[object_key] = FakeStoredObject(
+            content=content,
+            content_type=content_type,
+            etag=hashlib.md5(content, usedforsecurity=False).hexdigest(),
+        )
 
     async def ping(self) -> None:
         return None
@@ -31,6 +53,37 @@ class FakeObjectStorage:
 
     async def delete_object(self, object_key: str) -> None:
         self.deleted_objects.append(object_key)
+        self.objects.pop(object_key, None)
+
+    async def stat_object(self, object_key: str) -> StoredObjectMetadata:
+        stored = self.objects.get(object_key)
+        if stored is None:
+            raise StoredObjectNotFoundError(object_key)
+        return StoredObjectMetadata(
+            byte_size=len(stored.content),
+            content_type=stored.content_type,
+            etag=stored.etag,
+        )
+
+    async def copy_object(
+        self,
+        source_key: str,
+        destination_key: str,
+        *,
+        source_etag: str,
+    ) -> None:
+        stored = self.objects.get(source_key)
+        if stored is None:
+            raise StoredObjectNotFoundError(source_key)
+        if stored.etag != source_etag:
+            raise StoredObjectChangedError(source_key)
+        self.objects[destination_key] = stored
+
+    async def calculate_sha256(self, object_key: str) -> str:
+        stored = self.objects.get(object_key)
+        if stored is None:
+            raise StoredObjectNotFoundError(object_key)
+        return hashlib.sha256(stored.content).hexdigest()
 
 
 class HealthyReadinessChecker:

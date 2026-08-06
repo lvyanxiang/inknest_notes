@@ -57,7 +57,7 @@ async def test_postgres_and_minio_are_ready() -> None:
 
 
 @pytest.mark.asyncio
-async def test_presigned_upload_reaches_minio_but_remains_pending() -> None:
+async def test_presigned_upload_is_verified_and_promoted_to_ready_asset() -> None:
     settings = Settings()
     database = Database(settings.database_url)
     storage = MinioStorage(
@@ -72,7 +72,7 @@ async def test_presigned_upload_reaches_minio_but_remains_pending() -> None:
     )
     suffix = uuid4().hex
     user_id = None
-    object_key = None
+    object_keys: set[str] = set()
     content = b"inknest presigned upload integration test"
 
     try:
@@ -95,9 +95,8 @@ async def test_presigned_upload_reaches_minio_but_remains_pending() -> None:
             )
             await session.commit()
 
-            result = await AssetUploadService(
-                session, storage, settings
-            ).create_upload_session(
+            service = AssetUploadService(session, storage, settings)
+            result = await service.create_upload_session(
                 user_id=user.id,
                 device_id=device.id,
                 notebook_id=notebook.id,
@@ -108,7 +107,7 @@ async def test_presigned_upload_reaches_minio_but_remains_pending() -> None:
                 byte_size=len(content),
                 sha256=hashlib.sha256(content).hexdigest(),
             )
-            object_key = result.upload.object_key
+            object_keys.add(result.upload.staging_object_key)
 
             async with AsyncClient() as http_client:
                 response = await http_client.put(
@@ -125,8 +124,27 @@ async def test_presigned_upload_reaches_minio_but_remains_pending() -> None:
             assert persisted_upload is not None
             assert persisted_upload.status == "pending"
             assert asset is None
+            completed = await service.complete_upload_session(
+                user_id=user.id,
+                upload_id=result.upload.id,
+            )
+            retry = await service.complete_upload_session(
+                user_id=user.id,
+                upload_id=result.upload.id,
+            )
+            object_keys.add(completed.object_key)
+
+            await session.refresh(result.upload)
+            assert completed.id == retry.id
+            assert completed.byte_size == len(content)
+            assert completed.sha256 == hashlib.sha256(content).hexdigest()
+            assert result.upload.status == "completed"
+            assert result.upload.completed_at is not None
+            assert (
+                await storage.stat_object(completed.object_key)
+            ).content_type == "image/png"
     finally:
-        if object_key is not None:
+        for object_key in object_keys:
             await storage.delete_object(object_key)
         if user_id is not None:
             async with database.session() as cleanup_session:

@@ -1,7 +1,16 @@
+import hashlib
 from datetime import timedelta
 
 from anyio import to_thread
 from minio import Minio
+from minio.commonconfig import CopySource
+from minio.error import S3Error
+
+from inknest_server.storage.base import (
+    StoredObjectChangedError,
+    StoredObjectMetadata,
+    StoredObjectNotFoundError,
+)
 
 
 class MinioStorage:
@@ -72,3 +81,68 @@ class MinioStorage:
         await to_thread.run_sync(
             lambda: self._client.remove_object(self._bucket, object_key)
         )
+
+    async def stat_object(self, object_key: str) -> StoredObjectMetadata:
+        def stat() -> StoredObjectMetadata:
+            try:
+                result = self._client.stat_object(self._bucket, object_key)
+            except S3Error as error:
+                if error.code in {"NoSuchKey", "NoSuchObject"}:
+                    raise StoredObjectNotFoundError(object_key) from error
+                raise
+            if result.size is None or result.etag is None:
+                raise RuntimeError("MinIO returned incomplete object metadata.")
+            return StoredObjectMetadata(
+                byte_size=result.size,
+                content_type=result.content_type or "application/octet-stream",
+                etag=result.etag,
+            )
+
+        return await to_thread.run_sync(stat)
+
+    async def copy_object(
+        self,
+        source_key: str,
+        destination_key: str,
+        *,
+        source_etag: str,
+    ) -> None:
+        def copy() -> None:
+            try:
+                self._client.copy_object(
+                    self._bucket,
+                    destination_key,
+                    CopySource(
+                        self._bucket,
+                        source_key,
+                        match_etag=source_etag,
+                    ),
+                )
+            except S3Error as error:
+                if error.code in {"NoSuchKey", "NoSuchObject"}:
+                    raise StoredObjectNotFoundError(source_key) from error
+                if error.code == "PreconditionFailed":
+                    raise StoredObjectChangedError(source_key) from error
+                raise
+
+        await to_thread.run_sync(copy)
+
+    async def calculate_sha256(self, object_key: str) -> str:
+        def calculate() -> str:
+            try:
+                response = self._client.get_object(self._bucket, object_key)
+            except S3Error as error:
+                if error.code in {"NoSuchKey", "NoSuchObject"}:
+                    raise StoredObjectNotFoundError(object_key) from error
+                raise
+
+            digest = hashlib.sha256()
+            try:
+                for chunk in response.stream(amt=1024 * 1024):
+                    digest.update(chunk)
+            finally:
+                response.close()
+                response.release_conn()
+            return digest.hexdigest()
+
+        return await to_thread.run_sync(calculate)

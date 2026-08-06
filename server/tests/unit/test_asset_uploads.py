@@ -1,3 +1,4 @@
+import hashlib
 from typing import Any, cast
 from uuid import UUID
 
@@ -8,7 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from inknest_server.models import Asset, AssetUpload, Notebook
 
-SHA256 = "a" * 64
+CONTENT = b"test"
+SHA256 = hashlib.sha256(CONTENT).hexdigest()
 
 
 async def register(client: AsyncClient, email: str) -> dict[str, Any]:
@@ -87,9 +89,7 @@ async def test_create_upload_session_is_authenticated_pending_and_idempotent(
     assert body["status"] == "pending"
     assert body["method"] == "PUT"
     assert body["requiredHeaders"] == {"Content-Type": "image/png"}
-    assert body["objectKey"].endswith(
-        "/notebooks/notebook-1/images/asset-1/课堂_笔记.png"
-    )
+    assert body["objectKey"].endswith(f"/uploads/{body['uploadId']}/课堂_笔记.png")
     assert len(object_storage.upload_requests) == 2
 
     upload = await db_session.scalar(select(AssetUpload))
@@ -97,6 +97,137 @@ async def test_create_upload_session_is_authenticated_pending_and_idempotent(
     assert upload is not None
     assert upload.status == "pending"
     assert asset is None
+
+
+async def test_complete_upload_verifies_and_creates_one_ready_asset(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    object_storage: FakeObjectStorage,
+) -> None:
+    owner = await register(client, "complete-owner@example.com")
+    stranger = await register(client, "complete-stranger@example.com")
+    await add_notebook(db_session, user_id=owner["user"]["id"])
+    created = await client.post(
+        "/api/v1/assets/upload-sessions",
+        headers=bearer(owner["accessToken"]),
+        json=upload_payload(),
+    )
+    body = created.json()
+    object_storage.put_object(
+        body["objectKey"],
+        CONTENT,
+        content_type="image/png",
+    )
+
+    cross_user = await client.post(
+        f"/api/v1/assets/upload-sessions/{body['uploadId']}/complete",
+        headers=bearer(stranger["accessToken"]),
+    )
+    first = await client.post(
+        f"/api/v1/assets/upload-sessions/{body['uploadId']}/complete",
+        headers=bearer(owner["accessToken"]),
+    )
+    retry = await client.post(
+        f"/api/v1/assets/upload-sessions/{body['uploadId']}/complete",
+        headers=bearer(owner["accessToken"]),
+    )
+
+    assert cross_user.status_code == 404
+    assert first.status_code == 200
+    assert retry.status_code == 200
+    assert first.json() == retry.json()
+    assert first.json()["status"] == "ready"
+    assert first.json()["assetId"] == "asset-1"
+    assert first.json()["byteSize"] == len(CONTENT)
+    assert first.json()["sha256"] == SHA256
+
+    upload = await db_session.scalar(select(AssetUpload))
+    asset = await db_session.scalar(select(Asset))
+    assert upload is not None
+    assert upload.status == "completed"
+    assert upload.completed_at is not None
+    assert asset is not None
+    assert asset.object_key in object_storage.objects
+    assert body["objectKey"] not in object_storage.objects
+
+
+async def test_complete_upload_rejects_missing_size_and_hash_mismatches(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    object_storage: FakeObjectStorage,
+) -> None:
+    owner = await register(client, "verification@example.com")
+    await add_notebook(db_session, user_id=owner["user"]["id"])
+    headers = bearer(owner["accessToken"])
+
+    missing_session = await client.post(
+        "/api/v1/assets/upload-sessions",
+        headers=headers,
+        json=upload_payload(assetId="missing-asset"),
+    )
+    missing = await client.post(
+        f"/api/v1/assets/upload-sessions/{missing_session.json()['uploadId']}/complete",
+        headers=headers,
+    )
+
+    size_session = await client.post(
+        "/api/v1/assets/upload-sessions",
+        headers=headers,
+        json=upload_payload(assetId="size-asset"),
+    )
+    object_storage.put_object(
+        size_session.json()["objectKey"],
+        b"x",
+        content_type="image/png",
+    )
+    size_mismatch = await client.post(
+        f"/api/v1/assets/upload-sessions/{size_session.json()['uploadId']}/complete",
+        headers=headers,
+    )
+
+    content_type_session = await client.post(
+        "/api/v1/assets/upload-sessions",
+        headers=headers,
+        json=upload_payload(assetId="content-type-asset"),
+    )
+    object_storage.put_object(
+        content_type_session.json()["objectKey"],
+        CONTENT,
+        content_type="application/octet-stream",
+    )
+    content_type_mismatch = await client.post(
+        f"/api/v1/assets/upload-sessions/"
+        f"{content_type_session.json()['uploadId']}/complete",
+        headers=headers,
+    )
+
+    hash_session = await client.post(
+        "/api/v1/assets/upload-sessions",
+        headers=headers,
+        json=upload_payload(assetId="hash-asset"),
+    )
+    object_storage.put_object(
+        hash_session.json()["objectKey"],
+        b"fail",
+        content_type="image/png",
+    )
+    hash_mismatch = await client.post(
+        f"/api/v1/assets/upload-sessions/{hash_session.json()['uploadId']}/complete",
+        headers=headers,
+    )
+
+    assert missing.status_code == 409
+    assert missing.json()["error"]["code"] == "asset_upload_object_missing"
+    assert size_mismatch.status_code == 422
+    assert size_mismatch.json()["error"]["code"] == "asset_upload_size_mismatch"
+    assert content_type_mismatch.status_code == 422
+    assert (
+        content_type_mismatch.json()["error"]["code"]
+        == "asset_upload_content_type_mismatch"
+    )
+    assert hash_mismatch.status_code == 422
+    assert hash_mismatch.json()["error"]["code"] == "asset_upload_sha256_mismatch"
+    assert await db_session.scalar(select(Asset)) is None
 
 
 async def test_rejects_mismatched_retry_and_invalid_uploads(
