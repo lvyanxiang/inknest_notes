@@ -153,6 +153,7 @@ All application routes use the base URL `http://127.0.0.1:8000/api/v1`.
 | `POST` | `/assets/upload-sessions/{upload_id}/complete` | Bearer Access Token | Verify the staged object and create ready asset metadata. |
 | `DELETE` | `/assets/upload-sessions/{upload_id}` | Bearer Access Token | Cancel one pending upload session owned by the current user. |
 | `GET` | `/assets/{asset_id}/download-url` | Bearer Access Token | Sign a short-lived download URL for one ready, owned asset. |
+| `GET` | `/sync/bootstrap` | Bearer Access Token | Read the current account's active folder/notebook stable-ID inventory before a first merge. |
 | `GET` | `/sync/changes?cursor=...&limit=...` | Bearer Access Token | Read ordered changes for the current user and receive the next opaque cursor. |
 | `POST` | `/sync/commit` | Bearer Access Token | Atomically commit an idempotent batch of existing notebook, page, or infinite-canvas content updates or soft deletes. |
 | `POST` | `/sync/conflicts/{conflict_id}/resolve` | Bearer Access Token | Resolve an owned page/notebook conflict by keeping the original, using the submitted version, or keeping both. |
@@ -203,6 +204,24 @@ MinIO object still matches the stored size and media type. The response includes
 the URL, expiry, byte length, and SHA-256. Clients must download to temporary
 storage, verify size and SHA-256, and only then atomically replace local data.
 Never log or retain the complete signed URL.
+
+### First-sign-in bootstrap inventory
+
+`GET /api/v1/sync/bootstrap` is an authenticated, read-only presence check. It
+returns sorted active `folderIds` and `notebookIds`, matching counts, a
+`hasCloudLibrary` flag, and an account-bound `baseCursor`:
+
+```bash
+curl 'http://127.0.0.1:8000/api/v1/sync/bootstrap' \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+The App compares these IDs with its local inventory; names and titles are not
+identity. This endpoint does not return note content and does not upload,
+download, delete, or overwrite anything. Do not save `baseCursor` as the
+applied pull Cursor yet: a later full-bootstrap slice must first download,
+verify, and atomically apply all corresponding snapshots. `401` means the
+Access Token is missing, expired, or revoked.
 
 ### Incremental synchronization changes
 

@@ -42,6 +42,19 @@ class SyncChangesResponse(SyncApiModel):
     has_more: bool
 
 
+class SyncBootstrapCounts(SyncApiModel):
+    folders: int
+    notebooks: int
+
+
+class SyncBootstrapResponse(SyncApiModel):
+    has_cloud_library: bool
+    folder_ids: list[str]
+    notebook_ids: list[str]
+    counts: SyncBootstrapCounts
+    base_cursor: str
+
+
 class SyncCommitOperation(SyncApiModel):
     operation_id: str = Field(min_length=1, max_length=128)
     operation: Literal["upsert", "delete"]

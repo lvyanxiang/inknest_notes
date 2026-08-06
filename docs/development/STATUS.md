@@ -2,18 +2,17 @@
 
 ## Current
 
-- Milestone: Backend Phase 4 incremental synchronization and conflicts
-  completed; Phase 5 first-sign-in merge and new-device restore is next.
-- Next task: Detect when a signed-in device has both an existing local library
-  and cloud library, then define the bootstrap data needed for the accepted
-  default-Merge flow without identifying notebooks by title.
-- Last completed: Closed Phase 4 reliability verification. Flutter preserves
-  offline and in-flight batches across restart, rejects partial, mismatched, or
-  duplicate operation results, and keeps the pull Cursor unchanged until a
-  full change page is applied. The backend rolls back an entire failed batch;
-  real PostgreSQL tests prove separate-page offline edits merge without a
-  conflict and a committed request whose response is lost replays without
-  duplicate Revisions, commits, conflicts, or change events.
+- Milestone: Backend Phase 5 first-sign-in merge and new-device restore is in
+  progress; the non-destructive local/cloud library detection slice is complete.
+- Next task: Implement the default Merge plan from stable IDs, beginning with
+  local-only upload and cloud-only download planning without applying or
+  overwriting either library yet.
+- Last completed: Added authenticated, read-only `GET /api/v1/sync/bootstrap`
+  with account-scoped active folder/notebook stable IDs, counts, and a safe
+  base Cursor. Flutter now scans root, folder, and archived local notebooks,
+  validates the server inventory, distinguishes empty/local-only/cloud-only/
+  local-and-cloud states, and recommends Merge without receiving or comparing
+  titles. No note content is transferred or mutated in this slice.
 
 ## Decisions
 
@@ -25,6 +24,9 @@
   and record Python/PostgreSQL/MinIO backend delivery from the accepted plan.
 - Use `$inknest-project` as the single entry for new or changed requirements: always run `$inknest-product-manager`, and also run `$inknest-ui-ux` when visible or interactive behavior changes.
 - Keep small requirement analysis in the task response; create `PRODUCT_BRIEF.md` and `UI_UX_SPEC.md` under `docs/product/features/<feature-slug>/` for medium or large work, and record only accepted durable decisions in the global product/design logs.
+- Treat `/sync/bootstrap`'s current `baseCursor` as a bootstrap hand-off point,
+  not an applied pull Cursor; save it only after a later full-bootstrap flow
+  has downloaded, verified, and atomically applied the matching cloud state.
 - When no implementation task is selected, product analysis may recommend candidates but must not automatically start Post-MVP 6-9 or infer work from plain roadmap bullets.
 - Keep normal `$inknest-project` work focused on code, roadmap, and product implementation; do not automatically update task book or opening report during development tasks.
 - Use `$inknest-academic-docs` for `docs/academic/GRADUATION_TASK_BOOK.md`, `docs/academic/OPENING_REPORT.md`, academic writing requirements, graduation schedule, and formal reference maintenance.
@@ -184,6 +186,13 @@
 - Keep unresolved legacy content viewable, navigable, zoomable, searchable, and exportable without allowing normal save, rotate, copy, or duplicate paths to overwrite its source JSON.
 
 ## Verification
+
+- Flutter bootstrap's 5 focused tests and the full 158-test suite pass;
+  `flutter analyze` reports no issues. Python formatting, linting, and strict
+  typing pass; all 43 non-integration tests and all 14 PostgreSQL/MinIO
+  integration tests pass. OpenAPI exposes 18 application operations, including
+  the authenticated read-only bootstrap inventory. No Alembic migration was
+  created because this slice changes no database schema.
 
 - `dart format` and the 11 focused Flutter sync-state tests pass. The full
   Flutter suite passes all 153 tests, and `flutter analyze` reports no issues.

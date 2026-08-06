@@ -18,6 +18,7 @@ from inknest_server.models import (
     AssetUpload,
     Conflict,
     Device,
+    Folder,
     Notebook,
     Page,
     SyncChange,
@@ -44,6 +45,70 @@ pytestmark = [
         reason="set INKNEST_RUN_INTEGRATION=1 with PostgreSQL and MinIO running",
     ),
 ]
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_inventory_uses_stable_ids_and_isolates_accounts() -> None:
+    settings = Settings()
+    database = Database(settings.database_url)
+    suffix = uuid4().hex
+    user_ids: list[UUID] = []
+
+    try:
+        async with database.session() as session:
+            first = User(
+                email=f"phase5-bootstrap-first-{suffix}@example.com",
+                password_hash="integration-test-password-hash",
+            )
+            second = User(
+                email=f"phase5-bootstrap-second-{suffix}@example.com",
+                password_hash="integration-test-password-hash",
+            )
+            session.add_all([first, second])
+            await session.flush()
+            user_ids = [first.id, second.id]
+            session.add(Folder(id=f"folder-{suffix}", user_id=first.id, name="Same"))
+            library = LibraryRepository(session)
+            await library.create_notebook(
+                user_id=first.id,
+                notebook_id=f"notebook-a-{suffix}",
+                title="Same title",
+                layout_mode="paged",
+            )
+            await library.create_notebook(
+                user_id=first.id,
+                notebook_id=f"notebook-b-{suffix}",
+                title="Same title",
+                layout_mode="paged",
+            )
+            await library.create_notebook(
+                user_id=second.id,
+                notebook_id=f"private-{suffix}",
+                title="Same title",
+                layout_mode="paged",
+            )
+            await session.commit()
+
+            bootstrap = await SyncService(
+                session,
+                SyncChangeRepository(session),
+                SyncCursorCodec(settings),
+            ).bootstrap(user_id=first.id)
+
+        assert bootstrap.has_cloud_library is True
+        assert bootstrap.folder_ids == [f"folder-{suffix}"]
+        assert bootstrap.notebook_ids == [
+            f"notebook-a-{suffix}",
+            f"notebook-b-{suffix}",
+        ]
+        assert bootstrap.counts.folders == 1
+        assert bootstrap.counts.notebooks == 2
+    finally:
+        if user_ids:
+            async with database.session() as cleanup_session:
+                await cleanup_session.execute(delete(User).where(User.id.in_(user_ids)))
+                await cleanup_session.commit()
+        await database.close()
 
 
 @pytest.mark.asyncio

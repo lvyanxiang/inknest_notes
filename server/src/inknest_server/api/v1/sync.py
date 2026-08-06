@@ -13,6 +13,7 @@ from inknest_server.repositories.sync import SyncIdempotencyKeyReusedError
 from inknest_server.sync import (
     InvalidSyncCursorError,
     ResolveSyncConflictRequest,
+    SyncBootstrapResponse,
     SyncChangeResponse,
     SyncChangesResponse,
     SyncCommitRequest,
@@ -36,6 +37,14 @@ from inknest_server.sync.tombstones import (
 )
 
 router = APIRouter(prefix="/sync", tags=["sync"])
+
+
+@router.get("/bootstrap", response_model=SyncBootstrapResponse)
+async def bootstrap_sync_library(
+    current: CurrentSessionDependency,
+    service: SyncServiceDependency,
+) -> SyncBootstrapResponse:
+    return await service.bootstrap(user_id=current.user.id)
 
 
 @router.get("/changes", response_model=SyncChangesResponse)

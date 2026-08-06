@@ -145,6 +145,7 @@ API 在宿主机运行或使用默认 Compose 端口映射时，以下地址相�
 | `POST` | `/assets/upload-sessions/{upload_id}/complete` | Bearer Access Token | 校验暂存对象并创建可用附件元数据。 |
 | `DELETE` | `/assets/upload-sessions/{upload_id}` | Bearer Access Token | 取消当前用户拥有的待上传会话。 |
 | `GET` | `/assets/{asset_id}/download-url` | Bearer Access Token | 为当前用户拥有的可用附件签发短期下载 URL。 |
+| `GET` | `/sync/bootstrap` | Bearer Access Token | 首次合并前读取当前账号有效文件夹/笔记本的稳定 ID 清单。 |
 | `GET` | `/sync/changes?cursor=...&limit=...` | Bearer Access Token | 按顺序读取当前用户的增量变更，并返回下一个不透明 Cursor。 |
 | `POST` | `/sync/commit` | Bearer Access Token | 原子、幂等地批量更新或软删除已有笔记本、页面或无限画布。 |
 | `POST` | `/sync/conflicts/{conflict_id}/resolve` | Bearer Access Token | 对当前用户的页面/笔记本冲突选择保留原版本、使用冲突版本或两个都保留。 |
@@ -223,6 +224,22 @@ curl \
 与数据库一致。响应包含 `downloadUrl`、`expiresAt`、`byteSize` 和 `sha256`。App 下载时
 应先写入临时文件，核对大小和 SHA-256 后再原子替换正式本地文件。不要记录或长期保存
 完整预签名 URL。
+
+### 首次登录 bootstrap 清单
+
+`GET /api/v1/sync/bootstrap` 是需要 Access Token 的只读资料库检测接口。它返回排序后的
+有效 `folderIds`、`notebookIds`、对应数量、`hasCloudLibrary`，以及绑定当前账号的
+`baseCursor`：
+
+```bash
+curl 'http://127.0.0.1:8000/api/v1/sync/bootstrap' \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+App 使用稳定 ID 与本地清单比较，名称和标题不参与身份判断。这个接口不返回笔记正文，
+也不会上传、下载、删除或覆盖任何资料。当前不能把 `baseCursor` 直接保存成“已应用”的
+拉取 Cursor；后续完整 bootstrap 必须先下载、校验并原子写入全部对应快照。返回 `401`
+表示 Access Token 缺失、过期或设备已被撤销。
 
 ### 增量同步变更
 

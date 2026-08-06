@@ -15,9 +15,12 @@ from inknest_server.repositories.sync import (
     SyncChangeRepository,
     SyncCommitRepository,
 )
+from inknest_server.sync.bootstrap import SyncBootstrapRepository
 from inknest_server.sync.conflicts import ConflictResolution, ConflictService
 from inknest_server.sync.cursor import SyncCursorCodec
 from inknest_server.sync.schemas import (
+    SyncBootstrapCounts,
+    SyncBootstrapResponse,
     SyncCommitOperation,
     SyncCommitOperationResult,
     SyncCommitRequest,
@@ -65,9 +68,30 @@ class SyncService:
         self._repository = repository
         self._cursor_codec = cursor_codec
         self._content = ContentRepository(session)
+        self._bootstrap = SyncBootstrapRepository(session)
         self._commits = SyncCommitRepository(session)
         self._conflicts = ConflictService(session)
         self._tombstones = TombstoneService(session)
+
+    async def bootstrap(self, *, user_id: UUID) -> SyncBootstrapResponse:
+        # Capture the cursor first. A concurrent write may then appear both in
+        # this inventory and in the later incremental feed, but it cannot be
+        # skipped by advancing the cursor past an unseen resource.
+        base_sequence = await self._repository.latest_sequence(user_id=user_id)
+        inventory = await self._bootstrap.read_inventory(user_id=user_id)
+        return SyncBootstrapResponse(
+            has_cloud_library=inventory.has_cloud_library,
+            folder_ids=inventory.folder_ids,
+            notebook_ids=inventory.notebook_ids,
+            counts=SyncBootstrapCounts(
+                folders=len(inventory.folder_ids),
+                notebooks=len(inventory.notebook_ids),
+            ),
+            base_cursor=self._cursor_codec.encode(
+                user_id=user_id,
+                sequence=base_sequence,
+            ),
+        )
 
     async def list_changes(
         self,

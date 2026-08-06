@@ -1,4 +1,4 @@
-# InkNest Cloud Conflict And Deletion Recovery UI/UX Specification
+# InkNest Cloud Sync And Recovery UI/UX Specification
 
 - Status: Accepted
 - Updated: 2026-08-06
@@ -24,6 +24,27 @@ delete, the edit is already preserved by the server; surface a calm sync-status
 message rather than a blocking decision dialog.
 
 ## User Flow
+
+### First sign-in and library detection
+
+1. After authentication, show a non-destructive checking state while InkNest
+   reads local folder/notebook IDs and requests the cloud bootstrap inventory.
+2. If both libraries contain content, explain that InkNest found notes on this
+   device and in the cloud. Emphasize `合并（推荐）`; do not offer an
+   unqualified replace-local action.
+3. If only one side contains content, use the same Merge path to upload the
+   local-only library or restore the cloud-only library. If both are empty,
+   continue directly to the empty library.
+4. The comparison uses stable IDs only. Matching titles remain two separate
+   notebooks when their IDs differ, and the UI must not imply deduplication by
+   name.
+5. Cancel, offline, `401`, or server failure returns to the usable local
+   library. Retry repeats only the read-only detection request in this slice.
+
+The current slice implements the detection contract and App state model, not
+the transfer progress screen or the destructive application of cloud data.
+
+### Conflict recovery
 
 1. Background sync receives a `conflict` operation result or change event.
 2. InkNest keeps local writing available and shows “1 个冲突待处理” in sync
@@ -64,6 +85,18 @@ message rather than a blocking decision dialog.
 | Restoring | Progress on the selected item | Wait | Duplicate taps disabled; failure offers Retry |
 | Delete/edit preserved | Non-blocking sync-status message | Review status or dismiss | Edited resource remains active; Tombstone records the automatic resolution |
 
+### First-sign-in state matrix
+
+| State | Visible UI | Available actions | Feedback/recovery |
+|---|---|---|---|
+| Checking | `正在检查此设备和云端笔记…` with progress | Cancel | No library mutation has started |
+| Empty | Normal empty-library state | Create a notebook | No sync decision needed |
+| Local only | Explain that local notes can be protected in the account | `合并（推荐）`, Later | Later preserves local-only use |
+| Cloud only | Explain that cloud notes can be restored to this device | `合并（推荐）`, Later | Later leaves the current local state unchanged |
+| Local + cloud | Show both library counts and the no-overwrite promise | `合并（推荐）`, Later | Same titles with different IDs remain separate |
+| Offline/error | Explain that checking could not finish | Retry, Continue offline | Existing local library remains available |
+| Authentication expired | Explain that sign-in must be refreshed | Sign in again, Continue offline | Never clear local data or credentials silently |
+
 ## Layout And Components
 
 - Placement and hierarchy: sync status owns the entry point; notebook shelf
@@ -101,6 +134,11 @@ message rather than a blocking decision dialog.
 
 ## UI Acceptance Criteria
 
+- [ ] First-sign-in detection distinguishes empty, local-only, cloud-only, and
+  local-plus-cloud states without modifying the local library.
+- [ ] Local-plus-cloud emphasizes `合并（推荐）`, never deduplicates by title,
+  and lets the user continue offline without losing local content.
+
 - [ ] A background conflict never blocks or overwrites ongoing local writing.
 - [ ] Pending conflicts survive restart and appear consistently on other
   devices after sync.
@@ -125,8 +163,9 @@ message rather than a blocking decision dialog.
 
 ## Implementation Review
 
-- Status: Conflict and Tombstone server contracts delivered; Flutter UI not
-  started.
+- Status: First-sign-in detection contract and Flutter state model delivered;
+  visible first-sign-in screens are not wired yet. Conflict and Tombstone
+  server contracts are delivered; their Flutter UI is not started.
 - Intentional deviations: The server reserves the copy ID immediately but only
   materializes a normal notebook/page when the user chooses Keep Both. This
   avoids temporary duplicate library entries while preserving both snapshots.

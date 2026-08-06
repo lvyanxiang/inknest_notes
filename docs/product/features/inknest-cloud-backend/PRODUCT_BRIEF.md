@@ -77,6 +77,24 @@ The first slice sets no retention period and performs no physical cleanup.
 7. An explicit replace-local action, if added later, requires a second
    confirmation and a recoverable backup before replacement.
 
+### First-sign-in library detection contract
+
+- Before any transfer, the App reads the local folder/notebook IDs and calls
+  the authenticated, read-only `GET /api/v1/sync/bootstrap` endpoint for the
+  current account's active cloud folder/notebook IDs.
+- Folder and notebook identity is determined only by the persisted stable ID.
+  Titles and folder names are display metadata and are never used to infer
+  that two objects are the same.
+- The four presence outcomes are empty, local only, cloud only, and local plus
+  cloud. Every non-empty outcome continues through the same conservative Merge
+  path; local plus cloud must be presented as `Merge (Recommended)`.
+- This first bootstrap slice is an inventory check only. Its `baseCursor` is a
+  hand-off point for a later full-bootstrap implementation and must not be
+  persisted as the App's applied pull Cursor until all corresponding cloud
+  snapshots have been downloaded, validated, and committed locally.
+- Cancelling, going offline, receiving `401`, or receiving a server error makes
+  no local mutations and leaves the existing local library usable.
+
 ## Acceptance Criteria
 
 - [x] A user can register, sign in, refresh a session, sign out, and revoke a
@@ -88,6 +106,9 @@ The first slice sets no retention period and performs no physical cleanup.
   assets, conflicts, or change events.
 - [ ] Signing in on a device with local notebooks defaults to merge and does
   not delete local-only content.
+- [x] A signed-in device can detect empty/local-only/cloud-only/both library
+  presence from stable folder/notebook IDs without transferring or modifying
+  note content.
 - [x] Concurrent edits to the same revision produce an explicit page- or
   notebook-level conflict copy; neither edit is silently discarded.
 - [x] Delete-versus-edit conflicts preserve the edited content and retain a
@@ -157,9 +178,11 @@ The first slice sets no retention period and performs no physical cleanup.
 
 ## Delivery
 
-- UI/UX spec: `UI_UX_SPEC.md` defines the future App conflict recovery flow;
-  Flutter integration is not part of the current server slice.
-- Implementation status: Phase 4 incremental synchronization is complete in
+- UI/UX spec: `UI_UX_SPEC.md` defines first-sign-in detection plus the future
+  conflict recovery flow. The detection state model is implemented; visible
+  sign-in/merge screens and transfer progress remain later slices.
+- Implementation status: Phase 4 incremental synchronization is complete and
+  Phase 5 library-presence detection is delivered in
   `docs/development/BACKEND_IMPLEMENTATION_PLAN.md`.
 - Verification: Backend tests cover authentication, account isolation,
   revisioned content, asset transfer, cursors, atomic/idempotent commits, page
@@ -168,5 +191,8 @@ The first slice sets no retention period and performs no physical cleanup.
   pages, response-loss replay, and a real PostgreSQL race that always preserves
   the edit. The Flutter queue preserves offline/in-flight work across restart,
   rejects duplicate or partial operation results, and never advances its pull
-  Cursor from a commit response. PostgreSQL migration `20260806_0011` passes
-  both the development upgrade and an independent empty-database upgrade.
+  Cursor from a commit response. Bootstrap tests cover empty and populated
+  accounts, stable-ID comparison, duplicate/inconsistent response rejection,
+  local archived/folder/root discovery, and real PostgreSQL account isolation.
+  PostgreSQL migration `20260806_0011` remains current; this read-only slice
+  requires no schema migration.

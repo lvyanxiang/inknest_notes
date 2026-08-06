@@ -1,6 +1,6 @@
 # InkNest Notes 服务端实施计划
 
-- 状态：Phase 4 已完成，Phase 5 待实施
+- 状态：Phase 4 已完成，Phase 5 实施中
 - 更新时间：2026-08-06
 - 产品 Brief：`docs/product/features/inknest-cloud-backend/PRODUCT_BRIEF.md`
 - 对应路线图：Milestone 8 / Post-MVP 6 Sync And Backup
@@ -383,7 +383,9 @@ checksums.sha256
 
 ### Phase 5：首次登录合并与新设备恢复
 
-- [ ] 检测设备本地资料库与云端资料库同时存在。
+- [x] 检测设备本地资料库与云端资料库同时存在（认证、只读的
+  `/sync/bootstrap` 返回有效文件夹/笔记本稳定 ID；Flutter 扫描本地清单并区分
+  empty/local-only/cloud-only/local-and-cloud）。
 - [ ] 实现默认 Merge，不以标题推断对象身份。
 - [ ] 上传本地独有、下载云端独有。
 - [ ] 显示同步进度、失败项和重试状态。
