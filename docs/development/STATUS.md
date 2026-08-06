@@ -2,14 +2,14 @@
 
 ## Current
 
-- Milestone: Backend Phase 3 cloud library and assets (in progress)
-- Next task: Define cleanup rules for incomplete uploads and orphaned MinIO
-  objects, including safe retry boundaries and deletion observability without
-  immediately deleting referenced ready assets.
-- Last completed: Added authenticated, owner-scoped download URL signing for
-  ready assets with storage-drift checks and client checksum metadata. Real
-  MinIO round trips now cover PDF, PNG image, and M4A audio bytes end to end;
-  Alembic remains at `20260806_0006` because no schema change was needed.
+- Milestone: Backend Phase 4 incremental synchronization and conflicts (ready
+  to start)
+- Next task: Add the synchronization change log and opaque cursor foundation,
+  with user-scoped ordering and tests before exposing batch commit behavior.
+- Last completed: Finished Phase 3 asset cleanup with dry-run-by-default manual
+  maintenance, upload staging audit fields, a 7-day orphan quarantine table,
+  final reference rechecks, bounded idempotent deletion, and real MinIO tests.
+  Alembic is at `20260806_0007`.
 
 ## Decisions
 
@@ -43,6 +43,10 @@
 - Keep cloud sync local-first: first sign-in defaults to merging local and
   cloud libraries, uncertain or concurrent edits create recoverable conflict
   copies, and no restore path silently overwrites local notes.
+- Keep asset cleanup operator-run and dry-run by default: expired pending
+  uploads receive a 24-hour staging grace period, cancelled/completed residue
+  waits 1 hour, final orphans are quarantined for 7 days, and every final object
+  is rechecked against `assets.object_key` immediately before deletion.
 - Treat revision numbers and content hashes as server-owned. For the current
   backend slice, hash UTF-8 JSON with recursively sorted keys, compact
   separators, preserved Unicode/array order, and rejected non-finite numbers;
@@ -155,6 +159,16 @@
 
 ## Verification
 
+- Backend formatting, linting, and strict typing pass across 52 Python
+  source/test files; all 30 non-integration tests pass.
+- All seven PostgreSQL/MinIO integration tests pass, including real staging
+  deletion, orphan candidate registration, quarantine, and final deletion.
+- Alembic upgraded the development database to `20260806_0007 (head)` and
+  reports no schema drift. The real local cleanup command returned a zero-count
+  dry-run without modifying PostgreSQL or MinIO.
+- An independent empty PostgreSQL database upgraded from the baseline through
+  `20260806_0007`, exposed the expected 12 public tables including
+  `asset_gc_candidates`, and was deleted after verification.
 - Backend formatting, linting, and strict typing pass across 48 Python
   source/test files; all 28 non-integration tests pass.
 - Six PostgreSQL/MinIO integration cases pass. PDF, PNG image, and M4A audio

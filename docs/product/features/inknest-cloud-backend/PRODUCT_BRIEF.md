@@ -120,6 +120,10 @@ stroke-level merging or real-time collaboration.
   - Incorrect revision or tombstone semantics can cause data loss.
   - Asset metadata and MinIO objects can drift without transactional finalize
     and garbage-collection rules.
+    The delivered cleanup policy keeps referenced ready assets protected,
+    gives expired pending uploads a 24-hour staging grace period, waits 1 hour
+    for cancelled/completed staging residue, and quarantines unreferenced final
+    objects for 7 days with a final database-reference check before deletion.
   - Existing coordinate-space write protection must remain enforced during
     upload, restore, and conflict-copy creation.
   - MinIO's license and single-node durability are acceptable for development
@@ -139,7 +143,7 @@ stroke-level merging or real-time collaboration.
 
 - UI/UX spec: Required before Flutter account, merge, sync, conflict, and
   restore integration; not part of this backend planning task.
-- Implementation status: Phase 2 account/session work is in progress in
+- Implementation status: Phase 3 cloud-library and asset work is complete in
   `docs/development/BACKEND_IMPLEMENTATION_PLAN.md`.
 - Verification: Authentication unit tests cover account creation, login,
   refresh rotation and replay, logout, device ownership, and device revocation;

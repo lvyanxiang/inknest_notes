@@ -1,16 +1,25 @@
 import asyncio
 import hashlib
 import os
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 
 from inknest_server.assets import AssetUploadService
+from inknest_server.assets.cleanup import AssetCleanupService
 from inknest_server.config import Settings
 from inknest_server.db import Database
-from inknest_server.models import Asset, AssetUpload, Device, User
+from inknest_server.models import (
+    Asset,
+    AssetGarbageCollectionCandidate,
+    AssetUpload,
+    Device,
+    Notebook,
+    User,
+)
 from inknest_server.repositories import (
     ContentRepository,
     ContentSaveResult,
@@ -172,6 +181,133 @@ async def test_presigned_asset_round_trip(
             async with database.session() as cleanup_session:
                 await cleanup_session.execute(delete(User).where(User.id == user_id))
                 await cleanup_session.commit()
+        await database.close()
+
+
+@pytest.mark.asyncio
+async def test_asset_cleanup_tracks_and_deletes_real_minio_objects() -> None:
+    settings = Settings()
+    database = Database(settings.database_url)
+    storage = MinioStorage(
+        endpoint=settings.minio_endpoint,
+        public_endpoint=settings.minio_public_endpoint,
+        access_key=settings.minio_access_key.get_secret_value(),
+        secret_key=settings.minio_secret_key.get_secret_value(),
+        secure=settings.minio_secure,
+        public_secure=settings.minio_public_secure,
+        region=settings.minio_region,
+        bucket=settings.minio_bucket,
+    )
+    suffix = uuid4().hex
+    now = datetime.now(UTC)
+    user_id = None
+    candidate_id = None
+    staging_key = ""
+    orphan_key = ""
+    try:
+        async with database.session() as session:
+            user = User(
+                email=f"phase3-cleanup-{suffix}@example.com",
+                password_hash="integration-test-password-hash",
+            )
+            session.add(user)
+            await session.flush()
+            user_id = user.id
+            notebook = Notebook(
+                id=f"cleanup-{suffix}",
+                user_id=user.id,
+                title="Cleanup integration test",
+                layout_mode="paged",
+            )
+            session.add(notebook)
+            await session.flush()
+
+            upload_id = uuid4()
+            staging_key = f"users/{user.id}/uploads/{upload_id}/unfinished.png"
+            orphan_key = (
+                f"users/{user.id}/notebooks/{notebook.id}/images/"
+                f"orphan-{suffix}/orphan.png"
+            )
+            session.add(
+                AssetUpload(
+                    id=upload_id,
+                    user_id=user.id,
+                    notebook_id=notebook.id,
+                    asset_id=f"unfinished-{suffix}",
+                    kind="image",
+                    original_filename="unfinished.png",
+                    staging_object_key=staging_key,
+                    content_type="image/png",
+                    expected_byte_size=4,
+                    expected_sha256=hashlib.sha256(b"test").hexdigest(),
+                    status="pending",
+                    expires_at=now - timedelta(hours=25),
+                    upload_url_expires_at=now - timedelta(hours=25),
+                )
+            )
+            await session.commit()
+
+            async with AsyncClient() as http_client:
+                for object_key in (staging_key, orphan_key):
+                    upload_url = await storage.create_upload_url(
+                        object_key,
+                        expires=timedelta(minutes=5),
+                    )
+                    response = await http_client.put(
+                        upload_url,
+                        content=b"test",
+                        headers={"Content-Type": "image/png"},
+                    )
+                    assert response.status_code == 200
+
+            service = AssetCleanupService(session, storage, settings)
+            prefix = f"users/{user.id}/"
+            preview = await service.run(
+                execute=False,
+                now=now,
+                object_prefix=prefix,
+            )
+            assert preview.eligible_staging_objects == 1
+            assert preview.discovered_orphan_objects == 1
+            await storage.stat_object(staging_key)
+
+            first_run = await service.run(
+                execute=True,
+                now=now,
+                object_prefix=prefix,
+            )
+            candidate = await session.scalar(
+                select(AssetGarbageCollectionCandidate).where(
+                    AssetGarbageCollectionCandidate.object_key == orphan_key
+                )
+            )
+            assert first_run.deleted_staging_objects == 1
+            assert candidate is not None
+            candidate_id = candidate.id
+            assert candidate.status == "pending"
+
+            second_run = await service.run(
+                execute=True,
+                now=now + timedelta(days=8),
+                object_prefix=prefix,
+            )
+            assert second_run.deleted_orphan_objects == 1
+            await session.refresh(candidate)
+            assert candidate.status == "deleted"
+    finally:
+        for object_key in (staging_key, orphan_key):
+            if object_key:
+                await storage.delete_object(object_key)
+        async with database.session() as cleanup_session:
+            if candidate_id is not None:
+                await cleanup_session.execute(
+                    delete(AssetGarbageCollectionCandidate).where(
+                        AssetGarbageCollectionCandidate.id == candidate_id
+                    )
+                )
+            if user_id is not None:
+                await cleanup_session.execute(delete(User).where(User.id == user_id))
+            await cleanup_session.commit()
         await database.close()
 
 

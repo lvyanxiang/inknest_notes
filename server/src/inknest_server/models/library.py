@@ -282,6 +282,49 @@ class AssetUpload(Base):
     upload_url_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    staging_deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cleanup_attempts: Mapped[int] = mapped_column(default=0, server_default="0")
+    last_cleanup_error: Mapped[str | None] = mapped_column(String(512))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class AssetGarbageCollectionCandidate(Base):
+    __tablename__ = "asset_gc_candidates"
+    __table_args__ = (
+        CheckConstraint(
+            "reason = 'orphan_final_object'", name="ck_asset_gc_candidates_reason"
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'protected', 'deleted')",
+            name="ck_asset_gc_candidates_status",
+        ),
+        CheckConstraint(
+            "delete_attempts >= 0", name="ck_asset_gc_candidates_delete_attempts"
+        ),
+        Index(
+            "ix_asset_gc_candidates_status_eligible_after",
+            "status",
+            "eligible_after",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    object_key: Mapped[str] = mapped_column(String(1024), unique=True)
+    reason: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(
+        String(32), default="pending", server_default="pending"
+    )
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    eligible_after: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    delete_attempts: Mapped[int] = mapped_column(default=0, server_default="0")
+    last_error: Mapped[str | None] = mapped_column(String(512))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

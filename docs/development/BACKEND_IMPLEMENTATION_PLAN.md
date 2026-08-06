@@ -1,6 +1,6 @@
 # InkNest Notes 服务端实施计划
 
-- 状态：Phase 3 实施中
+- 状态：Phase 3 已完成，Phase 4 待开始
 - 更新时间：2026-08-06
 - 产品 Brief：`docs/product/features/inknest-cloud-backend/PRODUCT_BRIEF.md`
 - 对应路线图：Milestone 8 / Post-MVP 6 Sync And Backup
@@ -357,7 +357,7 @@ checksums.sha256
 - [x] 创建附件上传会话和预签名 URL。
 - [x] 上传完成校验和附件引用。
 - [x] PDF、图片、音频端到端上传下载测试。
-- [ ] 未完成上传和孤儿对象清理规则。
+- [x] 未完成上传和孤儿对象清理规则。
 
 完成标准：服务端能完整保存并恢复一本包含 PDF、图片、音频和富页面内容的笔记。
 

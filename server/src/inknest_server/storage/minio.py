@@ -82,6 +82,20 @@ class MinioStorage:
             lambda: self._client.remove_object(self._bucket, object_key)
         )
 
+    async def list_object_keys(self, prefix: str) -> list[str]:
+        def list_keys() -> list[str]:
+            keys: list[str] = []
+            for item in self._client.list_objects(
+                self._bucket,
+                prefix=prefix,
+                recursive=True,
+            ):
+                if item.object_name is not None:
+                    keys.append(item.object_name)
+            return keys
+
+        return await to_thread.run_sync(list_keys)
+
     async def stat_object(self, object_key: str) -> StoredObjectMetadata:
         def stat() -> StoredObjectMetadata:
             try:

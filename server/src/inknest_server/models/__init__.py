@@ -1,6 +1,7 @@
 from inknest_server.models.auth import Device, RefreshToken, User
 from inknest_server.models.library import (
     Asset,
+    AssetGarbageCollectionCandidate,
     AssetUpload,
     ContentRevision,
     Folder,
@@ -11,6 +12,7 @@ from inknest_server.models.library import (
 
 __all__ = [
     "Asset",
+    "AssetGarbageCollectionCandidate",
     "AssetUpload",
     "ContentRevision",
     "Device",

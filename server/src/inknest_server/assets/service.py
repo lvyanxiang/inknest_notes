@@ -384,6 +384,8 @@ class AssetUploadService:
             )
         if upload.status == "expired":
             upload.status = "pending"
+            upload.staging_deleted_at = None
+            upload.last_cleanup_error = None
         if upload.status != "pending":
             raise ApiError(
                 code="asset_upload_not_pending",

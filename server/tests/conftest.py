@@ -57,6 +57,9 @@ class FakeObjectStorage:
         self.deleted_objects.append(object_key)
         self.objects.pop(object_key, None)
 
+    async def list_object_keys(self, prefix: str) -> list[str]:
+        return sorted(key for key in self.objects if key.startswith(prefix))
+
     async def stat_object(self, object_key: str) -> StoredObjectMetadata:
         stored = self.objects.get(object_key)
         if stored is None:

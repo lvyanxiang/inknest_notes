@@ -183,8 +183,9 @@ SHA-256, and only then creates one ready `assets` row. Completion retries return
 the same asset. A mismatch returns `422`, creates no ready asset, and retains the
 staging object so the client can upload corrected bytes and retry.
 Cancelling a session prevents later server-side completion but cannot revoke an
-already issued URL before that URL expires. Scheduled cleanup of incomplete and
-orphaned objects is a later phase.
+already issued URL before that URL expires. The operator-run cleanup command
+described below handles expired and residual staging objects after a safety
+window.
 
 After completion, request `GET /assets/{asset_id}/download-url`. The server only
 signs a ready asset owned by the authenticated user and first checks that its
@@ -192,6 +193,45 @@ MinIO object still matches the stored size and media type. The response includes
 the URL, expiry, byte length, and SHA-256. Clients must download to temporary
 storage, verify size and SHA-256, and only then atomically replace local data.
 Never log or retain the complete signed URL.
+
+### Safe asset cleanup
+
+Asset cleanup is an explicit maintenance command; it does not run when the API
+starts. From `server/`, preview the current work without changing PostgreSQL or
+MinIO:
+
+```bash
+uv run python -m inknest_server.maintenance.cleanup_assets
+```
+
+The JSON output reports expired sessions, eligible staging objects, discovered
+and eligible orphan objects, protected objects, deletions, and failures. After
+reviewing the preview, apply eligible changes explicitly:
+
+```bash
+uv run python -m inknest_server.maintenance.cleanup_assets --execute
+```
+
+`--execute` is a routine maintenance operation but can physically delete
+unreferenced MinIO objects. The safety rules are:
+
+- pending uploads expire after 24 hours and retain staging bytes for another
+  24 hours;
+- cancelled uploads and completed-upload staging residue wait 1 hour;
+- final notebook objects without an `assets.object_key` reference enter
+  `asset_gc_candidates` for a 7-day quarantine;
+- every candidate is checked again immediately before deletion, and a newly
+  referenced object becomes `protected` instead;
+- referenced ready assets are never selected, object keys must match the
+  server-owned layout, and each run changes at most 100 records per category;
+- upload rows and GC audit rows are retained. Failures record an attempt count
+  and error type so the command can be retried safely.
+
+Inspect `asset_uploads.staging_deleted_at`, `cleanup_attempts`, and
+`last_cleanup_error`, plus rows in `asset_gc_candidates`, with Navicat or
+pgAdmin. Inspect remaining bytes in the private bucket through MinIO Console.
+If a run reports failures, do not manually remove referenced objects: correct
+the database or MinIO connectivity problem and rerun dry-run, then `--execute`.
 
 ### PostgreSQL and MinIO
 
@@ -242,6 +282,8 @@ The migration history currently contains:
   SHA-256, object key, state, and expiry timestamps.
 - `20260806_0006`: explicit staging object keys and completion timestamps for
   verification-driven promotion into ready `assets` references.
+- `20260806_0007`: upload cleanup audit fields and quarantined
+  `asset_gc_candidates` tracking for recoverable MinIO garbage collection.
 
 Future schema work must add a new revision instead of rewriting an applied
 revision.
@@ -371,6 +413,14 @@ Important settings:
 - `INKNEST_ASSET_UPLOAD_SESSION_HOURS`: pending-session lifetime, default 24.
 - `INKNEST_ASSET_DOWNLOAD_URL_MINUTES`: signed download URL lifetime, default 15.
 - `INKNEST_MAX_ASSET_UPLOAD_BYTES`: per-asset limit, default 512 MiB.
+- `INKNEST_ASSET_CLEANUP_PENDING_GRACE_HOURS`: extra staging retention after a
+  pending session expires, default 24 hours.
+- `INKNEST_ASSET_CLEANUP_STAGING_GRACE_HOURS`: wait after cancellation or
+  completion before residual staging cleanup, default 1 hour.
+- `INKNEST_ASSET_CLEANUP_ORPHAN_QUARANTINE_DAYS`: observation time before an
+  unreferenced final object can be deleted, default 7 days.
+- `INKNEST_ASSET_CLEANUP_BATCH_SIZE`: maximum records changed per cleanup
+  category and run, default 100.
 - `INKNEST_JWT_SECRET`: server-only signing secret, at least 32 characters;
   never expose it to Flutter or commit a production value.
 - `INKNEST_ACCESS_TOKEN_MINUTES`: access-token lifetime, default 15 minutes.

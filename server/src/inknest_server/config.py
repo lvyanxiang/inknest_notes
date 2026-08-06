@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     asset_upload_session_hours: int = Field(default=24, ge=1, le=168)
     asset_download_url_minutes: int = Field(default=15, ge=1, le=60)
     max_asset_upload_bytes: int = Field(default=536_870_912, ge=1)
+    asset_cleanup_pending_grace_hours: int = Field(default=24, ge=1, le=168)
+    asset_cleanup_staging_grace_hours: int = Field(default=1, ge=1, le=24)
+    asset_cleanup_orphan_quarantine_days: int = Field(default=7, ge=1, le=90)
+    asset_cleanup_batch_size: int = Field(default=100, ge=1, le=1000)
 
     jwt_secret: SecretStr = SecretStr(
         "development-only-replace-this-jwt-secret-before-production"

@@ -201,8 +201,8 @@ curl -X POST \
 `asset_uploads.status` 仍是 `pending`，`assets` 表不会新增记录，这是刻意的安全边界。
 大小、MIME 或 SHA-256 不匹配时返回 `422`，最终对象不会成为可用附件，暂存对象保留供
 客户端覆盖后重试。
-取消会话只阻止服务端后续完成该会话，不能撤销已经签发且尚未过期的 URL；未完成对象
-及孤儿对象的定时清理将在后续步骤实现。
+取消会话只阻止服务端后续完成该会话，不能撤销已经签发且尚未过期的 URL；下文的运维
+清理命令会在安全宽限期后处理过期和残留的暂存对象。
 
 附件完成后，可以使用稳定的 `assetId` 获取下载 URL：
 
@@ -216,6 +216,39 @@ curl \
 与数据库一致。响应包含 `downloadUrl`、`expiresAt`、`byteSize` 和 `sha256`。App 下载时
 应先写入临时文件，核对大小和 SHA-256 后再原子替换正式本地文件。不要记录或长期保存
 完整预签名 URL。
+
+### 安全清理附件对象
+
+附件清理是显式执行的运维命令，不会随 API 启动自动运行。在 `server/` 目录先执行默认
+预览；该命令不会修改 PostgreSQL 或 MinIO：
+
+```bash
+uv run python -m inknest_server.maintenance.cleanup_assets
+```
+
+JSON 输出会显示过期会话、符合条件的暂存对象、发现和到期的孤儿对象、受保护对象、删除
+数量和失败数量。检查预览后，才显式执行：
+
+```bash
+uv run python -m inknest_server.maintenance.cleanup_assets --execute
+```
+
+`--execute` 属于日常运维命令，但它确实可能物理删除没有数据库引用的 MinIO 文件。安全
+规则如下：
+
+- 待上传会话 24 小时过期，过期后额外保留暂存文件 24 小时。
+- 已取消会话和已完成上传的暂存残留等待 1 小时。
+- 最终目录中没有任何 `assets.object_key` 引用的对象先写入
+  `asset_gc_candidates`，隔离观察 7 天。
+- 删除前立刻再次查询数据库；隔离期间重新获得引用的对象改为 `protected`，不会删除。
+- 已引用的 ready 附件永远不会入选；对象 Key 必须符合服务端目录规则；每次每类最多处理
+  100 条记录。
+- `asset_uploads` 和 GC 审计记录不会被清除。失败会记录尝试次数和错误类型，可安全重试。
+
+可在 Navicat/pgAdmin 查看 `asset_uploads.staging_deleted_at`、
+`cleanup_attempts`、`last_cleanup_error` 和 `asset_gc_candidates`；可在 MinIO Console
+查看剩余文件。遇到失败时不要手工删除 ready 对象，应先修复数据库或 MinIO 连接，再重跑
+默认预览和 `--execute`。
 
 ### PostgreSQL 与 MinIO
 
@@ -265,6 +298,8 @@ docker compose config
   状态和有效期。
 - `20260806_0006`：将上传对象 Key 明确为暂存 Key，增加完成时间，支持验证后创建正式
   `assets` 附件引用。
+- `20260806_0007`：为上传会话增加清理审计字段，并创建带 7 天隔离状态的
+  `asset_gc_candidates`，用于可恢复的 MinIO 垃圾回收。
 
 后续表结构变化必须创建新迁移，不能修改已经应用过的迁移文件。
 
@@ -389,6 +424,13 @@ INKNEST_RUN_INTEGRATION=1 uv run pytest tests/integration
 - `INKNEST_ASSET_UPLOAD_SESSION_HOURS`：待上传会话有效小时数，默认 24。
 - `INKNEST_ASSET_DOWNLOAD_URL_MINUTES`：附件下载 URL 有效分钟数，默认 15。
 - `INKNEST_MAX_ASSET_UPLOAD_BYTES`：单个附件允许的最大字节数，默认 512 MiB。
+- `INKNEST_ASSET_CLEANUP_PENDING_GRACE_HOURS`：待上传会话过期后额外保留暂存对象的
+  小时数，默认 24。
+- `INKNEST_ASSET_CLEANUP_STAGING_GRACE_HOURS`：取消或完成上传后清理暂存残留前等待的
+  小时数，默认 1。
+- `INKNEST_ASSET_CLEANUP_ORPHAN_QUARANTINE_DAYS`：无引用最终对象允许删除前的隔离天数，
+  默认 7。
+- `INKNEST_ASSET_CLEANUP_BATCH_SIZE`：每次清理中每类最多修改的记录数，默认 100。
 - `INKNEST_JWT_SECRET`：至少 32 位的服务端签名密钥，不能暴露给 Flutter 或提交生产值。
 - `INKNEST_ACCESS_TOKEN_MINUTES`：Access Token 有效分钟数，默认 15。
 - `INKNEST_REFRESH_TOKEN_DAYS`：Refresh Token 有效天数，默认 30。
