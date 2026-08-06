@@ -5,7 +5,15 @@ from httpx import AsyncClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from inknest_server.models import Folder, Notebook, SyncChange, SyncCommit
+from inknest_server.models import (
+    ContentRevision,
+    Folder,
+    InfiniteCanvas,
+    Notebook,
+    Page,
+    SyncChange,
+    SyncCommit,
+)
 
 
 async def _register(client: AsyncClient, email: str) -> dict[str, Any]:
@@ -221,3 +229,157 @@ async def test_merge_commit_requires_an_owned_parent_folder(
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "sync_merge_parent_not_found"
+
+
+async def test_merge_commit_creates_page_and_canvas_content_after_parent_notebooks(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    registered = await _register(client, "merge-content@example.com")
+    user_id = UUID(registered["user"]["id"])
+    cursor = await _base_cursor(client, registered["accessToken"])
+    operations = [
+        {
+            "operationId": "create-page",
+            "resourceType": "page",
+            "resourceId": "local-page",
+            "metadata": {
+                "notebookId": "paged-notebook",
+                "position": 0,
+                "width": 768,
+                "height": 1024,
+                "coordinateSpaceVersion": {"major": 1},
+                "rotationQuarterTurns": 1,
+                "template": "grid",
+                "content": {"strokes": [{"id": "local-stroke"}]},
+            },
+        },
+        {
+            "operationId": "create-canvas",
+            "resourceType": "infinite_canvas",
+            "resourceId": "local-canvas",
+            "metadata": {
+                "notebookId": "canvas-notebook",
+                "background": "dotted",
+                "content": {"nodes": [{"id": "local-node"}]},
+            },
+        },
+        {
+            "operationId": "create-paged-notebook",
+            "resourceType": "notebook",
+            "resourceId": "paged-notebook",
+            "metadata": {"title": "Paged", "layoutMode": "paged"},
+        },
+        {
+            "operationId": "create-canvas-notebook",
+            "resourceType": "notebook",
+            "resourceId": "canvas-notebook",
+            "metadata": {
+                "title": "Canvas",
+                "layoutMode": "infiniteCanvas",
+            },
+        },
+    ]
+    payload = {
+        "deviceId": registered["device"]["id"],
+        "idempotencyKey": "merge-content-1",
+        "baseCursor": cursor,
+        "operations": operations,
+    }
+
+    created = await client.post(
+        "/api/v1/sync/merge/commit",
+        json=payload,
+        headers=_bearer(registered["accessToken"]),
+    )
+    repeated_with_new_key = await client.post(
+        "/api/v1/sync/merge/commit",
+        json={**payload, "idempotencyKey": "merge-content-2"},
+        headers=_bearer(registered["accessToken"]),
+    )
+    page = await db_session.scalar(
+        select(Page).where(Page.id == "local-page", Page.user_id == user_id)
+    )
+    canvas = await db_session.scalar(
+        select(InfiniteCanvas).where(
+            InfiniteCanvas.id == "local-canvas",
+            InfiniteCanvas.user_id == user_id,
+        )
+    )
+    revision_count = await db_session.scalar(
+        select(func.count())
+        .select_from(ContentRevision)
+        .where(ContentRevision.user_id == user_id)
+    )
+    change_count = await db_session.scalar(
+        select(func.count())
+        .select_from(SyncChange)
+        .where(SyncChange.user_id == user_id)
+    )
+
+    assert created.status_code == 200
+    assert [item["resourceType"] for item in created.json()["results"]] == [
+        "page",
+        "infinite_canvas",
+        "notebook",
+        "notebook",
+    ]
+    assert [item["revision"] for item in created.json()["results"]] == [1, 1, 0, 0]
+    assert all(len(item["contentHash"]) == 64 for item in created.json()["results"][:2])
+    assert repeated_with_new_key.status_code == 200
+    assert [item["outcome"] for item in repeated_with_new_key.json()["results"]] == [
+        "unchanged",
+        "unchanged",
+        "unchanged",
+        "unchanged",
+    ]
+    assert page is not None and page.content == {"strokes": [{"id": "local-stroke"}]}
+    assert canvas is not None and canvas.content == {"nodes": [{"id": "local-node"}]}
+    assert revision_count == 2
+    assert change_count == 4
+
+
+async def test_merge_commit_rolls_back_content_for_incompatible_notebook_layout(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    registered = await _register(client, "merge-layout@example.com")
+    user_id = UUID(registered["user"]["id"])
+    payload = {
+        "deviceId": registered["device"]["id"],
+        "idempotencyKey": "merge-layout-1",
+        "baseCursor": await _base_cursor(client, registered["accessToken"]),
+        "operations": [
+            {
+                "operationId": "create-paged-notebook",
+                "resourceType": "notebook",
+                "resourceId": "paged-only",
+                "metadata": {"title": "Paged", "layoutMode": "paged"},
+            },
+            {
+                "operationId": "invalid-canvas",
+                "resourceType": "infinite_canvas",
+                "resourceId": "invalid-canvas",
+                "metadata": {
+                    "notebookId": "paged-only",
+                    "content": {"nodes": []},
+                },
+            },
+        ],
+    }
+
+    response = await client.post(
+        "/api/v1/sync/merge/commit",
+        json=payload,
+        headers=_bearer(registered["accessToken"]),
+    )
+    notebook = await db_session.scalar(
+        select(Notebook).where(
+            Notebook.id == "paged-only",
+            Notebook.user_id == user_id,
+        )
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "sync_merge_parent_incompatible"
+    assert notebook is None

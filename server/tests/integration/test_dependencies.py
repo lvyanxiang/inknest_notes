@@ -17,8 +17,10 @@ from inknest_server.models import (
     AssetGarbageCollectionCandidate,
     AssetUpload,
     Conflict,
+    ContentRevision,
     Device,
     Folder,
+    InfiniteCanvas,
     Notebook,
     Page,
     SyncChange,
@@ -81,6 +83,29 @@ async def test_merge_metadata_create_replays_without_duplicate_rows() -> None:
                 "baseCursor": codec.encode(user_id=user_id, sequence=0),
                 "operations": [
                     {
+                        "operationId": "create-page",
+                        "resourceType": "page",
+                        "resourceId": f"page-{suffix}",
+                        "metadata": {
+                            "notebookId": f"notebook-{suffix}",
+                            "position": 0,
+                            "width": 768,
+                            "height": 1024,
+                            "coordinateSpaceVersion": 1,
+                            "content": {"strokes": [{"id": "stroke-1"}]},
+                        },
+                    },
+                    {
+                        "operationId": "create-canvas",
+                        "resourceType": "infinite_canvas",
+                        "resourceId": f"canvas-{suffix}",
+                        "metadata": {
+                            "notebookId": f"canvas-notebook-{suffix}",
+                            "background": "grid",
+                            "content": {"nodes": [{"id": "node-1"}]},
+                        },
+                    },
+                    {
                         "operationId": "create-notebook",
                         "resourceType": "notebook",
                         "resourceId": f"notebook-{suffix}",
@@ -88,6 +113,15 @@ async def test_merge_metadata_create_replays_without_duplicate_rows() -> None:
                             "folderId": f"folder-{suffix}",
                             "title": "PostgreSQL merge",
                             "layoutMode": "paged",
+                        },
+                    },
+                    {
+                        "operationId": "create-canvas-notebook",
+                        "resourceType": "notebook",
+                        "resourceId": f"canvas-notebook-{suffix}",
+                        "metadata": {
+                            "title": "PostgreSQL canvas merge",
+                            "layoutMode": "infiniteCanvas",
                         },
                     },
                     {
@@ -131,6 +165,19 @@ async def test_merge_metadata_create_replays_without_duplicate_rows() -> None:
                 .select_from(Notebook)
                 .where(Notebook.user_id == user_id)
             )
+            page_count = await verify_session.scalar(
+                select(func.count()).select_from(Page).where(Page.user_id == user_id)
+            )
+            canvas_count = await verify_session.scalar(
+                select(func.count())
+                .select_from(InfiniteCanvas)
+                .where(InfiniteCanvas.user_id == user_id)
+            )
+            revision_count = await verify_session.scalar(
+                select(func.count())
+                .select_from(ContentRevision)
+                .where(ContentRevision.user_id == user_id)
+            )
             change_count = await verify_session.scalar(
                 select(func.count())
                 .select_from(SyncChange)
@@ -146,8 +193,11 @@ async def test_merge_metadata_create_replays_without_duplicate_rows() -> None:
         assert retry.replayed is True
         assert retry.results == first.results
         assert folder_count == 1
-        assert notebook_count == 1
-        assert change_count == 2
+        assert notebook_count == 2
+        assert page_count == 1
+        assert canvas_count == 1
+        assert revision_count == 2
+        assert change_count == 5
         assert commit_count == 1
     finally:
         if user_id is not None:

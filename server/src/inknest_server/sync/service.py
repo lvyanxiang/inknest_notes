@@ -19,13 +19,16 @@ from inknest_server.sync.bootstrap import SyncBootstrapRepository
 from inknest_server.sync.conflicts import ConflictResolution, ConflictService
 from inknest_server.sync.cursor import SyncCursorCodec
 from inknest_server.sync.merge import (
+    SyncMergeParentIncompatibleError,
     SyncMergeRepository,
     SyncMergeResourceExistsError,
 )
 from inknest_server.sync.schemas import (
     SyncBootstrapCounts,
     SyncBootstrapFolder,
+    SyncBootstrapInfiniteCanvas,
     SyncBootstrapNotebook,
+    SyncBootstrapPage,
     SyncBootstrapResponse,
     SyncCommitOperation,
     SyncCommitOperationResult,
@@ -37,7 +40,9 @@ from inknest_server.sync.schemas import (
     SyncMergeCreateOperation,
     SyncMergeCreateOperationResult,
     SyncMergeFolderMetadata,
+    SyncMergeInfiniteCanvasMetadata,
     SyncMergeNotebookMetadata,
+    SyncMergePageMetadata,
     SyncTombstoneResponse,
 )
 from inknest_server.sync.tombstones import TombstoneService
@@ -66,7 +71,11 @@ class SyncMergeOperationFailedError(Exception):
     def __init__(
         self,
         operation: SyncMergeCreateOperation,
-        cause: SyncMergeResourceExistsError | LibraryResourceNotFoundError,
+        cause: (
+            SyncMergeResourceExistsError
+            | SyncMergeParentIncompatibleError
+            | LibraryResourceNotFoundError
+        ),
     ) -> None:
         self.operation = operation
         self.cause = cause
@@ -115,9 +124,16 @@ class SyncService:
                 SyncBootstrapNotebook.model_validate(notebook)
                 for notebook in inventory.notebooks
             ],
+            pages=[SyncBootstrapPage.model_validate(page) for page in inventory.pages],
+            infinite_canvases=[
+                SyncBootstrapInfiniteCanvas.model_validate(canvas)
+                for canvas in inventory.infinite_canvases
+            ],
             counts=SyncBootstrapCounts(
                 folders=len(inventory.folder_ids),
                 notebooks=len(inventory.notebook_ids),
+                pages=len(inventory.pages),
+                infinite_canvases=len(inventory.infinite_canvases),
             ),
             base_cursor=self._cursor_codec.encode(
                 user_id=user_id,
@@ -158,7 +174,12 @@ class SyncService:
         try:
             ordered_operations = sorted(
                 request.operations,
-                key=lambda operation: operation.resource_type != "folder",
+                key=lambda operation: {
+                    "folder": 0,
+                    "notebook": 1,
+                    "page": 2,
+                    "infinite_canvas": 2,
+                }[operation.resource_type],
             )
             results_by_operation_id = {
                 operation.operation_id: await self._apply_merge_create(
@@ -207,7 +228,7 @@ class SyncService:
                     folder_id=operation.resource_id,
                     metadata=operation.metadata,
                 )
-            else:
+            elif operation.resource_type == "notebook":
                 if not isinstance(operation.metadata, SyncMergeNotebookMetadata):
                     raise RuntimeError("validated notebook metadata has wrong type")
                 result = await self._merge.create_notebook(
@@ -216,8 +237,29 @@ class SyncService:
                     notebook_id=operation.resource_id,
                     metadata=operation.metadata,
                 )
+            elif operation.resource_type == "page":
+                if not isinstance(operation.metadata, SyncMergePageMetadata):
+                    raise RuntimeError("validated page metadata has wrong type")
+                result = await self._merge.create_page(
+                    user_id=user_id,
+                    device_id=device_id,
+                    page_id=operation.resource_id,
+                    metadata=operation.metadata,
+                )
+            else:
+                if not isinstance(operation.metadata, SyncMergeInfiniteCanvasMetadata):
+                    raise RuntimeError(
+                        "validated infinite canvas metadata has wrong type"
+                    )
+                result = await self._merge.create_infinite_canvas(
+                    user_id=user_id,
+                    device_id=device_id,
+                    canvas_id=operation.resource_id,
+                    metadata=operation.metadata,
+                )
         except (
             SyncMergeResourceExistsError,
+            SyncMergeParentIncompatibleError,
             LibraryResourceNotFoundError,
         ) as error:
             raise SyncMergeOperationFailedError(operation, error) from error
@@ -226,6 +268,8 @@ class SyncService:
             resource_type=operation.resource_type,
             resource_id=operation.resource_id,
             outcome=result.outcome,
+            revision=result.revision,
+            content_hash=result.content_hash,
         )
 
     async def list_changes(

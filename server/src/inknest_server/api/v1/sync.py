@@ -28,7 +28,10 @@ from inknest_server.sync.conflicts import (
     SyncConflictNotFoundError,
     SyncConflictResolutionStaleError,
 )
-from inknest_server.sync.merge import SyncMergeResourceExistsError
+from inknest_server.sync.merge import (
+    SyncMergeParentIncompatibleError,
+    SyncMergeResourceExistsError,
+)
 from inknest_server.sync.service import (
     SyncCursorAheadError,
     SyncDeviceMismatchError,
@@ -125,13 +128,23 @@ async def commit_sync_merge_creates(
         if isinstance(error.cause, SyncMergeResourceExistsError):
             raise ApiError(
                 code="sync_merge_resource_exists",
-                message="The stable ID already exists with different metadata.",
+                message=(
+                    "The stable ID or resource placement already exists with "
+                    "different metadata."
+                ),
                 status_code=409,
                 details=details,
             ) from error
+        if isinstance(error.cause, SyncMergeParentIncompatibleError):
+            raise ApiError(
+                code="sync_merge_parent_incompatible",
+                message="The resource is incompatible with its notebook layout.",
+                status_code=409,
+                details={**details, "notebookId": error.cause.notebook_id},
+            ) from error
         raise ApiError(
             code="sync_merge_parent_not_found",
-            message="The notebook's parent folder does not exist.",
+            message="The resource's parent folder or notebook does not exist.",
             status_code=404,
             details=details,
         ) from error

@@ -153,8 +153,8 @@ All application routes use the base URL `http://127.0.0.1:8000/api/v1`.
 | `POST` | `/assets/upload-sessions/{upload_id}/complete` | Bearer Access Token | Verify the staged object and create ready asset metadata. |
 | `DELETE` | `/assets/upload-sessions/{upload_id}` | Bearer Access Token | Cancel one pending upload session owned by the current user. |
 | `GET` | `/assets/{asset_id}/download-url` | Bearer Access Token | Sign a short-lived download URL for one ready, owned asset. |
-| `GET` | `/sync/bootstrap` | Bearer Access Token | Read the current account's active folder/notebook stable-ID inventory before a first merge. |
-| `POST` | `/sync/merge/commit` | Bearer Access Token | Atomically and idempotently create local-only folder/notebook metadata during first merge. |
+| `GET` | `/sync/bootstrap` | Bearer Access Token | Read folder, notebook, page, and infinite-canvas snapshots before a first merge. |
+| `POST` | `/sync/merge/commit` | Bearer Access Token | Atomically and idempotently create local-only library structure and JSON content. |
 | `GET` | `/sync/changes?cursor=...&limit=...` | Bearer Access Token | Read ordered changes for the current user and receive the next opaque cursor. |
 | `POST` | `/sync/commit` | Bearer Access Token | Atomically commit an idempotent batch of existing notebook, page, or infinite-canvas content updates or soft deletes. |
 | `POST` | `/sync/conflicts/{conflict_id}/resolve` | Bearer Access Token | Resolve an owned page/notebook conflict by keeping the original, using the submitted version, or keeping both. |
@@ -209,9 +209,9 @@ Never log or retain the complete signed URL.
 ### First-sign-in bootstrap inventory
 
 `GET /api/v1/sync/bootstrap` is an authenticated, read-only presence check. It
-returns sorted active `folderIds` and `notebookIds`, complete `folders` and
-`notebooks` metadata snapshots, matching counts, a `hasCloudLibrary` flag, and
-an account-bound `baseCursor`:
+returns sorted active `folderIds` and `notebookIds`, complete `folders`,
+`notebooks`, `pages`, and `infiniteCanvases` snapshots, matching counts, a
+`hasCloudLibrary` flag, and an account-bound `baseCursor`:
 
 ```bash
 curl 'http://127.0.0.1:8000/api/v1/sync/bootstrap' \
@@ -219,18 +219,21 @@ curl 'http://127.0.0.1:8000/api/v1/sync/bootstrap' \
 ```
 
 The App compares these IDs with its local inventory; names and titles are not
-identity. The metadata snapshots support later cloud-only download, but this
-read-only request does not apply them locally and does not upload, delete, or
-overwrite anything. Page/canvas bodies and assets are not included yet. Do not save `baseCursor` as the
+identity. Page/canvas snapshots include body JSON, server Revision, and Content
+Hash. This read-only request does not apply them locally and does not upload,
+delete, or overwrite anything; asset bytes still require their download URLs.
+Do not save `baseCursor` as the
 applied pull Cursor yet: a later full-bootstrap slice must first download,
 verify, and atomically apply all corresponding snapshots. `401` means the
 Access Token is missing, expired, or revoked.
 
-### First-merge metadata creation
+### First-merge structure and content creation
 
-`POST /api/v1/sync/merge/commit` accepts an atomic batch of local-only folder
-and notebook metadata. Stable IDs are retained, folders are created before
-dependent notebooks, and the response order matches the request:
+`POST /api/v1/sync/merge/commit` accepts an atomic batch of local-only folders,
+notebooks, pages, and infinite canvases. Stable IDs are retained; dependencies
+are created in folder → notebook → page/canvas order while the response order
+matches the request. Page/canvas JSON is normalized into server-owned Revision
+1 and Content Hash values:
 
 ```bash
 curl -X POST 'http://127.0.0.1:8000/api/v1/sync/merge/commit' \
@@ -257,6 +260,21 @@ curl -X POST 'http://127.0.0.1:8000/api/v1/sync/merge/commit' \
           "layoutMode": "paged",
           "isArchived": false
         }
+      },
+      {
+        "operationId": "page-1-create",
+        "resourceType": "page",
+        "resourceId": "page-1",
+        "metadata": {
+          "notebookId": "notebook-1",
+          "position": 0,
+          "width": 768,
+          "height": 1024,
+          "coordinateSpaceVersion": 1,
+          "rotationQuarterTurns": 0,
+          "template": "blank",
+          "content": {"strokes": []}
+        }
       }
     ]
   }'
@@ -266,9 +284,11 @@ Retry the exact request with the same idempotency key after a lost response;
 the stored response returns with `replayed: true` and no duplicate rows or
 events. Reusing the key for different data returns
 `409 sync_idempotency_key_reused`. An existing stable ID with different
-metadata returns `409 sync_merge_resource_exists` and rolls back the complete
-batch. A missing or unowned parent folder returns
-`404 sync_merge_parent_not_found`. The returned `nextCursor` is not an applied
+metadata or an occupied page/canvas placement returns
+`409 sync_merge_resource_exists`; an incompatible notebook layout returns
+`409 sync_merge_parent_incompatible`; and a missing or unowned parent folder or
+notebook returns `404 sync_merge_parent_not_found`. Every error rolls back the
+complete batch. The returned `nextCursor` is not an applied
 App Cursor; do not save it until the later download/application phase succeeds.
 
 ### Incremental synchronization changes

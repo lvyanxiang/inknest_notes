@@ -3,16 +3,16 @@
 ## Current
 
 - Milestone: Backend Phase 5 first-sign-in merge and new-device restore is in
-  progress; folder/notebook metadata upload/download contracts are now
-  available after detection and deterministic Merge planning.
-- Next task: Extend first-merge transfer to page and infinite-canvas snapshots,
-  then add Flutter temporary staging and atomic local application before any
-  bootstrap Cursor is persisted.
-- Last completed: `GET /api/v1/sync/bootstrap` now returns complete active
-  folder/notebook metadata snapshots for cloud-only download, and authenticated
-  `POST /api/v1/sync/merge/commit` atomically creates local-only folder/notebook
-  metadata. Exact idempotent retries replay without duplicates; different
-  metadata on an occupied stable ID returns `409` and rolls back the batch.
+  progress; server-side upload/download contracts now cover folders,
+  notebooks, page JSON, and infinite-canvas JSON.
+- Next task: Transfer referenced asset metadata/bytes, then implement Flutter
+  temporary staging, checksum validation, and atomic local application before
+  any bootstrap Cursor is persisted.
+- Last completed: `GET /api/v1/sync/bootstrap` now returns complete active page
+  and infinite-canvas snapshots, and `POST /api/v1/sync/merge/commit` creates
+  local-only pages/canvases after their parent notebooks. JSON content receives
+  server-owned Revision 1 and Content Hash values; retries and failures remain
+  atomic and idempotent.
 
 ## Decisions
 
@@ -35,6 +35,10 @@
   commits. The API creates folders before dependent notebooks, retains request
   result order, shares the account/device idempotency namespace, and treats its
   returned Cursor as unapplied until local download staging succeeds.
+- During first merge, create dependencies in folder → notebook → page/canvas
+  order while preserving response order. Page and infinite-canvas JSON enters
+  cloud state at server-owned Revision 1; occupied IDs/placements, missing
+  parents, or incompatible notebook layouts never partially commit a batch.
 - When no implementation task is selected, product analysis may recommend candidates but must not automatically start Post-MVP 6-9 or infer work from plain roadmap bullets.
 - Keep normal `$inknest-project` work focused on code, roadmap, and product implementation; do not automatically update task book or opening report during development tasks.
 - Use `$inknest-academic-docs` for `docs/academic/GRADUATION_TASK_BOOK.md`, `docs/academic/OPENING_REPORT.md`, academic writing requirements, graduation schedule, and formal reference maintenance.
@@ -195,12 +199,13 @@
 
 ## Verification
 
-- Python formatting, Ruff linting, and mypy pass across 66 source files. All 46
+- Python formatting, Ruff checks, and mypy pass across 66 source files. All 48
   non-integration tests and all 15 PostgreSQL/MinIO integration tests pass,
-  including atomic metadata creation, exact response replay, account scoping,
-  conflicting-ID rollback, and real PostgreSQL duplicate prevention. OpenAPI
-  exposes 19 application operations. No Alembic migration was created because
-  the slice reuses the existing folder, notebook, change, and commit tables.
+  including atomic folder/notebook/page/infinite-canvas creation, initial
+  Revision records, exact replay, incompatible-layout rollback, and duplicate
+  prevention. OpenAPI still exposes 19 operations. No Alembic migration was
+  created because this slice reuses existing library, revision, change, and
+  commit tables.
 
 - The 9 focused Flutter bootstrap/Merge tests pass, covering four presence
   states, local inventory discovery, response validation, stable-ID-only action

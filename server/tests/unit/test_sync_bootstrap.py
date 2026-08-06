@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from inknest_server.config import Settings
 from inknest_server.models import SyncChange
-from inknest_server.repositories import LibraryRepository
+from inknest_server.repositories import ContentRepository, LibraryRepository
 from inknest_server.sync import SyncCursorCodec
 
 
@@ -46,17 +46,46 @@ async def test_bootstrap_inventory_is_read_only_active_and_account_scoped(
         folder_id="first-folder",
         name="Shared title",
     )
-    await library.create_notebook(
+    paged_notebook = await library.create_notebook(
         user_id=first_user_id,
         notebook_id="first-notebook-a",
         title="Same title",
         layout_mode="paged",
     )
-    await library.create_notebook(
+    canvas_notebook = await library.create_notebook(
         user_id=first_user_id,
         notebook_id="first-notebook-b",
         title="Same title",
-        layout_mode="paged",
+        layout_mode="infiniteCanvas",
+    )
+    page = await library.create_page(
+        user_id=first_user_id,
+        notebook_id=paged_notebook.id,
+        page_id="first-page",
+        position=0,
+        width=768,
+        height=1024,
+        coordinate_space_version=1,
+        template="ruled",
+    )
+    canvas = await library.create_infinite_canvas(
+        user_id=first_user_id,
+        notebook_id=canvas_notebook.id,
+        canvas_id="first-canvas",
+        background="grid",
+    )
+    content = ContentRepository(db_session)
+    await content.save_page_content(
+        user_id=first_user_id,
+        page_id=page.id,
+        base_revision=0,
+        content={"strokes": [{"id": "stroke-1"}]},
+    )
+    await content.save_infinite_canvas_content(
+        user_id=first_user_id,
+        canvas_id=canvas.id,
+        base_revision=0,
+        content={"nodes": [{"id": "node-1"}]},
     )
     deleted = await library.create_notebook(
         user_id=first_user_id,
@@ -99,11 +128,21 @@ async def test_bootstrap_inventory_is_read_only_active_and_account_scoped(
     ]
     assert all(item["title"] == "Same title" for item in body["notebooks"])
     assert all(item["createdAt"] for item in body["notebooks"])
-    assert body["counts"] == {"folders": 1, "notebooks": 2}
+    assert [item["id"] for item in body["pages"]] == ["first-page"]
+    assert body["pages"][0]["content"] == {"strokes": [{"id": "stroke-1"}]}
+    assert body["pages"][0]["coordinateSpaceVersion"] == 1
+    assert [item["id"] for item in body["infiniteCanvases"]] == ["first-canvas"]
+    assert body["infiniteCanvases"][0]["content"] == {"nodes": [{"id": "node-1"}]}
+    assert body["counts"] == {
+        "folders": 1,
+        "notebooks": 2,
+        "pages": 1,
+        "infiniteCanvases": 1,
+    }
     assert changes_after == changes_before
     assert (
         SyncCursorCodec(test_settings).decode(body["baseCursor"], user_id=first_user_id)
-        == 4
+        == 8
     )
 
 
@@ -124,6 +163,13 @@ async def test_bootstrap_inventory_reports_an_empty_cloud_library(
         "notebookIds": [],
         "folders": [],
         "notebooks": [],
-        "counts": {"folders": 0, "notebooks": 0},
+        "pages": [],
+        "infiniteCanvases": [],
+        "counts": {
+            "folders": 0,
+            "notebooks": 0,
+            "pages": 0,
+            "infiniteCanvases": 0,
+        },
         "baseCursor": response.json()["baseCursor"],
     }

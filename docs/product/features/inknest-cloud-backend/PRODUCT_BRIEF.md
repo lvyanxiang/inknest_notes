@@ -112,20 +112,23 @@ The first slice sets no retention period and performs no physical cleanup.
   plan separately; shared Revision comparison, progress UI, and failure
   recovery remain later checklist items.
 
-### Folder and notebook metadata transfer foundation
+### Library structure and JSON content transfer foundation
 
-- Bootstrap includes complete active folder and notebook metadata snapshots in
-  addition to stable-ID inventories, allowing a later App slice to stage
-  cloud-only metadata without another lookup.
+- Bootstrap includes complete active folder, notebook, page, and
+  infinite-canvas snapshots in addition to stable-ID inventories, allowing a
+  later App slice to stage cloud-only structure and JSON content without
+  another lookup.
 - `POST /api/v1/sync/merge/commit` accepts atomic, account-scoped creation of
-  local-only folder/notebook metadata. It retains client stable IDs and creates
-  parent folders before dependent notebooks.
+  local-only folders, notebooks, pages, and infinite canvases. It retains client
+  stable IDs, creates parents before children, and assigns initial server-owned
+  Revisions and Content Hashes to page/canvas JSON.
 - Exact retries share the existing account/device idempotency mechanism and
   replay the stored response. A stable ID already holding different metadata
-  produces an explicit `409` and rolls back every operation in the batch.
-- This foundation does not yet transfer pages, infinite-canvas documents, or
-  assets, and the App does not yet apply downloaded snapshots. Therefore the
-  overall upload/download acceptance criterion remains incomplete.
+  or content, an occupied placement, or an incompatible notebook layout
+  produces an explicit error and rolls back every operation in the batch.
+- This foundation does not yet transfer asset bytes, and the App does not yet
+  stage or atomically apply downloaded snapshots. Therefore the overall
+  upload/download acceptance criterion remains incomplete.
 
 ## Acceptance Criteria
 
@@ -215,8 +218,9 @@ The first slice sets no retention period and performs no physical cleanup.
   are implemented; visible sign-in/merge screens and transfer progress remain
   later slices.
 - Implementation status: Phase 4 incremental synchronization is complete and
-  Phase 5 library-presence detection, Merge planning, and folder/notebook
-  metadata transfer contracts are delivered in the implementation plan.
+  Phase 5 library-presence detection, Merge planning, and server-side transfer
+  contracts through page/infinite-canvas JSON are delivered in the
+  implementation plan.
 - Verification: Backend tests cover authentication, account isolation,
   revisioned content, asset transfer, cursors, atomic/idempotent commits, page
   and notebook conflicts, all resolution choices, soft delete/restore, both
@@ -229,7 +233,10 @@ The first slice sets no retention period and performs no physical cleanup.
   local archived/folder/root discovery, and real PostgreSQL account isolation.
   Merge-plan tests cover stable-ID-only upload/download/shared actions,
   deterministic retry ordering, empty libraries, and corrupt local IDs.
-  Metadata-transfer tests cover exact replay, parent dependency ordering,
-  conflicting stable-ID rollback, bootstrap snapshots, and real PostgreSQL
-  duplicate prevention. PostgreSQL migration `20260806_0011` remains current;
-  this slice reuses existing tables and requires no schema migration.
+  Structure/content-transfer tests cover exact replay, parent dependency
+  ordering, conflicting stable-ID rollback, full bootstrap snapshots, initial
+  Revision/Content Hash creation, same-content retry, and real PostgreSQL
+  duplicate prevention for pages and infinite canvases. PostgreSQL migration
+  `20260806_0011` remains current; this slice reuses existing tables and
+  requires no schema migration. The complete backend run passes 48
+  non-integration tests and 15 PostgreSQL/MinIO integration tests.

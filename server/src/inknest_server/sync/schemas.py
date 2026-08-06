@@ -45,6 +45,8 @@ class SyncChangesResponse(SyncApiModel):
 class SyncBootstrapCounts(SyncApiModel):
     folders: int
     notebooks: int
+    pages: int
+    infinite_canvases: int
 
 
 class SyncBootstrapFolder(SyncApiModel):
@@ -68,12 +70,42 @@ class SyncBootstrapNotebook(SyncApiModel):
     updated_at: datetime
 
 
+class SyncBootstrapPage(SyncApiModel):
+    id: str
+    notebook_id: str
+    position: int
+    width: float
+    height: float
+    coordinate_space_version: object
+    rotation_quarter_turns: int
+    template: str
+    revision: int
+    content_hash: str
+    content: dict[str, object]
+    conflict_of: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class SyncBootstrapInfiniteCanvas(SyncApiModel):
+    id: str
+    notebook_id: str
+    background: str
+    revision: int
+    content_hash: str
+    content: dict[str, object]
+    created_at: datetime
+    updated_at: datetime
+
+
 class SyncBootstrapResponse(SyncApiModel):
     has_cloud_library: bool
     folder_ids: list[str]
     notebook_ids: list[str]
     folders: list[SyncBootstrapFolder]
     notebooks: list[SyncBootstrapNotebook]
+    pages: list[SyncBootstrapPage]
+    infinite_canvases: list[SyncBootstrapInfiniteCanvas]
     counts: SyncBootstrapCounts
     base_cursor: str
 
@@ -101,19 +133,54 @@ class SyncMergeNotebookMetadata(SyncApiModel):
     is_archived: bool = False
 
 
+class SyncMergePageMetadata(SyncApiModel):
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        extra="forbid",
+        populate_by_name=True,
+    )
+
+    notebook_id: str = Field(min_length=1, max_length=128)
+    position: int = Field(ge=0)
+    width: float = Field(gt=0)
+    height: float = Field(gt=0)
+    coordinate_space_version: object
+    rotation_quarter_turns: int = Field(default=0, ge=0, le=3)
+    template: str = Field(default="blank", min_length=1, max_length=32)
+    content: dict[str, object]
+
+
+class SyncMergeInfiniteCanvasMetadata(SyncApiModel):
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        extra="forbid",
+        populate_by_name=True,
+    )
+
+    notebook_id: str = Field(min_length=1, max_length=128)
+    background: str = Field(default="blank", min_length=1, max_length=32)
+    content: dict[str, object]
+
+
 class SyncMergeCreateOperation(SyncApiModel):
     operation_id: str = Field(min_length=1, max_length=128)
-    resource_type: Literal["folder", "notebook"]
+    resource_type: Literal["folder", "notebook", "page", "infinite_canvas"]
     resource_id: str = Field(min_length=1, max_length=128)
-    metadata: SyncMergeFolderMetadata | SyncMergeNotebookMetadata
+    metadata: (
+        SyncMergeFolderMetadata
+        | SyncMergeNotebookMetadata
+        | SyncMergePageMetadata
+        | SyncMergeInfiniteCanvasMetadata
+    )
 
     @model_validator(mode="after")
     def validate_metadata_type(self) -> SyncMergeCreateOperation:
-        expected_type = (
-            SyncMergeFolderMetadata
-            if self.resource_type == "folder"
-            else SyncMergeNotebookMetadata
-        )
+        expected_type = {
+            "folder": SyncMergeFolderMetadata,
+            "notebook": SyncMergeNotebookMetadata,
+            "page": SyncMergePageMetadata,
+            "infinite_canvas": SyncMergeInfiniteCanvasMetadata,
+        }[self.resource_type]
         if not isinstance(self.metadata, expected_type):
             raise ValueError("metadata does not match resourceType")
         return self
@@ -138,9 +205,11 @@ class SyncMergeCommitRequest(SyncApiModel):
 
 class SyncMergeCreateOperationResult(SyncApiModel):
     operation_id: str
-    resource_type: Literal["folder", "notebook"]
+    resource_type: Literal["folder", "notebook", "page", "infinite_canvas"]
     resource_id: str
     outcome: Literal["applied", "unchanged"]
+    revision: int | None = None
+    content_hash: str | None = None
 
 
 class SyncMergeCommitResponse(SyncApiModel):
