@@ -400,6 +400,9 @@ checksums.sha256
   - [x] Flutter API/合同基础：提供可配置服务地址的认证与 bootstrap 客户端，严格解析
     完整快照，并由 Dart 与 FastAPI 共用合同样例验证字段兼容性；本切片不写本地资料库
     或 bootstrap Cursor。
+  - [x] Flutter 账号接入：Dio 集中携带 Access Token、并发请求共享一次 Refresh Token
+    轮换并仅重试一次；Keychain/平台安全存储恢复会话，资料库账号入口完成注册、登录和
+    本地安全退出，且退出不删除本地笔记。
   - [ ] Flutter 临时落地、大小/SHA-256 校验和原子应用。
 - [ ] 显示同步进度、失败项和重试状态。
 - [ ] 新设备全量 bootstrap 后切换至增量同步。

@@ -16,6 +16,12 @@ class InkNestCloudUser {
       createdAt: _requiredDateTime(json, 'createdAt'),
     );
   }
+
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'email': email,
+    'createdAt': createdAt.toUtc().toIso8601String(),
+  };
 }
 
 class InkNestCloudDevice {
@@ -52,6 +58,16 @@ class InkNestCloudDevice {
       current: current,
     );
   }
+
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'name': name,
+    'platform': platform,
+    'createdAt': createdAt.toUtc().toIso8601String(),
+    'lastSeenAt': lastSeenAt.toUtc().toIso8601String(),
+    'revokedAt': revokedAt?.toUtc().toIso8601String(),
+    'current': current,
+  };
 }
 
 class InkNestAuthSession {
@@ -89,6 +105,15 @@ class InkNestAuthSession {
       device: InkNestCloudDevice.fromJson(_requiredObject(json, 'device')),
     );
   }
+
+  Map<String, Object?> toJson() => {
+    'accessToken': accessToken,
+    'refreshToken': refreshToken,
+    'tokenType': tokenType,
+    'expiresIn': expiresIn,
+    'user': user.toJson(),
+    'device': device.toJson(),
+  };
 }
 
 class InkNestApiError {

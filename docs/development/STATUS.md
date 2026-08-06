@@ -4,15 +4,15 @@
 
 - Milestone: Backend Phase 5 first-sign-in merge and new-device restore is in
   progress; server-side upload/download contracts now cover complete library
-  structure, JSON content, and verified PDF/image/audio assets; Flutter now has
-  the typed API-contract foundation needed to consume that snapshot.
-- Next task: Persist the authenticated Flutter session securely, then implement
-  temporary bootstrap staging, asset size/SHA-256 validation, and atomic local
-  application before any bootstrap Cursor is persisted.
-- Last completed: Flutter now provides a configurable versioned API client for
-  register/login/refresh/logout/bootstrap, strict auth and full-bootstrap DTOs,
-  and a shared bootstrap fixture validated by both Dart and FastAPI tests. No
-  UI, local library data, or applied sync Cursor changed in this slice.
+  structure, JSON content, and verified PDF/image/audio assets; Flutter account
+  authentication is now connected to the real versioned API client.
+- Next task: Implement Flutter temporary bootstrap staging, asset size/SHA-256
+  validation, and atomic local application before any bootstrap Cursor is
+  persisted; then wire the first-sign-in Merge preview.
+- Last completed: Flutter migrated its project-owned transport from `http` to
+  Dio, stores rotated access/refresh sessions in platform secure storage,
+  refreshes concurrent authenticated requests once, and exposes responsive
+  Sign in/Create account/Sign out flows from the local-first library header.
 
 ## Decisions
 
@@ -30,6 +30,12 @@
 - Configure the Flutter service origin at build/run time with
   `--dart-define=INKNEST_API_BASE_URL=<origin>`; keep versioned `/api/v1` paths
   inside the API client instead of duplicating them at call sites.
+- Keep Dio, token attachment, one-time 401 retry, refresh rotation, and safe API
+  error mapping behind `InkNestApiClient`; widgets and repositories never
+  receive or log raw tokens.
+- Store account sessions with `flutter_secure_storage` (Keychain on Apple
+  platforms and encrypted platform storage elsewhere). Authentication remains
+  optional, and local sign-out never deletes the notebook repository.
 - Parse bootstrap payloads strictly and preserve unknown structured
   `coordinateSpaceVersion` values without rewriting them. A malformed or
   internally inconsistent snapshot fails before local writes begin.
@@ -208,6 +214,13 @@
 - Keep unresolved legacy content viewable, navigable, zoomable, searchable, and exportable without allowing normal save, rotate, copy, or duplicate paths to overwrite its source JSON.
 
 ## Verification
+
+- Flutter formatting, all 178 tests, and `flutter analyze` pass after the Dio,
+  secure-session, automatic-refresh, and Account UI integration. Focused tests
+  cover session round-trip, one shared concurrent refresh, one-time 401 retry,
+  rejected-refresh invalidation, form validation/errors, compact large-text
+  accessibility, and sign-out preserving a local notebook. No backend schema or
+  Alembic migration changed in this slice.
 
 - Python formatting, Ruff checks, and mypy pass across 66 source files. All 48
   non-integration tests and all 15 PostgreSQL/MinIO integration tests pass,

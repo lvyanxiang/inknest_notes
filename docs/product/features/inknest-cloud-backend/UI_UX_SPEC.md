@@ -44,6 +44,25 @@ message rather than a blocking decision dialog.
 The current slice implements the detection contract and App state model, not
 the transfer progress screen or the destructive application of cloud data.
 
+### Account entry, sign-in, and registration
+
+1. The library remains the startup screen. Its header Account button opens a
+   dedicated account page and never blocks access to local notebooks.
+2. Signed-out state presents Sign in first and a Create account mode on the
+   same page. Both ask for email/password; registration also asks for password
+   confirmation.
+3. Inline validation keeps invalid requests local. During submission fields and
+   mode switching are disabled and the primary action shows progress.
+4. Success returns to the library with the Account button representing the
+   signed-in identity. Failure stays on the form, preserves the email, clears no
+   notebooks, and explains the next action without exposing server internals.
+5. Signed-in state shows email and device identity plus Sign out. Sign-out
+   returns to the signed-out account page even when server revocation cannot be
+   reached; local notes remain untouched.
+6. Restoring a saved session never overlays the editor or blocks the library.
+   A rejected refresh changes the Account entry to signed out; a temporary
+   offline failure keeps the saved identity available for local-only use.
+
 ### Merge preview semantics
 
 - After detection, the App derives upload, download, and shared-reconciliation
@@ -98,6 +117,18 @@ the transfer progress screen or the destructive application of cloud data.
 | Restoring | Progress on the selected item | Wait | Duplicate taps disabled; failure offers Retry |
 | Delete/edit preserved | Non-blocking sync-status message | Review status or dismiss | Edited resource remains active; Tombstone records the automatic resolution |
 
+### Account state matrix
+
+| State | Visible UI | Available actions | Feedback/recovery |
+|---|---|---|---|
+| Restoring | Library remains usable; Account entry shows compact progress | Open local notebooks | No full-screen startup gate |
+| Signed out | Sign-in form and Create account mode | Submit, switch mode, Back | Existing local library remains available |
+| Invalid input | Field-level message | Correct input | No network request starts |
+| Submitting | Primary action progress; fields disabled | Wait | Duplicate submission prevented |
+| Authentication error | Concise form-level message | Retry, edit credentials | Email remains; password is not logged |
+| Signed in | Email and current device metadata | Done, Sign out | Account entry reflects identity |
+| Offline session | Saved identity plus cloud-unavailable message when needed | Continue locally, Retry later | Credentials and local notes remain |
+
 ### First-sign-in state matrix
 
 | State | Visible UI | Available actions | Feedback/recovery |
@@ -126,6 +157,10 @@ the transfer progress screen or the destructive application of cloud data.
   - Outcomes: `保留原版本`, `使用冲突版本`, `两个都保留`.
   - Keep Original and Use Conflict Version require a concise confirmation;
     Keep Both is the safest emphasized action.
+- Account uses a 44-pixel header target. The account page is a centered card on
+  regular iPad widths and a padded single column on compact widths, with a
+  maximum readable form width. Password fields provide show/hide controls and
+  keyboard submit follows email → password → confirmation/action order.
 
 ## Input And Responsive Behavior
 
@@ -147,6 +182,16 @@ the transfer progress screen or the destructive application of cloud data.
 - Every action has a button alternative; no swipe or gesture is required.
 
 ## UI Acceptance Criteria
+
+- [x] The library opens without authentication and exposes an accessible
+  Account entry at compact and regular widths.
+- [x] Sign in and Create account validate fields, disable duplicate submission,
+  show safe actionable errors, and return to the unchanged library on success
+  or Back.
+- [x] A stored session restores without blocking local notes; Sign out removes
+  only account state and never clears the local notebook repository.
+- [x] Account controls maintain 44-pixel targets, logical keyboard focus, text
+  scaling, password obscuring, and semantic labels.
 
 - [ ] First-sign-in detection distinguishes empty, local-only, cloud-only, and
   local-plus-cloud states without modifying the local library.
@@ -179,7 +224,7 @@ the transfer progress screen or the destructive application of cloud data.
 
 ## Implementation Review
 
-- Status: First-sign-in detection contract, Flutter state model, and
+- Status: Account UI/session delivery is complete. First-sign-in detection contract, Flutter state model, and
   deterministic Merge preview plan are delivered; visible first-sign-in
   screens and plan execution are not wired yet. Conflict and Tombstone server
   contracts are delivered; their Flutter UI is not started.

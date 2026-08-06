@@ -4,6 +4,8 @@ import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:inknest_notes/auth/auth_controller.dart';
+import 'package:inknest_notes/features/account/account_screen.dart';
 import 'package:inknest_notes/features/editor/editor_screen.dart';
 import 'package:inknest_notes/features/editor/infinite_canvas_screen.dart';
 import 'package:inknest_notes/models/notebook.dart';
@@ -12,9 +14,14 @@ import 'package:inknest_notes/models/notebook_layout_mode.dart';
 import 'package:inknest_notes/storage/notebook_repository.dart';
 
 class LibraryScreen extends StatefulWidget {
-  const LibraryScreen({super.key, required this.notebookRepository});
+  const LibraryScreen({
+    super.key,
+    required this.notebookRepository,
+    required this.authController,
+  });
 
   final NotebookRepository notebookRepository;
+  final AuthController authController;
 
   @override
   State<LibraryScreen> createState() => _LibraryScreenState();
@@ -573,6 +580,14 @@ class _LibraryScreenState extends State<LibraryScreen> {
     return confirmed ?? false;
   }
 
+  Future<void> _openAccount() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => AccountScreen(controller: widget.authController),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final visibleFolders = _visibleFolders;
@@ -613,6 +628,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
               onCreateFolder: _createFolder,
               onImportPdf: _importPdf,
               onCreateNotebook: _createNotebook,
+              authController: widget.authController,
+              onOpenAccount: _openAccount,
             ),
             Expanded(
               child: _isLoading
@@ -676,6 +693,8 @@ class _LibraryHeader extends StatelessWidget {
     required this.onCreateFolder,
     required this.onImportPdf,
     required this.onCreateNotebook,
+    required this.authController,
+    required this.onOpenAccount,
   });
 
   final String title;
@@ -693,6 +712,8 @@ class _LibraryHeader extends StatelessWidget {
   final VoidCallback onCreateFolder;
   final VoidCallback onImportPdf;
   final VoidCallback onCreateNotebook;
+  final AuthController authController;
+  final VoidCallback onOpenAccount;
 
   @override
   Widget build(BuildContext context) {
@@ -790,6 +811,11 @@ class _LibraryHeader extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 8),
+                      _LibraryAccountButton(
+                        controller: authController,
+                        onPressed: onOpenAccount,
+                      ),
+                      const SizedBox(width: 8),
                       IconButton.filledTonal(
                         onPressed: onImportPdf,
                         tooltip: 'Import PDF',
@@ -822,6 +848,49 @@ class _LibraryHeader extends StatelessWidget {
           },
         ),
       ),
+    );
+  }
+}
+
+class _LibraryAccountButton extends StatelessWidget {
+  const _LibraryAccountButton({
+    required this.controller,
+    required this.onPressed,
+  });
+
+  final AuthController controller;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        final session = controller.session;
+        if (controller.status == AuthStatus.restoring) {
+          return IconButton(
+            key: const ValueKey('library-account-restoring'),
+            onPressed: onPressed,
+            tooltip: 'Restoring account',
+            constraints: const BoxConstraints.tightFor(width: 48, height: 48),
+            icon: const Icon(Icons.manage_accounts_outlined),
+          );
+        }
+        return IconButton(
+          key: const ValueKey('library-account-button'),
+          onPressed: onPressed,
+          tooltip: session == null
+              ? 'Sign in'
+              : 'Account: ${session.user.email}',
+          constraints: const BoxConstraints.tightFor(width: 48, height: 48),
+          icon: session == null
+              ? const Icon(Icons.account_circle_outlined)
+              : CircleAvatar(
+                  radius: 15,
+                  child: Text(session.user.email.substring(0, 1).toUpperCase()),
+                ),
+        );
+      },
     );
   }
 }

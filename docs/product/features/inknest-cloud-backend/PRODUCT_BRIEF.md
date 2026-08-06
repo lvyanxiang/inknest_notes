@@ -25,6 +25,13 @@ The first synchronization version operates at folder, notebook metadata, page,
 infinite-canvas document, and asset granularity. It does not attempt
 stroke-level merging or real-time collaboration.
 
+The App keeps accounts optional and the local library available before, during,
+and after authentication. It stores the current access/refresh session in
+platform secure storage, refreshes access centrally before or after an
+authentication failure, and clears only cloud credentials on sign-out. Network
+transport uses one project-owned Dio client so pages never handle tokens or raw
+HTTP responses directly.
+
 For concurrent page/notebook edits, the accepted conservative behavior is to
 leave the authoritative resource unchanged and persist both snapshots in a
 pending conflict record with a stable reserved copy ID. The App will offer
@@ -76,6 +83,21 @@ The first slice sets no retention period and performs no physical cleanup.
    folder organization, and supported history.
 7. An explicit replace-local action, if added later, requires a second
    confirmation and a recoverable backup before replacement.
+
+### Account session flow
+
+- The library header exposes one Account entry without replacing the local
+  library as the startup destination.
+- Signed-out users can sign in or create an account with email/password. A
+  successful response is committed to secure storage before the UI reports the
+  user as signed in.
+- App restart restores the stored identity immediately. An expired access token
+  is refreshed centrally; concurrent authenticated requests share one refresh.
+- A rejected refresh clears the unusable cloud session and asks the user to
+  sign in again. A temporary network failure leaves local notes available and
+  does not delete credentials or local data.
+- Sign-out attempts server revocation and always removes the local session. It
+  never deletes notebooks, folders, pages, or assets from the device.
 
 ### First-sign-in library detection contract
 
@@ -154,6 +176,12 @@ The first slice sets no retention period and performs no physical cleanup.
 
 - [x] A user can register, sign in, refresh a session, sign out, and revoke a
   device without exposing another user's data.
+- [x] A Flutter user can register/sign in from the library Account entry,
+  restart the App with the session restored from secure storage, and sign out
+  without changing the local library.
+- [x] Authenticated Flutter requests attach the access token centrally and
+  retry once after one shared refresh; a rejected refresh returns to signed-out
+  state without logging token or response-body secrets.
 - [ ] A device can upload and download notebook metadata, pages, infinite
   canvases, and referenced assets without requiring a full-library transfer on
   every sync.
@@ -234,15 +262,16 @@ The first slice sets no retention period and performs no physical cleanup.
 ## Delivery
 
 - UI/UX spec: `UI_UX_SPEC.md` defines first-sign-in detection plus the future
-  conflict recovery flow. Detection and the deterministic default-Merge plan
-  are implemented; visible sign-in/merge screens and transfer progress remain
-  later slices.
+  conflict recovery flow. Account registration/sign-in/sign-out is implemented;
+  detection and the deterministic default-Merge plan are implemented, while
+  visible Merge and transfer-progress screens remain later slices.
 - Implementation status: Phase 4 incremental synchronization is complete and
   Phase 5 library-presence detection, Merge planning, and server-side transfer
   contracts through page/infinite-canvas JSON and ready asset bytes are
-  delivered in the implementation plan. Flutter now also has typed
-  register/login/refresh/logout/bootstrap transport and full-snapshot parsing;
-  secure session persistence and atomic local bootstrap application remain.
+  delivered in the implementation plan. Flutter now also has Dio-backed typed
+  transport, platform-secure session persistence, shared automatic token
+  refresh, Account UI, and full-snapshot parsing; atomic local bootstrap
+  application remains.
 - Verification: Backend tests cover authentication, account isolation,
   revisioned content, asset transfer, cursors, atomic/idempotent commits, page
   and notebook conflicts, all resolution choices, soft delete/restore, both
