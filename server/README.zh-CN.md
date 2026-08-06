@@ -2,6 +2,8 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
+数据库表与字段说明：[数据库表说明](DATABASE_SCHEMA.zh-CN.md)
+
 InkNest 服务端是为账号备份和 local-first（本地优先）同步提供支持的
 Python/FastAPI 后端。目前已经包含服务骨架、PostgreSQL、MinIO、健康检查、第一版
 账号/会话/设备接口、按用户隔离的资料库元数据持久化、经过大小和 SHA-256 校验的附件
