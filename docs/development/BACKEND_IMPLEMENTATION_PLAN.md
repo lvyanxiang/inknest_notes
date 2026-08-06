@@ -1,6 +1,6 @@
 # InkNest Notes 服务端实施计划
 
-- 状态：Phase 4 实施中
+- 状态：Phase 4 已完成，Phase 5 待实施
 - 更新时间：2026-08-06
 - 产品 Brief：`docs/product/features/inknest-cloud-backend/PRODUCT_BRIEF.md`
 - 对应路线图：Milestone 8 / Post-MVP 6 Sync And Backup
@@ -374,7 +374,9 @@ checksums.sha256
   `conflictOf` 来源关系；Flutter 展示与交互按 UI/UX 规格后续接入）。
 - [x] Tombstone、删除-编辑冲突和恢复（已有笔记本、页面和无限画布；软删除保留完整
   快照，编辑自动优先，显式恢复生成新 Revision；不在本阶段物理清理或设定保留期）。
-- [ ] 离线编辑、断网重试和重复提交测试。
+- [x] 离线编辑、断网重试和重复提交测试（Flutter 队列跨重启持久化与严格响应校验；
+  后端失败批次完整回滚；真实 PostgreSQL 验证不同页面离线合并、响应丢失原样重试和
+  并发幂等）。
 
 完成标准：两个设备从同一版本并发修改时，两边内容都可恢复，任何请求重试不会重复
 创建内容。

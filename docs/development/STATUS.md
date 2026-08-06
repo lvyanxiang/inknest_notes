@@ -2,18 +2,18 @@
 
 ## Current
 
-- Milestone: Backend Phase 4 incremental synchronization and conflicts (in
-  progress)
-- Next task: Expand Phase 4 verification for offline editing, interrupted
-  requests, retries, and repeated submissions across the sync queue and API.
-- Last completed: Added reversible Tombstones for existing notebooks, pages,
-  and infinite canvases. Delete and restore each create a new Revision, normal
-  queries hide soft-deleted resources, and the change feed carries both delete
-  and Tombstone state events. Delete-versus-edit races automatically preserve
-  edited content regardless of arrival order and retain an audit Tombstone.
-  No retention period or physical cleanup was introduced. Flutter Recently
-  Deleted and sync-status UI remain a later integration task under the accepted
-  UI/UX specification.
+- Milestone: Backend Phase 4 incremental synchronization and conflicts
+  completed; Phase 5 first-sign-in merge and new-device restore is next.
+- Next task: Detect when a signed-in device has both an existing local library
+  and cloud library, then define the bootstrap data needed for the accepted
+  default-Merge flow without identifying notebooks by title.
+- Last completed: Closed Phase 4 reliability verification. Flutter preserves
+  offline and in-flight batches across restart, rejects partial, mismatched, or
+  duplicate operation results, and keeps the pull Cursor unchanged until a
+  full change page is applied. The backend rolls back an entire failed batch;
+  real PostgreSQL tests prove separate-page offline edits merge without a
+  conflict and a committed request whose response is lost replays without
+  duplicate Revisions, commits, conflicts, or change events.
 
 ## Decisions
 
@@ -53,8 +53,9 @@
   and authenticated device. A stale account Cursor may submit work, but every
   content operation must pass its resource Revision guard; a Cursor ahead of
   the account state is rejected. The current route updates existing revisioned
-  resources and creates page/notebook conflict records; it does not imply
-  general create, delete, or tombstone support.
+  resources, soft-deletes existing revisioned resources, and creates
+  page/notebook conflict or Tombstone records; it does not imply general
+  resource creation support.
 - Preserve concurrent page/notebook content in durable conflict records. Keep
   the original unchanged, reserve a stable copy ID, derive display labels as
   `原名称（冲突副本）` or `第 N 页（冲突副本）`, and keep device/time as metadata.
@@ -183,6 +184,13 @@
 - Keep unresolved legacy content viewable, navigable, zoomable, searchable, and exportable without allowing normal save, rotate, copy, or duplicate paths to overwrite its source JSON.
 
 ## Verification
+
+- `dart format` and the 11 focused Flutter sync-state tests pass. The full
+  Flutter suite passes all 153 tests, and `flutter analyze` reports no issues.
+- Backend formatting, linting, and strict typing pass; all 41 non-integration
+  tests pass, including atomic rollback of a failed multi-operation batch.
+- All 13 PostgreSQL/MinIO integration tests pass, including offline edits to
+  different pages and exact replay after a successful commit response is lost.
 
 - Backend formatting, linting, and strict typing pass; all 40 non-integration
   tests pass, including soft deletion, idempotent replay, restore, and both

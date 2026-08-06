@@ -84,11 +84,11 @@ The first slice sets no retention period and performs no physical cleanup.
 - [ ] A device can upload and download notebook metadata, pages, infinite
   canvases, and referenced assets without requiring a full-library transfer on
   every sync.
-- [ ] Retrying the same synchronization commit does not duplicate pages,
+- [x] Retrying the same synchronization commit does not duplicate pages,
   assets, conflicts, or change events.
 - [ ] Signing in on a device with local notebooks defaults to merge and does
   not delete local-only content.
-- [ ] Concurrent edits to the same revision produce an explicit page- or
+- [x] Concurrent edits to the same revision produce an explicit page- or
   notebook-level conflict copy; neither edit is silently discarded.
 - [x] Delete-versus-edit conflicts preserve the edited content and retain a
   tombstone for explicit recovery.
@@ -96,7 +96,7 @@ The first slice sets no retention period and performs no physical cleanup.
   verified by size and SHA-256 before becoming available.
 - [ ] A new device can restore notebook structure and all referenced PDF,
   image, and audio assets.
-- [ ] Existing local notebooks remain readable and editable when the service
+- [x] Existing local notebooks remain readable and editable when the service
   is offline or unavailable.
 - [ ] Backup and restore failures leave the pre-existing local library intact.
 
@@ -159,11 +159,14 @@ The first slice sets no retention period and performs no physical cleanup.
 
 - UI/UX spec: `UI_UX_SPEC.md` defines the future App conflict recovery flow;
   Flutter integration is not part of the current server slice.
-- Implementation status: Phase 4 incremental synchronization is in progress in
+- Implementation status: Phase 4 incremental synchronization is complete in
   `docs/development/BACKEND_IMPLEMENTATION_PLAN.md`.
 - Verification: Backend tests cover authentication, account isolation,
   revisioned content, asset transfer, cursors, atomic/idempotent commits, page
   and notebook conflicts, all resolution choices, soft delete/restore, both
-  delete-edit arrival orders, and a real PostgreSQL race that always preserves
-  the edit. PostgreSQL migration `20260806_0011` passes both the development
-  upgrade and an independent empty-database upgrade.
+  delete-edit arrival orders, failed-batch rollback, offline edits to separate
+  pages, response-loss replay, and a real PostgreSQL race that always preserves
+  the edit. The Flutter queue preserves offline/in-flight work across restart,
+  rejects duplicate or partial operation results, and never advances its pull
+  Cursor from a commit response. PostgreSQL migration `20260806_0011` passes
+  both the development upgrade and an independent empty-database upgrade.

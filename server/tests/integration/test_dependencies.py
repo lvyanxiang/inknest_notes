@@ -19,6 +19,7 @@ from inknest_server.models import (
     Conflict,
     Device,
     Notebook,
+    Page,
     SyncChange,
     SyncCommit,
     Tombstone,
@@ -862,6 +863,260 @@ async def test_postgres_delete_edit_race_preserves_the_edit() -> None:
             "delete_after_edit",
             "edit_after_delete",
         }
+    finally:
+        if user_id is not None:
+            async with database.session() as cleanup_session:
+                await cleanup_session.execute(delete(User).where(User.id == user_id))
+                await cleanup_session.commit()
+        await database.close()
+
+
+@pytest.mark.asyncio
+async def test_offline_devices_edit_different_pages_without_conflict() -> None:
+    settings = Settings()
+    database = Database(settings.database_url)
+    suffix = uuid4().hex
+    user_id = None
+
+    try:
+        async with database.session() as setup_session:
+            user = User(
+                email=f"phase4-offline-pages-{suffix}@example.com",
+                password_hash="integration-test-password-hash",
+            )
+            setup_session.add(user)
+            await setup_session.flush()
+            first_device = Device(user_id=user.id, name="Offline A", platform="ios")
+            second_device = Device(user_id=user.id, name="Offline B", platform="ios")
+            setup_session.add_all([first_device, second_device])
+            await setup_session.flush()
+            library = LibraryRepository(setup_session)
+            notebook = await library.create_notebook(
+                user_id=user.id,
+                notebook_id=f"offline-pages-{suffix}",
+                title="Offline pages",
+                layout_mode="paged",
+            )
+            first_page = await library.create_page(
+                user_id=user.id,
+                notebook_id=notebook.id,
+                page_id=f"offline-page-a-{suffix}",
+                position=0,
+                width=768,
+                height=1024,
+                coordinate_space_version=1,
+            )
+            second_page = await library.create_page(
+                user_id=user.id,
+                notebook_id=notebook.id,
+                page_id=f"offline-page-b-{suffix}",
+                position=1,
+                width=768,
+                height=1024,
+                coordinate_space_version=1,
+            )
+            latest_sequence = await SyncChangeRepository(setup_session).latest_sequence(
+                user_id=user.id
+            )
+            await setup_session.commit()
+            user_id = user.id
+            first_device_id = first_device.id
+            second_device_id = second_device.id
+            first_page_id = first_page.id
+            second_page_id = second_page.id
+
+        codec = SyncCursorCodec(settings)
+        base_cursor = codec.encode(user_id=user_id, sequence=latest_sequence)
+
+        def request_for(
+            *, device_id: UUID, page_id: str, label: str
+        ) -> SyncCommitRequest:
+            return SyncCommitRequest.model_validate(
+                {
+                    "deviceId": str(device_id),
+                    "idempotencyKey": f"offline-{label}-{suffix}",
+                    "baseCursor": base_cursor,
+                    "operations": [
+                        {
+                            "operationId": f"edit-{label}",
+                            "operation": "upsert",
+                            "resourceType": "page",
+                            "resourceId": page_id,
+                            "baseRevision": 0,
+                            "content": {"device": label, "strokes": [label]},
+                        }
+                    ],
+                }
+            )
+
+        async def commit(request: SyncCommitRequest, device_id: UUID) -> str:
+            async with database.session() as session:
+                response = await SyncService(
+                    session,
+                    SyncChangeRepository(session),
+                    codec,
+                ).commit(
+                    user_id=user_id,
+                    authenticated_device_id=device_id,
+                    request=request,
+                )
+                return response.results[0].outcome
+
+        outcomes = await asyncio.gather(
+            commit(
+                request_for(
+                    device_id=first_device_id,
+                    page_id=first_page_id,
+                    label="A",
+                ),
+                first_device_id,
+            ),
+            commit(
+                request_for(
+                    device_id=second_device_id,
+                    page_id=second_page_id,
+                    label="B",
+                ),
+                second_device_id,
+            ),
+        )
+
+        async with database.session() as verify_session:
+            pages = list(
+                await verify_session.scalars(
+                    select(Page)
+                    .where(
+                        Page.user_id == user_id,
+                        Page.id.in_([first_page_id, second_page_id]),
+                    )
+                    .order_by(Page.position)
+                )
+            )
+            conflicts = await verify_session.scalar(
+                select(func.count())
+                .select_from(Conflict)
+                .where(Conflict.user_id == user_id)
+            )
+
+        assert list(outcomes) == ["applied", "applied"]
+        assert [page.content["device"] for page in pages] == ["A", "B"]
+        assert [page.revision for page in pages] == [1, 1]
+        assert conflicts == 0
+    finally:
+        if user_id is not None:
+            async with database.session() as cleanup_session:
+                await cleanup_session.execute(delete(User).where(User.id == user_id))
+                await cleanup_session.commit()
+        await database.close()
+
+
+@pytest.mark.asyncio
+async def test_response_loss_retries_the_persisted_commit_without_duplicates() -> None:
+    settings = Settings()
+    database = Database(settings.database_url)
+    suffix = uuid4().hex
+    user_id = None
+
+    try:
+        async with database.session() as setup_session:
+            user = User(
+                email=f"phase4-response-loss-{suffix}@example.com",
+                password_hash="integration-test-password-hash",
+            )
+            setup_session.add(user)
+            await setup_session.flush()
+            device = Device(user_id=user.id, name="Retry iPad", platform="ios")
+            setup_session.add(device)
+            await setup_session.flush()
+            notebook = await LibraryRepository(setup_session).create_notebook(
+                user_id=user.id,
+                notebook_id=f"response-loss-{suffix}",
+                title="Response loss",
+                layout_mode="paged",
+            )
+            latest_sequence = await SyncChangeRepository(setup_session).latest_sequence(
+                user_id=user.id
+            )
+            await setup_session.commit()
+            user_id = user.id
+            device_id = device.id
+            notebook_id = notebook.id
+
+        codec = SyncCursorCodec(settings)
+        request = SyncCommitRequest.model_validate(
+            {
+                "deviceId": str(device_id),
+                "idempotencyKey": f"lost-response-{suffix}",
+                "baseCursor": codec.encode(
+                    user_id=user_id,
+                    sequence=latest_sequence,
+                ),
+                "operations": [
+                    {
+                        "operationId": "offline-notebook-edit",
+                        "operation": "upsert",
+                        "resourceType": "notebook",
+                        "resourceId": notebook_id,
+                        "baseRevision": 0,
+                        "content": {"value": "committed-before-response-loss"},
+                    }
+                ],
+            }
+        )
+
+        async with database.session() as first_session:
+            first = await SyncService(
+                first_session,
+                SyncChangeRepository(first_session),
+                codec,
+            ).commit(
+                user_id=user_id,
+                authenticated_device_id=device_id,
+                request=request,
+            )
+
+        async with database.session() as retry_session:
+            retry = await SyncService(
+                retry_session,
+                SyncChangeRepository(retry_session),
+                codec,
+            ).commit(
+                user_id=user_id,
+                authenticated_device_id=device_id,
+                request=request,
+            )
+
+        async with database.session() as verify_session:
+            stored_notebook = await verify_session.scalar(
+                select(Notebook).where(
+                    Notebook.id == notebook_id,
+                    Notebook.user_id == user_id,
+                )
+            )
+            commit_count = await verify_session.scalar(
+                select(func.count())
+                .select_from(SyncCommit)
+                .where(SyncCommit.user_id == user_id)
+            )
+            revision_change_count = await verify_session.scalar(
+                select(func.count())
+                .select_from(SyncChange)
+                .where(
+                    SyncChange.user_id == user_id,
+                    SyncChange.resource_id == notebook_id,
+                    SyncChange.revision == 1,
+                )
+            )
+
+        assert first.replayed is False
+        assert retry.replayed is True
+        assert retry.results == first.results
+        assert retry.next_cursor == first.next_cursor
+        assert stored_notebook is not None
+        assert stored_notebook.revision == 1
+        assert stored_notebook.content == {"value": "committed-before-response-loss"}
+        assert commit_count == 1
+        assert revision_change_count == 1
     finally:
         if user_id is not None:
             async with database.session() as cleanup_session:

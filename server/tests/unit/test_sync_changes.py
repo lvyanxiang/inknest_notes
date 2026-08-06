@@ -290,6 +290,83 @@ async def test_sync_commit_is_atomic_and_idempotent(
     assert key_reused.json()["error"]["code"] == "sync_idempotency_key_reused"
 
 
+async def test_failed_sync_batch_rolls_back_prior_operations_and_retry_reservation(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    registered = await register(client, "sync-atomic-failure@example.com")
+    user_id = UUID(registered["user"]["id"])
+    await LibraryRepository(db_session).create_notebook(
+        user_id=user_id,
+        notebook_id="atomic-rollback-notebook",
+        title="Atomic rollback",
+        layout_mode="paged",
+    )
+    await db_session.commit()
+    changes = await client.get(
+        "/api/v1/sync/changes",
+        headers=bearer(registered["accessToken"]),
+    )
+    before_changes = await db_session.scalar(
+        select(func.count())
+        .select_from(SyncChange)
+        .where(SyncChange.user_id == user_id)
+    )
+
+    response = await client.post(
+        "/api/v1/sync/commit",
+        json={
+            "deviceId": registered["device"]["id"],
+            "idempotencyKey": "atomic-failure-1",
+            "baseCursor": changes.json()["nextCursor"],
+            "operations": [
+                {
+                    "operationId": "would-write",
+                    "operation": "upsert",
+                    "resourceType": "notebook",
+                    "resourceId": "atomic-rollback-notebook",
+                    "baseRevision": 0,
+                    "content": {"value": "must roll back"},
+                },
+                {
+                    "operationId": "missing-resource",
+                    "operation": "upsert",
+                    "resourceType": "page",
+                    "resourceId": "missing-page",
+                    "baseRevision": 0,
+                    "content": {"value": "missing"},
+                },
+            ],
+        },
+        headers=bearer(registered["accessToken"]),
+    )
+    db_session.expire_all()
+    notebook = await db_session.scalar(
+        select(Notebook).where(
+            Notebook.id == "atomic-rollback-notebook",
+            Notebook.user_id == user_id,
+        )
+    )
+    after_changes = await db_session.scalar(
+        select(func.count())
+        .select_from(SyncChange)
+        .where(SyncChange.user_id == user_id)
+    )
+    commit_rows = await db_session.scalar(
+        select(func.count())
+        .select_from(SyncCommit)
+        .where(SyncCommit.user_id == user_id)
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "sync_resource_not_found"
+    assert notebook is not None
+    assert notebook.revision == 0
+    assert notebook.content == {}
+    assert after_changes == before_changes
+    assert commit_rows == 0
+
+
 async def test_sync_commit_creates_an_idempotent_page_conflict_copy(
     client: AsyncClient,
     db_session: AsyncSession,

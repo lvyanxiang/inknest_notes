@@ -208,6 +208,109 @@ void main() {
     expect(snapshot.inFlightBatch?.idempotencyKey, batch.idempotencyKey);
   });
 
+  test('does not clear a batch for duplicate operation results', () async {
+    await store.markChangesPageApplied('cursor-1');
+    await store.enqueueUpsert(
+      resourceType: SyncResourceType.page,
+      resourceId: 'page-1',
+      baseRevision: 1,
+      content: {'strokes': <Object?>[]},
+    );
+    final batch = await store.prepareNextCommit();
+
+    await expectLater(
+      store.markCommitSucceeded(
+        idempotencyKey: batch!.idempotencyKey,
+        results: const [
+          SyncOperationCommitResult(operationId: 'operation-1', revision: 2),
+          SyncOperationCommitResult(operationId: 'operation-1', revision: 2),
+        ],
+      ),
+      throwsA(isA<SyncCommitStateException>()),
+    );
+
+    final snapshot = await store.loadSnapshot();
+    expect(snapshot.inFlightBatch?.idempotencyKey, batch.idempotencyKey);
+  });
+
+  test(
+    'keeps offline edits and exact retry state across repeated restarts',
+    () async {
+      final offlineIds = [
+        'offline-operation-1',
+        'offline-operation-2',
+        'offline-operation-3',
+        'offline-batch-1',
+        'offline-batch-2',
+      ];
+      final offlineStore = FileSyncStateStore(
+        rootDirectory: tempDirectory,
+        userId: 'offline-user',
+        deviceId: 'offline-device',
+        idFactory: (_) => offlineIds.removeAt(0),
+        clock: () => DateTime.utc(2026, 8, 6, 13),
+      );
+      await offlineStore.markChangesPageApplied('cursor-before-offline');
+      for (var index = 0; index < 3; index++) {
+        await offlineStore.enqueueUpsert(
+          resourceType: SyncResourceType.page,
+          resourceId: 'offline-page-$index',
+          baseRevision: index,
+          content: {'offlineEdit': index},
+        );
+      }
+
+      final afterOfflineRestart = FileSyncStateStore(
+        rootDirectory: tempDirectory,
+        userId: 'offline-user',
+        deviceId: 'offline-device',
+        idFactory: (_) => offlineIds.removeAt(0),
+        clock: () => DateTime.utc(2026, 8, 6, 13),
+      );
+      final firstBatch = await afterOfflineRestart.prepareNextCommit(
+        maxOperations: 2,
+      );
+      final afterResponseLoss = FileSyncStateStore(
+        rootDirectory: tempDirectory,
+        userId: 'offline-user',
+        deviceId: 'offline-device',
+        idFactory: (_) => offlineIds.removeAt(0),
+        clock: () => DateTime.utc(2026, 8, 6, 13),
+      );
+      final retryBatch = await afterResponseLoss.prepareNextCommit(
+        maxOperations: 2,
+      );
+
+      expect(firstBatch, isNotNull);
+      expect(firstBatch!.operations, hasLength(2));
+      expect(retryBatch!.toJson(), firstBatch.toJson());
+      expect(
+        (await afterResponseLoss.loadSnapshot()).lastAppliedCursor,
+        'cursor-before-offline',
+      );
+
+      await afterResponseLoss.markCommitSucceeded(
+        idempotencyKey: retryBatch.idempotencyKey,
+        results: [
+          for (final operation in retryBatch.operations)
+            SyncOperationCommitResult(
+              operationId: operation.operationId,
+              revision: operation.baseRevision + 1,
+            ),
+        ],
+      );
+      final secondBatch = await afterResponseLoss.prepareNextCommit();
+
+      expect(secondBatch, isNotNull);
+      expect(secondBatch!.operations, hasLength(1));
+      expect(secondBatch.operations.single.resourceId, 'offline-page-2');
+      expect(
+        (await afterResponseLoss.loadSnapshot()).lastAppliedCursor,
+        'cursor-before-offline',
+      );
+    },
+  );
+
   test(
     'requires a pulled Cursor before moving pending work in flight',
     () async {

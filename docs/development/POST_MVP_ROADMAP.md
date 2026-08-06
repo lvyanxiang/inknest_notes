@@ -259,7 +259,7 @@ document workflows are stable.
 
 - [x] Choose a custom Python backend with PostgreSQL and MinIO, delivered as a
   `server/` project in the existing repository.
-- [ ] Define sync metadata.
+- [x] Define sync metadata.
 - [ ] Add notebook archive format.
 - [ ] Implement backup and restore.
 - [ ] Add conflict detection and explicit recovery behavior.

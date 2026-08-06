@@ -404,6 +404,18 @@ PostgreSQL 和 MinIO 已运行时，可以执行真实依赖集成测试：
 INKNEST_RUN_INTEGRATION=1 uv run pytest -m integration
 ```
 
+需要集中验证同步可靠性时，分别在仓库根目录和 `server/` 执行：
+
+```bash
+flutter test test/sync/file_sync_state_store_test.dart
+cd server
+uv run pytest tests/unit/test_sync_changes.py
+INKNEST_RUN_INTEGRATION=1 uv run pytest -m integration
+```
+
+这些测试覆盖离线/上传中批次跨重启保存、提交响应严格匹配、失败批次原子回滚、响应丢失后
+幂等重试，以及不同页面的离线编辑合并。测试使用隔离的临时数据，可以安全重复执行。
+
 在仓库根目录验证 Compose 配置：
 
 ```bash

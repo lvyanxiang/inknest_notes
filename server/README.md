@@ -412,6 +412,20 @@ With PostgreSQL and MinIO running, include the integration test:
 INKNEST_RUN_INTEGRATION=1 uv run pytest -m integration
 ```
 
+Focused synchronization reliability checks are available from the repository
+root and `server/` respectively:
+
+```bash
+flutter test test/sync/file_sync_state_store_test.dart
+cd server
+uv run pytest tests/unit/test_sync_changes.py
+INKNEST_RUN_INTEGRATION=1 uv run pytest -m integration
+```
+
+These cover persisted offline/in-flight work, strict commit-response matching,
+atomic rollback, idempotent replay after response loss, and independent-page
+offline edits. Tests use isolated temporary data and are safe to repeat.
+
 Validate orchestration from the repository root:
 
 ```bash

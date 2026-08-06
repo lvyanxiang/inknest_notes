@@ -157,7 +157,8 @@ class FileSyncStateStore {
       final revisions = {
         for (final result in results) result.operationId: result.revision,
       };
-      if (revisions.length != batch.operations.length ||
+      if (results.length != batch.operations.length ||
+          revisions.length != batch.operations.length ||
           batch.operations.any(
             (operation) => !revisions.containsKey(operation.operationId),
           )) {
