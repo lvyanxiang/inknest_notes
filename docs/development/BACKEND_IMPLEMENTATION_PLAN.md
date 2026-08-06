@@ -366,7 +366,8 @@ checksums.sha256
 - [x] 同步变更日志和不透明 Cursor。
 - [x] 批量、幂等 `/sync/commit`（当前安全范围为已有笔记本、页面和无限画布的
   Revision 内容更新；新增资源、删除和冲突副本由后续条目扩展）。
-- [ ] Flutter 本地待同步队列和最后成功 Cursor。
+- [x] Flutter 本地待同步队列和最后成功 Cursor（按账号和设备隔离；持久化待提交操作与
+  可原样重试的 in-flight 批次；只在完整应用拉取页后推进 Cursor）。
 - [x] Revision 乐观锁。
 - [ ] 页面级和笔记本级冲突副本。
 - [ ] Tombstone、删除-编辑冲突和恢复。

@@ -4,16 +4,16 @@
 
 - Milestone: Backend Phase 4 incremental synchronization and conflicts (in
   progress)
-- Next task: Add the Flutter persistent pending-sync queue and persist the last
-  successfully applied opaque Cursor. Keep local editing independent of network
-  availability, remove queued work only after a successful whole-batch commit,
-  and do not add conflict-copy semantics until its later item.
-- Last completed: Added transactional, atomic and idempotent
-  `POST /api/v1/sync/commit` batches for existing notebook, page, and infinite-
-  canvas content. Requests are bound to the authenticated device, validate the
-  account Cursor and each resource's `baseRevision`, cache per-operation results
-  under `(user, device, idempotencyKey)`, reject Key reuse with different input,
-  and never partially apply a failed batch. Alembic is at `20260806_0009`.
+- Next task: Define page- and notebook-level conflict-copy semantics and then
+  implement their server persistence/API. This changes conflict behavior, so
+  confirm the exact copy naming, ancestry links, and resolution states before
+  implementation.
+- Last completed: Added the Flutter file-backed synchronization state store,
+  isolated by account and device. It persists coalesced pending upserts, one
+  immutable in-flight commit for exact retry, server Revision rebasing for edits
+  made during upload, and the last fully applied pull Cursor. Commit completion
+  never advances that pull Cursor, preventing interleaved remote changes from
+  being skipped. Existing local notebook saving remains network-independent.
 
 ## Decisions
 
@@ -55,6 +55,12 @@
   the account state is rejected. The current route updates existing revisioned
   resources only and does not imply create, delete, tombstone, or conflict-copy
   support.
+- Store Flutter sync state under an account/device sidecar, not inside notebook
+  JSON. Coalesce unsent edits per resource while preserving the oldest
+  `baseRevision`; freeze an in-flight request until exact retry succeeds; keep
+  newer local edits pending and rebase them from per-operation commit results.
+  Advance the opaque pull Cursor only after the complete change page is safely
+  applied locally, never merely because `/sync/commit` returned `nextCursor`.
 - Keep asset cleanup operator-run and dry-run by default: expired pending
   uploads receive a 24-hour staging grace period, cancelled/completed residue
   waits 1 hour, final orphans are quarantined for 7 days, and every final object
@@ -171,6 +177,11 @@
 
 ## Verification
 
+- Flutter formatting, all 151 tests, and static analysis pass after adding the
+  local sync state layer. Nine focused tests cover restart persistence,
+  per-resource coalescing, exact in-flight retries, edit-during-upload
+  rebasing, response validation, initial Cursor gating, account/device
+  isolation, concurrent queue writes, and corrupt-state preservation.
 - Backend formatting, linting, and strict typing pass across 60 Python
   source/test files; all 36 non-integration tests pass.
 - All nine PostgreSQL/MinIO integration tests pass, including concurrent

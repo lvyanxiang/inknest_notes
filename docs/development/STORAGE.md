@@ -14,6 +14,10 @@ notebooks/
       pdfs/
         source-name.pdf
         source-name-2.pdf
+sync/
+  user-id/
+    device-id/
+      state.json
 ```
 
 ## `notebooks/index.json`
@@ -60,3 +64,33 @@ Each point stores:
 - `y`
 - `pressure`
 - `time`
+
+## `sync/<user-id>/<device-id>/state.json`
+
+Synchronization state is a versioned sidecar and is not embedded in notebook
+JSON. Separating it prevents account/session changes from rewriting local note
+content and allows two devices or accounts to maintain independent progress.
+
+The file stores:
+
+- `formatVersion`: currently `1`.
+- `lastAppliedCursor`: the opaque server Cursor for the last pull page that was
+  completely and safely applied locally.
+- `pendingOperations`: coalesced notebook, page, or infinite-canvas upserts.
+- `inFlightBatch`: the exact `baseCursor`, idempotency Key, operations, and
+  creation time for a request that may need byte-for-byte semantic retry.
+
+The App must save local note content before enqueueing its sync operation. A
+network failure leaves the in-flight batch unchanged. A successful whole-batch
+response clears only that batch; edits made while it was uploading remain
+pending and receive the successful server Revision as their next
+`baseRevision`.
+
+The Cursor returned by `POST /sync/commit` is not automatically treated as
+locally applied. It may include another device's interleaved changes. Only the
+Cursor from a `GET /sync/changes` page may be persisted, and only after every
+change in that page has been safely applied.
+
+Writes use a temporary JSON file followed by replacement. Invalid or unknown
+state formats raise an error and are preserved for diagnosis rather than being
+silently reset.
