@@ -95,6 +95,23 @@ The first slice sets no retention period and performs no physical cleanup.
 - Cancelling, going offline, receiving `401`, or receiving a server error makes
   no local mutations and leaves the existing local library usable.
 
+### Default Merge planning contract
+
+- The App converts the two stable-ID inventories into a deterministic plan
+  before any network or local write begins.
+- A local-only folder/notebook produces `uploadLocal`; a cloud-only
+  folder/notebook produces `downloadCloud`; an ID present on both sides
+  produces `reconcileShared` so a later slice can compare Revision and ancestry
+  without guessing which side should win.
+- The plan contains resource type and stable ID only. It has no title/name
+  matching path and no delete, replace-local, or overwrite action.
+- Actions are sorted by resource type, action, and ID so recreating a plan for
+  retry produces the same order. Planning is pure and cannot mutate either
+  library.
+- This slice implements the plan only. Executing uploads/downloads, comparing
+  shared Revision state, progress UI, and failure recovery remain separate
+  checklist items.
+
 ## Acceptance Criteria
 
 - [x] A user can register, sign in, refresh a session, sign out, and revoke a
@@ -179,10 +196,11 @@ The first slice sets no retention period and performs no physical cleanup.
 ## Delivery
 
 - UI/UX spec: `UI_UX_SPEC.md` defines first-sign-in detection plus the future
-  conflict recovery flow. The detection state model is implemented; visible
-  sign-in/merge screens and transfer progress remain later slices.
+  conflict recovery flow. Detection and the deterministic default-Merge plan
+  are implemented; visible sign-in/merge screens and transfer progress remain
+  later slices.
 - Implementation status: Phase 4 incremental synchronization is complete and
-  Phase 5 library-presence detection is delivered in
+  Phase 5 library-presence detection plus Merge planning are delivered in
   `docs/development/BACKEND_IMPLEMENTATION_PLAN.md`.
 - Verification: Backend tests cover authentication, account isolation,
   revisioned content, asset transfer, cursors, atomic/idempotent commits, page
@@ -194,5 +212,7 @@ The first slice sets no retention period and performs no physical cleanup.
   Cursor from a commit response. Bootstrap tests cover empty and populated
   accounts, stable-ID comparison, duplicate/inconsistent response rejection,
   local archived/folder/root discovery, and real PostgreSQL account isolation.
+  Merge-plan tests cover stable-ID-only upload/download/shared actions,
+  deterministic retry ordering, empty libraries, and corrupt local IDs.
   PostgreSQL migration `20260806_0011` remains current; this read-only slice
   requires no schema migration.

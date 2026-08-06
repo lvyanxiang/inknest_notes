@@ -3,16 +3,16 @@
 ## Current
 
 - Milestone: Backend Phase 5 first-sign-in merge and new-device restore is in
-  progress; the non-destructive local/cloud library detection slice is complete.
-- Next task: Implement the default Merge plan from stable IDs, beginning with
-  local-only upload and cloud-only download planning without applying or
-  overwriting either library yet.
-- Last completed: Added authenticated, read-only `GET /api/v1/sync/bootstrap`
-  with account-scoped active folder/notebook stable IDs, counts, and a safe
-  base Cursor. Flutter now scans root, folder, and archived local notebooks,
-  validates the server inventory, distinguishes empty/local-only/cloud-only/
-  local-and-cloud states, and recommends Merge without receiving or comparing
-  titles. No note content is transferred or mutated in this slice.
+  progress; library detection and the deterministic default-Merge decision
+  plan are complete.
+- Next task: Execute local-only uploads and cloud-only downloads safely,
+  starting with folder/notebook creation contracts and idempotent retry without
+  advancing the bootstrap Cursor prematurely.
+- Last completed: Flutter converts local/cloud stable-ID inventories into an
+  immutable, deterministic plan of `uploadLocal`, `downloadCloud`, and
+  `reconcileShared` actions for folders and notebooks. Planning rejects empty
+  or duplicate IDs, never reads titles, and has no delete, replace-local, or
+  overwrite action. This slice still performs no network or storage mutation.
 
 ## Decisions
 
@@ -27,6 +27,10 @@
 - Treat `/sync/bootstrap`'s current `baseCursor` as a bootstrap hand-off point,
   not an applied pull Cursor; save it only after a later full-bootstrap flow
   has downloaded, verified, and atomically applied the matching cloud state.
+- Build first-sign-in Merge actions deterministically from resource type,
+  action kind, and stable ID. Local-only resources upload, cloud-only resources
+  download, and shared IDs enter Revision/ancestry reconciliation; planning
+  itself must never create a delete or replace-local action.
 - When no implementation task is selected, product analysis may recommend candidates but must not automatically start Post-MVP 6-9 or infer work from plain roadmap bullets.
 - Keep normal `$inknest-project` work focused on code, roadmap, and product implementation; do not automatically update task book or opening report during development tasks.
 - Use `$inknest-academic-docs` for `docs/academic/GRADUATION_TASK_BOOK.md`, `docs/academic/OPENING_REPORT.md`, academic writing requirements, graduation schedule, and formal reference maintenance.
@@ -186,6 +190,13 @@
 - Keep unresolved legacy content viewable, navigable, zoomable, searchable, and exportable without allowing normal save, rotate, copy, or duplicate paths to overwrite its source JSON.
 
 ## Verification
+
+- The 9 focused Flutter bootstrap/Merge tests pass, covering four presence
+  states, local inventory discovery, response validation, stable-ID-only action
+  selection, deterministic retry ordering, empty plans, and corrupt-ID
+  rejection. The full Flutter suite passes all 162 tests and `flutter analyze`
+  reports no issues. No Python, PostgreSQL, MinIO, API, dependency, or schema
+  code changed, so backend tests and Alembic were not rerun for this slice.
 
 - Flutter bootstrap's 5 focused tests and the full 158-test suite pass;
   `flutter analyze` reports no issues. Python formatting, linting, and strict

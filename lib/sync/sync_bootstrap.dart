@@ -5,11 +5,24 @@ enum SyncLibraryPresence { empty, localOnly, cloudOnly, localAndCloud }
 enum SyncBootstrapRecommendation { nothingToDo, merge }
 
 class SyncLibraryInventory {
-  SyncLibraryInventory({
+  factory SyncLibraryInventory({
     Iterable<String> folderIds = const [],
     Iterable<String> notebookIds = const [],
-  }) : folderIds = Set.unmodifiable(folderIds),
-       notebookIds = Set.unmodifiable(notebookIds);
+  }) {
+    final folders = folderIds.toList();
+    final notebooks = notebookIds.toList();
+    _validateStableIds(folders, field: 'folderIds');
+    _validateStableIds(notebooks, field: 'notebookIds');
+    return SyncLibraryInventory._(
+      folderIds: Set.unmodifiable(folders),
+      notebookIds: Set.unmodifiable(notebooks),
+    );
+  }
+
+  const SyncLibraryInventory._({
+    required this.folderIds,
+    required this.notebookIds,
+  });
 
   final Set<String> folderIds;
   final Set<String> notebookIds;
@@ -116,9 +129,13 @@ List<String> _stringList(Object? value, {required String field}) {
     throw FormatException('$field must be a list of strings.');
   }
   final items = value.cast<String>();
+  _validateStableIds(items, field: field);
+  return items;
+}
+
+void _validateStableIds(List<String> items, {required String field}) {
   if (items.any((item) => item.isEmpty) ||
       items.toSet().length != items.length) {
     throw FormatException('$field must contain unique, non-empty IDs.');
   }
-  return items;
 }

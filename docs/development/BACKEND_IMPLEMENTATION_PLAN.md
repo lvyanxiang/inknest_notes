@@ -386,7 +386,8 @@ checksums.sha256
 - [x] 检测设备本地资料库与云端资料库同时存在（认证、只读的
   `/sync/bootstrap` 返回有效文件夹/笔记本稳定 ID；Flutter 扫描本地清单并区分
   empty/local-only/cloud-only/local-and-cloud）。
-- [ ] 实现默认 Merge，不以标题推断对象身份。
+- [x] 实现默认 Merge 决策计划，不以标题推断对象身份（仅生成确定顺序的
+  upload-local、download-cloud、reconcile-shared 动作；不包含删除、替换或覆盖）。
 - [ ] 上传本地独有、下载云端独有。
 - [ ] 显示同步进度、失败项和重试状态。
 - [ ] 新设备全量 bootstrap 后切换至增量同步。

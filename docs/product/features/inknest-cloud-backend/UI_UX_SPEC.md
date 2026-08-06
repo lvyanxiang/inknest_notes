@@ -44,6 +44,19 @@ message rather than a blocking decision dialog.
 The current slice implements the detection contract and App state model, not
 the transfer progress screen or the destructive application of cloud data.
 
+### Merge preview semantics
+
+- After detection, the App derives upload, download, and shared-reconciliation
+  counts before the user starts Merge. The eventual confirmation surface may
+  summarize these counts, but it must not show an item as deleted or replaced.
+- Local-only and cloud-only IDs are independent items even when their visible
+  names match. Shared IDs are labelled as requiring safe synchronization; the
+  preview must not promise that either device's copy will overwrite the other.
+- `合并（推荐）` remains the primary action. `稍后` exits without executing the
+  plan, and rebuilding the preview after retry must produce the same ordering.
+- This delivery adds the state/plan contract only; no new screen is wired in
+  the current App yet.
+
 ### Conflict recovery
 
 1. Background sync receives a `conflict` operation result or change event.
@@ -96,6 +109,7 @@ the transfer progress screen or the destructive application of cloud data.
 | Local + cloud | Show both library counts and the no-overwrite promise | `合并（推荐）`, Later | Same titles with different IDs remain separate |
 | Offline/error | Explain that checking could not finish | Retry, Continue offline | Existing local library remains available |
 | Authentication expired | Explain that sign-in must be refreshed | Sign in again, Continue offline | Never clear local data or credentials silently |
+| Merge preview | Upload/download/shared counts and no-overwrite promise | `合并（推荐）`, Later | Planning alone makes no local or cloud changes |
 
 ## Layout And Components
 
@@ -138,6 +152,8 @@ the transfer progress screen or the destructive application of cloud data.
   local-plus-cloud states without modifying the local library.
 - [ ] Local-plus-cloud emphasizes `合并（推荐）`, never deduplicates by title,
   and lets the user continue offline without losing local content.
+- [x] The App can derive deterministic upload, download, and shared-ID
+  reconciliation counts without exposing a delete or replace-local action.
 
 - [ ] A background conflict never blocks or overwrites ongoing local writing.
 - [ ] Pending conflicts survive restart and appear consistently on other
@@ -163,9 +179,10 @@ the transfer progress screen or the destructive application of cloud data.
 
 ## Implementation Review
 
-- Status: First-sign-in detection contract and Flutter state model delivered;
-  visible first-sign-in screens are not wired yet. Conflict and Tombstone
-  server contracts are delivered; their Flutter UI is not started.
+- Status: First-sign-in detection contract, Flutter state model, and
+  deterministic Merge preview plan are delivered; visible first-sign-in
+  screens and plan execution are not wired yet. Conflict and Tombstone server
+  contracts are delivered; their Flutter UI is not started.
 - Intentional deviations: The server reserves the copy ID immediately but only
   materializes a normal notebook/page when the user chooses Keep Both. This
   avoids temporary duplicate library entries while preserving both snapshots.
