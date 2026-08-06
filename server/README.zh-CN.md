@@ -145,7 +145,7 @@ API 在宿主机运行或使用默认 Compose 端口映射时，以下地址相�
 | `POST` | `/assets/upload-sessions/{upload_id}/complete` | Bearer Access Token | 校验暂存对象并创建可用附件元数据。 |
 | `DELETE` | `/assets/upload-sessions/{upload_id}` | Bearer Access Token | 取消当前用户拥有的待上传会话。 |
 | `GET` | `/assets/{asset_id}/download-url` | Bearer Access Token | 为当前用户拥有的可用附件签发短期下载 URL。 |
-| `GET` | `/sync/bootstrap` | Bearer Access Token | 首次合并前读取文件夹、笔记本、页面和无限画布快照。 |
+| `GET` | `/sync/bootstrap` | Bearer Access Token | 首次合并前读取资料库结构、正文及已验证附件元数据。 |
 | `POST` | `/sync/merge/commit` | Bearer Access Token | 原子、幂等地创建本地独有的资料库结构和 JSON 正文。 |
 | `GET` | `/sync/changes?cursor=...&limit=...` | Bearer Access Token | 按顺序读取当前用户的增量变更，并返回下一个不透明 Cursor。 |
 | `POST` | `/sync/commit` | Bearer Access Token | 原子、幂等地批量更新或软删除已有笔记本、页面或无限画布。 |
@@ -229,9 +229,9 @@ curl \
 ### 首次登录 bootstrap 清单
 
 `GET /api/v1/sync/bootstrap` 是需要 Access Token 的只读资料库检测接口。它返回排序后的
-有效 `folderIds`、`notebookIds`、完整 `folders`、`notebooks`、`pages` 和
-`infiniteCanvases` 快照、对应数量、`hasCloudLibrary`，以及绑定当前账号的
-`baseCursor`：
+有效 `folderIds`、`notebookIds`、完整 `folders`、`notebooks`、`pages`、
+`infiniteCanvases` 和 `assets` 快照、对应数量、`hasCloudLibrary`，以及绑定当前
+账号的 `baseCursor`：
 
 ```bash
 curl 'http://127.0.0.1:8000/api/v1/sync/bootstrap' \
@@ -239,9 +239,11 @@ curl 'http://127.0.0.1:8000/api/v1/sync/bootstrap' \
 ```
 
 App 使用稳定 ID 与本地清单比较，名称和标题不参与身份判断。快照包含页面/无限画布的
-正文 JSON、服务端 Revision 和 Content Hash，供后续下载云端独有对象使用，但这个只读
-请求不会把它写入本地，也不会上传、删除或覆盖资料；附件字节仍需通过附件下载 URL
-单独取得。当前不能把 `baseCursor` 直接保存成“已应用”的
+正文 JSON、服务端 Revision 和 Content Hash。`assets` 只包含已经完成 MinIO 大小、MIME
+和 SHA-256 校验的 PDF、图片、音频元数据；待上传或失败会话不会出现，也不会返回内部
+Object Key 或预签名 URL。客户端使用稳定 `assetId` 调用附件下载接口取得短期 URL。
+这个只读请求不会写入本地，也不会上传、删除或覆盖资料。当前不能把 `baseCursor` 直接
+保存成“已应用”的
 拉取 Cursor；后续完整 bootstrap 必须先下载、校验并原子写入全部对应快照。返回 `401`
 表示 Access Token 缺失、过期或设备已被撤销。
 

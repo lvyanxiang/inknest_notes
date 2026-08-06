@@ -4,7 +4,7 @@ from uuid import UUID
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from inknest_server.models import Folder, InfiniteCanvas, Notebook, Page
+from inknest_server.models import Asset, Folder, InfiniteCanvas, Notebook, Page
 
 
 @dataclass(frozen=True, slots=True)
@@ -13,6 +13,7 @@ class SyncLibraryInventory:
     notebooks: list[Notebook]
     pages: list[Page]
     infinite_canvases: list[InfiniteCanvas]
+    assets: list[Asset]
 
     @property
     def folder_ids(self) -> list[str]:
@@ -25,7 +26,11 @@ class SyncLibraryInventory:
     @property
     def has_cloud_library(self) -> bool:
         return bool(
-            self.folder_ids or self.notebook_ids or self.pages or self.infinite_canvases
+            self.folder_ids
+            or self.notebook_ids
+            or self.pages
+            or self.infinite_canvases
+            or self.assets
         )
 
 
@@ -76,9 +81,25 @@ class SyncBootstrapRepository:
             )
             .order_by(InfiniteCanvas.notebook_id, InfiniteCanvas.id)
         )
+        assets = await self._session.scalars(
+            select(Asset)
+            .join(
+                Notebook,
+                and_(
+                    Notebook.id == Asset.notebook_id,
+                    Notebook.user_id == Asset.user_id,
+                ),
+            )
+            .where(
+                Asset.user_id == user_id,
+                Notebook.deleted_at.is_(None),
+            )
+            .order_by(Asset.notebook_id, Asset.id)
+        )
         return SyncLibraryInventory(
             folders=list(folders),
             notebooks=list(notebooks),
             pages=list(pages),
             infinite_canvases=list(infinite_canvases),
+            assets=list(assets),
         )

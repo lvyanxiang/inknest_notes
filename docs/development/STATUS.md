@@ -3,16 +3,15 @@
 ## Current
 
 - Milestone: Backend Phase 5 first-sign-in merge and new-device restore is in
-  progress; server-side upload/download contracts now cover folders,
-  notebooks, page JSON, and infinite-canvas JSON.
-- Next task: Transfer referenced asset metadata/bytes, then implement Flutter
-  temporary staging, checksum validation, and atomic local application before
-  any bootstrap Cursor is persisted.
-- Last completed: `GET /api/v1/sync/bootstrap` now returns complete active page
-  and infinite-canvas snapshots, and `POST /api/v1/sync/merge/commit` creates
-  local-only pages/canvases after their parent notebooks. JSON content receives
-  server-owned Revision 1 and Content Hash values; retries and failures remain
-  atomic and idempotent.
+  progress; server-side upload/download contracts now cover complete library
+  structure, JSON content, and verified PDF/image/audio assets.
+- Next task: Implement Flutter temporary bootstrap staging, size/SHA-256
+  validation, and atomic local application before any bootstrap Cursor is
+  persisted.
+- Last completed: `GET /api/v1/sync/bootstrap` now includes metadata for ready
+  assets on active notebooks. Pending uploads remain invisible; clients request
+  short-lived download URLs by stable asset ID, while internal MinIO keys and
+  signed URLs never enter the bootstrap snapshot.
 
 ## Decisions
 
@@ -87,6 +86,10 @@
   uploads receive a 24-hour staging grace period, cancelled/completed residue
   waits 1 hour, final orphans are quarantined for 7 days, and every final object
   is rechecked against `assets.object_key` immediately before deletion.
+- Treat `assets` rows as the ready/restorable boundary. Bootstrap exposes their
+  stable IDs, media metadata, byte size, and SHA-256 only; it excludes upload
+  sessions, object keys, and signed URLs. Clients obtain a fresh per-asset URL
+  and must verify downloaded bytes before local application.
 - Treat revision numbers and content hashes as server-owned. For the current
   backend slice, hash UTF-8 JSON with recursively sorted keys, compact
   separators, preserved Unicode/array order, and rejected non-finite numbers;
@@ -201,11 +204,11 @@
 
 - Python formatting, Ruff checks, and mypy pass across 66 source files. All 48
   non-integration tests and all 15 PostgreSQL/MinIO integration tests pass,
-  including atomic folder/notebook/page/infinite-canvas creation, initial
-  Revision records, exact replay, incompatible-layout rollback, and duplicate
-  prevention. OpenAPI still exposes 19 operations. No Alembic migration was
-  created because this slice reuses existing library, revision, change, and
-  commit tables.
+  including atomic library creation, ready-only asset bootstrap scoping, hidden
+  MinIO keys/URLs, and real PDF/image/audio upload → verification → inventory →
+  download byte round trips. OpenAPI still exposes 19 operations. No Alembic
+  migration was created because this slice reuses existing asset and library
+  tables.
 
 - The 9 focused Flutter bootstrap/Merge tests pass, covering four presence
   states, local inventory discovery, response validation, stable-ID-only action

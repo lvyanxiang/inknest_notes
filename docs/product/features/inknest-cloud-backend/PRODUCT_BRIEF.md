@@ -126,9 +126,25 @@ The first slice sets no retention period and performs no physical cleanup.
   replay the stored response. A stable ID already holding different metadata
   or content, an occupied placement, or an incompatible notebook layout
   produces an explicit error and rolls back every operation in the batch.
-- This foundation does not yet transfer asset bytes, and the App does not yet
-  stage or atomically apply downloaded snapshots. Therefore the overall
+- Asset bytes use the separate verified transfer contract below. The App does
+  not yet stage or atomically apply downloaded snapshots, so the overall
   upload/download acceptance criterion remains incomplete.
+
+### Ready asset transfer foundation
+
+- Bootstrap includes account-scoped metadata for ready PDF, image, and audio
+  assets attached to active notebooks. Pending, cancelled, expired, or failed
+  upload sessions never appear as restorable assets.
+- The snapshot exposes stable asset/notebook IDs, kind, original filename,
+  media type, byte size, and SHA-256. It never exposes an internal MinIO object
+  key or a reusable signed URL.
+- Local-only bytes use the existing retryable upload-session flow and become
+  visible only after MinIO size, media type, and SHA-256 verification succeeds.
+  Cloud-only bytes use the stable asset ID to request a short-lived download
+  URL, after which the App must verify size and SHA-256 before local use.
+- Server-side PDF, image, and audio transfer is now complete. Flutter temporary
+  staging and atomic local application remain required before the overall
+  first-merge upload/download criterion can be accepted.
 
 ## Acceptance Criteria
 
@@ -219,8 +235,8 @@ The first slice sets no retention period and performs no physical cleanup.
   later slices.
 - Implementation status: Phase 4 incremental synchronization is complete and
   Phase 5 library-presence detection, Merge planning, and server-side transfer
-  contracts through page/infinite-canvas JSON are delivered in the
-  implementation plan.
+  contracts through page/infinite-canvas JSON and ready asset bytes are
+  delivered in the implementation plan.
 - Verification: Backend tests cover authentication, account isolation,
   revisioned content, asset transfer, cursors, atomic/idempotent commits, page
   and notebook conflicts, all resolution choices, soft delete/restore, both
@@ -239,4 +255,5 @@ The first slice sets no retention period and performs no physical cleanup.
   duplicate prevention for pages and infinite canvases. PostgreSQL migration
   `20260806_0011` remains current; this slice reuses existing tables and
   requires no schema migration. The complete backend run passes 48
-  non-integration tests and 15 PostgreSQL/MinIO integration tests.
+  non-integration tests and 15 PostgreSQL/MinIO integration tests, including
+  ready-only bootstrap visibility and real PDF/image/audio byte round trips.

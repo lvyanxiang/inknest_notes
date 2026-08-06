@@ -123,6 +123,10 @@ async def test_complete_upload_verifies_and_creates_one_ready_asset(
         "/api/v1/assets/asset-1/download-url",
         headers=bearer(owner["accessToken"]),
     )
+    pending_bootstrap = await client.get(
+        "/api/v1/sync/bootstrap",
+        headers=bearer(owner["accessToken"]),
+    )
 
     cross_user = await client.post(
         f"/api/v1/assets/upload-sessions/{body['uploadId']}/complete",
@@ -144,9 +148,19 @@ async def test_complete_upload_verifies_and_creates_one_ready_asset(
         "/api/v1/assets/asset-1/download-url",
         headers=bearer(owner["accessToken"]),
     )
+    ready_bootstrap = await client.get(
+        "/api/v1/sync/bootstrap",
+        headers=bearer(owner["accessToken"]),
+    )
+    stranger_bootstrap = await client.get(
+        "/api/v1/sync/bootstrap",
+        headers=bearer(stranger["accessToken"]),
+    )
 
     assert cross_user.status_code == 404
     assert pending_download.status_code == 404
+    assert pending_bootstrap.status_code == 200
+    assert pending_bootstrap.json()["assets"] == []
     assert first.status_code == 200
     assert retry.status_code == 200
     assert first.json() == retry.json()
@@ -162,6 +176,16 @@ async def test_complete_upload_verifies_and_creates_one_ready_asset(
     assert download.json()["contentType"] == "image/png"
     assert download.json()["byteSize"] == len(CONTENT)
     assert download.json()["sha256"] == SHA256
+    assert ready_bootstrap.status_code == 200
+    assert [asset["id"] for asset in ready_bootstrap.json()["assets"]] == ["asset-1"]
+    assert ready_bootstrap.json()["assets"][0]["notebookId"] == "notebook-1"
+    assert ready_bootstrap.json()["assets"][0]["byteSize"] == len(CONTENT)
+    assert ready_bootstrap.json()["assets"][0]["sha256"] == SHA256
+    assert "objectKey" not in ready_bootstrap.json()["assets"][0]
+    assert "downloadUrl" not in ready_bootstrap.json()["assets"][0]
+    assert ready_bootstrap.json()["counts"]["assets"] == 1
+    assert stranger_bootstrap.status_code == 200
+    assert stranger_bootstrap.json()["assets"] == []
     assert len(object_storage.download_requests) == 1
 
     upload = await db_session.scalar(select(AssetUpload))

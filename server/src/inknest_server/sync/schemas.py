@@ -47,6 +47,7 @@ class SyncBootstrapCounts(SyncApiModel):
     notebooks: int
     pages: int
     infinite_canvases: int
+    assets: int
 
 
 class SyncBootstrapFolder(SyncApiModel):
@@ -98,6 +99,18 @@ class SyncBootstrapInfiniteCanvas(SyncApiModel):
     updated_at: datetime
 
 
+class SyncBootstrapAsset(SyncApiModel):
+    id: str
+    notebook_id: str
+    kind: Literal["pdf", "image", "audio"]
+    original_filename: str
+    content_type: str
+    byte_size: int
+    sha256: str
+    created_at: datetime
+    updated_at: datetime
+
+
 class SyncBootstrapResponse(SyncApiModel):
     has_cloud_library: bool
     folder_ids: list[str]
@@ -106,6 +119,7 @@ class SyncBootstrapResponse(SyncApiModel):
     notebooks: list[SyncBootstrapNotebook]
     pages: list[SyncBootstrapPage]
     infinite_canvases: list[SyncBootstrapInfiniteCanvas]
+    assets: list[SyncBootstrapAsset]
     counts: SyncBootstrapCounts
     base_cursor: str
 

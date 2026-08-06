@@ -391,6 +391,12 @@ async def test_presigned_asset_round_trip(
                 user_id=user.id,
                 asset_id=completed.id,
             )
+            async with database.session() as bootstrap_session:
+                bootstrap = await SyncService(
+                    bootstrap_session,
+                    SyncChangeRepository(bootstrap_session),
+                    SyncCursorCodec(settings),
+                ).bootstrap(user_id=user.id)
             async with AsyncClient() as http_client:
                 download_response = await http_client.get(download.download_url)
 
@@ -404,6 +410,10 @@ async def test_presigned_asset_round_trip(
                 await storage.stat_object(completed.object_key)
             ).content_type == content_type
             assert download.asset.id == completed.id
+            assert [asset.id for asset in bootstrap.assets] == [completed.id]
+            assert bootstrap.assets[0].sha256 == completed.sha256
+            assert bootstrap.assets[0].byte_size == len(content)
+            assert bootstrap.counts.assets == 1
             assert download_response.status_code == 200
             assert download_response.content == content
             assert download_response.headers["content-type"] == content_type

@@ -153,7 +153,7 @@ All application routes use the base URL `http://127.0.0.1:8000/api/v1`.
 | `POST` | `/assets/upload-sessions/{upload_id}/complete` | Bearer Access Token | Verify the staged object and create ready asset metadata. |
 | `DELETE` | `/assets/upload-sessions/{upload_id}` | Bearer Access Token | Cancel one pending upload session owned by the current user. |
 | `GET` | `/assets/{asset_id}/download-url` | Bearer Access Token | Sign a short-lived download URL for one ready, owned asset. |
-| `GET` | `/sync/bootstrap` | Bearer Access Token | Read folder, notebook, page, and infinite-canvas snapshots before a first merge. |
+| `GET` | `/sync/bootstrap` | Bearer Access Token | Read library structure, JSON content, and verified asset metadata before a first merge. |
 | `POST` | `/sync/merge/commit` | Bearer Access Token | Atomically and idempotently create local-only library structure and JSON content. |
 | `GET` | `/sync/changes?cursor=...&limit=...` | Bearer Access Token | Read ordered changes for the current user and receive the next opaque cursor. |
 | `POST` | `/sync/commit` | Bearer Access Token | Atomically commit an idempotent batch of existing notebook, page, or infinite-canvas content updates or soft deletes. |
@@ -210,8 +210,8 @@ Never log or retain the complete signed URL.
 
 `GET /api/v1/sync/bootstrap` is an authenticated, read-only presence check. It
 returns sorted active `folderIds` and `notebookIds`, complete `folders`,
-`notebooks`, `pages`, and `infiniteCanvases` snapshots, matching counts, a
-`hasCloudLibrary` flag, and an account-bound `baseCursor`:
+`notebooks`, `pages`, `infiniteCanvases`, and `assets` snapshots, matching
+counts, a `hasCloudLibrary` flag, and an account-bound `baseCursor`:
 
 ```bash
 curl 'http://127.0.0.1:8000/api/v1/sync/bootstrap' \
@@ -220,8 +220,11 @@ curl 'http://127.0.0.1:8000/api/v1/sync/bootstrap' \
 
 The App compares these IDs with its local inventory; names and titles are not
 identity. Page/canvas snapshots include body JSON, server Revision, and Content
-Hash. This read-only request does not apply them locally and does not upload,
-delete, or overwrite anything; asset bytes still require their download URLs.
+Hash. `assets` contains only PDF/image/audio metadata whose MinIO bytes passed
+size, media-type, and SHA-256 verification. Pending or failed uploads are
+excluded, and neither internal object keys nor signed URLs are exposed. Request
+a fresh short-lived download URL by stable asset ID. This read-only request
+does not apply anything locally and does not upload, delete, or overwrite data.
 Do not save `baseCursor` as the
 applied pull Cursor yet: a later full-bootstrap slice must first download,
 verify, and atomically apply all corresponding snapshots. `401` means the

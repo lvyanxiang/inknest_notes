@@ -24,6 +24,7 @@ from inknest_server.sync.merge import (
     SyncMergeResourceExistsError,
 )
 from inknest_server.sync.schemas import (
+    SyncBootstrapAsset,
     SyncBootstrapCounts,
     SyncBootstrapFolder,
     SyncBootstrapInfiniteCanvas,
@@ -129,11 +130,15 @@ class SyncService:
                 SyncBootstrapInfiniteCanvas.model_validate(canvas)
                 for canvas in inventory.infinite_canvases
             ],
+            assets=[
+                SyncBootstrapAsset.model_validate(asset) for asset in inventory.assets
+            ],
             counts=SyncBootstrapCounts(
                 folders=len(inventory.folder_ids),
                 notebooks=len(inventory.notebook_ids),
                 pages=len(inventory.pages),
                 infinite_canvases=len(inventory.infinite_canvases),
+                assets=len(inventory.assets),
             ),
             base_cursor=self._cursor_codec.encode(
                 user_id=user_id,
