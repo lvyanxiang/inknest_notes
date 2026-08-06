@@ -19,7 +19,13 @@ class SyncApiModel(BaseModel):
 class SyncChangeResponse(SyncApiModel):
     change_id: UUID
     resource_type: Literal[
-        "folder", "notebook", "page", "infinite_canvas", "asset", "conflict"
+        "folder",
+        "notebook",
+        "page",
+        "infinite_canvas",
+        "asset",
+        "conflict",
+        "tombstone",
     ]
     resource_id: str
     operation: Literal["upsert", "delete"]
@@ -38,11 +44,19 @@ class SyncChangesResponse(SyncApiModel):
 
 class SyncCommitOperation(SyncApiModel):
     operation_id: str = Field(min_length=1, max_length=128)
-    operation: Literal["upsert"]
+    operation: Literal["upsert", "delete"]
     resource_type: Literal["notebook", "page", "infinite_canvas"]
     resource_id: str = Field(min_length=1, max_length=128)
     base_revision: int = Field(ge=0)
-    content: dict[str, object]
+    content: dict[str, object] | None = None
+
+    @model_validator(mode="after")
+    def validate_operation_content(self) -> SyncCommitOperation:
+        if self.operation == "upsert" and self.content is None:
+            raise ValueError("content is required for an upsert operation")
+        if self.operation == "delete" and self.content is not None:
+            raise ValueError("content must be omitted for a delete operation")
+        return self
 
 
 class SyncCommitRequest(SyncApiModel):
@@ -69,8 +83,9 @@ class SyncCommitOperationResult(SyncApiModel):
     revision: int
     content_hash: str
     changed: bool
-    outcome: Literal["applied", "unchanged", "conflict"]
+    outcome: Literal["applied", "unchanged", "conflict", "deleted", "delete_conflict"]
     conflict: SyncConflictResponse | None = None
+    tombstone: SyncTombstoneResponse | None = None
 
 
 class SyncCommitResponse(SyncApiModel):
@@ -97,6 +112,26 @@ class SyncConflictResponse(SyncApiModel):
     resolution: Literal["keep_original", "use_conflict", "keep_both"] | None
     resolved_by_device_id: UUID | None
     resolved_at: datetime | None
+    created_at: datetime
+
+
+class SyncTombstoneResponse(SyncApiModel):
+    id: UUID
+    resource_type: Literal["notebook", "page", "infinite_canvas"]
+    resource_id: str
+    base_revision: int
+    resource_revision: int
+    deleted_revision: int | None
+    content_hash: str
+    content: dict[str, object]
+    deleted_by_device_id: UUID | None
+    deleted_at: datetime
+    state: Literal["active", "restored"]
+    conflict_kind: Literal["delete_after_edit", "edit_after_delete"] | None
+    resolution: Literal["restored_snapshot", "preserved_edit"] | None
+    conflicting_device_id: UUID | None
+    restored_by_device_id: UUID | None
+    restored_at: datetime | None
     created_at: datetime
 
 

@@ -2,7 +2,7 @@ import asyncio
 import hashlib
 import os
 from datetime import UTC, datetime, timedelta
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from httpx import AsyncClient
@@ -21,6 +21,7 @@ from inknest_server.models import (
     Notebook,
     SyncChange,
     SyncCommit,
+    Tombstone,
     User,
 )
 from inknest_server.repositories import (
@@ -727,6 +728,140 @@ async def test_postgres_replays_one_conflict_copy_for_concurrent_retries() -> No
         assert original is not None
         assert original.revision == 1
         assert original.content == {"label": "server-version"}
+    finally:
+        if user_id is not None:
+            async with database.session() as cleanup_session:
+                await cleanup_session.execute(delete(User).where(User.id == user_id))
+                await cleanup_session.commit()
+        await database.close()
+
+
+@pytest.mark.asyncio
+async def test_postgres_delete_edit_race_preserves_the_edit() -> None:
+    settings = Settings()
+    database = Database(settings.database_url)
+    suffix = uuid4().hex
+    user_id = None
+
+    try:
+        async with database.session() as setup_session:
+            user = User(
+                email=f"phase4-delete-edit-{suffix}@example.com",
+                password_hash="integration-test-password-hash",
+            )
+            setup_session.add(user)
+            await setup_session.flush()
+            deleting_device = Device(
+                user_id=user.id, name="Deleting iPad", platform="ios"
+            )
+            editing_device = Device(
+                user_id=user.id, name="Editing iPad", platform="ios"
+            )
+            setup_session.add_all([deleting_device, editing_device])
+            await setup_session.flush()
+            notebook = await LibraryRepository(setup_session).create_notebook(
+                user_id=user.id,
+                notebook_id=f"delete-edit-{suffix}",
+                title="Delete/edit race",
+                layout_mode="paged",
+            )
+            await ContentRepository(setup_session).save_notebook_content(
+                user_id=user.id,
+                notebook_id=notebook.id,
+                base_revision=0,
+                content={"label": "base"},
+                device_id=editing_device.id,
+            )
+            latest_sequence = await SyncChangeRepository(setup_session).latest_sequence(
+                user_id=user.id
+            )
+            await setup_session.commit()
+            user_id = user.id
+            notebook_id = notebook.id
+            deleting_device_id = deleting_device.id
+            editing_device_id = editing_device.id
+
+        codec = SyncCursorCodec(settings)
+        base_cursor = codec.encode(user_id=user_id, sequence=latest_sequence)
+        delete_request = SyncCommitRequest.model_validate(
+            {
+                "deviceId": str(deleting_device_id),
+                "idempotencyKey": f"delete-{suffix}",
+                "baseCursor": base_cursor,
+                "operations": [
+                    {
+                        "operationId": "delete-notebook",
+                        "operation": "delete",
+                        "resourceType": "notebook",
+                        "resourceId": notebook_id,
+                        "baseRevision": 1,
+                    }
+                ],
+            }
+        )
+        edit_request = SyncCommitRequest.model_validate(
+            {
+                "deviceId": str(editing_device_id),
+                "idempotencyKey": f"edit-{suffix}",
+                "baseCursor": base_cursor,
+                "operations": [
+                    {
+                        "operationId": "edit-notebook",
+                        "operation": "upsert",
+                        "resourceType": "notebook",
+                        "resourceId": notebook_id,
+                        "baseRevision": 1,
+                        "content": {"label": "offline edit survives"},
+                    }
+                ],
+            }
+        )
+
+        async def commit(
+            request: SyncCommitRequest, device_id: UUID
+        ) -> tuple[str, int]:
+            async with database.session() as session:
+                result = await SyncService(
+                    session,
+                    SyncChangeRepository(session),
+                    codec,
+                ).commit(
+                    user_id=user_id,
+                    authenticated_device_id=device_id,
+                    request=request,
+                )
+                operation = result.results[0]
+                return operation.outcome, operation.revision
+
+        outcomes = await asyncio.gather(
+            commit(delete_request, deleting_device_id),
+            commit(edit_request, editing_device_id),
+        )
+
+        async with database.session() as verify_session:
+            stored = await verify_session.scalar(
+                select(Notebook).where(
+                    Notebook.id == notebook_id,
+                    Notebook.user_id == user_id,
+                )
+            )
+            tombstones = list(
+                await verify_session.scalars(
+                    select(Tombstone).where(Tombstone.user_id == user_id)
+                )
+            )
+
+        assert "delete_conflict" in {outcome for outcome, _ in outcomes}
+        assert stored is not None
+        assert stored.deleted_at is None
+        assert stored.content == {"label": "offline edit survives"}
+        assert len(tombstones) == 1
+        assert tombstones[0].state == "restored"
+        assert tombstones[0].resolution == "preserved_edit"
+        assert tombstones[0].conflict_kind in {
+            "delete_after_edit",
+            "edit_after_delete",
+        }
     finally:
         if user_id is not None:
             async with database.session() as cleanup_session:

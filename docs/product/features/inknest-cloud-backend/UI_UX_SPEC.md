@@ -1,10 +1,10 @@
-# InkNest Cloud Conflict Recovery UI/UX Specification
+# InkNest Cloud Conflict And Deletion Recovery UI/UX Specification
 
 - Status: Accepted
 - Updated: 2026-08-06
 - Product brief: `PRODUCT_BRIEF.md`
-- Affected surfaces: Future sync status panel, conflict detail sheet, notebook
-  shelf and Pages panel
+- Affected surfaces: Future sync status panel, conflict detail sheet, Recently
+  Deleted list, notebook shelf and Pages panel
 
 ## Recommendation
 
@@ -16,6 +16,12 @@ or Keep Both.
 
 The server slice implements the contract and persistence only. Flutter UI work
 must follow this specification in a later slice.
+
+Ordinary deletion should remove the item from its normal library immediately
+without implying permanent destruction. A future Recently Deleted entry point
+lists active Tombstones and offers Restore. If a concurrent edit races with a
+delete, the edit is already preserved by the server; surface a calm sync-status
+message rather than a blocking decision dialog.
 
 ## User Flow
 
@@ -31,6 +37,19 @@ must follow this specification in a later slice.
 6. The user may close the sheet without resolving. Pending conflicts remain
    visible across restart and other devices.
 
+### Deletion recovery flow
+
+1. Deleting a notebook, page, or infinite canvas removes it from its normal
+   location and confirms that it can be restored from Recently Deleted.
+2. Sync receives both the resource delete event and its active Tombstone.
+3. Recently Deleted shows the resource type, deletion time, and source device;
+   Restore remains available offline as a queued action.
+4. A confirmed restore stays busy until the server returns the restored
+   Tombstone, then the resource reappears at its prior location as a new
+   Revision.
+5. When sync reports `delete_conflict`, show “已保留另一台设备上的编辑” in
+   sync status. No user choice is required and no editor modal appears.
+
 ## State Matrix
 
 | State | Visible UI | Available actions | Feedback/recovery |
@@ -41,6 +60,9 @@ must follow this specification in a later slice.
 | Resolved | Resolution label and completion feedback | Close | Sync updates affected resources |
 | Offline/error | Both versions remain locally/cloud recoverable | Retry or close | Explain that no content was discarded |
 | Stale resolution | “原版本已再次更新” | Review latest state, Keep Both, or Keep Original | Never overwrite the newer edit |
+| Recently deleted | Resource type plus deletion device/time | Restore or close | Full snapshot remains recoverable; no permanent-delete action yet |
+| Restoring | Progress on the selected item | Wait | Duplicate taps disabled; failure offers Retry |
+| Delete/edit preserved | Non-blocking sync-status message | Review status or dismiss | Edited resource remains active; Tombstone records the automatic resolution |
 
 ## Layout And Components
 
@@ -88,6 +110,10 @@ must follow this specification in a later slice.
   metadata.
 - [ ] Portrait, landscape, compact width, keyboard focus and semantic labels
   are verified.
+- [ ] Recently Deleted lists active Tombstones and restores one item without
+  blocking writing or implying a retention period that the service has not set.
+- [ ] A delete-versus-edit result explains that the edit was preserved and
+  never asks the user to choose between deleting and keeping it.
 
 ## Verification
 
@@ -99,7 +125,8 @@ must follow this specification in a later slice.
 
 ## Implementation Review
 
-- Status: Server contract delivered; Flutter UI not started.
+- Status: Conflict and Tombstone server contracts delivered; Flutter UI not
+  started.
 - Intentional deviations: The server reserves the copy ID immediately but only
   materializes a normal notebook/page when the user chooses Keep Both. This
   avoids temporary duplicate library entries while preserving both snapshots.

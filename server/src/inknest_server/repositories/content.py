@@ -38,6 +38,12 @@ class RevisionConflictError(Exception):
         )
 
 
+class ResourceDeletedError(Exception):
+    def __init__(self, *, current_revision: int) -> None:
+        self.current_revision = current_revision
+        super().__init__("the resource is soft-deleted")
+
+
 @dataclass(frozen=True, slots=True)
 class ContentSaveResult:
     revision: int
@@ -167,6 +173,8 @@ class ContentRepository:
             raise ValueError("base_revision must be non-negative")
         if device_id is not None:
             await self._ensure_active_device_owned(user_id=user_id, device_id=device_id)
+        if resource.deleted_at is not None:
+            raise ResourceDeletedError(current_revision=resource.revision)
 
         normalized_content = normalized_json_object(content)
         new_hash = calculate_content_hash(normalized_content)

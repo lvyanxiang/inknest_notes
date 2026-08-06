@@ -7,10 +7,19 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from inknest_server.config import Settings
-from inknest_server.models import Conflict, Notebook, Page, SyncChange, SyncCommit, User
+from inknest_server.models import (
+    Conflict,
+    Notebook,
+    Page,
+    SyncChange,
+    SyncCommit,
+    Tombstone,
+    User,
+)
 from inknest_server.repositories import (
     ContentRepository,
     LibraryRepository,
+    LibraryResourceNotFoundError,
     SyncChangeRepository,
 )
 from inknest_server.sync import InvalidSyncCursorError, SyncCursorCodec
@@ -639,3 +648,287 @@ async def test_sync_commit_rejects_another_device_id(
 
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "sync_device_mismatch"
+
+
+async def test_sync_delete_is_soft_and_restorable(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    registered = await register(client, "sync-delete-restore@example.com")
+    user_id = UUID(registered["user"]["id"])
+    notebook = await LibraryRepository(db_session).create_notebook(
+        user_id=user_id,
+        notebook_id="delete-restore-notebook",
+        title="Recover me",
+        layout_mode="paged",
+    )
+    await ContentRepository(db_session).save_notebook_content(
+        user_id=user_id,
+        notebook_id=notebook.id,
+        base_revision=0,
+        content={"blocks": [{"id": "kept"}]},
+    )
+    notebook_id = notebook.id
+    await db_session.commit()
+    changes = await client.get(
+        "/api/v1/sync/changes",
+        headers=bearer(registered["accessToken"]),
+    )
+    payload = {
+        "deviceId": registered["device"]["id"],
+        "idempotencyKey": "delete-restore-1",
+        "baseCursor": changes.json()["nextCursor"],
+        "operations": [
+            {
+                "operationId": "delete-notebook",
+                "operation": "delete",
+                "resourceType": "notebook",
+                "resourceId": notebook_id,
+                "baseRevision": 1,
+            }
+        ],
+    }
+
+    deleted = await client.post(
+        "/api/v1/sync/commit",
+        json=payload,
+        headers=bearer(registered["accessToken"]),
+    )
+    body = deleted.json()
+    replayed = await client.post(
+        "/api/v1/sync/commit",
+        json=payload,
+        headers=bearer(registered["accessToken"]),
+    )
+    db_session.expire_all()
+    stored = await db_session.scalar(
+        select(Notebook).where(Notebook.id == notebook_id, Notebook.user_id == user_id)
+    )
+    with pytest.raises(LibraryResourceNotFoundError):
+        await LibraryRepository(db_session).get_notebook(
+            user_id=user_id,
+            notebook_id=notebook_id,
+        )
+
+    assert deleted.status_code == 200
+    assert body["results"][0]["outcome"] == "deleted"
+    assert body["results"][0]["revision"] == 2
+    assert body["results"][0]["tombstone"]["state"] == "active"
+    assert replayed.json() == {**body, "replayed": True}
+    assert stored is not None
+    assert stored.deleted_at is not None
+    assert stored.content == {"blocks": [{"id": "kept"}]}
+
+    restored = await client.post(
+        f"/api/v1/sync/tombstones/{body['results'][0]['tombstone']['id']}/restore",
+        headers=bearer(registered["accessToken"]),
+    )
+    db_session.expire_all()
+    recovered = await LibraryRepository(db_session).get_notebook(
+        user_id=user_id,
+        notebook_id=notebook_id,
+    )
+
+    assert restored.status_code == 200
+    assert restored.json()["state"] == "restored"
+    assert restored.json()["resolution"] == "restored_snapshot"
+    assert recovered is not None
+    assert recovered.revision == 3
+    assert recovered.deleted_at is None
+    assert recovered.content == {"blocks": [{"id": "kept"}]}
+
+
+async def test_delete_edit_races_always_preserve_the_edit(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    registered = await register(client, "sync-delete-edit@example.com")
+    user_id = UUID(registered["user"]["id"])
+    library = LibraryRepository(db_session)
+    delete_first = await library.create_notebook(
+        user_id=user_id,
+        notebook_id="delete-first",
+        title="Delete first",
+        layout_mode="paged",
+    )
+    edit_first = await library.create_notebook(
+        user_id=user_id,
+        notebook_id="edit-first",
+        title="Edit first",
+        layout_mode="paged",
+    )
+    content = ContentRepository(db_session)
+    for notebook in (delete_first, edit_first):
+        await content.save_notebook_content(
+            user_id=user_id,
+            notebook_id=notebook.id,
+            base_revision=0,
+            content={"value": "base"},
+        )
+    await db_session.commit()
+    cursor_response = await client.get(
+        "/api/v1/sync/changes",
+        headers=bearer(registered["accessToken"]),
+    )
+    base_cursor = cursor_response.json()["nextCursor"]
+
+    async def commit(
+        *, key: str, operation: str, resource_id: str, content_value: str | None = None
+    ) -> dict[str, Any]:
+        item: dict[str, Any] = {
+            "operationId": key,
+            "operation": operation,
+            "resourceType": "notebook",
+            "resourceId": resource_id,
+            "baseRevision": 1,
+        }
+        if content_value is not None:
+            item["content"] = {"value": content_value}
+        response = await client.post(
+            "/api/v1/sync/commit",
+            json={
+                "deviceId": registered["device"]["id"],
+                "idempotencyKey": key,
+                "baseCursor": base_cursor,
+                "operations": [item],
+            },
+            headers=bearer(registered["accessToken"]),
+        )
+        assert response.status_code == 200
+        return cast(dict[str, Any], response.json()["results"][0])
+
+    await commit(
+        key="delete-first-delete", operation="delete", resource_id="delete-first"
+    )
+    edit_after_delete = await commit(
+        key="delete-first-edit",
+        operation="upsert",
+        resource_id="delete-first",
+        content_value="offline edit",
+    )
+    await commit(
+        key="edit-first-edit",
+        operation="upsert",
+        resource_id="edit-first",
+        content_value="newer edit",
+    )
+    delete_after_edit = await commit(
+        key="edit-first-delete",
+        operation="delete",
+        resource_id="edit-first",
+    )
+    db_session.expire_all()
+    resources = list(
+        await db_session.scalars(
+            select(Notebook).where(
+                Notebook.user_id == user_id,
+                Notebook.id.in_(["delete-first", "edit-first"]),
+            )
+        )
+    )
+    tombstones = list(
+        await db_session.scalars(select(Tombstone).where(Tombstone.user_id == user_id))
+    )
+
+    assert edit_after_delete["outcome"] == "delete_conflict"
+    assert edit_after_delete["tombstone"]["conflictKind"] == "edit_after_delete"
+    assert delete_after_edit["outcome"] == "delete_conflict"
+    assert delete_after_edit["tombstone"]["conflictKind"] == "delete_after_edit"
+    assert {item.id: item.content for item in resources} == {
+        "delete-first": {"value": "offline edit"},
+        "edit-first": {"value": "newer edit"},
+    }
+    assert all(item.deleted_at is None for item in resources)
+    assert len(tombstones) == 2
+    assert all(item.state == "restored" for item in tombstones)
+    assert all(item.resolution == "preserved_edit" for item in tombstones)
+
+
+async def test_sync_soft_delete_supports_pages_and_infinite_canvases(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    registered = await register(client, "sync-delete-layouts@example.com")
+    user_id = UUID(registered["user"]["id"])
+    library = LibraryRepository(db_session)
+    paged = await library.create_notebook(
+        user_id=user_id,
+        notebook_id="delete-page-parent",
+        title="Paged",
+        layout_mode="paged",
+    )
+    page = await library.create_page(
+        user_id=user_id,
+        notebook_id=paged.id,
+        page_id="delete-page",
+        position=0,
+        width=768,
+        height=1024,
+        coordinate_space_version=1,
+    )
+    infinite = await library.create_notebook(
+        user_id=user_id,
+        notebook_id="delete-canvas-parent",
+        title="Infinite",
+        layout_mode="infiniteCanvas",
+    )
+    canvas = await library.create_infinite_canvas(
+        user_id=user_id,
+        notebook_id=infinite.id,
+        canvas_id="delete-canvas",
+    )
+    content = ContentRepository(db_session)
+    await content.save_page_content(
+        user_id=user_id,
+        page_id=page.id,
+        base_revision=0,
+        content={"strokes": []},
+    )
+    await content.save_infinite_canvas_content(
+        user_id=user_id,
+        canvas_id=canvas.id,
+        base_revision=0,
+        content={"nodes": []},
+    )
+    page_id = page.id
+    canvas_id = canvas.id
+    await db_session.commit()
+    changes = await client.get(
+        "/api/v1/sync/changes",
+        headers=bearer(registered["accessToken"]),
+    )
+
+    response = await client.post(
+        "/api/v1/sync/commit",
+        json={
+            "deviceId": registered["device"]["id"],
+            "idempotencyKey": "delete-page-and-canvas",
+            "baseCursor": changes.json()["nextCursor"],
+            "operations": [
+                {
+                    "operationId": "delete-page",
+                    "operation": "delete",
+                    "resourceType": "page",
+                    "resourceId": page_id,
+                    "baseRevision": 1,
+                },
+                {
+                    "operationId": "delete-canvas",
+                    "operation": "delete",
+                    "resourceType": "infinite_canvas",
+                    "resourceId": canvas_id,
+                    "baseRevision": 1,
+                },
+            ],
+        },
+        headers=bearer(registered["accessToken"]),
+    )
+
+    assert response.status_code == 200
+    assert [item["outcome"] for item in response.json()["results"]] == [
+        "deleted",
+        "deleted",
+    ]
+    assert [
+        item["tombstone"]["resourceType"] for item in response.json()["results"]
+    ] == ["page", "infinite_canvas"]

@@ -104,14 +104,16 @@ class LibraryRepository:
 
     async def get_notebook(self, *, user_id: UUID, notebook_id: str) -> Notebook:
         statement = select(Notebook).where(
-            Notebook.id == notebook_id, Notebook.user_id == user_id
+            Notebook.id == notebook_id,
+            Notebook.user_id == user_id,
+            Notebook.deleted_at.is_(None),
         )
         return await self._one_owned(statement, "notebook", notebook_id)
 
     async def list_notebooks(self, *, user_id: UUID) -> list[Notebook]:
         result = await self._session.scalars(
             select(Notebook)
-            .where(Notebook.user_id == user_id)
+            .where(Notebook.user_id == user_id, Notebook.deleted_at.is_(None))
             .order_by(Notebook.updated_at.desc(), Notebook.id)
         )
         return list(result)
@@ -158,14 +160,22 @@ class LibraryRepository:
         return page
 
     async def get_page(self, *, user_id: UUID, page_id: str) -> Page:
-        statement = select(Page).where(Page.id == page_id, Page.user_id == user_id)
+        statement = select(Page).where(
+            Page.id == page_id,
+            Page.user_id == user_id,
+            Page.deleted_at.is_(None),
+        )
         return await self._one_owned(statement, "page", page_id)
 
     async def list_pages(self, *, user_id: UUID, notebook_id: str) -> list[Page]:
         await self.get_notebook(user_id=user_id, notebook_id=notebook_id)
         result = await self._session.scalars(
             select(Page)
-            .where(Page.user_id == user_id, Page.notebook_id == notebook_id)
+            .where(
+                Page.user_id == user_id,
+                Page.notebook_id == notebook_id,
+                Page.deleted_at.is_(None),
+            )
             .order_by(Page.position)
         )
         return list(result)
@@ -205,7 +215,9 @@ class LibraryRepository:
         self, *, user_id: UUID, canvas_id: str
     ) -> InfiniteCanvas:
         statement = select(InfiniteCanvas).where(
-            InfiniteCanvas.id == canvas_id, InfiniteCanvas.user_id == user_id
+            InfiniteCanvas.id == canvas_id,
+            InfiniteCanvas.user_id == user_id,
+            InfiniteCanvas.deleted_at.is_(None),
         )
         return await self._one_owned(statement, "infinite canvas", canvas_id)
 

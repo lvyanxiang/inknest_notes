@@ -9,8 +9,10 @@ user-scoped library metadata persistence, verified presigned asset upload and
 download flows, an incremental sync change feed with opaque cursors, and atomic
 batch sync commits for existing revisioned content. Concurrent page/notebook
 edits now create explicit, recoverable conflict records with three resolution
-choices. General resource creation through sync and deletion/tombstones are not
-implemented yet.
+choices. Existing notebooks, pages, and infinite canvases also support
+reversible soft deletion, Tombstone events, delete-versus-edit preservation,
+and explicit recovery. General resource creation through sync is not yet
+implemented.
 
 ## Requirements
 
@@ -152,8 +154,9 @@ All application routes use the base URL `http://127.0.0.1:8000/api/v1`.
 | `DELETE` | `/assets/upload-sessions/{upload_id}` | Bearer Access Token | Cancel one pending upload session owned by the current user. |
 | `GET` | `/assets/{asset_id}/download-url` | Bearer Access Token | Sign a short-lived download URL for one ready, owned asset. |
 | `GET` | `/sync/changes?cursor=...&limit=...` | Bearer Access Token | Read ordered changes for the current user and receive the next opaque cursor. |
-| `POST` | `/sync/commit` | Bearer Access Token | Atomically commit an idempotent batch of existing notebook, page, or infinite-canvas content updates. |
+| `POST` | `/sync/commit` | Bearer Access Token | Atomically commit an idempotent batch of existing notebook, page, or infinite-canvas content updates or soft deletes. |
 | `POST` | `/sync/conflicts/{conflict_id}/resolve` | Bearer Access Token | Resolve an owned page/notebook conflict by keeping the original, using the submitted version, or keeping both. |
+| `POST` | `/sync/tombstones/{tombstone_id}/restore` | Bearer Access Token | Restore the full snapshot represented by one active owned Tombstone as a new Revision. |
 
 For Bearer-protected routes, send the Access Token returned by register, login,
 or refresh:
@@ -233,11 +236,13 @@ Library creates, new content revisions, and completed assets append an event in
 the same PostgreSQL transaction as the authoritative write. Identical content
 retries do not append duplicates. Page/notebook conflicts and their resolutions
 also append `conflict` events so another device can observe their state. Delete
-events remain a following slice.
+operations append a resource `delete` event with no payload and a `tombstone`
+upsert event containing recovery state. Restores append the resource and updated
+Tombstone snapshots.
 
 ### Idempotent synchronization commits
 
-`POST /api/v1/sync/commit` currently writes complete JSON content for existing
+`POST /api/v1/sync/commit` writes complete JSON content or soft-deletes existing
 notebooks, pages, and infinite canvases. First obtain and persist a cursor from
 `GET /sync/changes`, then submit a batch:
 
@@ -266,9 +271,10 @@ with `outcome: conflict` plus both recoverable snapshots and a stable conflict
 copy ID. Other operations in that valid batch commit atomically with the
 conflict record. A missing resource or a stale infinite canvas is still an
 error and rolls back the entire batch. A successful response contains one
-result per operation, including `outcome` (`applied`, `unchanged`, or
-`conflict`), the authoritative server Revision/hash, compatibility field
-`changed`, any conflict details, and the new cursor.
+result per operation, including `outcome` (`applied`, `unchanged`, `conflict`,
+`deleted`, or `delete_conflict`), the authoritative server Revision/hash,
+compatibility field `changed`, optional conflict/Tombstone details, and the new
+cursor.
 
 Retries must send exactly the same body with the same `idempotencyKey`. The key
 is scoped to the authenticated account and device. An exact retry returns the
@@ -279,9 +285,10 @@ so an offline device can submit work, while every `baseRevision` still prevents
 silent overwrite. Invalid or account-mismatched cursors return `400`; cursors
 ahead of account state return `409`.
 
-This route does not yet create general local-only resources and does not accept
-delete operations. Those require the later metadata and tombstone protocol
-slices.
+To delete a resource, send `operation: delete` with its current `baseRevision`
+and omit `content`. The server preserves the full content snapshot, increments
+the resource Revision, marks it hidden from normal queries, and returns its
+active Tombstone. This route does not yet create general local-only resources.
 
 ### Conflict copies and resolution
 
@@ -311,8 +318,31 @@ curl -X POST \
 Repeating the same resolution is a no-op. Choosing a different resolution after
 completion returns `409 sync_conflict_already_resolved`; resolving with
 `use_conflict` after the original changed again returns
-`409 sync_conflict_resolution_stale`. Delete-versus-edit behavior remains for
-the Tombstone slice.
+`409 sync_conflict_resolution_stale`.
+
+### Tombstones, delete/edit races, and restore
+
+A normal delete never physically removes content in this slice. Its Tombstone
+stores the full JSON snapshot, hash, deletion Revision, device, and time. No
+retention period or permanent-cleanup command is defined yet.
+
+If an edit and delete start from the same Revision, edited content wins in both
+arrival orders. An edit arriving after the soft delete restores the resource
+with the edited content as a new Revision; a stale delete arriving after the
+edit leaves the resource active. Both paths return `outcome: delete_conflict`
+and retain a restored Tombstone with `resolution: preserved_edit` for audit.
+
+Restore an active Tombstone explicitly:
+
+```bash
+curl -X POST \
+  'http://127.0.0.1:8000/api/v1/sync/tombstones/<tombstone-id>/restore' \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+The restored snapshot becomes a new Revision and the Tombstone changes to
+`state: restored` with `resolution: restored_snapshot`. A missing Tombstone
+returns `404`; restoring one that is no longer active returns `409`.
 
 ### Safe asset cleanup
 
@@ -410,6 +440,9 @@ The migration history currently contains:
   scoped by account, authenticated device, and idempotency key.
 - `20260806_0010`: page/notebook `conflict_of` ancestry, durable `conflicts`
   snapshots and resolution state, plus conflict events in `sync_changes`.
+- `20260806_0011`: nullable soft-deletion timestamps on revisioned resources,
+  durable full-snapshot `tombstones`, recovery/conflict audit state, and
+  Tombstone events in `sync_changes`.
 
 Future schema work must add a new revision instead of rewriting an applied
 revision.

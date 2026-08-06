@@ -31,6 +31,11 @@ pending conflict record with a stable reserved copy ID. The App will offer
 Keep Original, Use Conflict Version, and Keep Both. Keep Both materializes the
 reserved resource with `conflictOf` ancestry; retries reuse the same conflict.
 
+For delete-versus-edit races, edited content wins automatically regardless of
+arrival order. A normal delete is a reversible soft delete backed by a full
+snapshot Tombstone; an explicit restore writes that snapshot as a new Revision.
+The first slice sets no retention period and performs no physical cleanup.
+
 ## Scope
 
 - In scope:
@@ -85,7 +90,7 @@ reserved resource with `conflictOf` ancestry; retries reuse the same conflict.
   not delete local-only content.
 - [ ] Concurrent edits to the same revision produce an explicit page- or
   notebook-level conflict copy; neither edit is silently discarded.
-- [ ] Delete-versus-edit conflicts preserve the edited content and retain a
+- [x] Delete-versus-edit conflicts preserve the edited content and retain a
   tombstone for explicit recovery.
 - [ ] Interrupted asset uploads can be retried, and completed objects are
   verified by size and SHA-256 before becoming available.
@@ -158,6 +163,7 @@ reserved resource with `conflictOf` ancestry; retries reuse the same conflict.
   `docs/development/BACKEND_IMPLEMENTATION_PLAN.md`.
 - Verification: Backend tests cover authentication, account isolation,
   revisioned content, asset transfer, cursors, atomic/idempotent commits, page
-  and notebook conflicts, all resolution choices, and concurrent retry with
-  exactly one conflict. PostgreSQL migration `20260806_0010` passes both the
-  development upgrade and an independent empty-database upgrade.
+  and notebook conflicts, all resolution choices, soft delete/restore, both
+  delete-edit arrival orders, and a real PostgreSQL race that always preserves
+  the edit. PostgreSQL migration `20260806_0011` passes both the development
+  upgrade and an independent empty-database upgrade.

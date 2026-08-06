@@ -10,7 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from inknest_server.models import SyncChange, SyncCommit
 
 SyncResourceType = Literal[
-    "folder", "notebook", "page", "infinite_canvas", "asset", "conflict"
+    "folder",
+    "notebook",
+    "page",
+    "infinite_canvas",
+    "asset",
+    "conflict",
+    "tombstone",
 ]
 
 
@@ -48,6 +54,30 @@ class SyncChangeRepository:
             revision=revision,
             content_hash=content_hash,
             payload=payload,
+        )
+        self._session.add(change)
+        await self._session.flush()
+        return change
+
+    async def append_delete(
+        self,
+        *,
+        user_id: UUID,
+        resource_type: SyncResourceType,
+        resource_id: str,
+        revision: int,
+        content_hash: str | None,
+        device_id: UUID | None = None,
+    ) -> SyncChange:
+        change = SyncChange(
+            user_id=user_id,
+            device_id=device_id,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            operation="delete",
+            revision=revision,
+            content_hash=content_hash,
+            payload=None,
         )
         self._session.add(change)
         await self._session.flush()

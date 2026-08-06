@@ -1,6 +1,7 @@
 from inknest_server.repositories.content import (
     ContentRepository,
     ContentSaveResult,
+    ResourceDeletedError,
     RevisionConflictError,
 )
 from inknest_server.repositories.library import (
@@ -21,6 +22,7 @@ __all__ = [
     "LibraryRepository",
     "LibraryResourceNotFoundError",
     "RevisionConflictError",
+    "ResourceDeletedError",
     "SyncChangeRepository",
     "SyncCommitRepository",
     "SyncIdempotencyKeyReusedError",

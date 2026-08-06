@@ -6,6 +6,7 @@ from inknest_server.sync.schemas import (
     SyncCommitRequest,
     SyncCommitResponse,
     SyncConflictResponse,
+    SyncTombstoneResponse,
 )
 
 __all__ = [
@@ -15,6 +16,7 @@ __all__ = [
     "SyncCommitRequest",
     "SyncCommitResponse",
     "SyncConflictResponse",
+    "SyncTombstoneResponse",
     "ResolveSyncConflictRequest",
     "SyncCursorCodec",
 ]

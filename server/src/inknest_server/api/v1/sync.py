@@ -18,6 +18,7 @@ from inknest_server.sync import (
     SyncCommitRequest,
     SyncCommitResponse,
     SyncConflictResponse,
+    SyncTombstoneResponse,
 )
 from inknest_server.sync.conflicts import (
     SyncConflictAlreadyResolvedError,
@@ -28,6 +29,10 @@ from inknest_server.sync.service import (
     SyncCursorAheadError,
     SyncDeviceMismatchError,
     SyncOperationFailedError,
+)
+from inknest_server.sync.tombstones import (
+    SyncTombstoneNotFoundError,
+    SyncTombstoneStateError,
 )
 
 router = APIRouter(prefix="/sync", tags=["sync"])
@@ -164,4 +169,34 @@ async def resolve_sync_conflict(
                 "expectedRevision": error.expected_revision,
                 "currentRevision": error.current_revision,
             },
+        ) from error
+
+
+@router.post(
+    "/tombstones/{tombstone_id}/restore",
+    response_model=SyncTombstoneResponse,
+)
+async def restore_sync_tombstone(
+    tombstone_id: UUID,
+    current: CurrentSessionDependency,
+    service: SyncServiceDependency,
+) -> SyncTombstoneResponse:
+    try:
+        return await service.restore_tombstone(
+            user_id=current.user.id,
+            device_id=current.device.id,
+            tombstone_id=tombstone_id,
+        )
+    except SyncTombstoneNotFoundError as error:
+        raise ApiError(
+            code="sync_tombstone_not_found",
+            message="The synchronization tombstone was not found.",
+            status_code=404,
+        ) from error
+    except SyncTombstoneStateError as error:
+        raise ApiError(
+            code="sync_tombstone_not_active",
+            message="Only an active tombstone can be restored.",
+            status_code=409,
+            details={"currentState": error.state},
         ) from error

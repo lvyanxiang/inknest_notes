@@ -11,6 +11,7 @@ from inknest_server.models.library import (
     Page,
     SyncChange,
     SyncCommit,
+    Tombstone,
 )
 
 __all__ = [
@@ -27,5 +28,6 @@ __all__ = [
     "RefreshToken",
     "SyncChange",
     "SyncCommit",
+    "Tombstone",
     "User",
 ]

@@ -4,15 +4,16 @@
 
 - Milestone: Backend Phase 4 incremental synchronization and conflicts (in
   progress)
-- Next task: Implement Tombstones, delete-versus-edit conflict preservation,
-  and explicit recovery without physically deleting user content.
-- Last completed: Added page- and notebook-level server conflict recovery.
-  Stale concurrent writes leave the original unchanged, persist both snapshots
-  and a reserved copy ID, replay idempotently, and can be resolved with Keep
-  Original, Use Conflict Version, or Keep Both. Keep Both creates a new
-  Revision-backed resource with `conflictOf` ancestry; conflict state also
-  travels through the incremental change feed. Flutter conflict UI remains a
-  later integration task under the accepted UI/UX specification.
+- Next task: Expand Phase 4 verification for offline editing, interrupted
+  requests, retries, and repeated submissions across the sync queue and API.
+- Last completed: Added reversible Tombstones for existing notebooks, pages,
+  and infinite canvases. Delete and restore each create a new Revision, normal
+  queries hide soft-deleted resources, and the change feed carries both delete
+  and Tombstone state events. Delete-versus-edit races automatically preserve
+  edited content regardless of arrival order and retain an audit Tombstone.
+  No retention period or physical cleanup was introduced. Flutter Recently
+  Deleted and sync-status UI remain a later integration task under the accepted
+  UI/UX specification.
 
 ## Decisions
 
@@ -182,6 +183,17 @@
 - Keep unresolved legacy content viewable, navigable, zoomable, searchable, and exportable without allowing normal save, rotate, copy, or duplicate paths to overwrite its source JSON.
 
 ## Verification
+
+- Backend formatting, linting, and strict typing pass; all 40 non-integration
+  tests pass, including soft deletion, idempotent replay, restore, and both
+  sequential delete-edit arrival orders.
+- All 11 PostgreSQL/MinIO integration tests pass, including a real concurrent
+  delete/edit race whose final resource always contains the edited content.
+- Alembic upgraded the development database to `20260806_0011 (head)` with no
+  schema drift. An independent empty PostgreSQL database upgraded from `0001`
+  through `0011` and was deleted after verification.
+- OpenAPI exposes 17 application operations, including explicit Tombstone
+  restore and delete/Tombstone outcomes on the idempotent commit contract.
 
 - Backend formatting, linting, and strict typing pass across 61 Python
   source/test files; all 37 non-integration tests pass.

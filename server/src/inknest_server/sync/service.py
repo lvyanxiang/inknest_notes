@@ -5,7 +5,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from inknest_server.content.canonical_json import content_hash
 from inknest_server.models import SyncChange
-from inknest_server.repositories.content import ContentRepository, RevisionConflictError
+from inknest_server.repositories.content import (
+    ContentRepository,
+    ResourceDeletedError,
+    RevisionConflictError,
+)
 from inknest_server.repositories.library import LibraryResourceNotFoundError
 from inknest_server.repositories.sync import (
     SyncChangeRepository,
@@ -19,7 +23,9 @@ from inknest_server.sync.schemas import (
     SyncCommitRequest,
     SyncCommitResponse,
     SyncConflictResponse,
+    SyncTombstoneResponse,
 )
+from inknest_server.sync.tombstones import TombstoneService
 
 
 class SyncDeviceMismatchError(Exception):
@@ -61,6 +67,7 @@ class SyncService:
         self._content = ContentRepository(session)
         self._commits = SyncCommitRepository(session)
         self._conflicts = ConflictService(session)
+        self._tombstones = TombstoneService(session)
 
     async def list_changes(
         self,
@@ -156,9 +163,33 @@ class SyncService:
         device_id: UUID,
         operation: SyncCommitOperation,
     ) -> SyncCommitOperationResult:
+        if operation.operation == "delete":
+            try:
+                delete_result = await self._tombstones.delete(
+                    user_id=user_id,
+                    device_id=device_id,
+                    resource_type=operation.resource_type,
+                    resource_id=operation.resource_id,
+                    base_revision=operation.base_revision,
+                )
+            except LibraryResourceNotFoundError as error:
+                raise SyncOperationFailedError(operation, error) from error
+            return SyncCommitOperationResult(
+                operation_id=operation.operation_id,
+                resource_type=operation.resource_type,
+                resource_id=operation.resource_id,
+                revision=delete_result.revision,
+                content_hash=delete_result.content_hash,
+                changed=delete_result.changed,
+                outcome=delete_result.outcome,
+                tombstone=SyncTombstoneResponse.model_validate(delete_result.tombstone),
+            )
+
+        if operation.content is None:
+            raise RuntimeError("validated upsert operation has no content")
         try:
             if operation.resource_type == "notebook":
-                result = await self._content.save_notebook_content(
+                content_result = await self._content.save_notebook_content(
                     user_id=user_id,
                     notebook_id=operation.resource_id,
                     base_revision=operation.base_revision,
@@ -166,7 +197,7 @@ class SyncService:
                     device_id=device_id,
                 )
             elif operation.resource_type == "page":
-                result = await self._content.save_page_content(
+                content_result = await self._content.save_page_content(
                     user_id=user_id,
                     page_id=operation.resource_id,
                     base_revision=operation.base_revision,
@@ -174,13 +205,33 @@ class SyncService:
                     device_id=device_id,
                 )
             else:
-                result = await self._content.save_infinite_canvas_content(
+                content_result = await self._content.save_infinite_canvas_content(
                     user_id=user_id,
                     canvas_id=operation.resource_id,
                     base_revision=operation.base_revision,
                     content=operation.content,
                     device_id=device_id,
                 )
+        except ResourceDeletedError:
+            tombstone_result = await self._tombstones.preserve_edit_after_delete(
+                user_id=user_id,
+                device_id=device_id,
+                resource_type=operation.resource_type,
+                resource_id=operation.resource_id,
+                content=operation.content,
+            )
+            return SyncCommitOperationResult(
+                operation_id=operation.operation_id,
+                resource_type=operation.resource_type,
+                resource_id=operation.resource_id,
+                revision=tombstone_result.revision,
+                content_hash=tombstone_result.content_hash,
+                changed=tombstone_result.changed,
+                outcome=tombstone_result.outcome,
+                tombstone=SyncTombstoneResponse.model_validate(
+                    tombstone_result.tombstone
+                ),
+            )
         except RevisionConflictError as error:
             if operation.resource_type in {"notebook", "page"}:
                 conflict = await self._conflicts.create(
@@ -208,11 +259,30 @@ class SyncService:
             operation_id=operation.operation_id,
             resource_type=operation.resource_type,
             resource_id=operation.resource_id,
-            revision=result.revision,
-            content_hash=result.content_hash,
-            changed=result.created_revision,
-            outcome="applied" if result.created_revision else "unchanged",
+            revision=content_result.revision,
+            content_hash=content_result.content_hash,
+            changed=content_result.created_revision,
+            outcome="applied" if content_result.created_revision else "unchanged",
         )
+
+    async def restore_tombstone(
+        self,
+        *,
+        user_id: UUID,
+        device_id: UUID,
+        tombstone_id: UUID,
+    ) -> SyncTombstoneResponse:
+        try:
+            tombstone = await self._tombstones.restore(
+                user_id=user_id,
+                device_id=device_id,
+                tombstone_id=tombstone_id,
+            )
+            await self._session.commit()
+        except Exception:
+            await self._session.rollback()
+            raise
+        return SyncTombstoneResponse.model_validate(tombstone)
 
     async def resolve_conflict(
         self,

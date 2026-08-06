@@ -7,7 +7,8 @@ Python/FastAPI 后端。目前已经包含服务骨架、PostgreSQL、MinIO、�
 账号/会话/设备接口、按用户隔离的资料库元数据持久化、经过大小和 SHA-256 校验的附件
 预签名上传与下载流程、使用不透明 Cursor 的增量同步变更流，以及针对已有 Revision 内容
 的原子批量同步提交。页面或笔记本发生并发编辑时，现在会创建明确、可恢复的冲突记录，
-并支持三种处理方式。通过同步常规新建资源以及删除/Tombstone 尚未实现。
+并支持三种处理方式。已有笔记本、页面和无限画布也已支持可逆软删除、Tombstone 事件、
+删除与编辑冲突时保留编辑，以及显式恢复。通过同步常规新建资源尚未实现。
 
 ## 环境要求
 
@@ -145,8 +146,9 @@ API 在宿主机运行或使用默认 Compose 端口映射时，以下地址相�
 | `DELETE` | `/assets/upload-sessions/{upload_id}` | Bearer Access Token | 取消当前用户拥有的待上传会话。 |
 | `GET` | `/assets/{asset_id}/download-url` | Bearer Access Token | 为当前用户拥有的可用附件签发短期下载 URL。 |
 | `GET` | `/sync/changes?cursor=...&limit=...` | Bearer Access Token | 按顺序读取当前用户的增量变更，并返回下一个不透明 Cursor。 |
-| `POST` | `/sync/commit` | Bearer Access Token | 原子、幂等地批量更新已有笔记本、页面或无限画布的内容。 |
+| `POST` | `/sync/commit` | Bearer Access Token | 原子、幂等地批量更新或软删除已有笔记本、页面或无限画布。 |
 | `POST` | `/sync/conflicts/{conflict_id}/resolve` | Bearer Access Token | 对当前用户的页面/笔记本冲突选择保留原版本、使用冲突版本或两个都保留。 |
+| `POST` | `/sync/tombstones/{tombstone_id}/restore` | Bearer Access Token | 将当前用户一个有效 Tombstone 的完整快照恢复为新 Revision。 |
 
 访问 Bearer 鉴权接口时，使用注册、登录或刷新接口返回的 Access Token：
 
@@ -248,11 +250,12 @@ curl --get 'http://127.0.0.1:8000/api/v1/sync/changes' \
 
 资料库创建、新内容 Revision 和附件完成会在权威写入的同一个 PostgreSQL 事务中追加
 事件；相同内容重试不会重复追加。页面/笔记本冲突及其处理状态也会追加 `conflict` 事件，
-使其他设备能够观察状态。删除事件属于后续切片。
+使其他设备能够观察状态。删除会追加无 payload 的资源 `delete` 事件和包含恢复状态的
+`tombstone` upsert 事件；恢复会追加资源与 Tombstone 的新快照。
 
 ### 幂等批量同步提交
 
-`POST /api/v1/sync/commit` 当前用于写入已有笔记本、页面和无限画布的完整 JSON 内容。
+`POST /api/v1/sync/commit` 当前用于写入或软删除已有笔记本、页面和无限画布。
 先从 `GET /sync/changes` 获取并安全保存 Cursor，再提交批次：
 
 ```bash
@@ -277,8 +280,9 @@ curl -X POST 'http://127.0.0.1:8000/api/v1/sync/commit' \
 整个批次使用一个 PostgreSQL 事务。页面或笔记本的 Revision 过期且内容不同后，服务端
 不会改写原资源，而是返回 `outcome: conflict`，同时保存双方快照和稳定的冲突副本 ID；
 同一有效批次中的其他操作与冲突记录一起原子提交。资源不存在或无限画布 Revision 过期
-仍会让整批回滚。成功响应按操作返回 `outcome`（`applied`、`unchanged` 或
-`conflict`）、权威 Revision/哈希、兼容字段 `changed`、可选冲突详情和新 Cursor。
+仍会让整批回滚。成功响应按操作返回 `outcome`（`applied`、`unchanged`、`conflict`、
+`deleted` 或 `delete_conflict`）、权威 Revision/哈希、兼容字段 `changed`、可选冲突或
+Tombstone 详情和新 Cursor。
 
 网络失败重试时，必须原样发送相同请求体和同一个 `idempotencyKey`。Key 的范围是当前
 账号和已认证设备；完全相同的重试直接返回第一次结果并标记 `replayed: true`，不会再次
@@ -287,8 +291,9 @@ curl -X POST 'http://127.0.0.1:8000/api/v1/sync/commit' \
 联网后上传；每项 `baseRevision` 仍会阻止静默覆盖。无效或跨账号 Cursor 返回 `400`，
 超前于账号状态的 Cursor 返回 `409`。
 
-当前接口不会常规创建本地新增但云端尚不存在的资源，也不接受删除操作。这些能力必须等
-后续元数据和 Tombstone 协议完成后再开放。
+删除时发送 `operation: delete` 和当前 `baseRevision`，并省略 `content`。服务端保留完整
+内容快照、增加 Revision、从普通查询隐藏资源并返回有效 Tombstone。当前接口仍不会常规
+创建本地新增但云端尚不存在的资源。
 
 ### 冲突副本与处理
 
@@ -314,7 +319,29 @@ curl -X POST \
 
 同一种处理方式可以安全重试，不会重复创建副本。已处理后改选另一种方式返回
 `409 sync_conflict_already_resolved`；原资源再次变化后选择 `use_conflict` 返回
-`409 sync_conflict_resolution_stale`。删除与编辑的冲突仍留给下一步 Tombstone 实现。
+`409 sync_conflict_resolution_stale`。
+
+### Tombstone、删除与编辑冲突、恢复
+
+本切片中的普通删除不会物理移除内容。Tombstone 保存完整 JSON 快照、哈希、删除
+Revision、设备和时间；目前没有设置保留期限，也没有永久清理命令。
+
+如果编辑和删除从同一个 Revision 出发，无论谁先到服务端，编辑内容都获胜。删除后到达
+的编辑会把资源以编辑内容恢复成新 Revision；编辑后到达的旧删除不会隐藏资源。两种路径
+都返回 `outcome: delete_conflict`，并保留 `resolution: preserved_edit` 的已恢复 Tombstone
+作为审计记录。
+
+显式恢复有效 Tombstone：
+
+```bash
+curl -X POST \
+  'http://127.0.0.1:8000/api/v1/sync/tombstones/<tombstone-id>/restore' \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+恢复快照会生成新 Revision；Tombstone 变为 `state: restored`，并记录
+`resolution: restored_snapshot`。不存在返回 `404`，重复恢复不再有效的 Tombstone 返回
+`409`。
 
 ### 安全清理附件对象
 
@@ -405,6 +432,8 @@ docker compose config
   首次成功响应。
 - `20260806_0010`：为页面和笔记本增加 `conflict_of` 来源关系，创建保存双方快照及处理
   状态的 `conflicts` 表，并允许 `sync_changes` 传递冲突事件。
+- `20260806_0011`：为笔记本、页面和无限画布增加软删除时间，创建保存完整快照及
+  恢复/冲突审计状态的 `tombstones` 表，并允许 `sync_changes` 传递 Tombstone 事件。
 
 后续表结构变化必须创建新迁移，不能修改已经应用过的迁移文件。
 

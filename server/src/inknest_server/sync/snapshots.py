@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from inknest_server.models import (
     Asset,
     Conflict,
@@ -5,7 +7,12 @@ from inknest_server.models import (
     InfiniteCanvas,
     Notebook,
     Page,
+    Tombstone,
 )
+
+
+def _timestamp(value: datetime | None) -> str | None:
+    return value.isoformat() if value is not None else None
 
 
 def folder_snapshot(folder: Folder) -> dict[str, object]:
@@ -23,6 +30,7 @@ def notebook_snapshot(notebook: Notebook) -> dict[str, object]:
         "contentHash": notebook.content_hash,
         "content": notebook.content,
         "conflictOf": notebook.conflict_of,
+        "deletedAt": _timestamp(notebook.deleted_at),
     }
 
 
@@ -40,6 +48,7 @@ def page_snapshot(page: Page) -> dict[str, object]:
         "contentHash": page.content_hash,
         "content": page.content,
         "conflictOf": page.conflict_of,
+        "deletedAt": _timestamp(page.deleted_at),
     }
 
 
@@ -51,6 +60,7 @@ def infinite_canvas_snapshot(canvas: InfiniteCanvas) -> dict[str, object]:
         "revision": canvas.revision,
         "contentHash": canvas.content_hash,
         "content": canvas.content,
+        "deletedAt": _timestamp(canvas.deleted_at),
     }
 
 
@@ -97,4 +107,38 @@ def conflict_snapshot(conflict: Conflict) -> dict[str, object]:
             else None
         ),
         "createdAt": conflict.created_at.isoformat(),
+    }
+
+
+def tombstone_snapshot(tombstone: Tombstone) -> dict[str, object]:
+    return {
+        "id": str(tombstone.id),
+        "resourceType": tombstone.resource_type,
+        "resourceId": tombstone.resource_id,
+        "baseRevision": tombstone.base_revision,
+        "resourceRevision": tombstone.resource_revision,
+        "deletedRevision": tombstone.deleted_revision,
+        "contentHash": tombstone.content_hash,
+        "content": tombstone.content,
+        "deletedByDeviceId": (
+            str(tombstone.deleted_by_device_id)
+            if tombstone.deleted_by_device_id is not None
+            else None
+        ),
+        "deletedAt": tombstone.deleted_at.isoformat(),
+        "state": tombstone.state,
+        "conflictKind": tombstone.conflict_kind,
+        "resolution": tombstone.resolution,
+        "conflictingDeviceId": (
+            str(tombstone.conflicting_device_id)
+            if tombstone.conflicting_device_id is not None
+            else None
+        ),
+        "restoredByDeviceId": (
+            str(tombstone.restored_by_device_id)
+            if tombstone.restored_by_device_id is not None
+            else None
+        ),
+        "restoredAt": _timestamp(tombstone.restored_at),
+        "createdAt": tombstone.created_at.isoformat(),
     }

@@ -12,6 +12,7 @@ from inknest_server.content.canonical_json import normalized_json_object
 from inknest_server.models import Conflict, ContentRevision, Notebook, Page
 from inknest_server.repositories.content import (
     ContentRepository,
+    ResourceDeletedError,
     RevisionConflictError,
 )
 from inknest_server.repositories.library import LibraryResourceNotFoundError
@@ -150,9 +151,9 @@ class ConflictService:
                     content=conflict.submitted_content,
                     device_id=device_id,
                 )
-        except RevisionConflictError as error:
+        except (RevisionConflictError, ResourceDeletedError) as error:
             raise SyncConflictResolutionStaleError(
-                expected_revision=error.expected_revision,
+                expected_revision=conflict.current_revision,
                 current_revision=error.current_revision,
             ) from error
 

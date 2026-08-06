@@ -17,6 +17,7 @@ from sqlalchemy import (
     UniqueConstraint,
     false,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -85,6 +86,7 @@ class Notebook(Base):
         JSON, default=dict, server_default="{}"
     )
     conflict_of: Mapped[str | None] = mapped_column(String(128))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -150,6 +152,7 @@ class Page(Base):
         JSON, default=dict, server_default="{}"
     )
     conflict_of: Mapped[str | None] = mapped_column(String(128))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -192,6 +195,7 @@ class InfiniteCanvas(Base):
     content: Mapped[dict[str, object]] = mapped_column(
         JSON, default=dict, server_default="{}"
     )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -351,7 +355,8 @@ class SyncChange(Base):
     __table_args__ = (
         CheckConstraint(
             "resource_type IN "
-            "('folder', 'notebook', 'page', 'infinite_canvas', 'asset', 'conflict')",
+            "('folder', 'notebook', 'page', 'infinite_canvas', 'asset', "
+            "'conflict', 'tombstone')",
             name="ck_sync_changes_resource_type",
         ),
         CheckConstraint(
@@ -507,6 +512,100 @@ class Conflict(Base):
         ForeignKey("devices.id", ondelete="SET NULL"), index=True
     )
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class Tombstone(Base):
+    __tablename__ = "tombstones"
+    __table_args__ = (
+        CheckConstraint(
+            "resource_type IN ('notebook', 'page', 'infinite_canvas')",
+            name="ck_tombstones_resource_type",
+        ),
+        CheckConstraint("base_revision >= 0", name="ck_tombstones_base_revision"),
+        CheckConstraint(
+            "resource_revision >= 0", name="ck_tombstones_resource_revision"
+        ),
+        CheckConstraint(
+            "deleted_revision IS NULL OR deleted_revision > 0",
+            name="ck_tombstones_deleted_revision",
+        ),
+        CheckConstraint(
+            "length(content_hash) = 64",
+            name="ck_tombstones_content_hash_length",
+        ),
+        CheckConstraint(
+            "state IN ('active', 'restored')",
+            name="ck_tombstones_state",
+        ),
+        CheckConstraint(
+            "conflict_kind IS NULL OR conflict_kind IN "
+            "('delete_after_edit', 'edit_after_delete')",
+            name="ck_tombstones_conflict_kind",
+        ),
+        CheckConstraint(
+            "resolution IS NULL OR resolution IN "
+            "('restored_snapshot', 'preserved_edit')",
+            name="ck_tombstones_resolution",
+        ),
+        CheckConstraint(
+            "(state = 'active' AND resolution IS NULL AND restored_at IS NULL) OR "
+            "(state = 'restored' AND resolution IS NOT NULL "
+            "AND restored_at IS NOT NULL)",
+            name="ck_tombstones_state_resolution",
+        ),
+        Index(
+            "uq_tombstones_active_resource",
+            "user_id",
+            "resource_type",
+            "resource_id",
+            unique=True,
+            postgresql_where=text("state = 'active'"),
+            sqlite_where=text("state = 'active'"),
+        ),
+        Index(
+            "ix_tombstones_user_state_created",
+            "user_id",
+            "state",
+            "created_at",
+        ),
+        Index(
+            "ix_tombstones_user_resource",
+            "user_id",
+            "resource_type",
+            "resource_id",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    resource_type: Mapped[str] = mapped_column(String(32))
+    resource_id: Mapped[str] = mapped_column(String(128))
+    base_revision: Mapped[int] = mapped_column(BigInteger)
+    resource_revision: Mapped[int] = mapped_column(BigInteger)
+    deleted_revision: Mapped[int | None] = mapped_column(BigInteger)
+    content_hash: Mapped[str] = mapped_column(String(64))
+    content: Mapped[dict[str, object]] = mapped_column(JSON)
+    deleted_by_device_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("devices.id", ondelete="SET NULL"), index=True
+    )
+    deleted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    state: Mapped[str] = mapped_column(
+        String(32), default="active", server_default="active"
+    )
+    conflict_kind: Mapped[str | None] = mapped_column(String(32))
+    resolution: Mapped[str | None] = mapped_column(String(32))
+    conflicting_device_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("devices.id", ondelete="SET NULL"), index=True
+    )
+    restored_by_device_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("devices.id", ondelete="SET NULL"), index=True
+    )
+    restored_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
