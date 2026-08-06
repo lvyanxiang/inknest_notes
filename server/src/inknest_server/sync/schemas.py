@@ -47,12 +47,107 @@ class SyncBootstrapCounts(SyncApiModel):
     notebooks: int
 
 
+class SyncBootstrapFolder(SyncApiModel):
+    id: str
+    name: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class SyncBootstrapNotebook(SyncApiModel):
+    id: str
+    folder_id: str | None
+    title: str
+    layout_mode: Literal["paged", "infiniteCanvas"]
+    is_archived: bool
+    revision: int
+    content_hash: str
+    content: dict[str, object]
+    conflict_of: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
 class SyncBootstrapResponse(SyncApiModel):
     has_cloud_library: bool
     folder_ids: list[str]
     notebook_ids: list[str]
+    folders: list[SyncBootstrapFolder]
+    notebooks: list[SyncBootstrapNotebook]
     counts: SyncBootstrapCounts
     base_cursor: str
+
+
+class SyncMergeFolderMetadata(SyncApiModel):
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        extra="forbid",
+        populate_by_name=True,
+    )
+
+    name: str = Field(min_length=1, max_length=200)
+
+
+class SyncMergeNotebookMetadata(SyncApiModel):
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        extra="forbid",
+        populate_by_name=True,
+    )
+
+    folder_id: str | None = Field(default=None, max_length=128)
+    title: str = Field(min_length=1, max_length=300)
+    layout_mode: Literal["paged", "infiniteCanvas"]
+    is_archived: bool = False
+
+
+class SyncMergeCreateOperation(SyncApiModel):
+    operation_id: str = Field(min_length=1, max_length=128)
+    resource_type: Literal["folder", "notebook"]
+    resource_id: str = Field(min_length=1, max_length=128)
+    metadata: SyncMergeFolderMetadata | SyncMergeNotebookMetadata
+
+    @model_validator(mode="after")
+    def validate_metadata_type(self) -> SyncMergeCreateOperation:
+        expected_type = (
+            SyncMergeFolderMetadata
+            if self.resource_type == "folder"
+            else SyncMergeNotebookMetadata
+        )
+        if not isinstance(self.metadata, expected_type):
+            raise ValueError("metadata does not match resourceType")
+        return self
+
+
+class SyncMergeCommitRequest(SyncApiModel):
+    device_id: UUID
+    idempotency_key: str = Field(min_length=1, max_length=128)
+    base_cursor: str = Field(min_length=1, max_length=2048)
+    operations: list[SyncMergeCreateOperation] = Field(min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def validate_unique_operations(self) -> SyncMergeCommitRequest:
+        operation_ids = [item.operation_id for item in self.operations]
+        resources = [(item.resource_type, item.resource_id) for item in self.operations]
+        if len(operation_ids) != len(set(operation_ids)):
+            raise ValueError("operationId values must be unique within a batch")
+        if len(resources) != len(set(resources)):
+            raise ValueError("each resource may appear only once within a batch")
+        return self
+
+
+class SyncMergeCreateOperationResult(SyncApiModel):
+    operation_id: str
+    resource_type: Literal["folder", "notebook"]
+    resource_id: str
+    outcome: Literal["applied", "unchanged"]
+
+
+class SyncMergeCommitResponse(SyncApiModel):
+    idempotency_key: str
+    replayed: bool
+    results: list[SyncMergeCreateOperationResult]
+    next_cursor: str
 
 
 class SyncCommitOperation(SyncApiModel):

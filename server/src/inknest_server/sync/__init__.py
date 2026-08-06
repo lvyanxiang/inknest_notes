@@ -7,6 +7,8 @@ from inknest_server.sync.schemas import (
     SyncCommitRequest,
     SyncCommitResponse,
     SyncConflictResponse,
+    SyncMergeCommitRequest,
+    SyncMergeCommitResponse,
     SyncTombstoneResponse,
 )
 
@@ -18,6 +20,8 @@ __all__ = [
     "SyncCommitRequest",
     "SyncCommitResponse",
     "SyncConflictResponse",
+    "SyncMergeCommitRequest",
+    "SyncMergeCommitResponse",
     "SyncTombstoneResponse",
     "ResolveSyncConflictRequest",
     "SyncCursorCodec",

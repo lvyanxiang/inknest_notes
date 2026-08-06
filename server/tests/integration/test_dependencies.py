@@ -35,7 +35,11 @@ from inknest_server.repositories import (
 )
 from inknest_server.services.readiness import ReadinessService
 from inknest_server.storage import MinioStorage
-from inknest_server.sync import SyncCommitRequest, SyncCursorCodec
+from inknest_server.sync import (
+    SyncCommitRequest,
+    SyncCursorCodec,
+    SyncMergeCommitRequest,
+)
 from inknest_server.sync.service import SyncService
 
 pytestmark = [
@@ -45,6 +49,112 @@ pytestmark = [
         reason="set INKNEST_RUN_INTEGRATION=1 with PostgreSQL and MinIO running",
     ),
 ]
+
+
+@pytest.mark.asyncio
+async def test_merge_metadata_create_replays_without_duplicate_rows() -> None:
+    settings = Settings()
+    database = Database(settings.database_url)
+    suffix = uuid4().hex
+    user_id = None
+
+    try:
+        async with database.session() as setup_session:
+            user = User(
+                email=f"phase5-merge-{suffix}@example.com",
+                password_hash="integration-test-password-hash",
+            )
+            setup_session.add(user)
+            await setup_session.flush()
+            device = Device(user_id=user.id, name="Merge iPad", platform="ios")
+            setup_session.add(device)
+            await setup_session.flush()
+            await setup_session.commit()
+            user_id = user.id
+            device_id = device.id
+
+        codec = SyncCursorCodec(settings)
+        request = SyncMergeCommitRequest.model_validate(
+            {
+                "deviceId": str(device_id),
+                "idempotencyKey": f"merge-{suffix}",
+                "baseCursor": codec.encode(user_id=user_id, sequence=0),
+                "operations": [
+                    {
+                        "operationId": "create-notebook",
+                        "resourceType": "notebook",
+                        "resourceId": f"notebook-{suffix}",
+                        "metadata": {
+                            "folderId": f"folder-{suffix}",
+                            "title": "PostgreSQL merge",
+                            "layoutMode": "paged",
+                        },
+                    },
+                    {
+                        "operationId": "create-folder",
+                        "resourceType": "folder",
+                        "resourceId": f"folder-{suffix}",
+                        "metadata": {"name": "PostgreSQL folder"},
+                    },
+                ],
+            }
+        )
+
+        async with database.session() as first_session:
+            first = await SyncService(
+                first_session,
+                SyncChangeRepository(first_session),
+                codec,
+            ).commit_merge_creates(
+                user_id=user_id,
+                authenticated_device_id=device_id,
+                request=request,
+            )
+        async with database.session() as retry_session:
+            retry = await SyncService(
+                retry_session,
+                SyncChangeRepository(retry_session),
+                codec,
+            ).commit_merge_creates(
+                user_id=user_id,
+                authenticated_device_id=device_id,
+                request=request,
+            )
+        async with database.session() as verify_session:
+            folder_count = await verify_session.scalar(
+                select(func.count())
+                .select_from(Folder)
+                .where(Folder.user_id == user_id)
+            )
+            notebook_count = await verify_session.scalar(
+                select(func.count())
+                .select_from(Notebook)
+                .where(Notebook.user_id == user_id)
+            )
+            change_count = await verify_session.scalar(
+                select(func.count())
+                .select_from(SyncChange)
+                .where(SyncChange.user_id == user_id)
+            )
+            commit_count = await verify_session.scalar(
+                select(func.count())
+                .select_from(SyncCommit)
+                .where(SyncCommit.user_id == user_id)
+            )
+
+        assert first.replayed is False
+        assert retry.replayed is True
+        assert retry.results == first.results
+        assert folder_count == 1
+        assert notebook_count == 1
+        assert change_count == 2
+        assert commit_count == 1
+    finally:
+        if user_id is not None:
+            async with database.session() as cleanup_session:
+                await cleanup_session.execute(delete(User).where(User.id == user_id))
+                await cleanup_session.commit()
+        await database.close()
 
 
 @pytest.mark.asyncio

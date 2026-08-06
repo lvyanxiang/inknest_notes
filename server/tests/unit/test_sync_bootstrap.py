@@ -91,6 +91,14 @@ async def test_bootstrap_inventory_is_read_only_active_and_account_scoped(
     assert body["hasCloudLibrary"] is True
     assert body["folderIds"] == ["first-folder"]
     assert body["notebookIds"] == ["first-notebook-a", "first-notebook-b"]
+    assert [item["id"] for item in body["folders"]] == ["first-folder"]
+    assert body["folders"][0]["name"] == "Shared title"
+    assert [item["id"] for item in body["notebooks"]] == [
+        "first-notebook-a",
+        "first-notebook-b",
+    ]
+    assert all(item["title"] == "Same title" for item in body["notebooks"])
+    assert all(item["createdAt"] for item in body["notebooks"])
     assert body["counts"] == {"folders": 1, "notebooks": 2}
     assert changes_after == changes_before
     assert (
@@ -114,6 +122,8 @@ async def test_bootstrap_inventory_reports_an_empty_cloud_library(
         "hasCloudLibrary": False,
         "folderIds": [],
         "notebookIds": [],
+        "folders": [],
+        "notebooks": [],
         "counts": {"folders": 0, "notebooks": 0},
         "baseCursor": response.json()["baseCursor"],
     }

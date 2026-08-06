@@ -9,8 +9,16 @@ from inknest_server.models import Folder, Notebook
 
 @dataclass(frozen=True, slots=True)
 class SyncLibraryInventory:
-    folder_ids: list[str]
-    notebook_ids: list[str]
+    folders: list[Folder]
+    notebooks: list[Notebook]
+
+    @property
+    def folder_ids(self) -> list[str]:
+        return [folder.id for folder in self.folders]
+
+    @property
+    def notebook_ids(self) -> list[str]:
+        return [notebook.id for notebook in self.notebooks]
 
     @property
     def has_cloud_library(self) -> bool:
@@ -24,15 +32,15 @@ class SyncBootstrapRepository:
         self._session = session
 
     async def read_inventory(self, *, user_id: UUID) -> SyncLibraryInventory:
-        folder_ids = await self._session.scalars(
-            select(Folder.id).where(Folder.user_id == user_id).order_by(Folder.id)
+        folders = await self._session.scalars(
+            select(Folder).where(Folder.user_id == user_id).order_by(Folder.id)
         )
-        notebook_ids = await self._session.scalars(
-            select(Notebook.id)
+        notebooks = await self._session.scalars(
+            select(Notebook)
             .where(Notebook.user_id == user_id, Notebook.deleted_at.is_(None))
             .order_by(Notebook.id)
         )
         return SyncLibraryInventory(
-            folder_ids=list(folder_ids),
-            notebook_ids=list(notebook_ids),
+            folders=list(folders),
+            notebooks=list(notebooks),
         )

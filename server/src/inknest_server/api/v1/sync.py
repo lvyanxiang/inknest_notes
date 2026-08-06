@@ -19,6 +19,8 @@ from inknest_server.sync import (
     SyncCommitRequest,
     SyncCommitResponse,
     SyncConflictResponse,
+    SyncMergeCommitRequest,
+    SyncMergeCommitResponse,
     SyncTombstoneResponse,
 )
 from inknest_server.sync.conflicts import (
@@ -26,9 +28,11 @@ from inknest_server.sync.conflicts import (
     SyncConflictNotFoundError,
     SyncConflictResolutionStaleError,
 )
+from inknest_server.sync.merge import SyncMergeResourceExistsError
 from inknest_server.sync.service import (
     SyncCursorAheadError,
     SyncDeviceMismatchError,
+    SyncMergeOperationFailedError,
     SyncOperationFailedError,
 )
 from inknest_server.sync.tombstones import (
@@ -73,6 +77,64 @@ async def list_sync_changes(
         next_cursor=result.next_cursor,
         has_more=result.has_more,
     )
+
+
+@router.post("/merge/commit", response_model=SyncMergeCommitResponse)
+async def commit_sync_merge_creates(
+    payload: SyncMergeCommitRequest,
+    current: CurrentSessionDependency,
+    service: SyncServiceDependency,
+) -> SyncMergeCommitResponse:
+    try:
+        return await service.commit_merge_creates(
+            user_id=current.user.id,
+            authenticated_device_id=current.device.id,
+            request=payload,
+        )
+    except InvalidSyncCursorError as error:
+        raise ApiError(
+            code="sync_cursor_invalid",
+            message="The synchronization cursor is invalid for this account.",
+            status_code=400,
+        ) from error
+    except SyncCursorAheadError as error:
+        raise ApiError(
+            code="sync_cursor_ahead",
+            message="The synchronization cursor is ahead of the account state.",
+            status_code=409,
+        ) from error
+    except SyncDeviceMismatchError as error:
+        raise ApiError(
+            code="sync_device_mismatch",
+            message="The request device does not match the authenticated device.",
+            status_code=403,
+        ) from error
+    except SyncIdempotencyKeyReusedError as error:
+        raise ApiError(
+            code="sync_idempotency_key_reused",
+            message="The idempotency key was already used for another request.",
+            status_code=409,
+        ) from error
+    except SyncMergeOperationFailedError as error:
+        operation = error.operation
+        details = {
+            "operationId": operation.operation_id,
+            "resourceType": operation.resource_type,
+            "resourceId": operation.resource_id,
+        }
+        if isinstance(error.cause, SyncMergeResourceExistsError):
+            raise ApiError(
+                code="sync_merge_resource_exists",
+                message="The stable ID already exists with different metadata.",
+                status_code=409,
+                details=details,
+            ) from error
+        raise ApiError(
+            code="sync_merge_parent_not_found",
+            message="The notebook's parent folder does not exist.",
+            status_code=404,
+            details=details,
+        ) from error
 
 
 @router.post("/commit", response_model=SyncCommitResponse)

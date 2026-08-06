@@ -108,9 +108,24 @@ The first slice sets no retention period and performs no physical cleanup.
 - Actions are sorted by resource type, action, and ID so recreating a plan for
   retry produces the same order. Planning is pure and cannot mutate either
   library.
-- This slice implements the plan only. Executing uploads/downloads, comparing
-  shared Revision state, progress UI, and failure recovery remain separate
-  checklist items.
+- The planning layer itself performs no writes. Transfer slices consume the
+  plan separately; shared Revision comparison, progress UI, and failure
+  recovery remain later checklist items.
+
+### Folder and notebook metadata transfer foundation
+
+- Bootstrap includes complete active folder and notebook metadata snapshots in
+  addition to stable-ID inventories, allowing a later App slice to stage
+  cloud-only metadata without another lookup.
+- `POST /api/v1/sync/merge/commit` accepts atomic, account-scoped creation of
+  local-only folder/notebook metadata. It retains client stable IDs and creates
+  parent folders before dependent notebooks.
+- Exact retries share the existing account/device idempotency mechanism and
+  replay the stored response. A stable ID already holding different metadata
+  produces an explicit `409` and rolls back every operation in the batch.
+- This foundation does not yet transfer pages, infinite-canvas documents, or
+  assets, and the App does not yet apply downloaded snapshots. Therefore the
+  overall upload/download acceptance criterion remains incomplete.
 
 ## Acceptance Criteria
 
@@ -200,8 +215,8 @@ The first slice sets no retention period and performs no physical cleanup.
   are implemented; visible sign-in/merge screens and transfer progress remain
   later slices.
 - Implementation status: Phase 4 incremental synchronization is complete and
-  Phase 5 library-presence detection plus Merge planning are delivered in
-  `docs/development/BACKEND_IMPLEMENTATION_PLAN.md`.
+  Phase 5 library-presence detection, Merge planning, and folder/notebook
+  metadata transfer contracts are delivered in the implementation plan.
 - Verification: Backend tests cover authentication, account isolation,
   revisioned content, asset transfer, cursors, atomic/idempotent commits, page
   and notebook conflicts, all resolution choices, soft delete/restore, both
@@ -214,5 +229,7 @@ The first slice sets no retention period and performs no physical cleanup.
   local archived/folder/root discovery, and real PostgreSQL account isolation.
   Merge-plan tests cover stable-ID-only upload/download/shared actions,
   deterministic retry ordering, empty libraries, and corrupt local IDs.
-  PostgreSQL migration `20260806_0011` remains current; this read-only slice
-  requires no schema migration.
+  Metadata-transfer tests cover exact replay, parent dependency ordering,
+  conflicting stable-ID rollback, bootstrap snapshots, and real PostgreSQL
+  duplicate prevention. PostgreSQL migration `20260806_0011` remains current;
+  this slice reuses existing tables and requires no schema migration.

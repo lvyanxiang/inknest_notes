@@ -3,16 +3,16 @@
 ## Current
 
 - Milestone: Backend Phase 5 first-sign-in merge and new-device restore is in
-  progress; library detection and the deterministic default-Merge decision
-  plan are complete.
-- Next task: Execute local-only uploads and cloud-only downloads safely,
-  starting with folder/notebook creation contracts and idempotent retry without
-  advancing the bootstrap Cursor prematurely.
-- Last completed: Flutter converts local/cloud stable-ID inventories into an
-  immutable, deterministic plan of `uploadLocal`, `downloadCloud`, and
-  `reconcileShared` actions for folders and notebooks. Planning rejects empty
-  or duplicate IDs, never reads titles, and has no delete, replace-local, or
-  overwrite action. This slice still performs no network or storage mutation.
+  progress; folder/notebook metadata upload/download contracts are now
+  available after detection and deterministic Merge planning.
+- Next task: Extend first-merge transfer to page and infinite-canvas snapshots,
+  then add Flutter temporary staging and atomic local application before any
+  bootstrap Cursor is persisted.
+- Last completed: `GET /api/v1/sync/bootstrap` now returns complete active
+  folder/notebook metadata snapshots for cloud-only download, and authenticated
+  `POST /api/v1/sync/merge/commit` atomically creates local-only folder/notebook
+  metadata. Exact idempotent retries replay without duplicates; different
+  metadata on an occupied stable ID returns `409` and rolls back the batch.
 
 ## Decisions
 
@@ -31,6 +31,10 @@
   action kind, and stable ID. Local-only resources upload, cloud-only resources
   download, and shared IDs enter Revision/ancestry reconciliation; planning
   itself must never create a delete or replace-local action.
+- Keep first-merge metadata creation separate from ordinary Revision content
+  commits. The API creates folders before dependent notebooks, retains request
+  result order, shares the account/device idempotency namespace, and treats its
+  returned Cursor as unapplied until local download staging succeeds.
 - When no implementation task is selected, product analysis may recommend candidates but must not automatically start Post-MVP 6-9 or infer work from plain roadmap bullets.
 - Keep normal `$inknest-project` work focused on code, roadmap, and product implementation; do not automatically update task book or opening report during development tasks.
 - Use `$inknest-academic-docs` for `docs/academic/GRADUATION_TASK_BOOK.md`, `docs/academic/OPENING_REPORT.md`, academic writing requirements, graduation schedule, and formal reference maintenance.
@@ -190,6 +194,13 @@
 - Keep unresolved legacy content viewable, navigable, zoomable, searchable, and exportable without allowing normal save, rotate, copy, or duplicate paths to overwrite its source JSON.
 
 ## Verification
+
+- Python formatting, Ruff linting, and mypy pass across 66 source files. All 46
+  non-integration tests and all 15 PostgreSQL/MinIO integration tests pass,
+  including atomic metadata creation, exact response replay, account scoping,
+  conflicting-ID rollback, and real PostgreSQL duplicate prevention. OpenAPI
+  exposes 19 application operations. No Alembic migration was created because
+  the slice reuses the existing folder, notebook, change, and commit tables.
 
 - The 9 focused Flutter bootstrap/Merge tests pass, covering four presence
   states, local inventory discovery, response validation, stable-ID-only action

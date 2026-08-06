@@ -232,6 +232,7 @@ DELETE /devices/{deviceId}
 
 ```text
 GET  /sync/bootstrap
+POST /sync/merge/commit
 GET  /sync/changes?cursor=...
 POST /sync/commit
 POST /sync/conflicts/{conflictId}/resolve
@@ -389,6 +390,9 @@ checksums.sha256
 - [x] 实现默认 Merge 决策计划，不以标题推断对象身份（仅生成确定顺序的
   upload-local、download-cloud、reconcile-shared 动作；不包含删除、替换或覆盖）。
 - [ ] 上传本地独有、下载云端独有。
+  - [x] 文件夹/笔记本元数据传输基础：bootstrap 返回账号隔离的完整元数据快照，
+    `/sync/merge/commit` 原子、幂等创建本地独有元数据并拒绝不同内容占用同一稳定 ID。
+  - [ ] 页面、无限画布和附件传输，以及 Flutter 临时落地、校验和原子应用。
 - [ ] 显示同步进度、失败项和重试状态。
 - [ ] 新设备全量 bootstrap 后切换至增量同步。
 - [ ] 恢复前快照和失败回滚。

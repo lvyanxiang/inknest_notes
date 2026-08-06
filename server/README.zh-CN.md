@@ -146,6 +146,7 @@ API 在宿主机运行或使用默认 Compose 端口映射时，以下地址相�
 | `DELETE` | `/assets/upload-sessions/{upload_id}` | Bearer Access Token | 取消当前用户拥有的待上传会话。 |
 | `GET` | `/assets/{asset_id}/download-url` | Bearer Access Token | 为当前用户拥有的可用附件签发短期下载 URL。 |
 | `GET` | `/sync/bootstrap` | Bearer Access Token | 首次合并前读取当前账号有效文件夹/笔记本的稳定 ID 清单。 |
+| `POST` | `/sync/merge/commit` | Bearer Access Token | 首次合并时原子、幂等地创建本地独有的文件夹/笔记本元数据。 |
 | `GET` | `/sync/changes?cursor=...&limit=...` | Bearer Access Token | 按顺序读取当前用户的增量变更，并返回下一个不透明 Cursor。 |
 | `POST` | `/sync/commit` | Bearer Access Token | 原子、幂等地批量更新或软删除已有笔记本、页面或无限画布。 |
 | `POST` | `/sync/conflicts/{conflict_id}/resolve` | Bearer Access Token | 对当前用户的页面/笔记本冲突选择保留原版本、使用冲突版本或两个都保留。 |
@@ -228,18 +229,60 @@ curl \
 ### 首次登录 bootstrap 清单
 
 `GET /api/v1/sync/bootstrap` 是需要 Access Token 的只读资料库检测接口。它返回排序后的
-有效 `folderIds`、`notebookIds`、对应数量、`hasCloudLibrary`，以及绑定当前账号的
-`baseCursor`：
+有效 `folderIds`、`notebookIds`、完整 `folders`/`notebooks` 元数据快照、对应数量、
+`hasCloudLibrary`，以及绑定当前账号的 `baseCursor`：
 
 ```bash
 curl 'http://127.0.0.1:8000/api/v1/sync/bootstrap' \
   -H 'Authorization: Bearer <access-token>'
 ```
 
-App 使用稳定 ID 与本地清单比较，名称和标题不参与身份判断。这个接口不返回笔记正文，
-也不会上传、下载、删除或覆盖任何资料。当前不能把 `baseCursor` 直接保存成“已应用”的
+App 使用稳定 ID 与本地清单比较，名称和标题不参与身份判断。元数据快照供后续下载云端
+独有对象使用，但这个只读请求不会把它写入本地，也不会上传、删除或覆盖资料；页面/
+画布正文和附件尚未包含。当前不能把 `baseCursor` 直接保存成“已应用”的
 拉取 Cursor；后续完整 bootstrap 必须先下载、校验并原子写入全部对应快照。返回 `401`
 表示 Access Token 缺失、过期或设备已被撤销。
+
+### 首次合并元数据创建
+
+`POST /api/v1/sync/merge/commit` 原子接收本地独有的文件夹和笔记本元数据，保留稳定 ID，
+并先创建文件夹再创建依赖它的笔记本：
+
+```bash
+curl -X POST 'http://127.0.0.1:8000/api/v1/sync/merge/commit' \
+  -H 'Authorization: Bearer <access-token>' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "deviceId": "<device-id>",
+    "idempotencyKey": "merge-metadata-1",
+    "baseCursor": "<bootstrap-base-cursor>",
+    "operations": [
+      {
+        "operationId": "folder-1-create",
+        "resourceType": "folder",
+        "resourceId": "folder-1",
+        "metadata": {"name": "学习"}
+      },
+      {
+        "operationId": "notebook-1-create",
+        "resourceType": "notebook",
+        "resourceId": "notebook-1",
+        "metadata": {
+          "folderId": "folder-1",
+          "title": "笔记",
+          "layoutMode": "paged",
+          "isArchived": false
+        }
+      }
+    ]
+  }'
+```
+
+响应丢失后，应使用相同幂等键原样重试；服务端返回 `replayed: true`，不会重复创建数据或
+同步事件。同一个键提交不同内容返回 `409 sync_idempotency_key_reused`；同一稳定 ID 已有
+不同元数据时返回 `409 sync_merge_resource_exists` 并回滚整个批次；父文件夹不存在或不
+属于当前账号时返回 `404 sync_merge_parent_not_found`。响应中的 `nextCursor` 目前不能
+保存为 App 已应用 Cursor，必须等待后续下载和本地安全落地完成。
 
 ### 增量同步变更
 

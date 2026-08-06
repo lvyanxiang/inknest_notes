@@ -18,14 +18,26 @@ from inknest_server.repositories.sync import (
 from inknest_server.sync.bootstrap import SyncBootstrapRepository
 from inknest_server.sync.conflicts import ConflictResolution, ConflictService
 from inknest_server.sync.cursor import SyncCursorCodec
+from inknest_server.sync.merge import (
+    SyncMergeRepository,
+    SyncMergeResourceExistsError,
+)
 from inknest_server.sync.schemas import (
     SyncBootstrapCounts,
+    SyncBootstrapFolder,
+    SyncBootstrapNotebook,
     SyncBootstrapResponse,
     SyncCommitOperation,
     SyncCommitOperationResult,
     SyncCommitRequest,
     SyncCommitResponse,
     SyncConflictResponse,
+    SyncMergeCommitRequest,
+    SyncMergeCommitResponse,
+    SyncMergeCreateOperation,
+    SyncMergeCreateOperationResult,
+    SyncMergeFolderMetadata,
+    SyncMergeNotebookMetadata,
     SyncTombstoneResponse,
 )
 from inknest_server.sync.tombstones import TombstoneService
@@ -50,6 +62,17 @@ class SyncOperationFailedError(Exception):
         super().__init__(f"synchronization operation failed: {operation.operation_id}")
 
 
+class SyncMergeOperationFailedError(Exception):
+    def __init__(
+        self,
+        operation: SyncMergeCreateOperation,
+        cause: SyncMergeResourceExistsError | LibraryResourceNotFoundError,
+    ) -> None:
+        self.operation = operation
+        self.cause = cause
+        super().__init__(f"merge creation failed: {operation.operation_id}")
+
+
 @dataclass(frozen=True, slots=True)
 class SyncChangePage:
     changes: list[SyncChange]
@@ -71,6 +94,7 @@ class SyncService:
         self._bootstrap = SyncBootstrapRepository(session)
         self._commits = SyncCommitRepository(session)
         self._conflicts = ConflictService(session)
+        self._merge = SyncMergeRepository(session)
         self._tombstones = TombstoneService(session)
 
     async def bootstrap(self, *, user_id: UUID) -> SyncBootstrapResponse:
@@ -83,6 +107,14 @@ class SyncService:
             has_cloud_library=inventory.has_cloud_library,
             folder_ids=inventory.folder_ids,
             notebook_ids=inventory.notebook_ids,
+            folders=[
+                SyncBootstrapFolder.model_validate(folder)
+                for folder in inventory.folders
+            ],
+            notebooks=[
+                SyncBootstrapNotebook.model_validate(notebook)
+                for notebook in inventory.notebooks
+            ],
             counts=SyncBootstrapCounts(
                 folders=len(inventory.folder_ids),
                 notebooks=len(inventory.notebook_ids),
@@ -91,6 +123,109 @@ class SyncService:
                 user_id=user_id,
                 sequence=base_sequence,
             ),
+        )
+
+    async def commit_merge_creates(
+        self,
+        *,
+        user_id: UUID,
+        authenticated_device_id: UUID,
+        request: SyncMergeCommitRequest,
+    ) -> SyncMergeCommitResponse:
+        if request.device_id != authenticated_device_id:
+            raise SyncDeviceMismatchError
+
+        base_sequence = self._cursor_codec.decode(
+            request.base_cursor,
+            user_id=user_id,
+        )
+        latest_sequence = await self._repository.latest_sequence(user_id=user_id)
+        if base_sequence > latest_sequence:
+            raise SyncCursorAheadError
+
+        request_hash = content_hash(request.model_dump(mode="json", by_alias=True))
+        reservation = await self._commits.reserve(
+            user_id=user_id,
+            device_id=authenticated_device_id,
+            idempotency_key=request.idempotency_key,
+            request_hash=request_hash,
+        )
+        if reservation.replayed:
+            return SyncMergeCommitResponse.model_validate(
+                {**reservation.record.response_payload, "replayed": True}
+            )
+
+        try:
+            ordered_operations = sorted(
+                request.operations,
+                key=lambda operation: operation.resource_type != "folder",
+            )
+            results_by_operation_id = {
+                operation.operation_id: await self._apply_merge_create(
+                    user_id=user_id,
+                    device_id=authenticated_device_id,
+                    operation=operation,
+                )
+                for operation in ordered_operations
+            }
+            latest_sequence = await self._repository.latest_sequence(user_id=user_id)
+            response = SyncMergeCommitResponse(
+                idempotency_key=request.idempotency_key,
+                replayed=False,
+                results=[
+                    results_by_operation_id[operation.operation_id]
+                    for operation in request.operations
+                ],
+                next_cursor=self._cursor_codec.encode(
+                    user_id=user_id,
+                    sequence=latest_sequence,
+                ),
+            )
+            reservation.record.response_payload = response.model_dump(
+                mode="json", by_alias=True
+            )
+            await self._session.commit()
+            return response
+        except Exception:
+            await self._session.rollback()
+            raise
+
+    async def _apply_merge_create(
+        self,
+        *,
+        user_id: UUID,
+        device_id: UUID,
+        operation: SyncMergeCreateOperation,
+    ) -> SyncMergeCreateOperationResult:
+        try:
+            if operation.resource_type == "folder":
+                if not isinstance(operation.metadata, SyncMergeFolderMetadata):
+                    raise RuntimeError("validated folder metadata has wrong type")
+                result = await self._merge.create_folder(
+                    user_id=user_id,
+                    device_id=device_id,
+                    folder_id=operation.resource_id,
+                    metadata=operation.metadata,
+                )
+            else:
+                if not isinstance(operation.metadata, SyncMergeNotebookMetadata):
+                    raise RuntimeError("validated notebook metadata has wrong type")
+                result = await self._merge.create_notebook(
+                    user_id=user_id,
+                    device_id=device_id,
+                    notebook_id=operation.resource_id,
+                    metadata=operation.metadata,
+                )
+        except (
+            SyncMergeResourceExistsError,
+            LibraryResourceNotFoundError,
+        ) as error:
+            raise SyncMergeOperationFailedError(operation, error) from error
+        return SyncMergeCreateOperationResult(
+            operation_id=operation.operation_id,
+            resource_type=operation.resource_type,
+            resource_id=operation.resource_id,
+            outcome=result.outcome,
         )
 
     async def list_changes(
