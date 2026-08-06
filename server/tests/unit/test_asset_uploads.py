@@ -119,6 +119,11 @@ async def test_complete_upload_verifies_and_creates_one_ready_asset(
         content_type="image/png",
     )
 
+    pending_download = await client.get(
+        "/api/v1/assets/asset-1/download-url",
+        headers=bearer(owner["accessToken"]),
+    )
+
     cross_user = await client.post(
         f"/api/v1/assets/upload-sessions/{body['uploadId']}/complete",
         headers=bearer(stranger["accessToken"]),
@@ -131,8 +136,17 @@ async def test_complete_upload_verifies_and_creates_one_ready_asset(
         f"/api/v1/assets/upload-sessions/{body['uploadId']}/complete",
         headers=bearer(owner["accessToken"]),
     )
+    cross_user_download = await client.get(
+        "/api/v1/assets/asset-1/download-url",
+        headers=bearer(stranger["accessToken"]),
+    )
+    download = await client.get(
+        "/api/v1/assets/asset-1/download-url",
+        headers=bearer(owner["accessToken"]),
+    )
 
     assert cross_user.status_code == 404
+    assert pending_download.status_code == 404
     assert first.status_code == 200
     assert retry.status_code == 200
     assert first.json() == retry.json()
@@ -140,6 +154,15 @@ async def test_complete_upload_verifies_and_creates_one_ready_asset(
     assert first.json()["assetId"] == "asset-1"
     assert first.json()["byteSize"] == len(CONTENT)
     assert first.json()["sha256"] == SHA256
+    assert cross_user_download.status_code == 404
+    assert download.status_code == 200
+    assert download.json()["method"] == "GET"
+    assert download.json()["assetId"] == "asset-1"
+    assert download.json()["filename"] == "../../课堂 笔记.png"
+    assert download.json()["contentType"] == "image/png"
+    assert download.json()["byteSize"] == len(CONTENT)
+    assert download.json()["sha256"] == SHA256
+    assert len(object_storage.download_requests) == 1
 
     upload = await db_session.scalar(select(AssetUpload))
     asset = await db_session.scalar(select(Asset))
@@ -149,6 +172,26 @@ async def test_complete_upload_verifies_and_creates_one_ready_asset(
     assert asset is not None
     assert asset.object_key in object_storage.objects
     assert body["objectKey"] not in object_storage.objects
+
+    object_storage.put_object(
+        asset.object_key,
+        b"drifted",
+        content_type="image/png",
+    )
+    drifted_object = await client.get(
+        "/api/v1/assets/asset-1/download-url",
+        headers=bearer(owner["accessToken"]),
+    )
+    assert drifted_object.status_code == 409
+    assert drifted_object.json()["error"]["code"] == "asset_object_metadata_mismatch"
+
+    await object_storage.delete_object(asset.object_key)
+    missing_object = await client.get(
+        "/api/v1/assets/asset-1/download-url",
+        headers=bearer(owner["accessToken"]),
+    )
+    assert missing_object.status_code == 409
+    assert missing_object.json()["error"]["code"] == "asset_object_missing"
 
 
 async def test_complete_upload_rejects_missing_size_and_hash_mismatches(

@@ -5,8 +5,8 @@
 InkNest Server is the Python/FastAPI backend for account-backed backup and
 local-first synchronization. It currently provides the service skeleton,
 PostgreSQL and MinIO adapters, health endpoints, the first account/session API,
-user-scoped library metadata persistence, and verified presigned asset uploads.
-Notebook synchronization and asset download routes are not implemented yet.
+user-scoped library metadata persistence, and verified presigned asset upload
+and download flows. Notebook synchronization routes are not implemented yet.
 
 ## Requirements
 
@@ -146,6 +146,7 @@ All application routes use the base URL `http://127.0.0.1:8000/api/v1`.
 | `POST` | `/assets/upload-sessions` | Bearer Access Token | Create or retry an upload session and return a MinIO presigned PUT URL. |
 | `POST` | `/assets/upload-sessions/{upload_id}/complete` | Bearer Access Token | Verify the staged object and create ready asset metadata. |
 | `DELETE` | `/assets/upload-sessions/{upload_id}` | Bearer Access Token | Cancel one pending upload session owned by the current user. |
+| `GET` | `/assets/{asset_id}/download-url` | Bearer Access Token | Sign a short-lived download URL for one ready, owned asset. |
 
 For Bearer-protected routes, send the Access Token returned by register, login,
 or refresh:
@@ -184,6 +185,13 @@ staging object so the client can upload corrected bytes and retry.
 Cancelling a session prevents later server-side completion but cannot revoke an
 already issued URL before that URL expires. Scheduled cleanup of incomplete and
 orphaned objects is a later phase.
+
+After completion, request `GET /assets/{asset_id}/download-url`. The server only
+signs a ready asset owned by the authenticated user and first checks that its
+MinIO object still matches the stored size and media type. The response includes
+the URL, expiry, byte length, and SHA-256. Clients must download to temporary
+storage, verify size and SHA-256, and only then atomically replace local data.
+Never log or retain the complete signed URL.
 
 ### PostgreSQL and MinIO
 
@@ -361,6 +369,7 @@ Important settings:
 - `INKNEST_MINIO_PUBLIC_SECURE`: use HTTPS in client-visible signed URLs.
 - `INKNEST_ASSET_UPLOAD_URL_MINUTES`: signed upload URL lifetime, default 15.
 - `INKNEST_ASSET_UPLOAD_SESSION_HOURS`: pending-session lifetime, default 24.
+- `INKNEST_ASSET_DOWNLOAD_URL_MINUTES`: signed download URL lifetime, default 15.
 - `INKNEST_MAX_ASSET_UPLOAD_BYTES`: per-asset limit, default 512 MiB.
 - `INKNEST_JWT_SECRET`: server-only signing secret, at least 32 characters;
   never expose it to Flutter or commit a production value.

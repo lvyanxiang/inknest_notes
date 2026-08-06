@@ -3,13 +3,13 @@
 ## Current
 
 - Milestone: Backend Phase 3 cloud library and assets (in progress)
-- Next task: Add PDF, image, and audio end-to-end upload/download coverage,
-  including an authenticated download-URL endpoint that only signs ready,
-  user-owned assets.
-- Last completed: Added idempotent upload completion with real MinIO MIME,
-  byte-size, and streaming SHA-256 verification. Uploads now use writable
-  staging keys, are conditionally promoted to server-only final keys, and only
-  then create ready `assets` metadata; Alembic is at `20260806_0006`.
+- Next task: Define cleanup rules for incomplete uploads and orphaned MinIO
+  objects, including safe retry boundaries and deletion observability without
+  immediately deleting referenced ready assets.
+- Last completed: Added authenticated, owner-scoped download URL signing for
+  ready assets with storage-drift checks and client checksum metadata. Real
+  MinIO round trips now cover PDF, PNG image, and M4A audio bytes end to end;
+  Alembic remains at `20260806_0006` because no schema change was needed.
 
 ## Decisions
 
@@ -155,6 +155,14 @@
 
 ## Verification
 
+- Backend formatting, linting, and strict typing pass across 48 Python
+  source/test files; all 28 non-integration tests pass.
+- Six PostgreSQL/MinIO integration cases pass. PDF, PNG image, and M4A audio
+  each travel through a real presigned PUT, completion verification and
+  promotion, owner-scoped presigned GET, and byte-for-byte download check.
+- OpenAPI exposes 13 application operations, including
+  `GET /api/v1/assets/{asset_id}/download-url`; Alembic remains at the verified
+  `20260806_0006` head because this slice changes no database schema.
 - Backend formatting, linting, and strict typing pass across 48 Python
   source/test files; all 28 non-integration tests pass.
 - All four PostgreSQL/MinIO integration tests pass. The asset test now uploads

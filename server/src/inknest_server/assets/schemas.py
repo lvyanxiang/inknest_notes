@@ -64,3 +64,14 @@ class AssetResponse(AssetApiModel):
     sha256: str
     status: Literal["ready"] = "ready"
     created_at: datetime
+
+
+class AssetDownloadUrlResponse(AssetApiModel):
+    asset_id: str
+    filename: str
+    content_type: str
+    byte_size: int
+    sha256: str
+    download_url: str
+    method: Literal["GET"] = "GET"
+    expires_at: datetime

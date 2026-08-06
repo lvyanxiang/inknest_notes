@@ -5,7 +5,7 @@
 InkNest 服务端是为账号备份和 local-first（本地优先）同步提供支持的
 Python/FastAPI 后端。目前已经包含服务骨架、PostgreSQL、MinIO、健康检查、第一版
 账号/会话/设备接口、按用户隔离的资料库元数据持久化，以及经过大小和 SHA-256 校验的
-附件预签名上传流程；笔记同步接口和附件下载接口尚未实现。
+附件预签名上传与下载流程；笔记同步接口尚未实现。
 
 ## 环境要求
 
@@ -141,6 +141,7 @@ API 在宿主机运行或使用默认 Compose 端口映射时，以下地址相�
 | `POST` | `/assets/upload-sessions` | Bearer Access Token | 创建或重试附件上传会话，返回 MinIO 预签名 PUT URL。 |
 | `POST` | `/assets/upload-sessions/{upload_id}/complete` | Bearer Access Token | 校验暂存对象并创建可用附件元数据。 |
 | `DELETE` | `/assets/upload-sessions/{upload_id}` | Bearer Access Token | 取消当前用户拥有的待上传会话。 |
+| `GET` | `/assets/{asset_id}/download-url` | Bearer Access Token | 为当前用户拥有的可用附件签发短期下载 URL。 |
 
 访问 Bearer 鉴权接口时，使用注册、登录或刷新接口返回的 Access Token：
 
@@ -202,6 +203,19 @@ curl -X POST \
 客户端覆盖后重试。
 取消会话只阻止服务端后续完成该会话，不能撤销已经签发且尚未过期的 URL；未完成对象
 及孤儿对象的定时清理将在后续步骤实现。
+
+附件完成后，可以使用稳定的 `assetId` 获取下载 URL：
+
+```bash
+curl \
+  http://127.0.0.1:8000/api/v1/assets/<asset-id>/download-url \
+  -H "Authorization: Bearer <access-token>"
+```
+
+服务端只会为当前用户拥有的 `assets` 记录签名，并先确认 MinIO 对象仍存在且大小、MIME
+与数据库一致。响应包含 `downloadUrl`、`expiresAt`、`byteSize` 和 `sha256`。App 下载时
+应先写入临时文件，核对大小和 SHA-256 后再原子替换正式本地文件。不要记录或长期保存
+完整预签名 URL。
 
 ### PostgreSQL 与 MinIO
 
@@ -373,6 +387,7 @@ INKNEST_RUN_INTEGRATION=1 uv run pytest tests/integration
 - `INKNEST_MINIO_PUBLIC_SECURE`：客户端访问预签名 URL 时是否使用 HTTPS。
 - `INKNEST_ASSET_UPLOAD_URL_MINUTES`：预签名 URL 有效分钟数，默认 15。
 - `INKNEST_ASSET_UPLOAD_SESSION_HOURS`：待上传会话有效小时数，默认 24。
+- `INKNEST_ASSET_DOWNLOAD_URL_MINUTES`：附件下载 URL 有效分钟数，默认 15。
 - `INKNEST_MAX_ASSET_UPLOAD_BYTES`：单个附件允许的最大字节数，默认 512 MiB。
 - `INKNEST_JWT_SECRET`：至少 32 位的服务端签名密钥，不能暴露给 Flutter 或提交生产值。
 - `INKNEST_ACCESS_TOKEN_MINUTES`：Access Token 有效分钟数，默认 15。

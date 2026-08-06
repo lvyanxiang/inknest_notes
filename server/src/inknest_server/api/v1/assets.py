@@ -7,12 +7,35 @@ from inknest_server.api.dependencies import (
     CurrentSessionDependency,
 )
 from inknest_server.assets import (
+    AssetDownloadUrlResponse,
     AssetResponse,
     AssetUploadSessionResponse,
     CreateAssetUploadRequest,
 )
 
 router = APIRouter(prefix="/assets", tags=["assets"])
+
+
+@router.get("/{asset_id}/download-url", response_model=AssetDownloadUrlResponse)
+async def create_asset_download_url(
+    asset_id: str,
+    current: CurrentSessionDependency,
+    service: AssetUploadServiceDependency,
+) -> AssetDownloadUrlResponse:
+    result = await service.create_download_url(
+        user_id=current.user.id,
+        asset_id=asset_id,
+    )
+    asset = result.asset
+    return AssetDownloadUrlResponse(
+        asset_id=asset.id,
+        filename=asset.original_filename,
+        content_type=asset.content_type,
+        byte_size=asset.byte_size,
+        sha256=asset.sha256,
+        download_url=result.download_url,
+        expires_at=result.expires_at,
+    )
 
 
 @router.post(

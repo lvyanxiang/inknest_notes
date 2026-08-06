@@ -57,7 +57,21 @@ async def test_postgres_and_minio_are_ready() -> None:
 
 
 @pytest.mark.asyncio
-async def test_presigned_upload_is_verified_and_promoted_to_ready_asset() -> None:
+@pytest.mark.parametrize(
+    ("kind", "filename", "content_type", "content"),
+    [
+        ("pdf", "integration.pdf", "application/pdf", b"%PDF-1.7\ninknest\n"),
+        ("image", "integration.png", "image/png", b"\x89PNG\r\ninknest"),
+        ("audio", "integration.m4a", "audio/mp4", b"inknest-m4a-audio"),
+    ],
+    ids=["pdf", "image", "audio"],
+)
+async def test_presigned_asset_round_trip(
+    kind: str,
+    filename: str,
+    content_type: str,
+    content: bytes,
+) -> None:
     settings = Settings()
     database = Database(settings.database_url)
     storage = MinioStorage(
@@ -73,8 +87,6 @@ async def test_presigned_upload_is_verified_and_promoted_to_ready_asset() -> Non
     suffix = uuid4().hex
     user_id = None
     object_keys: set[str] = set()
-    content = b"inknest presigned upload integration test"
-
     try:
         async with database.session() as session:
             user = User(
@@ -100,27 +112,27 @@ async def test_presigned_upload_is_verified_and_promoted_to_ready_asset() -> Non
                 user_id=user.id,
                 device_id=device.id,
                 notebook_id=notebook.id,
-                asset_id=f"asset-{suffix}",
-                kind="image",
-                filename="integration.png",
-                content_type="image/png",
+                asset_id=f"asset-{kind}-{suffix}",
+                kind=kind,
+                filename=filename,
+                content_type=content_type,
                 byte_size=len(content),
                 sha256=hashlib.sha256(content).hexdigest(),
             )
             object_keys.add(result.upload.staging_object_key)
 
             async with AsyncClient() as http_client:
-                response = await http_client.put(
+                upload_response = await http_client.put(
                     result.upload_url,
                     content=content,
-                    headers={"Content-Type": "image/png"},
+                    headers={"Content-Type": content_type},
                 )
 
             await session.refresh(result.upload)
-            asset = await session.get(Asset, (f"asset-{suffix}", user.id))
+            asset = await session.get(Asset, (f"asset-{kind}-{suffix}", user.id))
             persisted_upload = await session.get(AssetUpload, result.upload.id)
 
-            assert response.status_code == 200
+            assert upload_response.status_code == 200
             assert persisted_upload is not None
             assert persisted_upload.status == "pending"
             assert asset is None
@@ -133,6 +145,12 @@ async def test_presigned_upload_is_verified_and_promoted_to_ready_asset() -> Non
                 upload_id=result.upload.id,
             )
             object_keys.add(completed.object_key)
+            download = await service.create_download_url(
+                user_id=user.id,
+                asset_id=completed.id,
+            )
+            async with AsyncClient() as http_client:
+                download_response = await http_client.get(download.download_url)
 
             await session.refresh(result.upload)
             assert completed.id == retry.id
@@ -142,7 +160,11 @@ async def test_presigned_upload_is_verified_and_promoted_to_ready_asset() -> Non
             assert result.upload.completed_at is not None
             assert (
                 await storage.stat_object(completed.object_key)
-            ).content_type == "image/png"
+            ).content_type == content_type
+            assert download.asset.id == completed.id
+            assert download_response.status_code == 200
+            assert download_response.content == content
+            assert download_response.headers["content-type"] == content_type
     finally:
         for object_key in object_keys:
             await storage.delete_object(object_key)

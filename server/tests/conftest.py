@@ -31,6 +31,7 @@ class FakeStoredObject:
 class FakeObjectStorage:
     def __init__(self) -> None:
         self.upload_requests: list[tuple[str, timedelta]] = []
+        self.download_requests: list[tuple[str, timedelta]] = []
         self.deleted_objects: list[str] = []
         self.objects: dict[str, FakeStoredObject] = {}
 
@@ -49,6 +50,7 @@ class FakeObjectStorage:
         return f"http://object-storage.test/upload/{object_key}"
 
     async def create_download_url(self, object_key: str, *, expires: timedelta) -> str:
+        self.download_requests.append((object_key, expires))
         return f"http://object-storage.test/download/{object_key}"
 
     async def delete_object(self, object_key: str) -> None:

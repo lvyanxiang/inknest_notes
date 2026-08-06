@@ -65,6 +65,13 @@ class UploadSessionResult:
     upload_url: str
 
 
+@dataclass(frozen=True, slots=True)
+class DownloadUrlResult:
+    asset: Asset
+    download_url: str
+    expires_at: datetime
+
+
 class AssetUploadService:
     def __init__(
         self,
@@ -274,6 +281,49 @@ class AssetUploadService:
         await self._session.commit()
         await self._delete_object_best_effort(upload.staging_object_key)
         return asset
+
+    async def create_download_url(
+        self, *, user_id: UUID, asset_id: str
+    ) -> DownloadUrlResult:
+        asset = await self._get_asset(user_id=user_id, asset_id=asset_id)
+        if asset is None:
+            raise ApiError(
+                code="asset_not_found",
+                message="The asset was not found.",
+                status_code=404,
+            )
+
+        try:
+            metadata = await self._storage.stat_object(asset.object_key)
+        except StoredObjectNotFoundError as error:
+            raise ApiError(
+                code="asset_object_missing",
+                message="The ready asset object is missing from storage.",
+                status_code=409,
+            ) from error
+
+        actual_content_type = metadata.content_type.split(";", maxsplit=1)[0].lower()
+        if (
+            metadata.byte_size != asset.byte_size
+            or actual_content_type != asset.content_type
+        ):
+            raise ApiError(
+                code="asset_object_metadata_mismatch",
+                message="The stored object no longer matches its ready metadata.",
+                status_code=409,
+            )
+
+        lifetime = timedelta(minutes=self._settings.asset_download_url_minutes)
+        expires_at = datetime.now(UTC) + lifetime
+        download_url = await self._storage.create_download_url(
+            asset.object_key,
+            expires=lifetime,
+        )
+        return DownloadUrlResult(
+            asset=asset,
+            download_url=download_url,
+            expires_at=expires_at,
+        )
 
     async def cancel_upload_session(self, *, user_id: UUID, upload_id: UUID) -> None:
         upload = await self._session.scalar(

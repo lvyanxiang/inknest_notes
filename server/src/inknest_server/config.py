@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     minio_bucket: str = "inknest-private"
     asset_upload_url_minutes: int = Field(default=15, ge=1, le=60)
     asset_upload_session_hours: int = Field(default=24, ge=1, le=168)
+    asset_download_url_minutes: int = Field(default=15, ge=1, le=60)
     max_asset_upload_bytes: int = Field(default=536_870_912, ge=1)
 
     jwt_secret: SecretStr = SecretStr(
