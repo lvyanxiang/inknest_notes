@@ -7,9 +7,10 @@ import 'package:inknest_notes/sync/sync_bootstrap.dart';
 import 'package:inknest_notes/sync/sync_merge_plan.dart';
 
 class FirstSignInSyncDialogResult {
-  const FirstSignInSyncDialogResult({this.restoreResult});
+  const FirstSignInSyncDialogResult({this.restoreResult, this.uploadResult});
 
   final BootstrapRestoreResult? restoreResult;
+  final LocalMergeUploadResult? uploadResult;
 }
 
 Future<FirstSignInSyncDialogResult?> showFirstSignInSyncDialog({
@@ -41,6 +42,7 @@ class _FirstSignInSyncDialogState extends State<_FirstSignInSyncDialog> {
   FirstSignInSyncPreview? _preview;
   String? _errorMessage;
   bool _authenticationExpired = false;
+  bool _transferFailed = false;
 
   @override
   void initState() {
@@ -53,6 +55,7 @@ class _FirstSignInSyncDialogState extends State<_FirstSignInSyncDialog> {
       _state = _DialogState.checking;
       _errorMessage = null;
       _authenticationExpired = false;
+      _transferFailed = false;
     });
     try {
       final preview = await widget.service.inspect();
@@ -83,24 +86,38 @@ class _FirstSignInSyncDialogState extends State<_FirstSignInSyncDialog> {
     }
   }
 
-  Future<void> _restore() async {
+  Future<void> _executeMerge() async {
     final preview = _preview;
-    if (preview == null || !preview.canRestoreCloudOnly) return;
+    if (preview == null ||
+        (!preview.canRestoreCloudOnly && !preview.canUploadLocalOnly)) {
+      return;
+    }
     setState(() => _state = _DialogState.restoring);
     try {
-      final result = await widget.service.restoreCloudOnly(
-        preview: preview,
-        userId: widget.session.user.id,
-        deviceId: widget.session.device.id,
-      );
+      final result = preview.canRestoreCloudOnly
+          ? FirstSignInSyncDialogResult(
+              restoreResult: await widget.service.restoreCloudOnly(
+                preview: preview,
+                userId: widget.session.user.id,
+                deviceId: widget.session.device.id,
+              ),
+            )
+          : FirstSignInSyncDialogResult(
+              uploadResult: await widget.service.uploadLocalOnly(
+                preview: preview,
+                userId: widget.session.user.id,
+                deviceId: widget.session.device.id,
+              ),
+            );
       if (!mounted) return;
-      Navigator.of(
-        context,
-      ).pop(FirstSignInSyncDialogResult(restoreResult: result));
+      Navigator.of(context).pop(result);
     } on Object {
       if (!mounted) return;
       setState(() {
-        _errorMessage = '恢复没有完成，已回滚本次写入；你可以安全重试。';
+        _transferFailed = true;
+        _errorMessage = preview.canUploadLocalOnly
+            ? '上传没有完成，本地笔记不受影响；已完成的部分可以安全重试。'
+            : '恢复没有完成，已回滚本次写入；你可以安全重试。';
         _state = _DialogState.error;
       });
     }
@@ -128,7 +145,8 @@ class _FirstSignInSyncDialogState extends State<_FirstSignInSyncDialog> {
   String get _title => switch (_state) {
     _DialogState.checking => '正在检查笔记',
     _DialogState.preview => '安全合并笔记',
-    _DialogState.restoring => '正在恢复云端笔记',
+    _DialogState.restoring =>
+      _preview?.canUploadLocalOnly == true ? '正在保护本地笔记' : '正在恢复云端笔记',
     _DialogState.error => _authenticationExpired ? '需要重新登录' : '检查未完成',
   };
 
@@ -137,7 +155,11 @@ class _FirstSignInSyncDialogState extends State<_FirstSignInSyncDialog> {
       return const _ProgressMessage(message: '正在检查此设备和云端笔记…');
     }
     if (_state == _DialogState.restoring) {
-      return const _ProgressMessage(message: '正在下载并校验笔记和附件，请不要关闭 App。');
+      return _ProgressMessage(
+        message: _preview?.canUploadLocalOnly == true
+            ? '正在上传并校验笔记和附件，请不要关闭 App。'
+            : '正在下载并校验笔记和附件，请不要关闭 App。',
+      );
     }
     if (_state == _DialogState.error) {
       return Text(_errorMessage!);
@@ -165,8 +187,10 @@ class _FirstSignInSyncDialogState extends State<_FirstSignInSyncDialog> {
         _CountRow(label: '需要安全协调', count: shared),
         const SizedBox(height: 12),
         Text(
-          preview.canRestoreCloudOnly
-              ? '恢复失败会自动回滚，不会留下半本笔记。'
+          preview.canRestoreCloudOnly || preview.canUploadLocalOnly
+              ? preview.canUploadLocalOnly
+                    ? '附件通过大小和 SHA-256 校验后才会成为可恢复的云端文件。'
+                    : '恢复失败会自动回滚，不会留下半本笔记。'
               : '当前版本尚未执行本地上传或共同版本协调；选择稍后不会改变任何本地内容。',
           style: Theme.of(context).textTheme.bodySmall,
         ),
@@ -191,18 +215,22 @@ class _FirstSignInSyncDialogState extends State<_FirstSignInSyncDialog> {
           child: Text(_authenticationExpired ? '继续使用本地笔记' : '离线继续'),
         ),
         if (!_authenticationExpired)
-          FilledButton(onPressed: _inspect, child: const Text('重试')),
+          FilledButton(
+            onPressed: _transferFailed ? _executeMerge : _inspect,
+            child: const Text('重试'),
+          ),
       ];
     }
-    final canRestore = _preview!.canRestoreCloudOnly;
+    final canMerge =
+        _preview!.canRestoreCloudOnly || _preview!.canUploadLocalOnly;
     return [
       TextButton(
         onPressed: () => Navigator.of(context).pop(),
         child: const Text('稍后'),
       ),
       FilledButton(
-        onPressed: canRestore ? _restore : null,
-        child: Text(canRestore ? '合并（推荐）' : '上传合并将在下一步开放'),
+        onPressed: canMerge ? _executeMerge : null,
+        child: Text(canMerge ? '合并（推荐）' : '共享版本协调将在下一步开放'),
       ),
     ];
   }

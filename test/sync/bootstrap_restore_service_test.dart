@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:inknest_notes/storage/file_notebook_repository.dart';
 import 'package:inknest_notes/sync/bootstrap_restore_service.dart';
 import 'package:inknest_notes/sync/file_sync_state_store.dart';
-import 'package:inknest_notes/sync/inknest_api_client.dart';
+import 'package:inknest_notes/sync/sync_cloud_client.dart';
 import 'package:inknest_notes/sync/sync_bootstrap.dart';
 
 void main() {

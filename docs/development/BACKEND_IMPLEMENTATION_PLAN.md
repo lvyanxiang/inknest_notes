@@ -408,6 +408,9 @@ checksums.sha256
     资料库仍等待上传与共享 Revision 协调完成。
   - [x] Flutter 登录后真实调用 bootstrap 并显示 Merge 预览；纯云端新设备可确认
     下载并在成功后刷新书架，本地独有或混合资料库只展示计划，不提前执行不完整合并。
+  - [x] Flutter 本地独有上传：Merge Commit 传输文件夹、笔记本正文、页面/画布，PDF、
+    图片和音频通过预签名会话上传并由服务端校验；完成后重新 bootstrap 验证并保存
+    Cursor。共享稳定 ID 仍等待 Revision 协调。
 - [ ] 显示同步进度、失败项和重试状态。
 - [ ] 新设备全量 bootstrap 后切换至增量同步。
 - [ ] 恢复前快照和失败回滚。

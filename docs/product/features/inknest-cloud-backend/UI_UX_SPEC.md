@@ -42,9 +42,9 @@ message rather than a blocking decision dialog.
    library. Retry repeats only the read-only detection request in this slice.
 
 The App now implements the detection dialog and state model. A cloud-only new
-device can explicitly confirm a verified, rollback-safe restore; local-only and
-mixed plans remain preview-only until the complete upload/reconciliation path
-is available.
+device can explicitly confirm a verified, rollback-safe restore, and a
+local-only device can confirm verified cloud protection. Mixed plans remain
+preview-only until shared-Revision reconciliation is available.
 
 ### Account entry, sign-in, and registration
 
@@ -76,8 +76,8 @@ is available.
 - `合并（推荐）` remains the primary action. `稍后` exits without executing the
   plan, and rebuilding the preview after retry must produce the same ordering.
 - The current screen shows these counts after authentication. It enables
-  `合并（推荐）` for the completed cloud-only restore path; local-only and mixed
-  execution stays unavailable with an explicit explanation rather than
+  `合并（推荐）` for completed cloud-only restore and local-only upload paths;
+  mixed execution stays unavailable with an explicit explanation rather than
   performing a partial merge.
 
 ### Conflict recovery
@@ -229,9 +229,9 @@ is available.
 ## Implementation Review
 
 - Status: Account UI/session delivery is complete. First-sign-in detection,
-  deterministic Merge preview, error/retry states, and confirmed cloud-only
-  restore are wired into the signed-in library. Local upload and shared-ID
-  reconciliation are not wired, so mixed Merge remains preview-only. Conflict
+  deterministic Merge preview, error/retry states, confirmed cloud-only
+  restore, and local-only verified upload are wired into the signed-in library.
+  Shared-ID reconciliation is not wired, so mixed Merge remains preview-only. Conflict
   and Tombstone server contracts are delivered; their Flutter UI is not
   started.
 - Intentional deviations: The server reserves the copy ID immediately but only

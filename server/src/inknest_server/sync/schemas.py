@@ -146,6 +146,7 @@ class SyncMergeNotebookMetadata(SyncApiModel):
     title: str = Field(min_length=1, max_length=300)
     layout_mode: Literal["paged", "infiniteCanvas"]
     is_archived: bool = False
+    content: dict[str, object] = Field(default_factory=dict)
 
 
 class SyncMergePageMetadata(SyncApiModel):

@@ -5,16 +5,15 @@
 - Milestone: Backend Phase 5 first-sign-in merge and new-device restore is in
   progress; server-side upload/download contracts now cover complete library
   structure, JSON content, and verified PDF/image/audio assets. Flutter now
-  performs visible first-sign-in detection and can confirm a pure cloud-only
-  restore into the file-backed library.
-- Next task: Implement local-only upload orchestration, including verified
-  asset upload, then reconcile shared stable IDs by Revision before enabling
-  the Merge action for mixed libraries.
-- Last completed: Login or saved-session restoration now triggers the real
-  `/sync/bootstrap` check, displays a conservative Merge preview, supports
-  offline/retry feedback, and lets an empty device download, verify, atomically
-  apply, and immediately display cloud notebooks. Local/mixed libraries remain
-  read-only in this slice and are never silently overwritten.
+  performs visible first-sign-in detection, cloud-only restore, and verified
+  local-only upload of structure, content, PDFs, images, and audio.
+- Next task: Reconcile shared stable IDs by server Revision/Content Hash before
+  enabling the Merge action for mixed libraries.
+- Last completed: A local-only device can confirm Merge, upload folders,
+  notebooks, pages/canvases and referenced attachments through the real API,
+  verify the completed cloud bootstrap, and then persist its Cursor. Notebook
+  content now includes recording, outline, and bookmark metadata. Shared IDs
+  remain blocked rather than overwritten.
 
 ## Decisions
 
@@ -50,6 +49,10 @@
   local-only and mixed libraries show their upload/download/shared counts but
   keep execution unavailable until upload and shared-Revision orchestration
   can complete the whole plan safely.
+- Treat imported attachments as immutable first-bootstrap objects. Derive a
+  deterministic account-local asset ID from notebook ID plus relative path,
+  recompute size/SHA-256 immediately before upload, use a retryable presigned
+  session, and accept success only after bootstrap returns matching metadata.
 - Keep first-merge metadata creation separate from ordinary Revision content
   commits. The API creates folders before dependent notebooks, retains request
   result order, shares the account/device idempotency namespace, and treats its
@@ -636,6 +639,19 @@
   and pure cloud-only restore.
 - `flutter analyze` passed after the first-sign-in sync flow.
 - `git diff --check` passed after the first-sign-in sync flow.
+- Flutter local-only upload tests passed for structure/page serialization,
+  attachment hashing and transfer, final bootstrap verification, Cursor save,
+  confirmation UI, and real API request paths.
+- `flutter test` passed with 189 tests after local-only cloud protection.
+- `flutter analyze` passed after local-only cloud protection.
+- Backend Ruff formatting/lint, mypy, 49 non-integration tests, and 15 real
+  PostgreSQL/MinIO integration tests passed after versioning notebook content
+  during first Merge creation.
+- `git diff --check` passed after local-only cloud protection.
+- Fixed first local-only upload validation when multiple notebooks use the
+  legacy notebook-scoped page ID `page-1`: upload now derives a stable remote
+  page ID from notebook ID plus local page ID and rewrites transmitted bookmark,
+  PDF outline, and audio page references without mutating local files.
 
 ## Notes
 

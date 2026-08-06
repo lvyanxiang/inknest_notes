@@ -226,18 +226,20 @@ class _LibraryScreenState extends State<LibraryScreen> {
       service: service,
       session: session,
     );
-    if (!mounted || result?.restoreResult == null) return;
-    await _loadNotebooks();
+    if (!mounted || result == null) return;
+    if (result.restoreResult != null) await _loadNotebooks();
     if (!mounted) return;
-    final restored = result!.restoreResult!;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '已恢复 ${restored.downloadedNotebookCount} 本笔记和 '
-          '${restored.downloadedAssetCount} 个附件。',
-        ),
-      ),
-    );
+    final message = result.restoreResult != null
+        ? '已恢复 ${result.restoreResult!.downloadedNotebookCount} 本笔记和 '
+              '${result.restoreResult!.downloadedAssetCount} 个附件。'
+        : result.uploadResult != null
+        ? '已保护 ${result.uploadResult!.uploadedNotebookCount} 本笔记和 '
+              '${result.uploadResult!.uploadedAssetCount} 个附件。'
+        : null;
+    if (message == null) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _loadNotebooks() async {

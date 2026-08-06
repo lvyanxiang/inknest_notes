@@ -66,6 +66,7 @@ def _merge_payload(
                     "title": "Same title is display data",
                     "layoutMode": "paged",
                     "isArchived": False,
+                    "content": {"bookmarkedPageIds": ["page-1"]},
                 },
             },
             {
@@ -134,6 +135,8 @@ async def test_merge_commit_creates_metadata_atomically_and_replays_exactly(
     assert replayed.json() == {**created.json(), "replayed": True}
     assert folder is not None and folder.name == "Local folder"
     assert notebook is not None and notebook.folder_id == "local-folder"
+    assert notebook.revision == 1
+    assert notebook.content == {"bookmarkedPageIds": ["page-1"]}
     assert change_count == 2
     assert commit_count == 1
 
@@ -324,8 +327,8 @@ async def test_merge_commit_creates_page_and_canvas_content_after_parent_noteboo
         "notebook",
         "notebook",
     ]
-    assert [item["revision"] for item in created.json()["results"]] == [1, 1, 0, 0]
-    assert all(len(item["contentHash"]) == 64 for item in created.json()["results"][:2])
+    assert [item["revision"] for item in created.json()["results"]] == [1, 1, 1, 1]
+    assert all(len(item["contentHash"]) == 64 for item in created.json()["results"])
     assert repeated_with_new_key.status_code == 200
     assert [item["outcome"] for item in repeated_with_new_key.json()["results"]] == [
         "unchanged",
@@ -335,7 +338,7 @@ async def test_merge_commit_creates_page_and_canvas_content_after_parent_noteboo
     ]
     assert page is not None and page.content == {"strokes": [{"id": "local-stroke"}]}
     assert canvas is not None and canvas.content == {"nodes": [{"id": "local-node"}]}
-    assert revision_count == 2
+    assert revision_count == 4
     assert change_count == 4
 
 

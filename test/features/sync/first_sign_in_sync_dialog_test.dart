@@ -73,12 +73,43 @@ void main() {
 
     expect(find.textContaining('不会按同名笔记覆盖'), findsOneWidget);
     final mergeButton = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, '上传合并将在下一步开放'),
+      find.widgetWithText(FilledButton, '共享版本协调将在下一步开放'),
     );
     expect(mergeButton.onPressed, isNull);
     await tester.tap(find.text('稍后'));
     await tester.pump();
     expect(service.restoreCalls, 0);
+  });
+
+  testWidgets('local-only preview uploads after confirmation', (tester) async {
+    final service = _FakeFirstSignInSyncService(
+      preview: _preview(
+        local: SyncLibraryInventory(notebookIds: const ['local-notebook']),
+        cloud: SyncLibraryInventory(),
+      ),
+    );
+    await tester.pumpWidget(
+      _TestHost(
+        onOpen: (context) => showFirstSignInSyncDialog(
+          context: context,
+          service: service,
+          session: _session(),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('合并（推荐）'), findsOneWidget);
+    await tester.tap(find.text('合并（推荐）'));
+    await tester.pump();
+
+    expect(service.restoreCalls, 1);
+    expect(
+      find.byKey(const ValueKey('first-sign-in-sync-dialog')),
+      findsNothing,
+    );
   });
 
   testWidgets('inspection failure keeps an offline exit and retry', (
@@ -155,6 +186,19 @@ class _FakeFirstSignInSyncService implements FirstSignInSyncService {
       downloadedNotebookCount: 1,
       downloadedAssetCount: 2,
       cursorPersisted: true,
+    );
+  }
+
+  @override
+  Future<LocalMergeUploadResult> uploadLocalOnly({
+    required FirstSignInSyncPreview preview,
+    required String userId,
+    required String deviceId,
+  }) async {
+    restoreCalls++;
+    return const LocalMergeUploadResult(
+      uploadedNotebookCount: 1,
+      uploadedAssetCount: 2,
     );
   }
 }

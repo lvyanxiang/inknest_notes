@@ -7,6 +7,8 @@ import 'package:inknest_notes/auth/auth_session_store.dart';
 import 'package:inknest_notes/sync/inknest_api_config.dart';
 import 'package:inknest_notes/sync/inknest_api_models.dart';
 import 'package:inknest_notes/sync/sync_bootstrap.dart';
+import 'package:inknest_notes/sync/sync_cloud_client.dart';
+import 'package:inknest_notes/sync/sync_upload_models.dart';
 
 class InkNestApiException implements Exception {
   const InkNestApiException({
@@ -25,20 +27,11 @@ class InkNestApiException implements Exception {
   String toString() => 'InkNestApiException($statusCode, $code)';
 }
 
-abstract interface class CloudAssetTransferClient {
-  Future<CloudAssetDownload> createAssetDownload(String assetId);
-
-  Future<void> downloadAssetToFile(
-    CloudAssetDownload download,
-    File destination,
-  );
-}
-
 class InkNestApiClient
     implements
         AuthService,
         AuthSessionInvalidationSource,
-        CloudAssetTransferClient {
+        FirstSignInCloudClient {
   InkNestApiClient({
     InkNestApiConfig? config,
     Dio? dio,
@@ -152,9 +145,81 @@ class InkNestApiClient
     }
   }
 
+  @override
   Future<CloudSyncBootstrap> bootstrap() async {
     return CloudSyncBootstrap.fromJson(
       await _getObject('sync/bootstrap', expectedStatus: 200),
+    );
+  }
+
+  @override
+  Future<SyncMergeCommitResult> commitInitialMerge({
+    required String deviceId,
+    required String idempotencyKey,
+    required String baseCursor,
+    required List<Map<String, Object?>> operations,
+  }) async {
+    return SyncMergeCommitResult.fromJson(
+      await _postObject(
+        'sync/merge/commit',
+        data: {
+          'deviceId': deviceId,
+          'idempotencyKey': idempotencyKey,
+          'baseCursor': baseCursor,
+          'operations': operations,
+        },
+        expectedStatus: 200,
+        skipAuth: false,
+      ),
+    );
+  }
+
+  @override
+  Future<CloudAssetUploadSession> createAssetUploadSession(
+    LocalSyncAsset asset,
+  ) async {
+    return CloudAssetUploadSession.fromJson(
+      await _postObject(
+        'assets/upload-sessions',
+        data: asset.toCreateJson(),
+        expectedStatus: 201,
+        skipAuth: false,
+      ),
+    );
+  }
+
+  @override
+  Future<void> uploadAssetFile(
+    CloudAssetUploadSession session,
+    LocalSyncAsset asset,
+  ) async {
+    try {
+      final response = await _refreshDio.put<Object?>(
+        session.uploadUrl.toString(),
+        data: asset.file.openRead(),
+        options: Options(
+          headers: {
+            ...session.requiredHeaders,
+            Headers.contentLengthHeader: asset.byteSize,
+          },
+        ),
+      );
+      final status = response.statusCode ?? 0;
+      if (status < 200 || status >= 300) {
+        throw _exceptionFromResponse(response);
+      }
+    } on DioException catch (error) {
+      throw _exceptionFromDio(error);
+    }
+  }
+
+  @override
+  Future<void> completeAssetUpload(String uploadId) async {
+    await _postObject(
+      'assets/upload-sessions/${Uri.encodeComponent(uploadId)}/complete',
+      data: const {},
+      expectedStatus: 200,
+      skipAuth: false,
     );
   }
 

@@ -196,7 +196,7 @@ async def test_merge_metadata_create_replays_without_duplicate_rows() -> None:
         assert notebook_count == 2
         assert page_count == 1
         assert canvas_count == 1
-        assert revision_count == 2
+        assert revision_count == 4
         assert change_count == 5
         assert commit_count == 1
     finally:

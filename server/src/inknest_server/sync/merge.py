@@ -21,7 +21,7 @@ from inknest_server.sync.schemas import (
     SyncMergeNotebookMetadata,
     SyncMergePageMetadata,
 )
-from inknest_server.sync.snapshots import folder_snapshot, notebook_snapshot
+from inknest_server.sync.snapshots import folder_snapshot
 
 
 class SyncMergeResourceExistsError(Exception):
@@ -113,6 +113,8 @@ class SyncMergeRepository:
         )
         if notebook is None:
             raise RuntimeError("inserted merge notebook disappeared")
+        normalized_content = normalized_json_object(metadata.content)
+        expected_hash = content_hash(normalized_content)
         if not inserted:
             matches = (
                 notebook.deleted_at is None
@@ -120,26 +122,45 @@ class SyncMergeRepository:
                 and notebook.title == metadata.title
                 and notebook.layout_mode == metadata.layout_mode
                 and notebook.is_archived == metadata.is_archived
+                and (
+                    (notebook.revision == 0 and normalized_content == {})
+                    or (
+                        notebook.content_hash == expected_hash
+                        and notebook.content == normalized_content
+                    )
+                )
             )
             if not matches:
                 raise SyncMergeResourceExistsError("notebook", notebook_id)
+            if notebook.revision == 0:
+                saved = await self._content.save_notebook_content(
+                    user_id=user_id,
+                    notebook_id=notebook_id,
+                    base_revision=0,
+                    content=normalized_content,
+                    device_id=device_id,
+                )
+                return SyncMergeCreateResult(
+                    outcome="applied",
+                    revision=saved.revision,
+                    content_hash=saved.content_hash,
+                )
             return SyncMergeCreateResult(
                 outcome="unchanged",
                 revision=notebook.revision,
                 content_hash=notebook.content_hash,
             )
-        await self._changes.append_upsert(
+        saved = await self._content.save_notebook_content(
             user_id=user_id,
+            notebook_id=notebook_id,
+            base_revision=0,
+            content=normalized_content,
             device_id=device_id,
-            resource_type="notebook",
-            resource_id=notebook.id,
-            revision=notebook.revision,
-            payload=notebook_snapshot(notebook),
         )
         return SyncMergeCreateResult(
             outcome="applied",
-            revision=notebook.revision,
-            content_hash=notebook.content_hash,
+            revision=saved.revision,
+            content_hash=saved.content_hash,
         )
 
     async def create_page(

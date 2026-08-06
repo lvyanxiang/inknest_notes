@@ -8,8 +8,8 @@ import 'package:inknest_notes/models/notebook.dart';
 import 'package:inknest_notes/models/notebook_folder.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/sync/file_sync_state_store.dart';
-import 'package:inknest_notes/sync/inknest_api_client.dart';
 import 'package:inknest_notes/sync/sync_bootstrap.dart';
+import 'package:inknest_notes/sync/sync_cloud_client.dart';
 
 typedef BootstrapApplyCheckpoint = Future<void> Function(String checkpoint);
 

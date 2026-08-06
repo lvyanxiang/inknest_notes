@@ -139,8 +139,9 @@ The first slice sets no retention period and performs no physical cleanup.
   recovery remain later checklist items.
 - The signed-in App now presents this plan. A pure cloud-only new device can
   confirm the completed verified restore path and refresh the shelf after
-  success. Local-only and mixed plans remain preview-only until local upload
-  and shared-Revision orchestration can execute the complete plan safely.
+  success. A local-only device can upload its complete supported library and
+  verified attachments, then save the refreshed bootstrap Cursor. Mixed plans
+  remain preview-only until shared-Revision orchestration is complete.
 
 ### Library structure and JSON content transfer foundation
 
@@ -275,9 +276,9 @@ The first slice sets no retention period and performs no physical cleanup.
 
 - UI/UX spec: `UI_UX_SPEC.md` defines first-sign-in detection plus the future
   conflict recovery flow. Account registration/sign-in/sign-out, visible
-  detection, deterministic preview, offline/retry feedback, and pure
-  cloud-only restore progress are implemented. Local upload, mixed-library
-  execution, and conflict UI remain later slices.
+  detection, deterministic preview, offline/retry feedback, pure cloud-only
+  restore, and local-only upload progress are implemented. Mixed-library
+  execution and conflict UI remain later slices.
 - Implementation status: Phase 4 incremental synchronization is complete and
   Phase 5 library-presence detection, Merge planning, and server-side transfer
   contracts through page/infinite-canvas JSON and ready asset bytes are
@@ -286,8 +287,10 @@ The first slice sets no retention period and performs no physical cleanup.
   refresh, Account UI, full-snapshot parsing, verified attachment downloads,
   rollback-safe cloud-only bootstrap application. The signed-in library now
   invokes that path through a visible confirmation flow and refreshes restored
-  notebooks immediately. Local-only upload orchestration and shared-Revision
-  reconciliation remain.
+  notebooks immediately. Local-only structure/content upload now calls Merge
+  Commit; referenced assets use presigned PUT plus server-side size/SHA-256
+  verification, and notebook content retains recording/outline/bookmark data.
+  Shared-Revision reconciliation remains.
 - Verification: Backend tests cover authentication, account isolation,
   revisioned content, asset transfer, cursors, atomic/idempotent commits, page
   and notebook conflicts, all resolution choices, soft delete/restore, both

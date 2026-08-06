@@ -190,7 +190,8 @@ Tasks:
 - [ ] Implement first sync prototype.
   - [x] Detect local/cloud presence and preview the safe Merge plan.
   - [x] Restore a pure cloud-only library with verified assets and rollback.
-  - [ ] Upload local-only content and reconcile shared Revisions.
+  - [x] Upload local-only content and verified attachments.
+  - [ ] Reconcile shared Revisions.
 - [ ] Handle conflicts safely.
 
 ## Technical Notes

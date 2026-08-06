@@ -9,6 +9,7 @@ import 'package:inknest_notes/auth/auth_session_store.dart';
 import 'package:inknest_notes/sync/inknest_api_client.dart';
 import 'package:inknest_notes/sync/inknest_api_config.dart';
 import 'package:inknest_notes/sync/inknest_api_models.dart';
+import 'package:inknest_notes/sync/sync_upload_models.dart';
 
 void main() {
   test(
@@ -164,6 +165,99 @@ void main() {
       expect(await destination.readAsBytes(), [1, 2, 3, 4]);
     },
   );
+
+  test('initial merge and asset upload use the FastAPI contracts', () async {
+    final dio = Dio();
+    final transferDio = Dio();
+    final store = MemoryAuthSessionStore(
+      StoredAuthSession.fromSession(
+        InkNestAuthSession.fromJson(_authJson()),
+        issuedAt: DateTime.utc(2026, 8, 6),
+      ),
+    );
+    final client = InkNestApiClient(
+      config: InkNestApiConfig.fromEnvironment(
+        overrideBaseUrl: 'https://api.example.com',
+      ),
+      dio: dio,
+      refreshDio: transferDio,
+      sessionStore: store,
+      clock: () => DateTime.utc(2026, 8, 6, 0, 1),
+    );
+    final paths = <String>[];
+    _resolveRequests(dio, (options) {
+      paths.add(options.uri.path);
+      if (options.uri.path.endsWith('/sync/merge/commit')) {
+        return (
+          status: 200,
+          data: {
+            'idempotencyKey': 'batch-1',
+            'replayed': false,
+            'results': <Object?>[],
+            'nextCursor': 'cursor-2',
+          },
+        );
+      }
+      if (options.uri.path.endsWith('/assets/upload-sessions')) {
+        return (
+          status: 201,
+          data: {
+            'uploadId': 'upload-1',
+            'assetId': 'asset-1',
+            'status': 'pending',
+            'objectKey': 'staging/key',
+            'uploadUrl': 'https://objects.example.com/signed-upload',
+            'method': 'PUT',
+            'requiredHeaders': {'Content-Type': 'image/png'},
+            'uploadUrlExpiresAt': '2026-08-06T00:05:00Z',
+            'sessionExpiresAt': '2026-08-06T01:00:00Z',
+          },
+        );
+      }
+      return (status: 200, data: {'assetId': 'asset-1', 'status': 'ready'});
+    });
+    late RequestOptions uploadRequest;
+    transferDio.httpClientAdapter = _BytesAdapter((options) {
+      uploadRequest = options;
+      return const [];
+    });
+    final directory = await Directory.systemTemp.createTemp('inknest-upload-');
+    addTearDown(() => directory.delete(recursive: true));
+    final file = File('${directory.path}/image.png')
+      ..writeAsBytesSync(const [1, 2, 3, 4]);
+    final asset = LocalSyncAsset(
+      id: 'asset-1',
+      notebookId: 'notebook-1',
+      kind: 'image',
+      filename: 'image.png',
+      relativePath: 'assets/images/image.png',
+      contentType: 'image/png',
+      byteSize: 4,
+      sha256: 'a' * 64,
+      file: file,
+    );
+
+    final merge = await client.commitInitialMerge(
+      deviceId: 'device-1',
+      idempotencyKey: 'batch-1',
+      baseCursor: 'cursor-1',
+      operations: const [],
+    );
+    final session = await client.createAssetUploadSession(asset);
+    await client.uploadAssetFile(session, asset);
+    await client.completeAssetUpload(session.uploadId);
+
+    expect(merge.nextCursor, 'cursor-2');
+    expect(paths, [
+      '/api/v1/sync/merge/commit',
+      '/api/v1/assets/upload-sessions',
+      '/api/v1/assets/upload-sessions/upload-1/complete',
+    ]);
+    expect(uploadRequest.method, 'PUT');
+    expect(uploadRequest.uri.host, 'objects.example.com');
+    expect(uploadRequest.headers['Authorization'], isNull);
+    expect(uploadRequest.headers['Content-Type'], 'image/png');
+  });
 
   test('concurrent expired requests share one rotated refresh token', () async {
     final dio = Dio();
