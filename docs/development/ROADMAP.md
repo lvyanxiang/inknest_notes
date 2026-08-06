@@ -168,13 +168,12 @@ Tasks:
 - [x] Export annotated PDFs.
 - [x] Add share/save action.
 
-## Milestone 8: Sync and Backup (Paused)
+## Milestone 8: Sync and Backup (In Progress)
 
 Goal: protect user data across devices.
 
-Status: paused after the MVP export milestone. Sync and backup remain important,
-but this milestone should resume after the core editor, PDF, and library
-workflows are more polished.
+Status: resumed. The Python/PostgreSQL/MinIO service and authenticated Flutter
+transport are implemented through the first-sign-in cloud-only restore slice.
 
 Acceptance criteria:
 
@@ -186,9 +185,12 @@ Tasks:
 
 - [x] Choose a custom Python backend with PostgreSQL and MinIO; keep the
   Flutter app local-first and the storage provider behind an S3-style adapter.
-- [ ] Define sync metadata.
+- [x] Define sync metadata.
 - [ ] Add backup/export archive format.
 - [ ] Implement first sync prototype.
+  - [x] Detect local/cloud presence and preview the safe Merge plan.
+  - [x] Restore a pure cloud-only library with verified assets and rollback.
+  - [ ] Upload local-only content and reconcile shared Revisions.
 - [ ] Handle conflicts safely.
 
 ## Technical Notes
@@ -217,6 +219,5 @@ documents/
 
 ## Current Focus
 
-Milestone 8 is paused. Continue with the post-MVP improvement plan in
-`docs/development/POST_MVP_ROADMAP.md`, starting with editor usability and current MVP
-polish before returning to sync and backup.
+Milestone 8 is active. Continue Phase 5 first-sign-in Merge with local-only
+upload and shared-Revision reconciliation before background incremental sync.

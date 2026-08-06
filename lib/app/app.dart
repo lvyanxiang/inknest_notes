@@ -6,21 +6,28 @@ import 'package:inknest_notes/auth/auth_controller.dart';
 import 'package:inknest_notes/features/library/library_screen.dart';
 import 'package:inknest_notes/storage/file_notebook_repository.dart';
 import 'package:inknest_notes/storage/notebook_repository.dart';
+import 'package:inknest_notes/sync/first_sign_in_sync_service.dart';
 import 'package:inknest_notes/sync/inknest_api_client.dart';
 import 'package:path_provider/path_provider.dart';
 
 class InkNestApp extends StatefulWidget {
-  const InkNestApp({super.key, this.notebookRepository, this.authController});
+  const InkNestApp({
+    super.key,
+    this.notebookRepository,
+    this.authController,
+    this.firstSignInSyncService,
+  });
 
   final NotebookRepository? notebookRepository;
   final AuthController? authController;
+  final FirstSignInSyncService? firstSignInSyncService;
 
   @override
   State<InkNestApp> createState() => _InkNestAppState();
 }
 
 class _InkNestAppState extends State<InkNestApp> {
-  late final Future<NotebookRepository> _notebookRepository;
+  late final Future<_AppResources> _resources;
   late final AuthController _authController;
   InkNestApiClient? _ownedApiClient;
   late final bool _ownsAuthController;
@@ -28,7 +35,6 @@ class _InkNestAppState extends State<InkNestApp> {
   @override
   void initState() {
     super.initState();
-    _notebookRepository = _createRepository();
     final injectedAuthController = widget.authController;
     _ownsAuthController = injectedAuthController == null;
     if (injectedAuthController != null) {
@@ -43,6 +49,7 @@ class _InkNestAppState extends State<InkNestApp> {
         platform: identity.platform,
       );
     }
+    _resources = _createResources();
     unawaited(_authController.initialize());
   }
 
@@ -55,14 +62,32 @@ class _InkNestAppState extends State<InkNestApp> {
     super.dispose();
   }
 
-  Future<NotebookRepository> _createRepository() async {
+  Future<_AppResources> _createResources() async {
     final injectedRepository = widget.notebookRepository;
     if (injectedRepository != null) {
-      return injectedRepository;
+      return _AppResources(
+        repository: injectedRepository,
+        firstSignInSyncService: widget.firstSignInSyncService,
+      );
     }
 
     final documentsDirectory = await getApplicationDocumentsDirectory();
-    return FileNotebookRepository(rootDirectory: documentsDirectory);
+    final repository = FileNotebookRepository(
+      rootDirectory: documentsDirectory,
+    );
+    final apiClient = _ownedApiClient;
+    return _AppResources(
+      repository: repository,
+      firstSignInSyncService:
+          widget.firstSignInSyncService ??
+          (apiClient == null
+              ? null
+              : ApiFirstSignInSyncService(
+                  repository: repository,
+                  apiClient: apiClient,
+                  rootDirectory: documentsDirectory,
+                )),
+    );
   }
 
   @override
@@ -71,13 +96,15 @@ class _InkNestAppState extends State<InkNestApp> {
       title: 'InkNest Notes',
       debugShowCheckedModeBanner: false,
       theme: buildInkNestTheme(),
-      home: FutureBuilder<NotebookRepository>(
-        future: _notebookRepository,
+      home: FutureBuilder<_AppResources>(
+        future: _resources,
         builder: (context, snapshot) {
           if (snapshot.hasData) {
             return LibraryScreen(
-              notebookRepository: snapshot.requireData,
+              notebookRepository: snapshot.requireData.repository,
               authController: _authController,
+              firstSignInSyncService:
+                  snapshot.requireData.firstSignInSyncService,
             );
           }
 
@@ -88,4 +115,14 @@ class _InkNestAppState extends State<InkNestApp> {
       ),
     );
   }
+}
+
+class _AppResources {
+  const _AppResources({
+    required this.repository,
+    required this.firstSignInSyncService,
+  });
+
+  final NotebookRepository repository;
+  final FirstSignInSyncService? firstSignInSyncService;
 }

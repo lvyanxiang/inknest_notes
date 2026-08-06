@@ -41,8 +41,10 @@ message rather than a blocking decision dialog.
 5. Cancel, offline, `401`, or server failure returns to the usable local
    library. Retry repeats only the read-only detection request in this slice.
 
-The current slice implements the detection contract and App state model, not
-the transfer progress screen or the destructive application of cloud data.
+The App now implements the detection dialog and state model. A cloud-only new
+device can explicitly confirm a verified, rollback-safe restore; local-only and
+mixed plans remain preview-only until the complete upload/reconciliation path
+is available.
 
 ### Account entry, sign-in, and registration
 
@@ -73,8 +75,10 @@ the transfer progress screen or the destructive application of cloud data.
   preview must not promise that either device's copy will overwrite the other.
 - `合并（推荐）` remains the primary action. `稍后` exits without executing the
   plan, and rebuilding the preview after retry must produce the same ordering.
-- This delivery adds the state/plan contract only; no new screen is wired in
-  the current App yet.
+- The current screen shows these counts after authentication. It enables
+  `合并（推荐）` for the completed cloud-only restore path; local-only and mixed
+  execution stays unavailable with an explicit explanation rather than
+  performing a partial merge.
 
 ### Conflict recovery
 
@@ -193,7 +197,7 @@ the transfer progress screen or the destructive application of cloud data.
 - [x] Account controls maintain 44-pixel targets, logical keyboard focus, text
   scaling, password obscuring, and semantic labels.
 
-- [ ] First-sign-in detection distinguishes empty, local-only, cloud-only, and
+- [x] First-sign-in detection distinguishes empty, local-only, cloud-only, and
   local-plus-cloud states without modifying the local library.
 - [ ] Local-plus-cloud emphasizes `合并（推荐）`, never deduplicates by title,
   and lets the user continue offline without losing local content.
@@ -224,10 +228,12 @@ the transfer progress screen or the destructive application of cloud data.
 
 ## Implementation Review
 
-- Status: Account UI/session delivery is complete. First-sign-in detection contract, Flutter state model, and
-  deterministic Merge preview plan are delivered; visible first-sign-in
-  screens and plan execution are not wired yet. Conflict and Tombstone server
-  contracts are delivered; their Flutter UI is not started.
+- Status: Account UI/session delivery is complete. First-sign-in detection,
+  deterministic Merge preview, error/retry states, and confirmed cloud-only
+  restore are wired into the signed-in library. Local upload and shared-ID
+  reconciliation are not wired, so mixed Merge remains preview-only. Conflict
+  and Tombstone server contracts are delivered; their Flutter UI is not
+  started.
 - Intentional deviations: The server reserves the copy ID immediately but only
   materializes a normal notebook/page when the user chooses Keep Both. This
   avoids temporary duplicate library entries while preserving both snapshots.

@@ -137,6 +137,10 @@ The first slice sets no retention period and performs no physical cleanup.
 - The planning layer itself performs no writes. Transfer slices consume the
   plan separately; shared Revision comparison, progress UI, and failure
   recovery remain later checklist items.
+- The signed-in App now presents this plan. A pure cloud-only new device can
+  confirm the completed verified restore path and refresh the shelf after
+  success. Local-only and mixed plans remain preview-only until local upload
+  and shared-Revision orchestration can execute the complete plan safely.
 
 ### Library structure and JSON content transfer foundation
 
@@ -270,17 +274,20 @@ The first slice sets no retention period and performs no physical cleanup.
 ## Delivery
 
 - UI/UX spec: `UI_UX_SPEC.md` defines first-sign-in detection plus the future
-  conflict recovery flow. Account registration/sign-in/sign-out is implemented;
-  detection and the deterministic default-Merge plan are implemented, while
-  visible Merge and transfer-progress screens remain later slices.
+  conflict recovery flow. Account registration/sign-in/sign-out, visible
+  detection, deterministic preview, offline/retry feedback, and pure
+  cloud-only restore progress are implemented. Local upload, mixed-library
+  execution, and conflict UI remain later slices.
 - Implementation status: Phase 4 incremental synchronization is complete and
   Phase 5 library-presence detection, Merge planning, and server-side transfer
   contracts through page/infinite-canvas JSON and ready asset bytes are
   delivered in the implementation plan. Flutter now also has Dio-backed typed
   transport, platform-secure session persistence, shared automatic token
   refresh, Account UI, full-snapshot parsing, verified attachment downloads,
-  and rollback-safe cloud-only bootstrap application. First-sign-in UI,
-  local-only upload orchestration, and shared-Revision reconciliation remain.
+  rollback-safe cloud-only bootstrap application. The signed-in library now
+  invokes that path through a visible confirmation flow and refreshes restored
+  notebooks immediately. Local-only upload orchestration and shared-Revision
+  reconciliation remain.
 - Verification: Backend tests cover authentication, account isolation,
   revisioned content, asset transfer, cursors, atomic/idempotent commits, page
   and notebook conflicts, all resolution choices, soft delete/restore, both

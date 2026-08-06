@@ -8,20 +8,24 @@ import 'package:inknest_notes/auth/auth_controller.dart';
 import 'package:inknest_notes/features/account/account_screen.dart';
 import 'package:inknest_notes/features/editor/editor_screen.dart';
 import 'package:inknest_notes/features/editor/infinite_canvas_screen.dart';
+import 'package:inknest_notes/features/sync/first_sign_in_sync_dialog.dart';
 import 'package:inknest_notes/models/notebook.dart';
 import 'package:inknest_notes/models/notebook_folder.dart';
 import 'package:inknest_notes/models/notebook_layout_mode.dart';
 import 'package:inknest_notes/storage/notebook_repository.dart';
+import 'package:inknest_notes/sync/first_sign_in_sync_service.dart';
 
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({
     super.key,
     required this.notebookRepository,
     required this.authController,
+    this.firstSignInSyncService,
   });
 
   final NotebookRepository notebookRepository;
   final AuthController authController;
+  final FirstSignInSyncService? firstSignInSyncService;
 
   @override
   State<LibraryScreen> createState() => _LibraryScreenState();
@@ -173,19 +177,67 @@ class _LibraryScreenState extends State<LibraryScreen> {
   _LibrarySortMode _sortMode = _LibrarySortMode.recent;
   String? _currentFolderId;
   NotebookFolder? _currentFolder;
+  String? _checkedSessionKey;
+  bool _syncCheckScheduled = false;
 
   @override
   void initState() {
     super.initState();
     _notebooks = [];
     _folders = [];
+    widget.authController.addListener(_handleAuthChanged);
     _loadNotebooks();
+    _handleAuthChanged();
   }
 
   @override
   void dispose() {
+    widget.authController.removeListener(_handleAuthChanged);
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _handleAuthChanged() {
+    final session = widget.authController.session;
+    if (session == null) {
+      _checkedSessionKey = null;
+      return;
+    }
+    if (widget.firstSignInSyncService == null || _syncCheckScheduled) return;
+    final sessionKey = '${session.user.id}:${session.device.id}';
+    if (_checkedSessionKey == sessionKey) return;
+    _syncCheckScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _syncCheckScheduled = false;
+      if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
+      _checkCloudAfterSignIn();
+    });
+  }
+
+  Future<void> _checkCloudAfterSignIn() async {
+    final session = widget.authController.session;
+    final service = widget.firstSignInSyncService;
+    if (session == null || service == null) return;
+    final sessionKey = '${session.user.id}:${session.device.id}';
+    if (_checkedSessionKey == sessionKey) return;
+    _checkedSessionKey = sessionKey;
+    final result = await showFirstSignInSyncDialog(
+      context: context,
+      service: service,
+      session: session,
+    );
+    if (!mounted || result?.restoreResult == null) return;
+    await _loadNotebooks();
+    if (!mounted) return;
+    final restored = result!.restoreResult!;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '已恢复 ${restored.downloadedNotebookCount} 本笔记和 '
+          '${restored.downloadedAssetCount} 个附件。',
+        ),
+      ),
+    );
   }
 
   Future<void> _loadNotebooks() async {
@@ -586,6 +638,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
         builder: (_) => AccountScreen(controller: widget.authController),
       ),
     );
+    if (!mounted) return;
+    _handleAuthChanged();
   }
 
   @override

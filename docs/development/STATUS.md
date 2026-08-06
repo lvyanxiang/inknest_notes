@@ -4,15 +4,17 @@
 
 - Milestone: Backend Phase 5 first-sign-in merge and new-device restore is in
   progress; server-side upload/download contracts now cover complete library
-  structure, JSON content, and verified PDF/image/audio assets; Flutter can now
-  safely apply a cloud-only bootstrap to its file-backed library.
-- Next task: Use `$inknest-ui-ux` to finalize the first-sign-in Merge preview
-  and progress/error states, then wire bootstrap, local-only upload, cloud-only
-  restore, and shared-Revision reconciliation from the signed-in App flow.
-- Last completed: Attachment contracts now retain a validated notebook-relative
-  path. Flutter downloads signed asset URLs into disposable staging, verifies
-  metadata/size/SHA-256, rolls back a failed local batch, and saves the bootstrap
-  Cursor only after a complete pure-cloud restore.
+  structure, JSON content, and verified PDF/image/audio assets. Flutter now
+  performs visible first-sign-in detection and can confirm a pure cloud-only
+  restore into the file-backed library.
+- Next task: Implement local-only upload orchestration, including verified
+  asset upload, then reconcile shared stable IDs by Revision before enabling
+  the Merge action for mixed libraries.
+- Last completed: Login or saved-session restoration now triggers the real
+  `/sync/bootstrap` check, displays a conservative Merge preview, supports
+  offline/retry feedback, and lets an empty device download, verify, atomically
+  apply, and immediately display cloud notebooks. Local/mixed libraries remain
+  read-only in this slice and are never silently overwritten.
 
 ## Decisions
 
@@ -43,6 +45,11 @@
   action kind, and stable ID. Local-only resources upload, cloud-only resources
   download, and shared IDs enter Revision/ancestry reconciliation; planning
   itself must never create a delete or replace-local action.
+- Run first-sign-in detection after an authenticated session becomes active.
+  Pure cloud-only libraries may execute the completed verified restore path;
+  local-only and mixed libraries show their upload/download/shared counts but
+  keep execution unavailable until upload and shared-Revision orchestration
+  can complete the whole plan safely.
 - Keep first-merge metadata creation separate from ordinary Revision content
   commits. The API creates folders before dependent notebooks, retains request
   result order, shares the account/device idempotency namespace, and treats its
@@ -623,6 +630,12 @@
 - Product and UI/UX proposals for the editor workspace and stable page viewport
   were completed; application implementation and migration are not started.
 - `git diff --check` passed after the editor workspace product/UI proposal.
+- Focused first-sign-in sync Widget tests passed for cloud-only confirmation,
+  mixed-library non-mutation, and offline retry/continue behavior.
+- `flutter test` passed with 186 tests after wiring visible bootstrap detection
+  and pure cloud-only restore.
+- `flutter analyze` passed after the first-sign-in sync flow.
+- `git diff --check` passed after the first-sign-in sync flow.
 
 ## Notes
 
