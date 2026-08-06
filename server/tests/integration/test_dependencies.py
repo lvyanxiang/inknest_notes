@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 
 from inknest_server.assets import AssetUploadService
 from inknest_server.assets.cleanup import AssetCleanupService
@@ -18,6 +18,8 @@ from inknest_server.models import (
     AssetUpload,
     Device,
     Notebook,
+    SyncChange,
+    SyncCommit,
     User,
 )
 from inknest_server.repositories import (
@@ -29,6 +31,8 @@ from inknest_server.repositories import (
 )
 from inknest_server.services.readiness import ReadinessService
 from inknest_server.storage import MinioStorage
+from inknest_server.sync import SyncCommitRequest, SyncCursorCodec
+from inknest_server.sync.service import SyncService
 
 pytestmark = [
     pytest.mark.integration,
@@ -501,6 +505,109 @@ async def test_postgres_serializes_concurrent_content_revisions() -> None:
         assert successes[0].revision == 1
         assert len(conflicts) == 1
         assert conflicts[0].current_revision == 1
+    finally:
+        if user_id is not None:
+            async with database.session() as cleanup_session:
+                await cleanup_session.execute(delete(User).where(User.id == user_id))
+                await cleanup_session.commit()
+        await database.close()
+
+
+@pytest.mark.asyncio
+async def test_postgres_replays_concurrent_sync_commits_once() -> None:
+    settings = Settings()
+    database = Database(settings.database_url)
+    suffix = uuid4().hex
+    user_id = None
+
+    try:
+        async with database.session() as setup_session:
+            user = User(
+                email=f"phase4-sync-commit-{suffix}@example.com",
+                password_hash="integration-test-password-hash",
+            )
+            setup_session.add(user)
+            await setup_session.flush()
+            user_id = user.id
+            device = Device(user_id=user.id, name="Integration iPad", platform="ios")
+            setup_session.add(device)
+            await setup_session.flush()
+            notebook = await LibraryRepository(setup_session).create_notebook(
+                user_id=user.id,
+                notebook_id=f"sync-commit-{suffix}",
+                title="Concurrent sync commit",
+                layout_mode="paged",
+            )
+            latest_sequence = await SyncChangeRepository(setup_session).latest_sequence(
+                user_id=user.id
+            )
+            await setup_session.commit()
+            device_id = device.id
+            notebook_id = notebook.id
+
+        codec = SyncCursorCodec(settings)
+        request = SyncCommitRequest.model_validate(
+            {
+                "deviceId": str(device_id),
+                "idempotencyKey": f"concurrent-{suffix}",
+                "baseCursor": codec.encode(
+                    user_id=user_id,
+                    sequence=latest_sequence,
+                ),
+                "operations": [
+                    {
+                        "operationId": "notebook-content",
+                        "operation": "upsert",
+                        "resourceType": "notebook",
+                        "resourceId": notebook_id,
+                        "baseRevision": 0,
+                        "content": {"label": "written-once"},
+                    }
+                ],
+            }
+        )
+
+        async def commit() -> bool:
+            async with database.session() as session:
+                result = await SyncService(
+                    session,
+                    SyncChangeRepository(session),
+                    codec,
+                ).commit(
+                    user_id=user_id,
+                    authenticated_device_id=device_id,
+                    request=request,
+                )
+                return result.replayed
+
+        replayed_flags = await asyncio.gather(commit(), commit())
+
+        async with database.session() as verify_session:
+            revision = await verify_session.scalar(
+                select(Notebook.revision).where(
+                    Notebook.id == notebook_id,
+                    Notebook.user_id == user_id,
+                )
+            )
+            commit_count = await verify_session.scalar(
+                select(func.count())
+                .select_from(SyncCommit)
+                .where(SyncCommit.user_id == user_id)
+            )
+            content_change_count = await verify_session.scalar(
+                select(func.count())
+                .select_from(SyncChange)
+                .where(
+                    SyncChange.user_id == user_id,
+                    SyncChange.resource_id == notebook_id,
+                    SyncChange.revision == 1,
+                )
+            )
+
+        assert sorted(replayed_flags) == [False, True]
+        assert revision == 1
+        assert commit_count == 1
+        assert content_change_count == 1
     finally:
         if user_id is not None:
             async with database.session() as cleanup_session:

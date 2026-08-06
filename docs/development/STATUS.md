@@ -4,13 +4,16 @@
 
 - Milestone: Backend Phase 4 incremental synchronization and conflicts (in
   progress)
-- Next task: Implement transactional, idempotent `POST /sync/commit` batches
-  with device ownership, idempotency keys, base Cursor validation, and per-
-  operation results; do not add conflict-copy semantics until its later item.
-- Last completed: Added the user-scoped append-only `sync_changes` log,
-  transactional events for library/revision/asset writes, signed account-bound
-  opaque Cursors, and paginated `GET /api/v1/sync/changes`. Alembic is at
-  `20260806_0008`.
+- Next task: Add the Flutter persistent pending-sync queue and persist the last
+  successfully applied opaque Cursor. Keep local editing independent of network
+  availability, remove queued work only after a successful whole-batch commit,
+  and do not add conflict-copy semantics until its later item.
+- Last completed: Added transactional, atomic and idempotent
+  `POST /api/v1/sync/commit` batches for existing notebook, page, and infinite-
+  canvas content. Requests are bound to the authenticated device, validate the
+  account Cursor and each resource's `baseRevision`, cache per-operation results
+  under `(user, device, idempotencyKey)`, reject Key reuse with different input,
+  and never partially apply a failed batch. Alembic is at `20260806_0009`.
 
 ## Decisions
 
@@ -46,6 +49,12 @@
   copies, and no restore path silently overwrites local notes.
 - Keep sync Cursors server-owned, signed, account-bound, and opaque to clients;
   the App persists a page Cursor only after applying the complete page locally.
+- Keep `/sync/commit` batches atomic and scope idempotency keys to one account
+  and authenticated device. A stale account Cursor may submit work, but every
+  content operation must pass its resource Revision guard; a Cursor ahead of
+  the account state is rejected. The current route updates existing revisioned
+  resources only and does not imply create, delete, tombstone, or conflict-copy
+  support.
 - Keep asset cleanup operator-run and dry-run by default: expired pending
   uploads receive a 24-hour staging grace period, cancelled/completed residue
   waits 1 hour, final orphans are quarantined for 7 days, and every final object
@@ -163,15 +172,15 @@
 ## Verification
 
 - Backend formatting, linting, and strict typing pass across 60 Python
-  source/test files; all 33 non-integration tests pass.
-- All eight PostgreSQL/MinIO integration tests pass, including real PostgreSQL
-  Identity ordering and account-scoped sync change reads.
-- Alembic upgraded the development database to `20260806_0008 (head)` and
-  reports no schema drift. An independent empty database upgraded through
-  `0008`, exposed the expected 13 public tables including `sync_changes`, and
-  was deleted after verification.
-- OpenAPI exposes 14 application operations, including the authenticated,
-  paginated `GET /api/v1/sync/changes` feed.
+  source/test files; all 36 non-integration tests pass.
+- All nine PostgreSQL/MinIO integration tests pass, including concurrent
+  PostgreSQL replay of one idempotent sync commit with exactly one Revision and
+  change event.
+- Alembic upgraded the development database to `20260806_0009 (head)`. An
+  independent empty database upgraded through `0009` and was deleted after
+  verification.
+- OpenAPI exposes 15 application operations, including authenticated pull via
+  `GET /api/v1/sync/changes` and atomic push via `POST /api/v1/sync/commit`.
 - Backend formatting, linting, and strict typing pass across 52 Python
   source/test files; all 30 non-integration tests pass.
 - All seven PostgreSQL/MinIO integration tests pass, including real staging

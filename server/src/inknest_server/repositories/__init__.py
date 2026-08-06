@@ -8,7 +8,11 @@ from inknest_server.repositories.library import (
     LibraryRepository,
     LibraryResourceNotFoundError,
 )
-from inknest_server.repositories.sync import SyncChangeRepository
+from inknest_server.repositories.sync import (
+    SyncChangeRepository,
+    SyncCommitRepository,
+    SyncIdempotencyKeyReusedError,
+)
 
 __all__ = [
     "ContentRepository",
@@ -18,4 +22,6 @@ __all__ = [
     "LibraryResourceNotFoundError",
     "RevisionConflictError",
     "SyncChangeRepository",
+    "SyncCommitRepository",
+    "SyncIdempotencyKeyReusedError",
 ]

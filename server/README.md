@@ -6,8 +6,9 @@ InkNest Server is the Python/FastAPI backend for account-backed backup and
 local-first synchronization. It currently provides the service skeleton,
 PostgreSQL and MinIO adapters, health endpoints, the first account/session API,
 user-scoped library metadata persistence, verified presigned asset upload and
-download flows, and an incremental sync change feed with opaque cursors. Batch
-sync commits and conflict handling are not implemented yet.
+download flows, an incremental sync change feed with opaque cursors, and atomic
+batch sync commits for existing revisioned content. Creating resources through
+sync, deletion/tombstones, and conflict copies are not implemented yet.
 
 ## Requirements
 
@@ -149,6 +150,7 @@ All application routes use the base URL `http://127.0.0.1:8000/api/v1`.
 | `DELETE` | `/assets/upload-sessions/{upload_id}` | Bearer Access Token | Cancel one pending upload session owned by the current user. |
 | `GET` | `/assets/{asset_id}/download-url` | Bearer Access Token | Sign a short-lived download URL for one ready, owned asset. |
 | `GET` | `/sync/changes?cursor=...&limit=...` | Bearer Access Token | Read ordered changes for the current user and receive the next opaque cursor. |
+| `POST` | `/sync/commit` | Bearer Access Token | Atomically commit an idempotent batch of existing notebook, page, or infinite-canvas content updates. |
 
 For Bearer-protected routes, send the Access Token returned by register, login,
 or refresh:
@@ -226,8 +228,51 @@ poll.
 
 Library creates, new content revisions, and completed assets append an event in
 the same PostgreSQL transaction as the authoritative write. Identical content
-retries do not append duplicates. Delete events, batch `/sync/commit`, and
-conflict handling are following slices.
+retries do not append duplicates. Delete events and conflict-copy handling are
+following slices.
+
+### Idempotent synchronization commits
+
+`POST /api/v1/sync/commit` currently writes complete JSON content for existing
+notebooks, pages, and infinite canvases. First obtain and persist a cursor from
+`GET /sync/changes`, then submit a batch:
+
+```bash
+curl -X POST 'http://127.0.0.1:8000/api/v1/sync/commit' \
+  -H 'Authorization: Bearer <access-token>' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "deviceId": "<device-id-from-login>",
+    "idempotencyKey": "<new-stable-key-for-this-batch>",
+    "baseCursor": "<last-safely-applied-cursor>",
+    "operations": [{
+      "operationId": "page-save-1",
+      "operation": "upsert",
+      "resourceType": "page",
+      "resourceId": "<existing-page-id>",
+      "baseRevision": 0,
+      "content": {"schemaVersion": 1, "strokes": []}
+    }]
+  }'
+```
+
+The whole batch uses one PostgreSQL transaction. If any resource is missing or
+has a different current Revision, no operation in the batch is persisted. A
+successful response contains one result per operation, including the server
+Revision, content hash, whether content changed, and the new cursor.
+
+Retries must send exactly the same body with the same `idempotencyKey`. The key
+is scoped to the authenticated account and device. An exact retry returns the
+stored result with `replayed: true` without creating another Revision or change
+event; reusing the key for different input returns
+`409 sync_idempotency_key_reused`. A stale but valid account cursor is accepted
+so an offline device can submit work, while every `baseRevision` still prevents
+silent overwrite. Invalid or account-mismatched cursors return `400`; cursors
+ahead of account state return `409`.
+
+This route does not yet create locally new resources and does not accept delete
+operations. Those require the later metadata, tombstone, and conflict-copy
+protocol slices.
 
 ### Safe asset cleanup
 
@@ -321,6 +366,8 @@ The migration history currently contains:
   `asset_gc_candidates` tracking for recoverable MinIO garbage collection.
 - `20260806_0008`: append-only `sync_changes` with a PostgreSQL identity
   sequence, ownership fields, immutable payloads, and cursor indexes.
+- `20260806_0009`: `sync_commits` request hashes and cached responses, uniquely
+  scoped by account, authenticated device, and idempotency key.
 
 Future schema work must add a new revision instead of rewriting an applied
 revision.
@@ -357,8 +404,9 @@ an unknown future representation can be preserved without server rewriting.
 The `assets` table stores only object metadata and MinIO object keys; file bytes
 remain in MinIO.
 
-There are no public library CRUD or sync-commit routes yet; the read-only
-incremental feed and upload sessions are the current library-related routes.
+There are no public library CRUD routes yet. The incremental feed, content-only
+sync commit route for existing revisioned resources, and upload sessions are
+the current library-related routes.
 Inspect these tables in
 Navicat/pgAdmin, or run the repository tests from `server/`:
 
@@ -386,8 +434,8 @@ the resource row, the server assigns the next revision, and a stale base with
 different content raises a revision conflict. Retrying identical content is a
 no-op even if the retry still carries the previous base revision, so it does
 not create duplicate history. Successful new revisions now append to
-`sync_changes` and appear in the read-only incremental feed; writing through
-`/sync/commit` is still a following slice.
+`sync_changes` and appear in the incremental feed. `/sync/commit` exposes this
+same guarded write path as an atomic, idempotent batch for existing resources.
 
 ## Authentication API
 

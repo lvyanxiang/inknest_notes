@@ -385,6 +385,39 @@ class SyncChange(Base):
     )
 
 
+class SyncCommit(Base):
+    __tablename__ = "sync_commits"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "device_id",
+            "idempotency_key",
+            name="uq_sync_commits_user_device_key",
+        ),
+        CheckConstraint(
+            "length(request_hash) = 64",
+            name="ck_sync_commits_request_hash_length",
+        ),
+        Index("ix_sync_commits_user_device", "user_id", "device_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    device_id: Mapped[UUID] = mapped_column(
+        ForeignKey("devices.id", ondelete="CASCADE"), index=True
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(128))
+    request_hash: Mapped[str] = mapped_column(String(64))
+    response_payload: Mapped[dict[str, object]] = mapped_column(
+        JSON, default=dict, server_default="{}"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class ContentRevision(Base):
     __tablename__ = "revisions"
     __table_args__ = (

@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Query
 
@@ -7,10 +7,19 @@ from inknest_server.api.dependencies import (
     SyncServiceDependency,
 )
 from inknest_server.errors import ApiError
+from inknest_server.repositories import RevisionConflictError
+from inknest_server.repositories.sync import SyncIdempotencyKeyReusedError
 from inknest_server.sync import (
     InvalidSyncCursorError,
     SyncChangeResponse,
     SyncChangesResponse,
+    SyncCommitRequest,
+    SyncCommitResponse,
+)
+from inknest_server.sync.service import (
+    SyncCursorAheadError,
+    SyncDeviceMismatchError,
+    SyncOperationFailedError,
 )
 
 router = APIRouter(prefix="/sync", tags=["sync"])
@@ -42,3 +51,67 @@ async def list_sync_changes(
         next_cursor=result.next_cursor,
         has_more=result.has_more,
     )
+
+
+@router.post("/commit", response_model=SyncCommitResponse)
+async def commit_sync_changes(
+    payload: SyncCommitRequest,
+    current: CurrentSessionDependency,
+    service: SyncServiceDependency,
+) -> SyncCommitResponse:
+    try:
+        return await service.commit(
+            user_id=current.user.id,
+            authenticated_device_id=current.device.id,
+            request=payload,
+        )
+    except InvalidSyncCursorError as error:
+        raise ApiError(
+            code="sync_cursor_invalid",
+            message="The synchronization cursor is invalid for this account.",
+            status_code=400,
+        ) from error
+    except SyncCursorAheadError as error:
+        raise ApiError(
+            code="sync_cursor_ahead",
+            message="The synchronization cursor is ahead of the account state.",
+            status_code=409,
+        ) from error
+    except SyncDeviceMismatchError as error:
+        raise ApiError(
+            code="sync_device_mismatch",
+            message="The request device does not match the authenticated device.",
+            status_code=403,
+        ) from error
+    except SyncIdempotencyKeyReusedError as error:
+        raise ApiError(
+            code="sync_idempotency_key_reused",
+            message="The idempotency key was already used for another request.",
+            status_code=409,
+        ) from error
+    except SyncOperationFailedError as error:
+        operation = error.operation
+        details: dict[str, Any] = {
+            "operationId": operation.operation_id,
+            "resourceType": operation.resource_type,
+            "resourceId": operation.resource_id,
+        }
+        if isinstance(error.cause, RevisionConflictError):
+            details.update(
+                {
+                    "expectedRevision": error.cause.expected_revision,
+                    "currentRevision": error.cause.current_revision,
+                }
+            )
+            raise ApiError(
+                code="sync_revision_conflict",
+                message="A resource changed after the submitted base revision.",
+                status_code=409,
+                details=details,
+            ) from error
+        raise ApiError(
+            code="sync_resource_not_found",
+            message=str(error.cause),
+            status_code=404,
+            details=details,
+        ) from error

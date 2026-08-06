@@ -5,8 +5,8 @@
 InkNest 服务端是为账号备份和 local-first（本地优先）同步提供支持的
 Python/FastAPI 后端。目前已经包含服务骨架、PostgreSQL、MinIO、健康检查、第一版
 账号/会话/设备接口、按用户隔离的资料库元数据持久化、经过大小和 SHA-256 校验的附件
-预签名上传与下载流程，以及使用不透明 Cursor 的增量同步变更流；批量同步提交和冲突处理
-尚未实现。
+预签名上传与下载流程、使用不透明 Cursor 的增量同步变更流，以及针对已有 Revision 内容
+的原子批量同步提交。通过同步新建资源、删除/Tombstone 和冲突副本尚未实现。
 
 ## 环境要求
 
@@ -144,6 +144,7 @@ API 在宿主机运行或使用默认 Compose 端口映射时，以下地址相�
 | `DELETE` | `/assets/upload-sessions/{upload_id}` | Bearer Access Token | 取消当前用户拥有的待上传会话。 |
 | `GET` | `/assets/{asset_id}/download-url` | Bearer Access Token | 为当前用户拥有的可用附件签发短期下载 URL。 |
 | `GET` | `/sync/changes?cursor=...&limit=...` | Bearer Access Token | 按顺序读取当前用户的增量变更，并返回下一个不透明 Cursor。 |
+| `POST` | `/sync/commit` | Bearer Access Token | 原子、幂等地批量更新已有笔记本、页面或无限画布的内容。 |
 
 访问 Bearer 鉴权接口时，使用注册、登录或刷新接口返回的 Access Token：
 
@@ -244,7 +245,45 @@ curl --get 'http://127.0.0.1:8000/api/v1/sync/changes' \
 轮询保存的 Cursor。
 
 资料库创建、新内容 Revision 和附件完成会在权威写入的同一个 PostgreSQL 事务中追加
-事件；相同内容重试不会重复追加。删除事件、批量 `/sync/commit` 和冲突处理属于后续切片。
+事件；相同内容重试不会重复追加。删除事件和冲突副本处理属于后续切片。
+
+### 幂等批量同步提交
+
+`POST /api/v1/sync/commit` 当前用于写入已有笔记本、页面和无限画布的完整 JSON 内容。
+先从 `GET /sync/changes` 获取并安全保存 Cursor，再提交批次：
+
+```bash
+curl -X POST 'http://127.0.0.1:8000/api/v1/sync/commit' \
+  -H 'Authorization: Bearer <access-token>' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "deviceId": "<登录响应中的设备ID>",
+    "idempotencyKey": "<本批次新建且稳定的Key>",
+    "baseCursor": "<本地最后安全应用的Cursor>",
+    "operations": [{
+      "operationId": "page-save-1",
+      "operation": "upsert",
+      "resourceType": "page",
+      "resourceId": "<已有页面ID>",
+      "baseRevision": 0,
+      "content": {"schemaVersion": 1, "strokes": []}
+    }]
+  }'
+```
+
+整个批次使用一个 PostgreSQL 事务。只要任一资源不存在或当前 Revision 与
+`baseRevision` 不同，整批都不落库，前面已经执行的操作也会回滚。成功响应按操作返回
+服务端 Revision、内容哈希、内容是否真正变化，以及新的 Cursor。
+
+网络失败重试时，必须原样发送相同请求体和同一个 `idempotencyKey`。Key 的范围是当前
+账号和已认证设备；完全相同的重试直接返回第一次结果并标记 `replayed: true`，不会再次
+创建 Revision 或变更事件。同一个 Key 换成不同请求会返回
+`409 sync_idempotency_key_reused`。有效但较旧的账号 Cursor 可以提交，便于离线设备恢复
+联网后上传；每项 `baseRevision` 仍会阻止静默覆盖。无效或跨账号 Cursor 返回 `400`，
+超前于账号状态的 Cursor 返回 `409`。
+
+当前接口不会创建本地新增但云端尚不存在的资源，也不接受删除操作。这些能力必须等后续
+元数据、Tombstone 和冲突副本协议完成后再开放。
 
 ### 安全清理附件对象
 
@@ -331,6 +370,8 @@ docker compose config
   `asset_gc_candidates`，用于可恢复的 MinIO 垃圾回收。
 - `20260806_0008`：创建追加式 `sync_changes`，使用 PostgreSQL Identity 顺序、归属字段、
   不可变快照和 Cursor 查询索引。
+- `20260806_0009`：创建 `sync_commits`，按账号、认证设备和幂等 Key 唯一保存请求哈希与
+  首次成功响应。
 
 后续表结构变化必须创建新迁移，不能修改已经应用过的迁移文件。
 
@@ -371,8 +412,8 @@ App 生成的 ID 以稳定字符串保存，并与 `user_id` 组成联合主键�
 可以原样保留未来或未知格式，不进行危险改写。`assets` 表只保存文件名、类型、大小、
 SHA-256 和 MinIO Object Key，PDF、图片、音频等文件本体仍存放在 MinIO。
 
-当前还没有公开的资料库 CRUD 或同步提交接口；只读增量变更流和附件上传会话是目前公开的
-资料库相关接口。可以先在 Navicat/pgAdmin 查看这些表，或在
+当前还没有公开的资料库 CRUD 接口。增量变更流、针对已有 Revision 资源的内容提交接口和
+附件上传会话是目前公开的资料库相关接口。可以先在 Navicat/pgAdmin 查看这些表，或在
 `server/` 目录运行仓库层测试：
 
 ```bash
@@ -399,7 +440,8 @@ INKNEST_RUN_INTEGRATION=1 uv run pytest tests/integration
 保存时调用方必须提交当前 `base_revision`。PostgreSQL 会锁定资源行，服务端再生成下一
 版本；不同内容使用过期版本会得到明确冲突。相同内容的重复请求即使仍携带旧版本，也会
 作为幂等重试返回，不会重复创建历史记录。成功的新 Revision 现在会追加到
-`sync_changes` 并通过只读增量变更接口返回；通过 `/sync/commit` 写入仍属于下一切片。
+`sync_changes` 并通过增量变更接口返回。`/sync/commit` 已把同一套受 Revision 保护的写入
+路径开放为针对已有资源的原子、幂等批次。
 
 ## 认证机制
 

@@ -3,10 +3,11 @@ from uuid import UUID
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from inknest_server.config import Settings
-from inknest_server.models import User
+from inknest_server.models import Notebook, Page, SyncChange, SyncCommit, User
 from inknest_server.repositories import (
     ContentRepository,
     LibraryRepository,
@@ -171,3 +172,251 @@ async def test_sync_changes_endpoint_pages_and_isolates_accounts(
     assert cross_account_cursor.json()["error"]["code"] == "sync_cursor_invalid"
     assert tampered_cursor.status_code == 400
     assert tampered_cursor.json()["error"]["code"] == "sync_cursor_invalid"
+
+
+async def test_sync_commit_is_atomic_and_idempotent(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    registered = await register(client, "sync-commit@example.com")
+    user_id = UUID(registered["user"]["id"])
+    device_id = registered["device"]["id"]
+    library = LibraryRepository(db_session)
+    notebook = await library.create_notebook(
+        user_id=user_id,
+        notebook_id="commit-notebook",
+        title="Commit",
+        layout_mode="paged",
+    )
+    page = await library.create_page(
+        user_id=user_id,
+        notebook_id=notebook.id,
+        page_id="commit-page",
+        position=0,
+        width=768,
+        height=1024,
+        coordinate_space_version=1,
+    )
+    await db_session.commit()
+    initial_changes = await client.get(
+        "/api/v1/sync/changes",
+        headers=bearer(registered["accessToken"]),
+    )
+    base_cursor = initial_changes.json()["nextCursor"]
+    payload = {
+        "deviceId": device_id,
+        "idempotencyKey": "commit-batch-1",
+        "baseCursor": base_cursor,
+        "operations": [
+            {
+                "operationId": "notebook-content-1",
+                "operation": "upsert",
+                "resourceType": "notebook",
+                "resourceId": notebook.id,
+                "baseRevision": 0,
+                "content": {"schemaVersion": 1, "cover": "grid"},
+            },
+            {
+                "operationId": "page-content-1",
+                "operation": "upsert",
+                "resourceType": "page",
+                "resourceId": page.id,
+                "baseRevision": 0,
+                "content": {"schemaVersion": 1, "strokes": [{"id": "stroke-1"}]},
+            },
+        ],
+    }
+
+    committed = await client.post(
+        "/api/v1/sync/commit",
+        json=payload,
+        headers=bearer(registered["accessToken"]),
+    )
+    first_body = committed.json()
+    changes_after_first = await db_session.scalar(
+        select(func.count())
+        .select_from(SyncChange)
+        .where(SyncChange.user_id == user_id)
+    )
+    replayed = await client.post(
+        "/api/v1/sync/commit",
+        json=payload,
+        headers=bearer(registered["accessToken"]),
+    )
+    changes_after_replay = await db_session.scalar(
+        select(func.count())
+        .select_from(SyncChange)
+        .where(SyncChange.user_id == user_id)
+    )
+    commit_rows = await db_session.scalar(
+        select(func.count())
+        .select_from(SyncCommit)
+        .where(SyncCommit.user_id == user_id)
+    )
+
+    assert committed.status_code == 200
+    assert first_body["replayed"] is False
+    assert [result["revision"] for result in first_body["results"]] == [1, 1]
+    assert all(result["changed"] is True for result in first_body["results"])
+    assert replayed.status_code == 200
+    assert replayed.json() == {**first_body, "replayed": True}
+    assert changes_after_replay == changes_after_first
+    assert commit_rows == 1
+
+    changed_payload = {
+        **payload,
+        "operations": [
+            {
+                **payload["operations"][0],
+                "content": {"schemaVersion": 1, "cover": "changed"},
+            }
+        ],
+    }
+    key_reused = await client.post(
+        "/api/v1/sync/commit",
+        json=changed_payload,
+        headers=bearer(registered["accessToken"]),
+    )
+    assert key_reused.status_code == 409
+    assert key_reused.json()["error"]["code"] == "sync_idempotency_key_reused"
+
+
+async def test_sync_commit_rolls_back_the_whole_batch_on_revision_conflict(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    registered = await register(client, "sync-rollback@example.com")
+    user_id = UUID(registered["user"]["id"])
+    library = LibraryRepository(db_session)
+    notebook = await library.create_notebook(
+        user_id=user_id,
+        notebook_id="rollback-notebook",
+        title="Rollback",
+        layout_mode="paged",
+    )
+    page = await library.create_page(
+        user_id=user_id,
+        notebook_id=notebook.id,
+        page_id="rollback-page",
+        position=0,
+        width=768,
+        height=1024,
+        coordinate_space_version=1,
+    )
+    notebook_id = notebook.id
+    page_id = page.id
+    content = ContentRepository(db_session)
+    await content.save_page_content(
+        user_id=user_id,
+        page_id=page.id,
+        base_revision=0,
+        content={"strokes": [{"id": "server-stroke"}]},
+    )
+    await db_session.commit()
+    changes = await client.get(
+        "/api/v1/sync/changes",
+        headers=bearer(registered["accessToken"]),
+    )
+    before_count = await db_session.scalar(
+        select(func.count())
+        .select_from(SyncChange)
+        .where(SyncChange.user_id == user_id)
+    )
+    payload = {
+        "deviceId": registered["device"]["id"],
+        "idempotencyKey": "rollback-batch-1",
+        "baseCursor": changes.json()["nextCursor"],
+        "operations": [
+            {
+                "operationId": "would-succeed",
+                "operation": "upsert",
+                "resourceType": "notebook",
+                "resourceId": notebook.id,
+                "baseRevision": 0,
+                "content": {"cover": "must-rollback"},
+            },
+            {
+                "operationId": "must-conflict",
+                "operation": "upsert",
+                "resourceType": "page",
+                "resourceId": page.id,
+                "baseRevision": 0,
+                "content": {"strokes": [{"id": "offline-stroke"}]},
+            },
+        ],
+    }
+
+    response = await client.post(
+        "/api/v1/sync/commit",
+        json=payload,
+        headers=bearer(registered["accessToken"]),
+    )
+    db_session.expire_all()
+    stored_notebook = await db_session.scalar(
+        select(Notebook).where(
+            Notebook.id == notebook_id,
+            Notebook.user_id == user_id,
+        )
+    )
+    stored_page = await db_session.scalar(
+        select(Page).where(Page.id == page_id, Page.user_id == user_id)
+    )
+    after_count = await db_session.scalar(
+        select(func.count())
+        .select_from(SyncChange)
+        .where(SyncChange.user_id == user_id)
+    )
+    commit_rows = await db_session.scalar(
+        select(func.count())
+        .select_from(SyncCommit)
+        .where(SyncCommit.user_id == user_id)
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "sync_revision_conflict"
+    assert response.json()["error"]["details"] == {
+        "operationId": "must-conflict",
+        "resourceType": "page",
+        "resourceId": page_id,
+        "expectedRevision": 0,
+        "currentRevision": 1,
+    }
+    assert stored_notebook is not None
+    assert stored_notebook.revision == 0
+    assert stored_notebook.content == {}
+    assert stored_page is not None
+    assert stored_page.revision == 1
+    assert after_count == before_count
+    assert commit_rows == 0
+
+
+async def test_sync_commit_rejects_another_device_id(
+    client: AsyncClient,
+) -> None:
+    registered = await register(client, "sync-device@example.com")
+    changes = await client.get(
+        "/api/v1/sync/changes",
+        headers=bearer(registered["accessToken"]),
+    )
+    response = await client.post(
+        "/api/v1/sync/commit",
+        json={
+            "deviceId": "11111111-1111-1111-1111-111111111111",
+            "idempotencyKey": "wrong-device",
+            "baseCursor": changes.json()["nextCursor"],
+            "operations": [
+                {
+                    "operationId": "missing-resource",
+                    "operation": "upsert",
+                    "resourceType": "notebook",
+                    "resourceId": "missing",
+                    "baseRevision": 0,
+                    "content": {},
+                }
+            ],
+        },
+        headers=bearer(registered["accessToken"]),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "sync_device_mismatch"

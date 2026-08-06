@@ -364,9 +364,10 @@ checksums.sha256
 ### Phase 4：增量同步与冲突
 
 - [x] 同步变更日志和不透明 Cursor。
-- [ ] 批量、幂等 `/sync/commit`。
+- [x] 批量、幂等 `/sync/commit`（当前安全范围为已有笔记本、页面和无限画布的
+  Revision 内容更新；新增资源、删除和冲突副本由后续条目扩展）。
 - [ ] Flutter 本地待同步队列和最后成功 Cursor。
-- [ ] Revision 乐观锁。
+- [x] Revision 乐观锁。
 - [ ] 页面级和笔记本级冲突副本。
 - [ ] Tombstone、删除-编辑冲突和恢复。
 - [ ] 离线编辑、断网重试和重复提交测试。
