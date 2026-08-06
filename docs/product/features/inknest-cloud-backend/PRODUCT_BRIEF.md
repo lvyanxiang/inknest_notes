@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Size: Large
-- Updated: 2026-08-05
+- Updated: 2026-08-06
 - Roadmap link: `docs/development/ROADMAP.md#milestone-8-sync-and-backup-paused`
 
 ## Problem
@@ -24,6 +24,12 @@ new-device restore, version history, and conservative conflict recovery.
 The first synchronization version operates at folder, notebook metadata, page,
 infinite-canvas document, and asset granularity. It does not attempt
 stroke-level merging or real-time collaboration.
+
+For concurrent page/notebook edits, the accepted conservative behavior is to
+leave the authoritative resource unchanged and persist both snapshots in a
+pending conflict record with a stable reserved copy ID. The App will offer
+Keep Original, Use Conflict Version, and Keep Both. Keep Both materializes the
+reserved resource with `conflictOf` ancestry; retries reuse the same conflict.
 
 ## Scope
 
@@ -58,9 +64,12 @@ stroke-level merging or real-time collaboration.
    IDs remain separate even when titles match.
 4. When the same object changed on both sides, InkNest preserves both outcomes
    and labels a conflict copy instead of overwriting either side.
-5. On a new device, the user signs in and restores cloud notebooks, assets,
+5. The user explicitly keeps the original, uses the conflicting version, or
+   keeps both. A newer edit made after the conflict blocks stale replacement
+   and leaves recovery data intact.
+6. On a new device, the user signs in and restores cloud notebooks, assets,
    folder organization, and supported history.
-6. An explicit replace-local action, if added later, requires a second
+7. An explicit replace-local action, if added later, requires a second
    confirmation and a recoverable backup before replacement.
 
 ## Acceptance Criteria
@@ -116,6 +125,8 @@ stroke-level merging or real-time collaboration.
   - Docker-compatible development environment for PostgreSQL and MinIO.
   - A UI/UX specification before sign-in, merge, sync-status, conflict, or
     restore screens are implemented.
+  - The server conflict contract is complete; Flutter still needs to consume
+    conflict events and implement the specified recovery UI.
 - Data, privacy, performance, or migration risk:
   - Incorrect revision or tombstone semantics can cause data loss.
   - Asset metadata and MinIO objects can drift without transactional finalize
@@ -141,10 +152,12 @@ stroke-level merging or real-time collaboration.
 
 ## Delivery
 
-- UI/UX spec: Required before Flutter account, merge, sync, conflict, and
-  restore integration; not part of this backend planning task.
+- UI/UX spec: `UI_UX_SPEC.md` defines the future App conflict recovery flow;
+  Flutter integration is not part of the current server slice.
 - Implementation status: Phase 4 incremental synchronization is in progress in
   `docs/development/BACKEND_IMPLEMENTATION_PLAN.md`.
-- Verification: Authentication unit tests cover account creation, login,
-  refresh rotation and replay, logout, device ownership, and device revocation;
-  the PostgreSQL migration and dependency integration test also pass.
+- Verification: Backend tests cover authentication, account isolation,
+  revisioned content, asset transfer, cursors, atomic/idempotent commits, page
+  and notebook conflicts, all resolution choices, and concurrent retry with
+  exactly one conflict. PostgreSQL migration `20260806_0010` passes both the
+  development upgrade and an independent empty-database upgrade.

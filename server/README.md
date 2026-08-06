@@ -7,8 +7,10 @@ local-first synchronization. It currently provides the service skeleton,
 PostgreSQL and MinIO adapters, health endpoints, the first account/session API,
 user-scoped library metadata persistence, verified presigned asset upload and
 download flows, an incremental sync change feed with opaque cursors, and atomic
-batch sync commits for existing revisioned content. Creating resources through
-sync, deletion/tombstones, and conflict copies are not implemented yet.
+batch sync commits for existing revisioned content. Concurrent page/notebook
+edits now create explicit, recoverable conflict records with three resolution
+choices. General resource creation through sync and deletion/tombstones are not
+implemented yet.
 
 ## Requirements
 
@@ -151,6 +153,7 @@ All application routes use the base URL `http://127.0.0.1:8000/api/v1`.
 | `GET` | `/assets/{asset_id}/download-url` | Bearer Access Token | Sign a short-lived download URL for one ready, owned asset. |
 | `GET` | `/sync/changes?cursor=...&limit=...` | Bearer Access Token | Read ordered changes for the current user and receive the next opaque cursor. |
 | `POST` | `/sync/commit` | Bearer Access Token | Atomically commit an idempotent batch of existing notebook, page, or infinite-canvas content updates. |
+| `POST` | `/sync/conflicts/{conflict_id}/resolve` | Bearer Access Token | Resolve an owned page/notebook conflict by keeping the original, using the submitted version, or keeping both. |
 
 For Bearer-protected routes, send the Access Token returned by register, login,
 or refresh:
@@ -228,8 +231,9 @@ poll.
 
 Library creates, new content revisions, and completed assets append an event in
 the same PostgreSQL transaction as the authoritative write. Identical content
-retries do not append duplicates. Delete events and conflict-copy handling are
-following slices.
+retries do not append duplicates. Page/notebook conflicts and their resolutions
+also append `conflict` events so another device can observe their state. Delete
+events remain a following slice.
 
 ### Idempotent synchronization commits
 
@@ -256,10 +260,15 @@ curl -X POST 'http://127.0.0.1:8000/api/v1/sync/commit' \
   }'
 ```
 
-The whole batch uses one PostgreSQL transaction. If any resource is missing or
-has a different current Revision, no operation in the batch is persisted. A
-successful response contains one result per operation, including the server
-Revision, content hash, whether content changed, and the new cursor.
+The whole batch uses one PostgreSQL transaction. A stale page or notebook with
+different content leaves the original unchanged and returns an operation result
+with `outcome: conflict` plus both recoverable snapshots and a stable conflict
+copy ID. Other operations in that valid batch commit atomically with the
+conflict record. A missing resource or a stale infinite canvas is still an
+error and rolls back the entire batch. A successful response contains one
+result per operation, including `outcome` (`applied`, `unchanged`, or
+`conflict`), the authoritative server Revision/hash, compatibility field
+`changed`, any conflict details, and the new cursor.
 
 Retries must send exactly the same body with the same `idempotencyKey`. The key
 is scoped to the authenticated account and device. An exact retry returns the
@@ -270,9 +279,40 @@ so an offline device can submit work, while every `baseRevision` still prevents
 silent overwrite. Invalid or account-mismatched cursors return `400`; cursors
 ahead of account state return `409`.
 
-This route does not yet create locally new resources and does not accept delete
-operations. Those require the later metadata, tombstone, and conflict-copy
-protocol slices.
+This route does not yet create general local-only resources and does not accept
+delete operations. Those require the later metadata and tombstone protocol
+slices.
+
+### Conflict copies and resolution
+
+A conflict record preserves the submitted and current JSON snapshots, their
+hashes, the submitted `baseRevision`, the current server Revision, the source
+device, a stable `copyResourceId`, and `conflictOf` ancestry. Notebook labels use
+`<original title>（冲突副本）`; untitled pages use
+`第 N 页（冲突副本）`. Device and timestamp are metadata rather than title
+identity.
+
+Resolve an owned conflict with one explicit choice:
+
+```bash
+curl -X POST \
+  'http://127.0.0.1:8000/api/v1/sync/conflicts/<conflict-id>/resolve' \
+  -H 'Authorization: Bearer <access-token>' \
+  -H 'Content-Type: application/json' \
+  -d '{"resolution":"keep_both"}'
+```
+
+- `keep_original` closes the conflict and retains its snapshots for recovery.
+- `use_conflict` writes the submitted snapshot as a new Revision on the
+  original only if the original has not changed again.
+- `keep_both` materializes the reserved copy ID as a new notebook or an
+  appended page with `conflictOf` pointing to the original.
+
+Repeating the same resolution is a no-op. Choosing a different resolution after
+completion returns `409 sync_conflict_already_resolved`; resolving with
+`use_conflict` after the original changed again returns
+`409 sync_conflict_resolution_stale`. Delete-versus-edit behavior remains for
+the Tombstone slice.
 
 ### Safe asset cleanup
 
@@ -368,6 +408,8 @@ The migration history currently contains:
   sequence, ownership fields, immutable payloads, and cursor indexes.
 - `20260806_0009`: `sync_commits` request hashes and cached responses, uniquely
   scoped by account, authenticated device, and idempotency key.
+- `20260806_0010`: page/notebook `conflict_of` ancestry, durable `conflicts`
+  snapshots and resolution state, plus conflict events in `sync_changes`.
 
 Future schema work must add a new revision instead of rewriting an applied
 revision.

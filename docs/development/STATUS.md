@@ -4,16 +4,15 @@
 
 - Milestone: Backend Phase 4 incremental synchronization and conflicts (in
   progress)
-- Next task: Define page- and notebook-level conflict-copy semantics and then
-  implement their server persistence/API. This changes conflict behavior, so
-  confirm the exact copy naming, ancestry links, and resolution states before
-  implementation.
-- Last completed: Added the Flutter file-backed synchronization state store,
-  isolated by account and device. It persists coalesced pending upserts, one
-  immutable in-flight commit for exact retry, server Revision rebasing for edits
-  made during upload, and the last fully applied pull Cursor. Commit completion
-  never advances that pull Cursor, preventing interleaved remote changes from
-  being skipped. Existing local notebook saving remains network-independent.
+- Next task: Implement Tombstones, delete-versus-edit conflict preservation,
+  and explicit recovery without physically deleting user content.
+- Last completed: Added page- and notebook-level server conflict recovery.
+  Stale concurrent writes leave the original unchanged, persist both snapshots
+  and a reserved copy ID, replay idempotently, and can be resolved with Keep
+  Original, Use Conflict Version, or Keep Both. Keep Both creates a new
+  Revision-backed resource with `conflictOf` ancestry; conflict state also
+  travels through the incremental change feed. Flutter conflict UI remains a
+  later integration task under the accepted UI/UX specification.
 
 ## Decisions
 
@@ -53,8 +52,15 @@
   and authenticated device. A stale account Cursor may submit work, but every
   content operation must pass its resource Revision guard; a Cursor ahead of
   the account state is rejected. The current route updates existing revisioned
-  resources only and does not imply create, delete, tombstone, or conflict-copy
-  support.
+  resources and creates page/notebook conflict records; it does not imply
+  general create, delete, or tombstone support.
+- Preserve concurrent page/notebook content in durable conflict records. Keep
+  the original unchanged, reserve a stable copy ID, derive display labels as
+  `原名称（冲突副本）` or `第 N 页（冲突副本）`, and keep device/time as metadata.
+  Keep Original and Use Conflict Version retain recovery history; Keep Both
+  materializes the reserved ID with `conflictOf` ancestry. Repeated commit and
+  resolution requests must not duplicate conflicts, resources, Revisions, or
+  change events.
 - Store Flutter sync state under an account/device sidecar, not inside notebook
   JSON. Coalesce unsent edits per resource while preserving the oldest
   `baseRevision`; freeze an in-flight request until exact retry succeeds; keep
@@ -177,6 +183,16 @@
 
 ## Verification
 
+- Backend formatting, linting, and strict typing pass across 61 Python
+  source/test files; all 37 non-integration tests pass.
+- All ten PostgreSQL/MinIO integration tests pass, including concurrent retries
+  of one stale sync commit producing exactly one conflict record and one
+  conflict change event.
+- Alembic upgraded the development database to `20260806_0010 (head)` with no
+  schema drift. An independent empty database upgraded from `0001` through
+  `0010`, exposing `conflicts` and page/notebook `conflict_of`, then was deleted.
+- OpenAPI now exposes 16 application operations, including conflict resolution
+  alongside structured `applied`, `unchanged`, and `conflict` commit outcomes.
 - Flutter formatting, all 151 tests, and static analysis pass after adding the
   local sync state layer. Nine focused tests cover restart persistence,
   per-resource coalescing, exact in-flight retries, edit-during-upload

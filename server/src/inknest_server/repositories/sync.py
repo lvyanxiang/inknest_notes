@@ -9,7 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from inknest_server.models import SyncChange, SyncCommit
 
-SyncResourceType = Literal["folder", "notebook", "page", "infinite_canvas", "asset"]
+SyncResourceType = Literal[
+    "folder", "notebook", "page", "infinite_canvas", "asset", "conflict"
+]
 
 
 class SyncIdempotencyKeyReusedError(Exception):

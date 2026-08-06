@@ -16,6 +16,7 @@ from inknest_server.models import (
     Asset,
     AssetGarbageCollectionCandidate,
     AssetUpload,
+    Conflict,
     Device,
     Notebook,
     SyncChange,
@@ -608,6 +609,124 @@ async def test_postgres_replays_concurrent_sync_commits_once() -> None:
         assert revision == 1
         assert commit_count == 1
         assert content_change_count == 1
+    finally:
+        if user_id is not None:
+            async with database.session() as cleanup_session:
+                await cleanup_session.execute(delete(User).where(User.id == user_id))
+                await cleanup_session.commit()
+        await database.close()
+
+
+@pytest.mark.asyncio
+async def test_postgres_replays_one_conflict_copy_for_concurrent_retries() -> None:
+    settings = Settings()
+    database = Database(settings.database_url)
+    suffix = uuid4().hex
+    user_id = None
+
+    try:
+        async with database.session() as setup_session:
+            user = User(
+                email=f"phase4-sync-conflict-{suffix}@example.com",
+                password_hash="integration-test-password-hash",
+            )
+            setup_session.add(user)
+            await setup_session.flush()
+            user_id = user.id
+            device = Device(user_id=user.id, name="Integration iPad", platform="ios")
+            setup_session.add(device)
+            await setup_session.flush()
+            notebook = await LibraryRepository(setup_session).create_notebook(
+                user_id=user.id,
+                notebook_id=f"sync-conflict-{suffix}",
+                title="Concurrent conflict retry",
+                layout_mode="paged",
+            )
+            await ContentRepository(setup_session).save_notebook_content(
+                user_id=user.id,
+                notebook_id=notebook.id,
+                base_revision=0,
+                content={"label": "server-version"},
+            )
+            latest_sequence = await SyncChangeRepository(setup_session).latest_sequence(
+                user_id=user.id
+            )
+            await setup_session.commit()
+            device_id = device.id
+            notebook_id = notebook.id
+
+        codec = SyncCursorCodec(settings)
+        request = SyncCommitRequest.model_validate(
+            {
+                "deviceId": str(device_id),
+                "idempotencyKey": f"conflict-retry-{suffix}",
+                "baseCursor": codec.encode(
+                    user_id=user_id,
+                    sequence=latest_sequence,
+                ),
+                "operations": [
+                    {
+                        "operationId": "offline-notebook-content",
+                        "operation": "upsert",
+                        "resourceType": "notebook",
+                        "resourceId": notebook_id,
+                        "baseRevision": 0,
+                        "content": {"label": "offline-version"},
+                    }
+                ],
+            }
+        )
+
+        async def commit() -> tuple[bool, str, str]:
+            async with database.session() as session:
+                result = await SyncService(
+                    session,
+                    SyncChangeRepository(session),
+                    codec,
+                ).commit(
+                    user_id=user_id,
+                    authenticated_device_id=device_id,
+                    request=request,
+                )
+                operation = result.results[0]
+                assert operation.conflict is not None
+                return (
+                    result.replayed,
+                    operation.outcome,
+                    str(operation.conflict.id),
+                )
+
+        results = await asyncio.gather(commit(), commit())
+
+        async with database.session() as verify_session:
+            conflict_count = await verify_session.scalar(
+                select(func.count())
+                .select_from(Conflict)
+                .where(Conflict.user_id == user_id)
+            )
+            conflict_change_count = await verify_session.scalar(
+                select(func.count())
+                .select_from(SyncChange)
+                .where(
+                    SyncChange.user_id == user_id,
+                    SyncChange.resource_type == "conflict",
+                )
+            )
+            original = await verify_session.scalar(
+                select(Notebook).where(
+                    Notebook.id == notebook_id,
+                    Notebook.user_id == user_id,
+                )
+            )
+
+        assert sorted(result[0] for result in results) == [False, True]
+        assert {result[1] for result in results} == {"conflict"}
+        assert len({result[2] for result in results}) == 1
+        assert conflict_count == 1
+        assert conflict_change_count == 1
+        assert original is not None
+        assert original.revision == 1
+        assert original.content == {"label": "server-version"}
     finally:
         if user_id is not None:
             async with database.session() as cleanup_session:

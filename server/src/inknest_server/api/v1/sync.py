@@ -1,4 +1,5 @@
 from typing import Annotated, Any
+from uuid import UUID
 
 from fastapi import APIRouter, Query
 
@@ -11,10 +12,17 @@ from inknest_server.repositories import RevisionConflictError
 from inknest_server.repositories.sync import SyncIdempotencyKeyReusedError
 from inknest_server.sync import (
     InvalidSyncCursorError,
+    ResolveSyncConflictRequest,
     SyncChangeResponse,
     SyncChangesResponse,
     SyncCommitRequest,
     SyncCommitResponse,
+    SyncConflictResponse,
+)
+from inknest_server.sync.conflicts import (
+    SyncConflictAlreadyResolvedError,
+    SyncConflictNotFoundError,
+    SyncConflictResolutionStaleError,
 )
 from inknest_server.sync.service import (
     SyncCursorAheadError,
@@ -114,4 +122,46 @@ async def commit_sync_changes(
             message=str(error.cause),
             status_code=404,
             details=details,
+        ) from error
+
+
+@router.post(
+    "/conflicts/{conflict_id}/resolve",
+    response_model=SyncConflictResponse,
+)
+async def resolve_sync_conflict(
+    conflict_id: UUID,
+    payload: ResolveSyncConflictRequest,
+    current: CurrentSessionDependency,
+    service: SyncServiceDependency,
+) -> SyncConflictResponse:
+    try:
+        return await service.resolve_conflict(
+            user_id=current.user.id,
+            device_id=current.device.id,
+            conflict_id=conflict_id,
+            resolution=payload.resolution,
+        )
+    except SyncConflictNotFoundError as error:
+        raise ApiError(
+            code="sync_conflict_not_found",
+            message="The synchronization conflict was not found.",
+            status_code=404,
+        ) from error
+    except SyncConflictAlreadyResolvedError as error:
+        raise ApiError(
+            code="sync_conflict_already_resolved",
+            message="The synchronization conflict was already resolved differently.",
+            status_code=409,
+            details={"currentResolution": error.resolution},
+        ) from error
+    except SyncConflictResolutionStaleError as error:
+        raise ApiError(
+            code="sync_conflict_resolution_stale",
+            message="The original resource changed after this conflict was created.",
+            status_code=409,
+            details={
+                "expectedRevision": error.expected_revision,
+                "currentRevision": error.current_revision,
+            },
         ) from error

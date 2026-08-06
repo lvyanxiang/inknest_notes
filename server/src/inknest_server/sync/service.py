@@ -11,12 +11,14 @@ from inknest_server.repositories.sync import (
     SyncChangeRepository,
     SyncCommitRepository,
 )
+from inknest_server.sync.conflicts import ConflictResolution, ConflictService
 from inknest_server.sync.cursor import SyncCursorCodec
 from inknest_server.sync.schemas import (
     SyncCommitOperation,
     SyncCommitOperationResult,
     SyncCommitRequest,
     SyncCommitResponse,
+    SyncConflictResponse,
 )
 
 
@@ -58,6 +60,7 @@ class SyncService:
         self._cursor_codec = cursor_codec
         self._content = ContentRepository(session)
         self._commits = SyncCommitRepository(session)
+        self._conflicts = ConflictService(session)
 
     async def list_changes(
         self,
@@ -178,7 +181,28 @@ class SyncService:
                     content=operation.content,
                     device_id=device_id,
                 )
-        except (RevisionConflictError, LibraryResourceNotFoundError) as error:
+        except RevisionConflictError as error:
+            if operation.resource_type in {"notebook", "page"}:
+                conflict = await self._conflicts.create(
+                    user_id=user_id,
+                    device_id=device_id,
+                    resource_type=operation.resource_type,
+                    resource_id=operation.resource_id,
+                    base_revision=operation.base_revision,
+                    submitted_content=operation.content,
+                )
+                return SyncCommitOperationResult(
+                    operation_id=operation.operation_id,
+                    resource_type=operation.resource_type,
+                    resource_id=operation.resource_id,
+                    revision=conflict.current_revision,
+                    content_hash=conflict.current_content_hash,
+                    changed=False,
+                    outcome="conflict",
+                    conflict=SyncConflictResponse.model_validate(conflict),
+                )
+            raise SyncOperationFailedError(operation, error) from error
+        except LibraryResourceNotFoundError as error:
             raise SyncOperationFailedError(operation, error) from error
         return SyncCommitOperationResult(
             operation_id=operation.operation_id,
@@ -187,4 +211,25 @@ class SyncService:
             revision=result.revision,
             content_hash=result.content_hash,
             changed=result.created_revision,
+            outcome="applied" if result.created_revision else "unchanged",
         )
+
+    async def resolve_conflict(
+        self,
+        *,
+        user_id: UUID,
+        device_id: UUID,
+        conflict_id: UUID,
+        resolution: ConflictResolution,
+    ) -> SyncConflictResponse:
+        try:
+            conflict = await self._conflicts.resolve(
+                user_id=user_id,
+                device_id=device_id,
+                conflict_id=conflict_id,
+                resolution=resolution,
+            )
+        except Exception:
+            await self._session.rollback()
+            raise
+        return SyncConflictResponse.model_validate(conflict)

@@ -48,6 +48,11 @@ class Notebook(Base):
             ["folders.id", "folders.user_id"],
             name="fk_notebooks_folder_owner",
         ),
+        ForeignKeyConstraint(
+            ["conflict_of", "user_id"],
+            ["notebooks.id", "notebooks.user_id"],
+            name="fk_notebooks_conflict_origin_owner",
+        ),
         CheckConstraint(
             "layout_mode IN ('paged', 'infiniteCanvas')",
             name="ck_notebooks_layout_mode",
@@ -79,6 +84,7 @@ class Notebook(Base):
     content: Mapped[dict[str, object]] = mapped_column(
         JSON, default=dict, server_default="{}"
     )
+    conflict_of: Mapped[str | None] = mapped_column(String(128))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -101,6 +107,11 @@ class Page(Base):
             ["notebooks.id", "notebooks.user_id"],
             name="fk_pages_notebook_owner",
             ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["conflict_of", "user_id"],
+            ["pages.id", "pages.user_id"],
+            name="fk_pages_conflict_origin_owner",
         ),
         CheckConstraint("position >= 0", name="ck_pages_position"),
         CheckConstraint("width > 0", name="ck_pages_width"),
@@ -138,6 +149,7 @@ class Page(Base):
     content: Mapped[dict[str, object]] = mapped_column(
         JSON, default=dict, server_default="{}"
     )
+    conflict_of: Mapped[str | None] = mapped_column(String(128))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -339,7 +351,7 @@ class SyncChange(Base):
     __table_args__ = (
         CheckConstraint(
             "resource_type IN "
-            "('folder', 'notebook', 'page', 'infinite_canvas', 'asset')",
+            "('folder', 'notebook', 'page', 'infinite_canvas', 'asset', 'conflict')",
             name="ck_sync_changes_resource_type",
         ),
         CheckConstraint(
@@ -413,6 +425,88 @@ class SyncCommit(Base):
     response_payload: Mapped[dict[str, object]] = mapped_column(
         JSON, default=dict, server_default="{}"
     )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class Conflict(Base):
+    __tablename__ = "conflicts"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "copy_resource_id",
+            name="uq_conflicts_user_copy_resource",
+        ),
+        CheckConstraint(
+            "resource_type IN ('notebook', 'page')",
+            name="ck_conflicts_resource_type",
+        ),
+        CheckConstraint("base_revision >= 0", name="ck_conflicts_base_revision"),
+        CheckConstraint("current_revision >= 0", name="ck_conflicts_current_revision"),
+        CheckConstraint(
+            "length(submitted_content_hash) = 64",
+            name="ck_conflicts_submitted_content_hash_length",
+        ),
+        CheckConstraint(
+            "(current_revision = 0 AND current_content_hash = '') OR "
+            "(current_revision > 0 AND length(current_content_hash) = 64)",
+            name="ck_conflicts_current_content_version",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'resolved')",
+            name="ck_conflicts_status",
+        ),
+        CheckConstraint(
+            "resolution IS NULL OR resolution IN "
+            "('keep_original', 'use_conflict', 'keep_both')",
+            name="ck_conflicts_resolution",
+        ),
+        CheckConstraint(
+            "(status = 'pending' AND resolution IS NULL AND resolved_at IS NULL) OR "
+            "(status = 'resolved' AND resolution IS NOT NULL "
+            "AND resolved_at IS NOT NULL)",
+            name="ck_conflicts_resolution_state",
+        ),
+        Index(
+            "ix_conflicts_user_status_created",
+            "user_id",
+            "status",
+            "created_at",
+        ),
+        Index(
+            "ix_conflicts_user_resource",
+            "user_id",
+            "resource_type",
+            "original_resource_id",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    resource_type: Mapped[str] = mapped_column(String(32))
+    original_resource_id: Mapped[str] = mapped_column(String(128))
+    copy_resource_id: Mapped[str] = mapped_column(String(128))
+    copy_display_name: Mapped[str] = mapped_column(String(350))
+    base_revision: Mapped[int] = mapped_column(BigInteger)
+    current_revision: Mapped[int] = mapped_column(BigInteger)
+    submitted_content_hash: Mapped[str] = mapped_column(String(64))
+    submitted_content: Mapped[dict[str, object]] = mapped_column(JSON)
+    current_content_hash: Mapped[str] = mapped_column(String(64))
+    current_content: Mapped[dict[str, object]] = mapped_column(JSON)
+    source_device_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("devices.id", ondelete="SET NULL"), index=True
+    )
+    status: Mapped[str] = mapped_column(
+        String(32), default="pending", server_default="pending"
+    )
+    resolution: Mapped[str | None] = mapped_column(String(32))
+    resolved_by_device_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("devices.id", ondelete="SET NULL"), index=True
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

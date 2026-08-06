@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from inknest_server.config import Settings
-from inknest_server.models import Notebook, Page, SyncChange, SyncCommit, User
+from inknest_server.models import Conflict, Notebook, Page, SyncChange, SyncCommit, User
 from inknest_server.repositories import (
     ContentRepository,
     LibraryRepository,
@@ -152,7 +152,7 @@ async def test_sync_changes_endpoint_pages_and_isolates_accounts(
     )
     tampered_cursor = await client.get(
         "/api/v1/sync/changes",
-        params={"cursor": f"{first_body['nextCursor'][:-1]}x"},
+        params={"cursor": f"x{first_body['nextCursor'][1:]}"},
         headers=bearer(first["accessToken"]),
     )
 
@@ -281,7 +281,7 @@ async def test_sync_commit_is_atomic_and_idempotent(
     assert key_reused.json()["error"]["code"] == "sync_idempotency_key_reused"
 
 
-async def test_sync_commit_rolls_back_the_whole_batch_on_revision_conflict(
+async def test_sync_commit_creates_an_idempotent_page_conflict_copy(
     client: AsyncClient,
     db_session: AsyncSession,
 ) -> None:
@@ -333,7 +333,7 @@ async def test_sync_commit_rolls_back_the_whole_batch_on_revision_conflict(
                 "resourceType": "notebook",
                 "resourceId": notebook.id,
                 "baseRevision": 0,
-                "content": {"cover": "must-rollback"},
+                "content": {"cover": "committed-alongside-conflict"},
             },
             {
                 "operationId": "must-conflict",
@@ -372,22 +372,241 @@ async def test_sync_commit_rolls_back_the_whole_batch_on_revision_conflict(
         .where(SyncCommit.user_id == user_id)
     )
 
-    assert response.status_code == 409
-    assert response.json()["error"]["code"] == "sync_revision_conflict"
-    assert response.json()["error"]["details"] == {
-        "operationId": "must-conflict",
-        "resourceType": "page",
-        "resourceId": page_id,
-        "expectedRevision": 0,
-        "currentRevision": 1,
-    }
+    assert response.status_code == 200
+    body = response.json()
+    assert [item["outcome"] for item in body["results"]] == ["applied", "conflict"]
+    conflict_body = body["results"][1]["conflict"]
+    assert conflict_body["resourceType"] == "page"
+    assert conflict_body["originalResourceId"] == page_id
+    assert conflict_body["copyDisplayName"] == "第 1 页（冲突副本）"
+    assert conflict_body["baseRevision"] == 0
+    assert conflict_body["currentRevision"] == 1
+    assert conflict_body["status"] == "pending"
+    assert conflict_body["submittedContent"] == {"strokes": [{"id": "offline-stroke"}]}
+    assert conflict_body["currentContent"] == {"strokes": [{"id": "server-stroke"}]}
     assert stored_notebook is not None
-    assert stored_notebook.revision == 0
-    assert stored_notebook.content == {}
+    assert stored_notebook.revision == 1
+    assert stored_notebook.content == {"cover": "committed-alongside-conflict"}
     assert stored_page is not None
     assert stored_page.revision == 1
-    assert after_count == before_count
-    assert commit_rows == 0
+    assert stored_page.content == {"strokes": [{"id": "server-stroke"}]}
+    assert before_count is not None
+    assert after_count is not None
+    assert after_count == before_count + 2
+    assert commit_rows == 1
+
+    replay = await client.post(
+        "/api/v1/sync/commit",
+        json=payload,
+        headers=bearer(registered["accessToken"]),
+    )
+    conflict_count = await db_session.scalar(
+        select(func.count()).select_from(Conflict).where(Conflict.user_id == user_id)
+    )
+    change_count_after_replay = await db_session.scalar(
+        select(func.count())
+        .select_from(SyncChange)
+        .where(SyncChange.user_id == user_id)
+    )
+
+    assert replay.status_code == 200
+    assert replay.json() == {**body, "replayed": True}
+    assert conflict_count == 1
+    assert change_count_after_replay == after_count
+
+    resolved = await client.post(
+        f"/api/v1/sync/conflicts/{conflict_body['id']}/resolve",
+        json={"resolution": "keep_both"},
+        headers=bearer(registered["accessToken"]),
+    )
+    db_session.expire_all()
+    copied_page = await db_session.scalar(
+        select(Page).where(
+            Page.id == conflict_body["copyResourceId"],
+            Page.user_id == user_id,
+        )
+    )
+    repeated_resolution = await client.post(
+        f"/api/v1/sync/conflicts/{conflict_body['id']}/resolve",
+        json={"resolution": "keep_both"},
+        headers=bearer(registered["accessToken"]),
+    )
+    changed_resolution = await client.post(
+        f"/api/v1/sync/conflicts/{conflict_body['id']}/resolve",
+        json={"resolution": "keep_original"},
+        headers=bearer(registered["accessToken"]),
+    )
+
+    assert resolved.status_code == 200
+    assert resolved.json()["status"] == "resolved"
+    assert resolved.json()["resolution"] == "keep_both"
+    assert copied_page is not None
+    assert copied_page.conflict_of == page_id
+    assert copied_page.position == 1
+    assert copied_page.revision == 1
+    assert copied_page.content == {"strokes": [{"id": "offline-stroke"}]}
+    assert repeated_resolution.status_code == 200
+    assert changed_resolution.status_code == 409
+    assert (
+        changed_resolution.json()["error"]["code"] == "sync_conflict_already_resolved"
+    )
+
+
+async def test_notebook_conflicts_support_keep_both_and_use_conflict(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    registered = await register(client, "notebook-conflicts@example.com")
+    user_id = UUID(registered["user"]["id"])
+    library = LibraryRepository(db_session)
+    keep_both_notebook = await library.create_notebook(
+        user_id=user_id,
+        notebook_id="notebook-keep-both",
+        title="A" * 300,
+        layout_mode="paged",
+    )
+    use_conflict_notebook = await library.create_notebook(
+        user_id=user_id,
+        notebook_id="notebook-use-conflict",
+        title="Study Notes",
+        layout_mode="paged",
+    )
+    keep_original_notebook = await library.create_notebook(
+        user_id=user_id,
+        notebook_id="notebook-keep-original",
+        title="Keep Original",
+        layout_mode="paged",
+    )
+    keep_both_notebook_id = keep_both_notebook.id
+    use_conflict_notebook_id = use_conflict_notebook.id
+    keep_original_notebook_id = keep_original_notebook.id
+    content = ContentRepository(db_session)
+    for notebook in (
+        keep_both_notebook,
+        use_conflict_notebook,
+        keep_original_notebook,
+    ):
+        await content.save_notebook_content(
+            user_id=user_id,
+            notebook_id=notebook.id,
+            base_revision=0,
+            content={"source": "server", "notebookId": notebook.id},
+        )
+    await db_session.commit()
+
+    async def create_conflict(
+        *, notebook_id: str, idempotency_key: str
+    ) -> dict[str, Any]:
+        changes = await client.get(
+            "/api/v1/sync/changes",
+            headers=bearer(registered["accessToken"]),
+        )
+        response = await client.post(
+            "/api/v1/sync/commit",
+            json={
+                "deviceId": registered["device"]["id"],
+                "idempotencyKey": idempotency_key,
+                "baseCursor": changes.json()["nextCursor"],
+                "operations": [
+                    {
+                        "operationId": idempotency_key,
+                        "operation": "upsert",
+                        "resourceType": "notebook",
+                        "resourceId": notebook_id,
+                        "baseRevision": 0,
+                        "content": {
+                            "source": "offline-device",
+                            "notebookId": notebook_id,
+                        },
+                    }
+                ],
+            },
+            headers=bearer(registered["accessToken"]),
+        )
+        assert response.status_code == 200
+        result = cast(dict[str, Any], response.json()["results"][0])
+        assert result["outcome"] == "conflict"
+        return cast(dict[str, Any], result["conflict"])
+
+    keep_both_conflict = await create_conflict(
+        notebook_id=keep_both_notebook_id,
+        idempotency_key="notebook-keep-both-conflict",
+    )
+    assert len(keep_both_conflict["copyDisplayName"]) == 300
+    assert keep_both_conflict["copyDisplayName"].endswith("（冲突副本）")
+    kept_both = await client.post(
+        f"/api/v1/sync/conflicts/{keep_both_conflict['id']}/resolve",
+        json={"resolution": "keep_both"},
+        headers=bearer(registered["accessToken"]),
+    )
+
+    use_conflict = await create_conflict(
+        notebook_id=use_conflict_notebook_id,
+        idempotency_key="notebook-use-conflict-version",
+    )
+    replaced = await client.post(
+        f"/api/v1/sync/conflicts/{use_conflict['id']}/resolve",
+        json={"resolution": "use_conflict"},
+        headers=bearer(registered["accessToken"]),
+    )
+    keep_original = await create_conflict(
+        notebook_id=keep_original_notebook_id,
+        idempotency_key="notebook-keep-original-version",
+    )
+    kept_original = await client.post(
+        f"/api/v1/sync/conflicts/{keep_original['id']}/resolve",
+        json={"resolution": "keep_original"},
+        headers=bearer(registered["accessToken"]),
+    )
+    db_session.expire_all()
+    notebook_copy = await db_session.scalar(
+        select(Notebook).where(
+            Notebook.id == keep_both_conflict["copyResourceId"],
+            Notebook.user_id == user_id,
+        )
+    )
+    replaced_original = await db_session.scalar(
+        select(Notebook).where(
+            Notebook.id == use_conflict_notebook_id,
+            Notebook.user_id == user_id,
+        )
+    )
+    unmaterialized_copy = await db_session.scalar(
+        select(Notebook).where(
+            Notebook.id == use_conflict["copyResourceId"],
+            Notebook.user_id == user_id,
+        )
+    )
+    unchanged_original = await db_session.scalar(
+        select(Notebook).where(
+            Notebook.id == keep_original_notebook_id,
+            Notebook.user_id == user_id,
+        )
+    )
+    kept_original_copy = await db_session.scalar(
+        select(Notebook).where(
+            Notebook.id == keep_original["copyResourceId"],
+            Notebook.user_id == user_id,
+        )
+    )
+
+    assert kept_both.status_code == 200
+    assert notebook_copy is not None
+    assert notebook_copy.conflict_of == keep_both_notebook_id
+    assert notebook_copy.title.endswith("（冲突副本）")
+    assert len(notebook_copy.title) == 300
+    assert notebook_copy.content["source"] == "offline-device"
+    assert replaced.status_code == 200
+    assert replaced_original is not None
+    assert replaced_original.revision == 2
+    assert replaced_original.content["source"] == "offline-device"
+    assert unmaterialized_copy is None
+    assert kept_original.status_code == 200
+    assert kept_original.json()["resolution"] == "keep_original"
+    assert unchanged_original is not None
+    assert unchanged_original.revision == 1
+    assert unchanged_original.content["source"] == "server"
+    assert kept_original_copy is None
 
 
 async def test_sync_commit_rejects_another_device_id(
