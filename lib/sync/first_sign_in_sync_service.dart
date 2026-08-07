@@ -8,6 +8,7 @@ import 'package:inknest_notes/storage/notebook_repository.dart';
 import 'package:inknest_notes/sync/bootstrap_restore_service.dart';
 import 'package:inknest_notes/sync/file_sync_state_store.dart';
 import 'package:inknest_notes/sync/inknest_api_client.dart';
+import 'package:inknest_notes/sync/incremental_sync_pull_service.dart';
 import 'package:inknest_notes/sync/sync_bootstrap.dart';
 import 'package:inknest_notes/sync/sync_merge_plan.dart';
 import 'package:inknest_notes/sync/sync_upload_models.dart';
@@ -59,6 +60,11 @@ class MixedLibraryMergeResult {
 }
 
 abstract interface class FirstSignInSyncService {
+  Future<IncrementalSyncPullResult> pullIncremental({
+    required String userId,
+    required String deviceId,
+  });
+
   Future<FirstSignInSyncPreview> inspect();
 
   Future<BootstrapRestoreResult> restoreCloudOnly({
@@ -90,6 +96,18 @@ class ApiFirstSignInSyncService implements FirstSignInSyncService {
   final NotebookRepository repository;
   final FirstSignInCloudClient apiClient;
   final Directory rootDirectory;
+
+  @override
+  Future<IncrementalSyncPullResult> pullIncremental({
+    required String userId,
+    required String deviceId,
+  }) {
+    return IncrementalSyncPullService(
+      repository: repository,
+      cloudClient: apiClient,
+      rootDirectory: rootDirectory,
+    ).pull(userId: userId, deviceId: deviceId);
+  }
 
   @override
   Future<FirstSignInSyncPreview> inspect() async {

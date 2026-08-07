@@ -189,6 +189,23 @@ The first slice sets no retention period and performs no physical cleanup.
   after success; mixed libraries deliberately keep it unapplied until upload
   and shared-Revision work finishes.
 
+### Incremental pull application contract
+
+- A signed-in device with an applied Cursor requests every available
+  `/sync/changes` page before changing local files. The App does not advance
+  the Cursor merely because the transport request succeeded.
+- The first application slice restores additive cloud-only folders/notebooks
+  through the existing staged bootstrap path, including verified PDF, image,
+  and audio assets. All referenced roots must be represented by the downloaded
+  change range so a concurrent later bootstrap snapshot is not applied early.
+- Existing-resource updates, deletes, conflicts, Tombstones, and any local
+  pending queue stop before mutation and leave the original Cursor unchanged.
+  They require the next Revision-aware push/reconciliation slice; the App does
+  not use unconditional last-writer-wins replacement.
+- On session restore, an initialized device attempts this pull before showing
+  first-sign-in Merge again. Successful additive downloads refresh the library;
+  offline or blocked reconciliation leaves local notes available.
+
 ## Acceptance Criteria
 
 - [x] A user can register, sign in, refresh a session, sign out, and revoke a
@@ -219,6 +236,9 @@ The first slice sets no retention period and performs no physical cleanup.
   image, and audio assets.
 - [x] Existing local notebooks remain readable and editable when the service
   is offline or unavailable.
+- [x] Incremental pull can add a new cloud-only notebook and its verified
+  content without replacing an existing local resource, and advances the
+  Cursor only after the complete additive range is applied.
 - [ ] Backup and restore failures leave the pre-existing local library intact.
 
 ## Alternatives And Tradeoffs
@@ -321,7 +341,7 @@ The first slice sets no retention period and performs no physical cleanup.
   drift fails in tests. The complete backend run passes 49
   non-integration tests and 15 PostgreSQL/MinIO integration tests, including
   ready-only bootstrap visibility and real PDF/image/audio byte round trips;
-  the complete Flutter suite passes with 192 tests. The mixed-library slice is
+  the complete Flutter suite passes with 195 tests. The mixed-library slice is
   additionally covered by 11 focused backend sync-change tests; staging tests
   cover verified success, corrupt downloads, and mid-apply rollback, and
   static analysis passes.

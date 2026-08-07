@@ -2,14 +2,15 @@
 
 ## Current
 
-- Milestone: Backend Phase 5 first-sign-in merge and incremental-sync App
-  integration is in progress; the existing server contracts are now consumed
-  from Flutter without adding new API routes.
-- Next task: Apply `/sync/changes` pages to local notebook resources and advance
-  the stored Cursor only after each complete page is safely persisted.
-- Last completed: Flutter now calls the existing authenticated
-  `GET /sync/changes` contract with Cursor/limit pagination and strictly parses
-  folder, notebook, page, canvas, asset, conflict, and Tombstone changes.
+- Milestone: Backend Phase 5 incremental-sync App integration is in progress;
+  initialized sessions now execute a safe additive `/sync/changes` download.
+- Next task: Connect the local pending queue to existing `/sync/commit` and
+  persist resource Revision/mapping state, then apply shared-resource pull
+  updates without overwriting newer local edits.
+- Last completed: Flutter drains all current change pages, stages and verifies
+  additive cloud-only notebooks/assets, refreshes the library, and saves the
+  final Cursor only after successful application. Shared updates, deletes,
+  conflicts and Tombstones stop safely without changing local data or Cursor.
 
 ## Decisions
 
@@ -124,6 +125,10 @@
   new routes. `/sync/changes` download must be connected before expanding
   conflict presentation APIs, and its `nextCursor` is not persisted until the
   complete returned page has been applied locally.
+- Treat additive cloud-only roots as the first safe incremental-application
+  boundary. Existing-resource changes require local Revision/mapping metadata
+  and a connected pending upload queue; until then they must remain unapplied
+  with the prior Cursor preserved.
 - Use email/password for the first account flow without mandatory email
   verification during initial development. Use short-lived JWT access tokens
   and rotating opaque refresh tokens; store only refresh-token hashes and bind
@@ -667,8 +672,10 @@
   confirming unchanged-by-Content-Hash and Revision-conflict preservation used
   by the Flutter shared-content integration.
 - Focused Flutter API/service tests pass after adding typed `/sync/changes`
-  pagination and response parsing; the complete Flutter suite passes with 193
+  pagination and response parsing; the complete Flutter suite passes with 195
   tests, `flutter analyze` passes, and no backend source or route changed.
+- Focused incremental-pull tests cover multi-page download, atomic cloud-only
+  notebook application, final Cursor persistence, and shared-update blocking.
 
 ## Notes
 

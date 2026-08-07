@@ -83,6 +83,19 @@ continue-local state without overwriting either side.
   resources; a safety-gate failure explains that no uncertain content was
   overwritten and offers Retry or local continuation.
 
+### Background incremental pull
+
+1. After an existing signed-in session becomes active, InkNest checks the
+   saved Cursor and downloads available change pages without covering the
+   library or editor.
+2. A safe additive download refreshes the shelf and announces how many cloud
+   changes and notebooks were received.
+3. A shared-resource update, delete, conflict, Tombstone, or local pending
+   upload keeps the local library and Cursor unchanged and shows a calm
+   “需要协调” message.
+4. Network or parsing failure returns immediately to local use with a concise
+   retry-later message; it never reopens first-sign-in Merge or blocks writing.
+
 ### Conflict recovery
 
 1. Background sync receives a `conflict` operation result or change event.
@@ -148,6 +161,9 @@ continue-local state without overwriting either side.
 | Offline/error | Explain that checking could not finish | Retry, Continue offline | Existing local library remains available |
 | Authentication expired | Explain that sign-in must be refreshed | Sign in again, Continue offline | Never clear local data or credentials silently |
 | Merge preview | Upload/download/shared counts and no-overwrite promise | `合并（推荐）`, Later | Planning alone makes no local or cloud changes |
+| Incremental pull applied | Refreshed shelf plus snackbar summary | Continue using library | Cursor advances after complete application |
+| Pull needs reconciliation | Existing local shelf plus non-blocking message | Continue locally | Cursor and local files remain unchanged |
+| Pull offline/error | Existing local shelf plus retry-later message | Continue locally | No first-sign-in modal or local mutation |
 
 ## Layout And Components
 
@@ -206,6 +222,8 @@ continue-local state without overwriting either side.
   and lets the user continue offline without losing local content.
 - [x] The App can derive deterministic upload, download, and shared-ID
   reconciliation counts without exposing a delete or replace-local action.
+- [x] An initialized session downloads additive cloud-only notebooks in the
+  background, refreshes the shelf, and keeps local use available on failure.
 
 - [ ] A background conflict never blocks or overwrites ongoing local writing.
 - [ ] Pending conflicts survive restart and appear consistently on other

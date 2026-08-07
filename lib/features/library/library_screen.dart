@@ -14,6 +14,7 @@ import 'package:inknest_notes/models/notebook_folder.dart';
 import 'package:inknest_notes/models/notebook_layout_mode.dart';
 import 'package:inknest_notes/storage/notebook_repository.dart';
 import 'package:inknest_notes/sync/first_sign_in_sync_service.dart';
+import 'package:inknest_notes/sync/incremental_sync_pull_service.dart';
 
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({
@@ -221,6 +222,44 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final sessionKey = '${session.user.id}:${session.device.id}';
     if (_checkedSessionKey == sessionKey) return;
     _checkedSessionKey = sessionKey;
+    try {
+      final pullResult = await service.pullIncremental(
+        userId: session.user.id,
+        deviceId: session.device.id,
+      );
+      if (!mounted) return;
+      switch (pullResult.status) {
+        case IncrementalSyncPullStatus.notInitialized:
+          break;
+        case IncrementalSyncPullStatus.upToDate:
+          return;
+        case IncrementalSyncPullStatus.applied:
+          if (pullResult.changedLocalLibrary) {
+            await _loadNotebooks();
+          }
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '已同步 ${pullResult.changeCount} 项云端更改，下载 '
+                '${pullResult.downloadedNotebookCount} 本笔记。',
+              ),
+            ),
+          );
+          return;
+        case IncrementalSyncPullStatus.requiresReconciliation:
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('检测到需要协调的云端更改；本地笔记未被覆盖。')),
+          );
+          return;
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('暂时无法同步云端更改，已继续使用本地笔记。')));
+      return;
+    }
     final result = await showFirstSignInSyncDialog(
       context: context,
       service: service,
