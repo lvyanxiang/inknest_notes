@@ -106,8 +106,8 @@ continue-local state without overwriting either side.
    and deletion use the same background status and retry flow without new
    controls. Deleting a folder retains its existing confirmation, moves its
    notebooks to the library root, and never appears in Recently Deleted. Page
-   structure and canvas background remain local until their explicit contracts
-   exist.
+   structure and canvas background use their existing controls and the same
+   non-blocking sync status; no new editor control or modal is added.
 
 ### Conflict recovery
 
@@ -287,8 +287,11 @@ continue-local state without overwriting either side.
   move-left/move-right actions in Pages now also synchronize their resulting
   full page order without adding controls or blocking editing. A remote order
   appears through the normal refreshed Pages panel; a concurrent stale order
-  uses the existing non-blocking sync failure/retry state. Standalone canvas
-  deletion has no App entry point. The library header now also shows syncing,
+  uses the existing non-blocking sync failure/retry state. The existing canvas
+  background picker now synchronizes blank, dotted, and grid choices; accepted
+  remote backgrounds appear when the canvas refreshes, while a concurrent
+  background change uses the same non-blocking failed/retry state. Standalone
+  canvas deletion has no App entry point. The library header now also shows syncing,
   completed, needs-attention, failed, and edit-preserved states. Its sheet
   reports durable failed-operation counts and provides Retry; retry reuses the
   frozen idempotent batch. A `delete_conflict` is presented as a calm successful

@@ -239,7 +239,8 @@ class SyncMutationTracker {
     if (session == null) return;
     final resourceMap = _resourceMap(session);
     final mapping = await resourceMap.find(canvasSyncLocalKey(notebook.id));
-    if (mapping == null) return;
+    final baseMetadata = mapping?.infiniteCanvasMetadata;
+    if (mapping == null || baseMetadata == null) return;
     for (final image in document.images) {
       if (!await resourceMap.hasCloudAsset(notebook.id, image.assetPath)) {
         return;
@@ -247,11 +248,12 @@ class SyncMutationTracker {
     }
     final content = Map<String, Object?>.from(document.toJson())
       ..remove('background');
-    await _stateStore(session).enqueueUpsert(
-      resourceType: mapping.resourceType,
+    await _stateStore(session).enqueueInfiniteCanvas(
       resourceId: mapping.remoteResourceId,
       baseRevision: mapping.revision,
       content: content,
+      baseMetadata: baseMetadata,
+      metadata: {'background': document.background.name},
     );
   }
 

@@ -11,6 +11,7 @@ from inknest_server.errors import ApiError
 from inknest_server.repositories import RevisionConflictError
 from inknest_server.repositories.content import (
     FolderMetadataConflictError,
+    InfiniteCanvasMetadataConflictError,
     NotebookMetadataConflictError,
     ResourceDeletedError,
 )
@@ -225,6 +226,13 @@ async def commit_sync_changes(
                 message="Folder name changed concurrently.",
                 status_code=409,
                 details={**details, "fields": ["name"]},
+            ) from error
+        if isinstance(error.cause, InfiniteCanvasMetadataConflictError):
+            raise ApiError(
+                code="sync_infinite_canvas_metadata_conflict",
+                message="Infinite canvas background changed concurrently.",
+                status_code=409,
+                details={**details, "fields": ["background"]},
             ) from error
         if isinstance(error.cause, ResourceDeletedError):
             raise ApiError(

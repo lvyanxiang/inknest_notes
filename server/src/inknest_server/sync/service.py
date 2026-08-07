@@ -8,6 +8,7 @@ from inknest_server.models import SyncChange
 from inknest_server.repositories.content import (
     ContentRepository,
     FolderMetadataConflictError,
+    InfiniteCanvasMetadataConflictError,
     NotebookMetadataConflictError,
     ResourceDeletedError,
     RevisionConflictError,
@@ -39,6 +40,7 @@ from inknest_server.sync.schemas import (
     SyncCommitResponse,
     SyncConflictResponse,
     SyncFolderMetadata,
+    SyncInfiniteCanvasMetadata,
     SyncMergeCommitRequest,
     SyncMergeCommitResponse,
     SyncMergeCreateOperation,
@@ -67,6 +69,7 @@ class SyncOperationFailedError(Exception):
         cause: (
             RevisionConflictError
             | FolderMetadataConflictError
+            | InfiniteCanvasMetadataConflictError
             | NotebookMetadataConflictError
             | ResourceDeletedError
             | LibraryResourceNotFoundError
@@ -467,13 +470,29 @@ class SyncService:
                     device_id=device_id,
                 )
             else:
-                if operation.content is None:
-                    raise RuntimeError("validated canvas upsert has no content")
-                content_result = await self._content.save_infinite_canvas_content(
+                if operation.content is None and operation.metadata is None:
+                    raise RuntimeError(
+                        "validated canvas upsert has no content or metadata"
+                    )
+                if operation.metadata is not None and not isinstance(
+                    operation.metadata, SyncInfiniteCanvasMetadata
+                ):
+                    raise RuntimeError("validated canvas upsert has wrong metadata")
+                content_result = await self._content.save_infinite_canvas(
                     user_id=user_id,
                     canvas_id=operation.resource_id,
                     base_revision=operation.base_revision,
                     content=operation.content,
+                    metadata=(
+                        operation.metadata.model_dump(mode="json", by_alias=True)
+                        if operation.metadata is not None
+                        else None
+                    ),
+                    base_metadata=(
+                        operation.base_metadata.model_dump(mode="json", by_alias=True)
+                        if operation.base_metadata is not None
+                        else None
+                    ),
                     device_id=device_id,
                 )
         except ResourceDeletedError as error:
@@ -523,6 +542,7 @@ class SyncService:
             raise SyncOperationFailedError(operation, error) from error
         except (
             FolderMetadataConflictError,
+            InfiniteCanvasMetadataConflictError,
             NotebookMetadataConflictError,
             LibraryResourceNotFoundError,
         ) as error:

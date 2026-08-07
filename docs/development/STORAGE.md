@@ -155,6 +155,9 @@ Revision, and Content Hash. Notebook entries also store the last applied
 `notebookMetadata` baseline (`title`, `isArchived`, nullable `folderId`, and
 the complete mapped `pageOrder` for paged notebooks) so
 later local organization changes can use a safe three-way comparison.
+Infinite-canvas entries store `infiniteCanvasMetadata.background` as the last
+applied cloud baseline. Legacy resource maps repair that baseline from a
+Revision/hash-matching bootstrap before accepting a new background upload.
 Folder entries store `folderMetadata.name`; legacy cloud folders may begin at
 Revision 0 with an empty hash and are promoted to a hashed Revision on their
 first incremental write.
@@ -184,6 +187,13 @@ metadata operation. The oldest applied order remains in `baseMetadata` until
 the frozen batch is accepted and pulled. A remote reorder is applied only when
 every moved page has a continuous unchanged-content Revision and the final
 bootstrap contains the same page IDs in the requested order.
+
+An infinite-canvas save keeps `background` outside content and coalesces the
+complete canvas JSON with explicit `metadata`/`baseMetadata`. Blank, dotted,
+and grid backgrounds share the canvas Revision with content. A concurrent
+background divergence keeps the frozen operation and local canvas intact; an
+accepted remote background is applied only with the same continuous Revision
+and final-bootstrap checks used for canvas content.
 
 Folder creation and rename use metadata-only `folder` operations. A newly
 created folder starts without `baseMetadata`; a mapped rename retains the

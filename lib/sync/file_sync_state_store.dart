@@ -148,6 +148,48 @@ class FileSyncStateStore {
     });
   }
 
+  Future<PendingSyncOperation> enqueueInfiniteCanvas({
+    required String resourceId,
+    required int baseRevision,
+    required Map<String, Object?> content,
+    required Map<String, Object?> baseMetadata,
+    required Map<String, Object?> metadata,
+  }) {
+    if (resourceId.trim().isEmpty || baseRevision < 0) {
+      throw ArgumentError('Invalid infinite canvas synchronization state.');
+    }
+    return _mutate((state) {
+      final resourceKey =
+          '${SyncResourceType.infiniteCanvas.apiValue}:$resourceId';
+      final existingIndex = state.pendingOperations.indexWhere(
+        (operation) => operation.resourceKey == resourceKey,
+      );
+      if (existingIndex != -1) {
+        final existing = state.pendingOperations[existingIndex];
+        final updated = existing.copyWith(
+          operation: SyncOperationKind.upsert,
+          content: content,
+          includesContent: true,
+          metadata: metadata,
+          baseMetadata: existing.baseMetadata ?? baseMetadata,
+        );
+        state.pendingOperations[existingIndex] = updated;
+        return updated;
+      }
+      final operation = PendingSyncOperation(
+        operationId: _idFactory('operation'),
+        resourceType: SyncResourceType.infiniteCanvas,
+        resourceId: resourceId,
+        baseRevision: baseRevision,
+        content: content,
+        metadata: metadata,
+        baseMetadata: baseMetadata,
+      );
+      state.pendingOperations.add(operation);
+      return operation;
+    });
+  }
+
   Future<PendingSyncOperation> enqueueFolderMetadata({
     required String resourceId,
     required int baseRevision,

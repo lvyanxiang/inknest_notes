@@ -7,13 +7,15 @@
   canvas edits, explicit notebook title/archive/existing-folder metadata,
   incremental folder creation/rename/deletion,
   mapped whole-notebook deletes, and deletion of any page when another remains
-  plus explicit page reordering before applying safe `/sync/changes` updates.
-- Next task: Define and connect the infinite-canvas background contract.
-  Standalone canvas deletion remains blocked on its structural contract.
-- Last completed: Existing Pages-panel move-left/move-right actions now queue
-  the complete mapped page order. The server atomically repositions affected
-  pages and rejects stale concurrent order baselines; other devices apply only
-  a continuous Revision chain matching the final bootstrap.
+  plus explicit page reordering and infinite-canvas background metadata before
+  applying safe `/sync/changes` updates.
+- Next task: Define standalone infinite-canvas deletion only if an App action
+  is introduced; otherwise continue to the next unchecked Phase 5 integration
+  boundary without inventing a hidden delete operation.
+- Last completed: The existing infinite-canvas background picker now queues
+  `background` with its applied baseline. The server rejects concurrent
+  background divergence, and other devices apply the accepted background only
+  through a continuous Revision chain matching the final bootstrap.
 
 ## Decisions
 
@@ -152,8 +154,9 @@
   in `metadata/baseMetadata`, never inside content. Folder create/rename/delete
   uses its own revisioned operation; deleting a folder moves its notebooks to
   the root and never creates a Tombstone. A paged notebook's complete mapped
-  `pageOrder` and its applied baseline travel in the same metadata contract;
-  canvas background remains unsupported and must not be claimed as synchronized.
+  `pageOrder` and its applied baseline travel in the same metadata contract.
+  Infinite-canvas `background` and its applied baseline use the canvas
+  metadata contract; both remain outside JSON content.
   Queue notebook/canvas content only when every page/asset
   reference can be rewritten to verified cloud state.
 - Allow deletion of any mapped page while at least one page remains. The server
@@ -793,6 +796,12 @@
   tests. Focused coverage proves durable full-order queuing, atomic server
   repositioning, stale-order rejection, cross-device application, and Cursor
   gating. Ruff, mypy, Flutter analysis, and diff checks pass.
+- `flutter test` passes with 263 tests after infinite-canvas background
+  synchronization; the backend passes 56 non-integration tests and 15 real
+  PostgreSQL/MinIO integration tests. Focused coverage proves durable baseline
+  mapping, upload queueing, legacy mapping repair, cross-device application,
+  and stale-baseline rejection. Ruff, mypy, Flutter analysis, and diff checks
+  pass.
 
 ## Notes
 

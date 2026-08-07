@@ -10,6 +10,7 @@ from inknest_server.config import Settings
 from inknest_server.models import (
     Conflict,
     Folder,
+    InfiniteCanvas,
     Notebook,
     Page,
     SyncChange,
@@ -524,6 +525,115 @@ async def test_sync_commit_reorders_pages_atomically_and_rejects_stale_order(
         ("page", page_ids[1], 2),
         ("notebook", notebook_id, 2),
     ]
+
+
+async def test_sync_commit_updates_canvas_background_and_rejects_stale_baseline(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    registered = await register(client, "sync-canvas-background@example.com")
+    user_id = UUID(registered["user"]["id"])
+    device_id = UUID(registered["device"]["id"])
+    headers = bearer(registered["accessToken"])
+    library = LibraryRepository(db_session)
+    notebook = await library.create_notebook(
+        user_id=user_id,
+        notebook_id="canvas-background-notebook",
+        title="Canvas",
+        layout_mode="infiniteCanvas",
+    )
+    canvas = await library.create_infinite_canvas(
+        user_id=user_id,
+        notebook_id=notebook.id,
+        canvas_id="canvas-background",
+        background="blank",
+    )
+    initial = await ContentRepository(db_session).save_infinite_canvas_content(
+        user_id=user_id,
+        canvas_id=canvas.id,
+        base_revision=0,
+        content={"strokes": []},
+        device_id=device_id,
+    )
+    canvas_id = canvas.id
+    await db_session.commit()
+    before = await client.get("/api/v1/sync/changes", headers=headers)
+
+    updated = await client.post(
+        "/api/v1/sync/commit",
+        headers=headers,
+        json={
+            "deviceId": str(device_id),
+            "idempotencyKey": "canvas-background-grid",
+            "baseCursor": before.json()["nextCursor"],
+            "operations": [
+                {
+                    "operationId": "canvas-background-grid",
+                    "operation": "upsert",
+                    "resourceType": "infinite_canvas",
+                    "resourceId": canvas_id,
+                    "baseRevision": 1,
+                    "baseMetadata": {"background": "blank"},
+                    "metadata": {"background": "grid"},
+                }
+            ],
+        },
+    )
+    stale = await client.post(
+        "/api/v1/sync/commit",
+        headers=headers,
+        json={
+            "deviceId": str(device_id),
+            "idempotencyKey": "canvas-background-dotted",
+            "baseCursor": before.json()["nextCursor"],
+            "operations": [
+                {
+                    "operationId": "canvas-background-dotted",
+                    "operation": "upsert",
+                    "resourceType": "infinite_canvas",
+                    "resourceId": canvas_id,
+                    "baseRevision": 1,
+                    "baseMetadata": {"background": "blank"},
+                    "metadata": {"background": "dotted"},
+                }
+            ],
+        },
+    )
+    emitted = await client.get(
+        "/api/v1/sync/changes",
+        headers=headers,
+        params={"cursor": before.json()["nextCursor"]},
+    )
+    db_session.expire_all()
+    stored = await db_session.scalar(
+        select(InfiniteCanvas).where(
+            InfiniteCanvas.id == canvas_id,
+            InfiniteCanvas.user_id == user_id,
+        )
+    )
+
+    assert updated.status_code == 200
+    assert updated.json()["results"][0] == {
+        "operationId": "canvas-background-grid",
+        "resourceType": "infinite_canvas",
+        "resourceId": canvas_id,
+        "revision": 2,
+        "contentHash": initial.content_hash,
+        "changed": True,
+        "outcome": "applied",
+        "conflict": None,
+        "tombstone": None,
+    }
+    assert stale.status_code == 409
+    assert stale.json()["error"]["code"] == "sync_infinite_canvas_metadata_conflict"
+    assert stale.json()["error"]["details"]["fields"] == ["background"]
+    assert stored is not None
+    assert (stored.background, stored.revision, stored.content_hash) == (
+        "grid",
+        2,
+        initial.content_hash,
+    )
+    assert emitted.json()["changes"][-1]["payload"]["background"] == "grid"
 
 
 async def test_sync_commit_creates_and_renames_folder_with_conflict_guard(

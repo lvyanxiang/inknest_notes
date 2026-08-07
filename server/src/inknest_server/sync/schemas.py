@@ -270,6 +270,16 @@ class SyncFolderMetadata(SyncApiModel):
     name: str = Field(min_length=1, max_length=200)
 
 
+class SyncInfiniteCanvasMetadata(SyncApiModel):
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        extra="forbid",
+        populate_by_name=True,
+    )
+
+    background: Literal["blank", "dotted", "grid"]
+
+
 class SyncCommitOperation(SyncApiModel):
     operation_id: str = Field(min_length=1, max_length=128)
     operation: Literal["upsert", "delete"]
@@ -277,8 +287,12 @@ class SyncCommitOperation(SyncApiModel):
     resource_id: str = Field(min_length=1, max_length=128)
     base_revision: int = Field(ge=0)
     content: dict[str, object] | None = None
-    metadata: SyncFolderMetadata | SyncNotebookMetadata | None = None
-    base_metadata: SyncFolderMetadata | SyncNotebookMetadata | None = None
+    metadata: (
+        SyncFolderMetadata | SyncNotebookMetadata | SyncInfiniteCanvasMetadata | None
+    ) = None
+    base_metadata: (
+        SyncFolderMetadata | SyncNotebookMetadata | SyncInfiniteCanvasMetadata | None
+    ) = None
 
     @model_validator(mode="after")
     def validate_operation_content(self) -> SyncCommitOperation:
@@ -307,6 +321,13 @@ class SyncCommitOperation(SyncApiModel):
                 self.base_metadata, SyncFolderMetadata
             ):
                 raise ValueError("folder baseMetadata must match folder metadata")
+        elif self.resource_type == "infinite_canvas" and self.metadata is not None:
+            if not isinstance(
+                self.metadata, SyncInfiniteCanvasMetadata
+            ) or not isinstance(self.base_metadata, SyncInfiniteCanvasMetadata):
+                raise ValueError(
+                    "infinite canvas metadata requires matching baseMetadata"
+                )
         elif self.metadata is not None:
             if (
                 self.resource_type != "notebook"

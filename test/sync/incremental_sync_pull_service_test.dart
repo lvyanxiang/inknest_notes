@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:inknest_notes/models/infinite_canvas_document.dart';
 import 'package:inknest_notes/models/notebook_layout_mode.dart';
 import 'package:inknest_notes/storage/file_notebook_repository.dart';
 import 'package:inknest_notes/sync/file_sync_state_store.dart';
@@ -923,6 +924,7 @@ void main() {
         remoteResourceId: 'remote-canvas',
         revision: 1,
         contentHash: 'f' * 64,
+        infiniteCanvasMetadata: const {'background': 'blank'},
       ),
     ]);
     final cloud = _PullCloudClient(
@@ -953,6 +955,63 @@ void main() {
     final canvas = await repository.loadInfiniteCanvas(notebook);
     expect(canvas.viewportScale, 2);
     expect(canvas.viewportFocus.dx, 9);
+    expect(canvas.background, InfiniteCanvasBackground.grid);
+  });
+
+  test('repairs a legacy canvas background baseline when up to date', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'inknest-pull-canvas-baseline-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final repository = FileNotebookRepository(rootDirectory: root);
+    final notebook = await repository.createNotebook(
+      title: 'Canvas',
+      layoutMode: NotebookLayoutMode.infiniteCanvas,
+    );
+    final stateStore = FileSyncStateStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    );
+    await stateStore.markChangesPageApplied('cursor-1');
+    final resourceMap = FileSyncResourceMapStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    );
+    await resourceMap.replaceAll([
+      SyncResourceMapping(
+        localKey: canvasSyncLocalKey(notebook.id),
+        resourceType: SyncResourceType.infiniteCanvas,
+        remoteResourceId: 'remote-canvas',
+        revision: 2,
+        contentHash: '9' * 64,
+      ),
+    ]);
+    final cloud = _PullCloudClient(
+      bootstrapSnapshot: _sharedCanvasBootstrap(notebook.id),
+      pages: [
+        CloudSyncChangePage(
+          changes: [],
+          nextCursor: 'cursor-1',
+          hasMore: false,
+        ),
+      ],
+    );
+
+    final result = await IncrementalSyncPullService(
+      repository: repository,
+      cloudClient: cloud,
+      rootDirectory: root,
+    ).pull(userId: 'user-1', deviceId: 'device-1');
+
+    expect(result.status, IncrementalSyncPullStatus.upToDate);
+    expect(
+      (await resourceMap.find(
+        canvasSyncLocalKey(notebook.id),
+      ))?.infiniteCanvasMetadata,
+      {'background': 'grid'},
+    );
   });
 
   test(
@@ -1638,7 +1697,7 @@ CloudSyncBootstrap _sharedCanvasBootstrap(String notebookId) {
       CloudSyncInfiniteCanvas(
         id: 'remote-canvas',
         notebookId: notebookId,
-        background: 'blank',
+        background: 'grid',
         revision: 2,
         contentHash: '9' * 64,
         content: const {

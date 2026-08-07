@@ -16,6 +16,7 @@ import 'package:inknest_notes/sync/sync_notebook_deletion_service.dart';
 import 'package:inknest_notes/sync/sync_page_deletion_service.dart';
 import 'package:inknest_notes/sync/sync_page_structure_service.dart';
 import 'package:inknest_notes/sync/sync_tombstones.dart';
+import 'package:inknest_notes/sync/sync_state.dart';
 
 enum IncrementalSyncPullStatus {
   notInitialized,
@@ -150,6 +151,41 @@ class IncrementalSyncPullService {
     }
 
     if (allChanges.isEmpty) {
+      final canvasesWithoutMetadata = mappings
+          .where(
+            (mapping) =>
+                mapping.resourceType == SyncResourceType.infiniteCanvas &&
+                mapping.infiniteCanvasMetadata == null,
+          )
+          .toList();
+      if (canvasesWithoutMetadata.isNotEmpty) {
+        final bootstrap = await cloudClient.bootstrap();
+        for (final mapping in canvasesWithoutMetadata) {
+          CloudSyncInfiniteCanvas? cloud;
+          for (final candidate in bootstrap.infiniteCanvases) {
+            if (candidate.id == mapping.remoteResourceId) {
+              cloud = candidate;
+              break;
+            }
+          }
+          if (cloud == null ||
+              cloud.revision != mapping.revision ||
+              cloud.contentHash != mapping.contentHash) {
+            return IncrementalSyncPullResult(
+              status: IncrementalSyncPullStatus.requiresReconciliation,
+              pendingConflicts: pendingConflicts,
+              activeTombstones: activeTombstones,
+            );
+          }
+          await resourceMap.updateRemote(
+            resourceType: mapping.resourceType,
+            remoteResourceId: mapping.remoteResourceId,
+            revision: mapping.revision,
+            contentHash: mapping.contentHash,
+            infiniteCanvasMetadata: {'background': cloud.background},
+          );
+        }
+      }
       if (cursor != initialCursor) {
         await stateStore.markChangesPageApplied(cursor);
       }

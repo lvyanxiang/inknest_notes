@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:inknest_notes/models/notebook_layout_mode.dart';
 import 'package:inknest_notes/storage/file_notebook_repository.dart';
 import 'package:inknest_notes/sync/sync_bootstrap.dart';
 import 'package:inknest_notes/sync/sync_resource_map_store.dart';
@@ -146,5 +147,66 @@ void main() {
       await restartedStore.hasCloudAsset(notebook.id, 'assets/image.png'),
       isTrue,
     );
+  });
+
+  test('persists infinite canvas background baseline', () async {
+    final root = await Directory.systemTemp.createTemp('inknest-canvas-map-');
+    addTearDown(() => root.delete(recursive: true));
+    final repository = FileNotebookRepository(rootDirectory: root);
+    final notebook = await repository.createNotebook(
+      title: 'Canvas',
+      layoutMode: NotebookLayoutMode.infiniteCanvas,
+    );
+    final now = DateTime.utc(2026, 8, 7);
+    final bootstrap = CloudSyncBootstrap(
+      inventory: SyncLibraryInventory(notebookIds: [notebook.id]),
+      baseCursor: 'cursor-1',
+      folders: const [],
+      notebooks: [
+        CloudSyncNotebook(
+          id: notebook.id,
+          folderId: null,
+          title: notebook.title,
+          layoutMode: 'infiniteCanvas',
+          isArchived: false,
+          revision: 1,
+          contentHash: 'a' * 64,
+          content: const {},
+          conflictOf: null,
+          createdAt: now,
+          updatedAt: now,
+        ),
+      ],
+      pages: const [],
+      infiniteCanvases: [
+        CloudSyncInfiniteCanvas(
+          id: 'remote-canvas',
+          notebookId: notebook.id,
+          background: 'dotted',
+          revision: 3,
+          contentHash: 'b' * 64,
+          content: const {},
+          createdAt: now,
+          updatedAt: now,
+        ),
+      ],
+      assets: const [],
+    );
+    final store = FileSyncResourceMapStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    );
+
+    await store.replaceAll(
+      await buildSyncResourceMappings(
+        repository: repository,
+        bootstrap: bootstrap,
+      ),
+    );
+
+    final mapping = await store.find(canvasSyncLocalKey(notebook.id));
+    expect(mapping?.revision, 3);
+    expect(mapping?.infiniteCanvasMetadata, {'background': 'dotted'});
   });
 }

@@ -600,13 +600,19 @@ class SharedSyncApplyService {
     for (final notebook in notebooks) {
       if (mapping.localKey != canvasSyncLocalKey(notebook.id)) continue;
       final local = await repository.loadInfiniteCanvas(notebook);
-      if (cloud.notebookId != notebook.id ||
-          cloud.background != local.background.name) {
+      InfiniteCanvasBackground? background;
+      for (final candidate in InfiniteCanvasBackground.values) {
+        if (candidate.name == cloud.background) {
+          background = candidate;
+          break;
+        }
+      }
+      if (cloud.notebookId != notebook.id || background == null) {
         return null;
       }
       final updated = InfiniteCanvasDocument.fromJson({
         ...cloud.content,
-        'background': local.background.name,
+        'background': background.name,
       });
       for (final image in updated.images) {
         if (!await resourceMap.hasCloudAsset(notebook.id, image.assetPath)) {

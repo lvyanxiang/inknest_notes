@@ -158,7 +158,7 @@ All application routes use the base URL `http://127.0.0.1:8000/api/v1`.
 | `GET` | `/sync/bootstrap` | Bearer Access Token | Read library structure, JSON content, and verified asset metadata before a first merge. |
 | `POST` | `/sync/merge/commit` | Bearer Access Token | Atomically and idempotently create local-only library structure and JSON content. |
 | `GET` | `/sync/changes?cursor=...&limit=...` | Bearer Access Token | Read ordered changes for the current user and receive the next opaque cursor. |
-| `POST` | `/sync/commit` | Bearer Access Token | Atomically commit an idempotent batch of existing notebook metadata/content, page/canvas content, or soft deletes. |
+| `POST` | `/sync/commit` | Bearer Access Token | Atomically commit an idempotent batch of existing notebook/canvas metadata, JSON content, folder operations, or soft deletes. |
 | `POST` | `/sync/conflicts/{conflict_id}/resolve` | Bearer Access Token | Resolve an owned page/notebook conflict by keeping the original, using the submitted version, or keeping both. |
 | `POST` | `/sync/tombstones/{tombstone_id}/restore` | Bearer Access Token | Restore the full snapshot represented by one active owned Tombstone as a new Revision. |
 
@@ -416,6 +416,27 @@ repositions them in one transaction, and emits unchanged-content Revision
 updates for every moved page plus the notebook operation. If the current order
 matches neither baseline nor desired order, the request returns
 `409 sync_notebook_metadata_conflict` with `fields: ["pageOrder"]`.
+
+Infinite-canvas backgrounds use the same explicit baseline rule and remain
+outside JSON content. A background-only operation may omit `content`:
+
+```json
+{
+  "operationId": "canvas-background-1",
+  "operation": "upsert",
+  "resourceType": "infinite_canvas",
+  "resourceId": "canvas-1",
+  "baseRevision": 3,
+  "baseMetadata": {"background":"blank"},
+  "metadata": {"background":"grid"}
+}
+```
+
+Allowed values are `blank`, `dotted`, and `grid`. A different current
+background returns `409 sync_infinite_canvas_metadata_conflict` with
+`fields: ["background"]`; the batch is rolled back and the existing canvas is
+unchanged. A background-only update creates a new canvas Revision while
+retaining the current content hash.
 
 Folder creation and rename use a metadata-only `folder` operation. Creation
 omits `baseMetadata`; rename includes the last applied name:

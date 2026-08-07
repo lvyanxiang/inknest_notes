@@ -56,6 +56,10 @@ class FolderMetadataConflictError(Exception):
     pass
 
 
+class InfiniteCanvasMetadataConflictError(Exception):
+    pass
+
+
 @dataclass(frozen=True, slots=True)
 class ContentSaveResult:
     revision: int
@@ -520,6 +524,25 @@ class ContentRepository:
         content: dict[str, object],
         device_id: UUID | None = None,
     ) -> ContentSaveResult:
+        return await self.save_infinite_canvas(
+            user_id=user_id,
+            canvas_id=canvas_id,
+            base_revision=base_revision,
+            content=content,
+            device_id=device_id,
+        )
+
+    async def save_infinite_canvas(
+        self,
+        *,
+        user_id: UUID,
+        canvas_id: str,
+        base_revision: int,
+        content: dict[str, object] | None = None,
+        metadata: dict[str, object] | None = None,
+        base_metadata: dict[str, object] | None = None,
+        device_id: UUID | None = None,
+    ) -> ContentSaveResult:
         resource = await self._session.scalar(
             select(InfiniteCanvas)
             .where(
@@ -530,13 +553,71 @@ class ContentRepository:
         )
         if resource is None:
             raise LibraryResourceNotFoundError("infinite canvas", canvas_id)
-        return await self._save(
-            resource=resource,
-            resource_type="infinite_canvas",
+        if device_id is not None:
+            await self._ensure_active_device_owned(user_id=user_id, device_id=device_id)
+        if resource.deleted_at is not None:
+            raise ResourceDeletedError(current_revision=resource.revision)
+
+        desired_background = resource.background
+        if metadata is not None:
+            if base_metadata is None:
+                raise ValueError("base_metadata is required with metadata")
+            desired_background = str(metadata["background"])
+            baseline_background = str(base_metadata["background"])
+            if (
+                desired_background != baseline_background
+                and resource.background not in {baseline_background, desired_background}
+            ):
+                raise InfiniteCanvasMetadataConflictError
+
+        normalized_content = (
+            normalized_json_object(content) if content is not None else resource.content
+        )
+        new_hash = calculate_content_hash(normalized_content)
+        content_changed = resource.content_hash != new_hash
+        metadata_changed = resource.background != desired_background
+        if content_changed and resource.revision != base_revision:
+            raise RevisionConflictError(
+                expected_revision=base_revision,
+                current_revision=resource.revision,
+            )
+        if not content_changed and not metadata_changed:
+            return ContentSaveResult(
+                revision=resource.revision,
+                content_hash=resource.content_hash,
+                created_revision=False,
+            )
+
+        next_revision = resource.revision + 1
+        self._session.add(
+            ContentRevision(
+                user_id=user_id,
+                resource_type="infinite_canvas",
+                resource_id=resource.id,
+                revision=next_revision,
+                content_hash=new_hash,
+                content=normalized_content,
+                device_id=device_id,
+            )
+        )
+        resource.revision = next_revision
+        resource.content_hash = new_hash
+        resource.content = normalized_content
+        resource.background = desired_background
+        await self._session.flush()
+        await self._changes.append_upsert(
             user_id=user_id,
-            base_revision=base_revision,
-            content=content,
+            resource_type="infinite_canvas",
+            resource_id=resource.id,
+            payload=infinite_canvas_snapshot(resource),
+            revision=next_revision,
+            content_hash=new_hash,
             device_id=device_id,
+        )
+        return ContentSaveResult(
+            revision=next_revision,
+            content_hash=new_hash,
+            created_revision=True,
         )
 
     async def list_revisions(

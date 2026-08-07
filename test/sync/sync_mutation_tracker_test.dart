@@ -374,54 +374,54 @@ void main() {
     expect(operation.baseRevision, 4);
   });
 
-  test(
-    'infinite canvas save queues content without structural background',
-    () async {
-      final root = await Directory.systemTemp.createTemp('inknest-canvas-');
-      addTearDown(() => root.delete(recursive: true));
-      final setupRepository = FileNotebookRepository(rootDirectory: root);
-      final notebook = await setupRepository.createNotebook(
-        title: 'Canvas',
-        layoutMode: NotebookLayoutMode.infiniteCanvas,
-      );
-      await FileSyncResourceMapStore(
-        rootDirectory: root,
-        userId: 'user-1',
-        deviceId: 'device-1',
-      ).replaceAll([
-        SyncResourceMapping(
-          localKey: canvasSyncLocalKey(notebook.id),
-          resourceType: SyncResourceType.infiniteCanvas,
-          remoteResourceId: 'remote-canvas-1',
-          revision: 6,
-          contentHash: 'c' * 64,
-        ),
-      ]);
-      final tracker = SyncMutationTracker(
-        rootDirectory: root,
-        activeSession: _session,
-      );
-      final repository = FileNotebookRepository(
-        rootDirectory: root,
-        onInfiniteCanvasPersisted: tracker.infiniteCanvasSaved,
-      );
+  test('infinite canvas save queues content and background metadata', () async {
+    final root = await Directory.systemTemp.createTemp('inknest-canvas-');
+    addTearDown(() => root.delete(recursive: true));
+    final setupRepository = FileNotebookRepository(rootDirectory: root);
+    final notebook = await setupRepository.createNotebook(
+      title: 'Canvas',
+      layoutMode: NotebookLayoutMode.infiniteCanvas,
+    );
+    await FileSyncResourceMapStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    ).replaceAll([
+      SyncResourceMapping(
+        localKey: canvasSyncLocalKey(notebook.id),
+        resourceType: SyncResourceType.infiniteCanvas,
+        remoteResourceId: 'remote-canvas-1',
+        revision: 6,
+        contentHash: 'c' * 64,
+        infiniteCanvasMetadata: const {'background': 'blank'},
+      ),
+    ]);
+    final tracker = SyncMutationTracker(
+      rootDirectory: root,
+      activeSession: _session,
+    );
+    final repository = FileNotebookRepository(
+      rootDirectory: root,
+      onInfiniteCanvasPersisted: tracker.infiniteCanvasSaved,
+    );
 
-      await repository.saveInfiniteCanvas(
-        notebook,
-        const InfiniteCanvasDocument(
-          background: InfiniteCanvasBackground.grid,
-          viewportFocus: Offset(12, 34),
-          viewportScale: 2,
-        ),
-      );
+    await repository.saveInfiniteCanvas(
+      notebook,
+      const InfiniteCanvasDocument(
+        background: InfiniteCanvasBackground.grid,
+        viewportFocus: Offset(12, 34),
+        viewportScale: 2,
+      ),
+    );
 
-      final operation = (await _state(root)).pendingOperations.single;
-      expect(operation.resourceType, SyncResourceType.infiniteCanvas);
-      expect(operation.resourceId, 'remote-canvas-1');
-      expect(operation.content, isNot(contains('background')));
-      expect(operation.content['viewportScale'], 2);
-    },
-  );
+    final operation = (await _state(root)).pendingOperations.single;
+    expect(operation.resourceType, SyncResourceType.infiniteCanvas);
+    expect(operation.resourceId, 'remote-canvas-1');
+    expect(operation.content, isNot(contains('background')));
+    expect(operation.content['viewportScale'], 2);
+    expect(operation.baseMetadata, {'background': 'blank'});
+    expect(operation.metadata, {'background': 'grid'});
+  });
 
   test(
     'canvas with an unuploaded image stays out of the commit queue',

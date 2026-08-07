@@ -249,7 +249,12 @@ The first slice sets no retention period and performs no physical cleanup.
 - Concurrent order changes from the same baseline are not merged heuristically.
   A stale order returns `sync_notebook_metadata_conflict` with `pageOrder`,
   preserving the local frozen operation for visible retry/reconciliation.
-  Canvas background remains outside this slice.
+- Existing infinite-canvas background choices remain immediate local edits.
+  Flutter sends `background` separately from canvas content with the last
+  applied background in `baseMetadata`; the server applies a safe three-way
+  change in the same canvas Revision or returns
+  `sync_infinite_canvas_metadata_conflict`. A continuous remote Revision updates
+  the existing canvas without adding UI controls.
 
 ## Acceptance Criteria
 
@@ -372,8 +377,9 @@ The first slice sets no retention period and performs no physical cleanup.
   folders now share the same durable queue and explicit three-way metadata
   contract. Folder creation/rename/delete now use the same durable incremental
   flow; deleting a folder keeps its notebooks at the library root. Page
-  structure, canvas background, attachment
-  upload, and divergent canvas recovery remain later contract slices. Existing
+  structure and canvas background now use explicit baseline-guarded metadata
+  contracts. Attachment upload and divergent canvas-content recovery remain
+  later contract slices. Existing
   notebook/page/canvas content now also downloads from another device when the
   change feed proves a continuous Revision chain and bootstrap structure still
   matches local state; failed multi-resource application rolls back before the

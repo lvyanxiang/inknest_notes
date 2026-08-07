@@ -14,6 +14,7 @@ class SyncResourceMapping {
     required this.contentHash,
     this.folderMetadata,
     this.notebookMetadata,
+    this.infiniteCanvasMetadata,
   });
 
   final String localKey;
@@ -23,12 +24,14 @@ class SyncResourceMapping {
   final String contentHash;
   final Map<String, Object?>? folderMetadata;
   final Map<String, Object?>? notebookMetadata;
+  final Map<String, Object?>? infiniteCanvasMetadata;
 
   SyncResourceMapping copyWith({
     int? revision,
     String? contentHash,
     Map<String, Object?>? folderMetadata,
     Map<String, Object?>? notebookMetadata,
+    Map<String, Object?>? infiniteCanvasMetadata,
   }) => SyncResourceMapping(
     localKey: localKey,
     resourceType: resourceType,
@@ -37,6 +40,8 @@ class SyncResourceMapping {
     contentHash: contentHash ?? this.contentHash,
     folderMetadata: folderMetadata ?? this.folderMetadata,
     notebookMetadata: notebookMetadata ?? this.notebookMetadata,
+    infiniteCanvasMetadata:
+        infiniteCanvasMetadata ?? this.infiniteCanvasMetadata,
   );
 
   factory SyncResourceMapping.fromJson(Map<String, Object?> json) {
@@ -72,6 +77,12 @@ class SyncResourceMapping {
               (json['notebookMetadata']! as Map<Object?, Object?>)
                   .cast<String, Object?>(),
             ),
+      infiniteCanvasMetadata: json['infiniteCanvasMetadata'] == null
+          ? null
+          : Map.unmodifiable(
+              (json['infiniteCanvasMetadata']! as Map<Object?, Object?>)
+                  .cast<String, Object?>(),
+            ),
     );
   }
 
@@ -83,6 +94,8 @@ class SyncResourceMapping {
     'contentHash': contentHash,
     if (folderMetadata != null) 'folderMetadata': folderMetadata,
     if (notebookMetadata != null) 'notebookMetadata': notebookMetadata,
+    if (infiniteCanvasMetadata != null)
+      'infiniteCanvasMetadata': infiniteCanvasMetadata,
   };
 }
 
@@ -176,6 +189,7 @@ class FileSyncResourceMapStore {
     required int revision,
     required String contentHash,
     Map<String, Object?>? notebookMetadata,
+    Map<String, Object?>? infiniteCanvasMetadata,
   }) {
     return _enqueueWrite(() async {
       final document = await _read();
@@ -197,6 +211,7 @@ class FileSyncResourceMapStore {
               revision: revision,
               contentHash: contentHash,
               notebookMetadata: notebookMetadata,
+              infiniteCanvasMetadata: infiniteCanvasMetadata,
             )
           else
             resource,
@@ -337,6 +352,7 @@ Future<List<SyncResourceMapping>> buildSyncResourceMappings({
             remoteResourceId: cloudCanvas.id,
             revision: cloudCanvas.revision,
             contentHash: cloudCanvas.contentHash,
+            infiniteCanvasMetadata: {'background': cloudCanvas.background},
           ),
         );
       }
