@@ -282,7 +282,10 @@ continue-local state without overwriting either side.
   completed, needs-attention, failed, and edit-preserved states. Its sheet
   reports durable failed-operation counts and provides Retry; retry reuses the
   frozen idempotent batch. A `delete_conflict` is presented as a calm successful
-  preservation outcome with no resolution action.
+  preservation outcome with no resolution action. After a successful
+  new-device restore, the next App start goes directly to ordinary background
+  sync instead of repeating the first-sign-in Merge dialog; an incomplete
+  handoff remains retryable and never claims incremental initialization.
 - Intentional deviations: The server reserves the copy ID immediately but only
   materializes a normal notebook/page when the user chooses Keep Both. This
   avoids temporary duplicate library entries while preserving both snapshots.

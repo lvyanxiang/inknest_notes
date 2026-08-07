@@ -357,7 +357,11 @@ The first slice sets no retention period and performs no physical cleanup.
   the number of durable queued/in-flight operations and retry the unchanged
   idempotent batch. Delete/edit races use the server's `delete_conflict` outcome
   to explain that the other device's edit was preserved without asking for a
-  destructive choice.
+  destructive choice. New-device full restore now completes its incremental
+  handoff in dependency order: verified local content first, resource mappings
+  second, and bootstrap Cursor last. A successful restart therefore enters
+  normal change polling directly, while incomplete handoff never advertises an
+  initialized Cursor.
 - Verification: Backend tests cover authentication, account isolation,
   revisioned content, asset transfer, cursors, atomic/idempotent commits, page
   and notebook conflicts, all resolution choices, soft delete/restore, both

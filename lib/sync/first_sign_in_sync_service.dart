@@ -232,13 +232,23 @@ class ApiFirstSignInSyncService
         ).downloadAndApplyCloudOnly(
           bootstrap: preview.bootstrap,
           assessment: preview.assessment,
+          persistCursor: false,
         );
     await _replaceResourceMappings(
       bootstrap: preview.bootstrap,
       userId: userId,
       deviceId: deviceId,
     );
-    return result;
+    await FileSyncStateStore(
+      rootDirectory: rootDirectory,
+      userId: userId,
+      deviceId: deviceId,
+    ).markChangesPageApplied(preview.bootstrap.baseCursor);
+    return BootstrapRestoreResult(
+      downloadedNotebookCount: result.downloadedNotebookCount,
+      downloadedAssetCount: result.downloadedAssetCount,
+      cursorPersisted: true,
+    );
   }
 
   @override
@@ -339,6 +349,7 @@ class ApiFirstSignInSyncService
         ).downloadAndApplyCloudOnly(
           bootstrap: completed,
           assessment: completedAssessment,
+          persistCursor: false,
         );
     final finalLocal = await readLocalSyncLibraryInventory(repository);
     if (!_sameIds(finalLocal.folderIds, completed.inventory.folderIds) ||

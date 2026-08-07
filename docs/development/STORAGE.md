@@ -101,6 +101,12 @@ locally applied. It may include another device's interleaved changes. Only the
 Cursor from a `GET /sync/changes` page may be persisted, and only after every
 change in that page has been safely applied.
 
+For a new-device bootstrap, `lastAppliedCursor` is also the final handoff
+marker. Downloaded files and `resources.json` must be durable first; only then
+may the bootstrap Cursor be written. If mapping persistence fails after content
+application, the Cursor remains absent, so restart cannot falsely enter normal
+incremental synchronization with incomplete mappings.
+
 Writes use a temporary JSON file followed by replacement. Invalid or unknown
 state formats raise an error and are preserved for diagnosis rather than being
 silently reset.

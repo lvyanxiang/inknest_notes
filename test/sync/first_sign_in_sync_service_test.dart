@@ -8,12 +8,105 @@ import 'package:inknest_notes/models/notebook.dart';
 import 'package:inknest_notes/storage/file_notebook_repository.dart';
 import 'package:inknest_notes/sync/file_sync_state_store.dart';
 import 'package:inknest_notes/sync/first_sign_in_sync_service.dart';
+import 'package:inknest_notes/sync/incremental_sync_pull_service.dart';
+import 'package:inknest_notes/sync/sync_resource_map_store.dart';
 import 'package:inknest_notes/sync/sync_bootstrap.dart';
 import 'package:inknest_notes/sync/sync_changes.dart';
 import 'package:inknest_notes/sync/sync_cloud_client.dart';
 import 'package:inknest_notes/sync/sync_upload_models.dart';
 
 void main() {
+  test(
+    'cloud restore hands a fresh device directly to incremental sync',
+    () async {
+      final root = await Directory.systemTemp.createTemp('inknest-handoff-');
+      addTearDown(() => root.delete(recursive: true));
+      final repository = FileNotebookRepository(rootDirectory: root);
+      final cloud = _CloudRestoreHandoffClient();
+      final service = ApiFirstSignInSyncService(
+        repository: repository,
+        apiClient: cloud,
+        rootDirectory: root,
+      );
+
+      final preview = await service.inspect();
+      final restored = await service.restoreCloudOnly(
+        preview: preview,
+        userId: 'user-1',
+        deviceId: 'device-1',
+      );
+
+      expect(restored.cursorPersisted, isTrue);
+      final mappings = await FileSyncResourceMapStore(
+        rootDirectory: root,
+        userId: 'user-1',
+        deviceId: 'device-1',
+      ).load();
+      expect(
+        mappings.map((item) => item.remoteResourceId),
+        containsAll(['cloud-notebook', 'cloud-page']),
+      );
+
+      final restarted = ApiFirstSignInSyncService(
+        repository: FileNotebookRepository(rootDirectory: root),
+        apiClient: cloud,
+        rootDirectory: root,
+      );
+      final push = await restarted.pushIncremental(
+        userId: 'user-1',
+        deviceId: 'device-1',
+      );
+      final pull = await restarted.pullIncremental(
+        userId: 'user-1',
+        deviceId: 'device-1',
+      );
+
+      expect(push.uploadedOperationCount, 0);
+      expect(pull.status, IncrementalSyncPullStatus.upToDate);
+      expect(cloud.requestedChangeCursors, ['bootstrap-cursor']);
+    },
+  );
+
+  test(
+    'handoff failure never publishes the incremental Cursor early',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'inknest-handoff-failure-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      final repository = FileNotebookRepository(rootDirectory: root);
+      final cloud = _CloudRestoreHandoffClient();
+      final service = ApiFirstSignInSyncService(
+        repository: repository,
+        apiClient: cloud,
+        rootDirectory: root,
+      );
+      final preview = await service.inspect();
+      await Directory(
+        '${root.path}/sync/user-1/device-1/resources.json',
+      ).create(recursive: true);
+
+      await expectLater(
+        service.restoreCloudOnly(
+          preview: preview,
+          userId: 'user-1',
+          deviceId: 'device-1',
+        ),
+        throwsA(isA<FileSystemException>()),
+      );
+
+      expect((await repository.listNotebooks()).single.id, 'cloud-notebook');
+      expect(
+        (await FileSyncStateStore(
+          rootDirectory: root,
+          userId: 'user-1',
+          deviceId: 'device-1',
+        ).loadSnapshot()).lastAppliedCursor,
+        isNull,
+      );
+    },
+  );
+
   test(
     'local-only merge uploads structure, page content, and image bytes',
     () async {
@@ -202,6 +295,109 @@ void main() {
 
 String _remotePageId(String notebookId, String localPageId) =>
     'page-${sha256.convert(utf8.encode('$notebookId\u0000$localPageId')).toString().substring(0, 40)}';
+
+class _CloudRestoreHandoffClient implements FirstSignInCloudClient {
+  final List<String?> requestedChangeCursors = [];
+
+  @override
+  Future<CloudSyncBootstrap> bootstrap() async {
+    final now = DateTime.utc(2026, 8, 7);
+    return CloudSyncBootstrap(
+      inventory: SyncLibraryInventory(notebookIds: const ['cloud-notebook']),
+      baseCursor: 'bootstrap-cursor',
+      folders: const [],
+      notebooks: [
+        CloudSyncNotebook(
+          id: 'cloud-notebook',
+          folderId: null,
+          title: 'Cloud notes',
+          layoutMode: 'paged',
+          isArchived: false,
+          revision: 1,
+          contentHash: 'a' * 64,
+          content: const {},
+          conflictOf: null,
+          createdAt: now,
+          updatedAt: now,
+        ),
+      ],
+      pages: [
+        CloudSyncPage(
+          id: 'cloud-page',
+          notebookId: 'cloud-notebook',
+          position: 0,
+          width: 768,
+          height: 1024,
+          coordinateSpaceVersion: 1,
+          rotationQuarterTurns: 0,
+          template: 'blank',
+          revision: 1,
+          contentHash: 'b' * 64,
+          content: const {'strokes': <Object?>[]},
+          conflictOf: null,
+          createdAt: now,
+          updatedAt: now,
+        ),
+      ],
+      infiniteCanvases: const [],
+      assets: const [],
+    );
+  }
+
+  @override
+  Future<CloudSyncChangePage> listChanges({
+    String? cursor,
+    int limit = 100,
+  }) async {
+    requestedChangeCursors.add(cursor);
+    return CloudSyncChangePage(
+      changes: const [],
+      nextCursor: cursor!,
+      hasMore: false,
+    );
+  }
+
+  @override
+  Future<SyncContentCommitResult> commitSharedContent({
+    required String deviceId,
+    required String idempotencyKey,
+    required String baseCursor,
+    required List<Map<String, Object?>> operations,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<SyncMergeCommitResult> commitInitialMerge({
+    required String deviceId,
+    required String idempotencyKey,
+    required String baseCursor,
+    required List<Map<String, Object?>> operations,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<CloudAssetDownload> createAssetDownload(String assetId) =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> downloadAssetToFile(
+    CloudAssetDownload download,
+    File destination,
+  ) => throw UnimplementedError();
+
+  @override
+  Future<CloudAssetUploadSession> createAssetUploadSession(
+    LocalSyncAsset asset,
+  ) => throw UnimplementedError();
+
+  @override
+  Future<void> uploadAssetFile(
+    CloudAssetUploadSession session,
+    LocalSyncAsset asset,
+  ) => throw UnimplementedError();
+
+  @override
+  Future<void> completeAssetUpload(String uploadId) =>
+      throw UnimplementedError();
+}
 
 class _MixedFirstSignInCloudClient implements FirstSignInCloudClient {
   _MixedFirstSignInCloudClient({

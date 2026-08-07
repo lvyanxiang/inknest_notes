@@ -38,9 +38,9 @@ class BootstrapRestoreResult {
 /// Downloads a bootstrap snapshot into disposable storage and applies only
 /// cloud-only roots to the file-backed library.
 ///
-/// Existing stable IDs are never replaced. The bootstrap Cursor is persisted
-/// only after a complete new-device restore; mixed-library merges still need
-/// upload/shared-revision reconciliation first.
+/// Existing stable IDs are never replaced. Callers may defer bootstrap Cursor
+/// persistence until resource mappings and other handoff metadata are durable;
+/// mixed-library merges still need upload/shared-revision reconciliation first.
 class BootstrapRestoreService {
   BootstrapRestoreService({
     required this.rootDirectory,
@@ -66,6 +66,7 @@ class BootstrapRestoreService {
   Future<BootstrapRestoreResult> downloadAndApplyCloudOnly({
     required CloudSyncBootstrap bootstrap,
     required SyncBootstrapAssessment assessment,
+    required bool persistCursor,
   }) async {
     final cloudNotebookIds = assessment.cloudOnlyNotebookIds;
     final cloudFolderIds = assessment.cloudOnlyFolderIds;
@@ -87,13 +88,13 @@ class BootstrapRestoreService {
           assessment.localOnlyNotebookIds.isEmpty &&
           assessment.sharedFolderIds.isEmpty &&
           assessment.sharedNotebookIds.isEmpty;
-      if (cursorCanAdvance) {
+      if (cursorCanAdvance && persistCursor) {
         await syncStateStore.markChangesPageApplied(bootstrap.baseCursor);
       }
       return BootstrapRestoreResult(
         downloadedNotebookCount: staged.notebooks.length,
         downloadedAssetCount: staged.assetCount,
-        cursorPersisted: cursorCanAdvance,
+        cursorPersisted: cursorCanAdvance && persistCursor,
       );
     } finally {
       if (await stagingDirectory.exists()) {

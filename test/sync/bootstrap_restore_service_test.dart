@@ -50,6 +50,7 @@ void main() {
       final result = await service.downloadAndApplyCloudOnly(
         bootstrap: bootstrap,
         assessment: assessment,
+        persistCursor: true,
       );
 
       final notebooks = await repository.listNotebooks(
@@ -95,6 +96,7 @@ void main() {
             local: localInventory,
             cloud: bootstrap.inventory,
           ),
+          persistCursor: false,
         ),
         throwsA(isA<BootstrapAssetVerificationException>()),
       );
@@ -105,6 +107,36 @@ void main() {
           '${rootDirectory.path}/notebooks/notebook-cloud',
         ).exists(),
         isFalse,
+      );
+      expect((await stateStore.loadSnapshot()).lastAppliedCursor, isNull);
+    },
+  );
+
+  test(
+    'can defer Cursor until the caller completes handoff metadata',
+    () async {
+      final bytes = [1, 2, 3, 4];
+      final bootstrap = _bootstrap(bytes);
+      final service = _createService(
+        rootDirectory,
+        stateStore,
+        _FakeAssetClient(bytes),
+      );
+
+      final result = await service.downloadAndApplyCloudOnly(
+        bootstrap: bootstrap,
+        assessment: SyncBootstrapAssessment(
+          local: SyncLibraryInventory(),
+          cloud: bootstrap.inventory,
+        ),
+        persistCursor: false,
+      );
+
+      expect(result.downloadedNotebookCount, 1);
+      expect(result.cursorPersisted, isFalse);
+      expect(
+        (await repository.listNotebooks(folderId: 'folder-cloud')),
+        hasLength(1),
       );
       expect((await stateStore.loadSnapshot()).lastAppliedCursor, isNull);
     },
@@ -134,6 +166,7 @@ void main() {
             local: localInventory,
             cloud: bootstrap.inventory,
           ),
+          persistCursor: false,
         ),
         throwsStateError,
       );

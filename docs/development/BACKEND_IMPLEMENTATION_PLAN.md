@@ -419,7 +419,9 @@ checksums.sha256
 - [x] 显示同步进度、失败项和重试状态：资料库页头提供非阻塞状态入口，上传失败展示
   仍安全保留的本地操作数量并按原冻结批次重试；`delete_conflict` 单独说明另一设备的
   编辑已自动保留，不要求用户在删除和编辑之间选择。
-- [ ] 新设备全量 bootstrap 后切换至增量同步。
+- [x] 新设备全量 bootstrap 后切换至增量同步：恢复内容和附件落地后先持久化完整资源
+  映射，最后才将 bootstrap Cursor 发布为交接完成标记；重启后直接从该 Cursor 调用
+  `/sync/changes`，映射写入失败则不发布 Cursor、不误进入增量状态。
   - [x] Flutter 严格解析并调用现有 `/sync/changes` Cursor 分页合同。
   - [x] 新增云端独有根通过既有 staging/附件校验流程原子应用，完整分页范围成功后再
     保存最终 `nextCursor`；失败、共享更新或恢复项不推进 Cursor。

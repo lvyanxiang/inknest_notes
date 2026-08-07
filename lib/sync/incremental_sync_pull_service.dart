@@ -367,11 +367,16 @@ class IncrementalSyncPullService {
       );
     }
 
-    final restored = await BootstrapRestoreService(
-      rootDirectory: rootDirectory,
-      assetClient: cloudClient,
-      syncStateStore: stateStore,
-    ).downloadAndApplyCloudOnly(bootstrap: bootstrap, assessment: assessment);
+    final restored =
+        await BootstrapRestoreService(
+          rootDirectory: rootDirectory,
+          assetClient: cloudClient,
+          syncStateStore: stateStore,
+        ).downloadAndApplyCloudOnly(
+          bootstrap: bootstrap,
+          assessment: assessment,
+          persistCursor: false,
+        );
     await resourceMap.replaceAll(
       await buildSyncResourceMappings(
         repository: repository,

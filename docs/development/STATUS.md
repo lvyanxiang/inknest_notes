@@ -6,15 +6,14 @@
   initialized sessions now push saved page, notebook-content, and infinite-
   canvas edits, mapped whole-notebook deletes, and structurally safe trailing-
   page deletes before applying safe `/sync/changes` updates.
-- Next task: Verify and complete the new-device full-bootstrap handoff into
-  normal incremental synchronization. Arbitrary page deletion, page reordering,
-  and standalone canvas deletion remain blocked on a structural synchronization
-  contract.
-- Last completed: The library header now exposes non-blocking synchronization
-  progress, completion, reconciliation, failure, and delete/edit-preserved
-  states. Failed upload state reports the number of durable pending operations
-  and retries the same frozen batch; `delete_conflict` calmly explains that the
-  other device's edit was preserved and requires no user choice.
+- Next task: Add a recovery-before-restore snapshot and verified failure
+  rollback boundary. Arbitrary page deletion, page reordering, and standalone
+  canvas deletion remain blocked on a structural synchronization contract.
+- Last completed: New-device cloud restore now treats the bootstrap Cursor as
+  the final handoff marker: restored files and complete resource mappings are
+  durable before Cursor publication. A simulated restart proceeds directly
+  through `/sync/changes`; a mapping failure leaves the Cursor unset and cannot
+  falsely enter incremental synchronization.
 
 ## Decisions
 
@@ -755,6 +754,11 @@
   counts, retrying the frozen batch, and separate delete/edit-preserved
   feedback. `flutter analyze` and `git diff --check` pass; no backend source or
   route changed.
+- `flutter test` passes with 241 tests after the new-device bootstrap handoff;
+  focused coverage proves Cursor deferral, mapping-before-Cursor publication,
+  direct incremental pull after simulated restart, and no early Cursor on
+  mapping failure. `flutter analyze` and `git diff --check` pass; no backend
+  source or route changed.
 
 ## Notes
 
