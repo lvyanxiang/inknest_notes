@@ -223,6 +223,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
     if (_checkedSessionKey == sessionKey) return;
     _checkedSessionKey = sessionKey;
     try {
+      final pushResult = await service.pushIncremental(
+        userId: session.user.id,
+        deviceId: session.device.id,
+      );
       final pullResult = await service.pullIncremental(
         userId: session.user.id,
         deviceId: session.device.id,
@@ -232,6 +236,15 @@ class _LibraryScreenState extends State<LibraryScreen> {
         case IncrementalSyncPullStatus.notInitialized:
           break;
         case IncrementalSyncPullStatus.upToDate:
+          if (pushResult.uploadedOperationCount > 0) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  '已上传 ${pushResult.uploadedOperationCount} 项本地更改。',
+                ),
+              ),
+            );
+          }
           return;
         case IncrementalSyncPullStatus.applied:
           if (pullResult.changedLocalLibrary) {
@@ -241,7 +254,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                '已同步 ${pullResult.changeCount} 项云端更改，下载 '
+                '已上传 ${pushResult.uploadedOperationCount} 项本地更改，'
+                '同步 ${pullResult.changeCount} 项云端更改，下载 '
                 '${pullResult.downloadedNotebookCount} 本笔记。',
               ),
             ),
@@ -249,7 +263,14 @@ class _LibraryScreenState extends State<LibraryScreen> {
           return;
         case IncrementalSyncPullStatus.requiresReconciliation:
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('检测到需要协调的云端更改；本地笔记未被覆盖。')),
+            SnackBar(
+              content: Text(
+                pushResult.uploadedOperationCount == 0
+                    ? '检测到需要协调的云端更改；本地笔记未被覆盖。'
+                    : '已上传 ${pushResult.uploadedOperationCount} 项本地更改；'
+                          '检测到需要协调的云端更改，本地笔记未被覆盖。',
+              ),
+            ),
           );
           return;
       }

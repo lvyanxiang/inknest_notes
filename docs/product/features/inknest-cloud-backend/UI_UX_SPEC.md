@@ -83,18 +83,20 @@ continue-local state without overwriting either side.
   resources; a safety-gate failure explains that no uncertain content was
   overwritten and offers Retry or local continuation.
 
-### Background incremental pull
+### Background incremental synchronization
 
-1. After an existing signed-in session becomes active, InkNest checks the
-   saved Cursor and downloads available change pages without covering the
-   library or editor.
-2. A safe additive download refreshes the shelf and announces how many cloud
-   changes and notebooks were received.
+1. After an existing signed-in session becomes active, InkNest first uploads
+   persisted page edits, then checks the saved Cursor and downloads available
+   change pages without covering the library or editor.
+2. A successful upload announces how many local changes were sent. A safe
+   additive download refreshes the shelf and includes cloud changes and
+   received notebooks in the same calm confirmation.
 3. A shared-resource update, delete, conflict, Tombstone, or local pending
    upload keeps the local library and Cursor unchanged and shows a calm
    “需要协调” message.
-4. Network or parsing failure returns immediately to local use with a concise
-   retry-later message; it never reopens first-sign-in Merge or blocks writing.
+4. Network or parsing failure preserves the frozen upload batch and returns
+   immediately to local use with a concise retry-later message; it never blocks
+   writing.
 
 ### Conflict recovery
 

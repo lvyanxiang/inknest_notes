@@ -3,14 +3,15 @@
 ## Current
 
 - Milestone: Backend Phase 5 incremental-sync App integration is in progress;
-  initialized sessions now execute a safe additive `/sync/changes` download.
-- Next task: Connect the local pending queue to existing `/sync/commit` and
-  persist resource Revision/mapping state, then apply shared-resource pull
-  updates without overwriting newer local edits.
-- Last completed: Flutter drains all current change pages, stages and verifies
-  additive cloud-only notebooks/assets, refreshes the library, and saves the
-  final Cursor only after successful application. Shared updates, deletes,
-  conflicts and Tombstones stop safely without changing local data or Cursor.
+  initialized sessions now push saved page edits through `/sync/commit` before
+  executing the safe additive `/sync/changes` download.
+- Next task: Track notebook metadata and infinite-canvas saves in the same
+  persistent queue, then apply shared-resource pull updates without overwriting
+  newer local edits.
+- Last completed: Successful paged-note saves coalesce into an account/device
+  sidecar queue using persisted local-to-cloud IDs and server Revisions. Startup
+  retries the exact frozen batch after response loss, updates returned Revision
+  metadata, then pulls changes; the App reports the uploaded operation count.
 
 ## Decisions
 
@@ -129,6 +130,10 @@
   boundary. Existing-resource changes require local Revision/mapping metadata
   and a connected pending upload queue; until then they must remain unapplied
   with the prior Cursor preserved.
+- Seed local-to-cloud resource mappings only after a verified bootstrap/merge
+  application. A legacy initialized session with local notes but no mapping
+  re-enters the safe first-sign-in Merge path instead of guessing remote page
+  IDs. Page saves remain locally successful if queue-sidecar persistence fails.
 - Use email/password for the first account flow without mandatory email
   verification during initial development. Use short-lived JWT access tokens
   and rotating opaque refresh tokens; store only refresh-token hashes and bind
@@ -676,6 +681,13 @@
   tests, `flutter analyze` passes, and no backend source or route changed.
 - Focused incremental-pull tests cover multi-page download, atomic cloud-only
   notebook application, final Cursor persistence, and shared-update blocking.
+- Focused incremental-push tests cover page-save coalescing, persisted
+  local/remote resource mappings, returned Revision updates, startup push-before-
+  pull ordering, visible upload counts, and exact in-flight replay after a lost
+  response.
+- `flutter test` passes with 200 tests after the paged-note incremental upload
+  slice; `flutter analyze` and `git diff --check` pass, and no backend source or
+  route changed.
 
 ## Notes
 

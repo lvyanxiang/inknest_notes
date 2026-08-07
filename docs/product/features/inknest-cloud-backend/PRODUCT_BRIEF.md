@@ -316,9 +316,13 @@ The first slice sets no retention period and performs no physical cleanup.
   verification, and notebook content retains recording/outline/bookmark data.
   Shared-ID reconciliation now calls the typed incremental commit contract and
   uses server Revision/Content Hash outcomes before transferring either side's
-  independent resources. Structural metadata, attachment differences, and
-  divergent infinite-canvas content remain blocked pending explicit recovery
-  support.
+  independent resources. Normal paged-note saves now coalesce into a durable
+  local queue and authenticated startup pushes them through the same typed
+  incremental commit contract before pulling changes. Verified first Merge
+  seeds page ID/Revision mappings; response-loss retries preserve the exact
+  in-flight request. Notebook metadata, normal infinite-canvas mutation
+  tracking, structural metadata, attachment differences, and divergent canvas
+  recovery remain later slices.
 - Verification: Backend tests cover authentication, account isolation,
   revisioned content, asset transfer, cursors, atomic/idempotent commits, page
   and notebook conflicts, all resolution choices, soft delete/restore, both

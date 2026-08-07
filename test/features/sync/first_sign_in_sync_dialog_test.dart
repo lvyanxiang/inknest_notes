@@ -4,6 +4,7 @@ import 'package:inknest_notes/features/sync/first_sign_in_sync_dialog.dart';
 import 'package:inknest_notes/sync/bootstrap_restore_service.dart';
 import 'package:inknest_notes/sync/first_sign_in_sync_service.dart';
 import 'package:inknest_notes/sync/incremental_sync_pull_service.dart';
+import 'package:inknest_notes/sync/incremental_sync_push_service.dart';
 import 'package:inknest_notes/sync/inknest_api_models.dart';
 import 'package:inknest_notes/sync/sync_bootstrap.dart';
 import 'package:inknest_notes/sync/sync_merge_plan.dart';
@@ -166,6 +167,15 @@ class _FakeFirstSignInSyncService implements FirstSignInSyncService {
   final FirstSignInSyncPreview preview;
   final Object? inspectionError;
   int restoreCalls = 0;
+
+  @override
+  Future<IncrementalSyncPushResult> pushIncremental({
+    required String userId,
+    required String deviceId,
+  }) async => const IncrementalSyncPushResult(
+    uploadedOperationCount: 0,
+    preservedConflictCount: 0,
+  );
 
   @override
   Future<IncrementalSyncPullResult> pullIncremental({

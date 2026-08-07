@@ -9,8 +9,10 @@ import 'package:inknest_notes/sync/bootstrap_restore_service.dart';
 import 'package:inknest_notes/sync/file_sync_state_store.dart';
 import 'package:inknest_notes/sync/inknest_api_client.dart';
 import 'package:inknest_notes/sync/incremental_sync_pull_service.dart';
+import 'package:inknest_notes/sync/incremental_sync_push_service.dart';
 import 'package:inknest_notes/sync/sync_bootstrap.dart';
 import 'package:inknest_notes/sync/sync_merge_plan.dart';
+import 'package:inknest_notes/sync/sync_resource_map_store.dart';
 import 'package:inknest_notes/sync/sync_upload_models.dart';
 import 'package:inknest_notes/sync/sync_cloud_client.dart';
 
@@ -60,6 +62,11 @@ class MixedLibraryMergeResult {
 }
 
 abstract interface class FirstSignInSyncService {
+  Future<IncrementalSyncPushResult> pushIncremental({
+    required String userId,
+    required String deviceId,
+  });
+
   Future<IncrementalSyncPullResult> pullIncremental({
     required String userId,
     required String deviceId,
@@ -98,6 +105,17 @@ class ApiFirstSignInSyncService implements FirstSignInSyncService {
   final Directory rootDirectory;
 
   @override
+  Future<IncrementalSyncPushResult> pushIncremental({
+    required String userId,
+    required String deviceId,
+  }) {
+    return IncrementalSyncPushService(
+      cloudClient: apiClient,
+      rootDirectory: rootDirectory,
+    ).push(userId: userId, deviceId: deviceId);
+  }
+
+  @override
   Future<IncrementalSyncPullResult> pullIncremental({
     required String userId,
     required String deviceId,
@@ -133,24 +151,31 @@ class ApiFirstSignInSyncService implements FirstSignInSyncService {
     required FirstSignInSyncPreview preview,
     required String userId,
     required String deviceId,
-  }) {
+  }) async {
     if (!preview.canRestoreCloudOnly) {
       throw StateError(
         'Only a cloud-only library can use the completed restore path.',
       );
     }
-    return BootstrapRestoreService(
-      rootDirectory: rootDirectory,
-      assetClient: apiClient,
-      syncStateStore: FileSyncStateStore(
-        rootDirectory: rootDirectory,
-        userId: userId,
-        deviceId: deviceId,
-      ),
-    ).downloadAndApplyCloudOnly(
+    final result =
+        await BootstrapRestoreService(
+          rootDirectory: rootDirectory,
+          assetClient: apiClient,
+          syncStateStore: FileSyncStateStore(
+            rootDirectory: rootDirectory,
+            userId: userId,
+            deviceId: deviceId,
+          ),
+        ).downloadAndApplyCloudOnly(
+          bootstrap: preview.bootstrap,
+          assessment: preview.assessment,
+        );
+    await _replaceResourceMappings(
       bootstrap: preview.bootstrap,
-      assessment: preview.assessment,
+      userId: userId,
+      deviceId: deviceId,
     );
+    return result;
   }
 
   @override
@@ -176,6 +201,11 @@ class ApiFirstSignInSyncService implements FirstSignInSyncService {
 
     final completed = await apiClient.bootstrap();
     _verifyUploadedSnapshot(snapshot, completed);
+    await _replaceResourceMappings(
+      bootstrap: completed,
+      userId: userId,
+      deviceId: deviceId,
+    );
     await FileSyncStateStore(
       rootDirectory: rootDirectory,
       userId: userId,
@@ -252,6 +282,11 @@ class ApiFirstSignInSyncService implements FirstSignInSyncService {
         !_sameIds(finalLocal.notebookIds, completed.inventory.notebookIds)) {
       throw StateError('The completed mixed Merge inventory is incomplete.');
     }
+    await _replaceResourceMappings(
+      bootstrap: completed,
+      userId: userId,
+      deviceId: deviceId,
+    );
     await FileSyncStateStore(
       rootDirectory: rootDirectory,
       userId: userId,
@@ -264,6 +299,22 @@ class ApiFirstSignInSyncService implements FirstSignInSyncService {
           localOnly.assets.length + restored.downloadedAssetCount,
       preservedConflictCount: preservedConflicts,
     );
+  }
+
+  Future<void> _replaceResourceMappings({
+    required CloudSyncBootstrap bootstrap,
+    required String userId,
+    required String deviceId,
+  }) async {
+    final mappings = await buildSyncResourceMappings(
+      repository: repository,
+      bootstrap: bootstrap,
+    );
+    await FileSyncResourceMapStore(
+      rootDirectory: rootDirectory,
+      userId: userId,
+      deviceId: deviceId,
+    ).replaceAll(mappings);
   }
 
   Future<String> _uploadSnapshot(

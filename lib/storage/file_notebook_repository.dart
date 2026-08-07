@@ -15,10 +15,14 @@ import 'package:inknest_notes/models/pdf_outline_entry.dart';
 import 'package:inknest_notes/storage/notebook_repository.dart';
 import 'package:inknest_notes/storage/pdf_import_inspector.dart';
 
+typedef PagePersistedCallback =
+    Future<void> Function(Notebook notebook, NotePage page);
+
 class FileNotebookRepository implements NotebookRepository {
   FileNotebookRepository({
     required Directory rootDirectory,
     PdfImportInspector? pdfImportInspector,
+    this.onPagePersisted,
   }) : _notebooksDirectory = Directory('${rootDirectory.path}/notebooks'),
        _pdfImportInspector =
            pdfImportInspector ?? const PdfrxPdfImportInspector();
@@ -28,6 +32,7 @@ class FileNotebookRepository implements NotebookRepository {
 
   final Directory _notebooksDirectory;
   final PdfImportInspector _pdfImportInspector;
+  final PagePersistedCallback? onPagePersisted;
   Future<void> _storageWriteQueue = Future.value();
   int _temporaryFileCounter = 0;
 
@@ -712,6 +717,12 @@ class FileNotebookRepository implements NotebookRepository {
             existingNotebook,
       ]);
     });
+    try {
+      await onPagePersisted?.call(notebook, preparedPage);
+    } on Object {
+      // Cloud queue failures must never turn a completed local save into an
+      // editor failure. The local note remains authoritative and recoverable.
+    }
   }
 
   Future<NotePage> _readPageFile(File pageFile) async {

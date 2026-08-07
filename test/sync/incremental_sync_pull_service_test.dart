@@ -8,6 +8,8 @@ import 'package:inknest_notes/sync/incremental_sync_pull_service.dart';
 import 'package:inknest_notes/sync/sync_bootstrap.dart';
 import 'package:inknest_notes/sync/sync_changes.dart';
 import 'package:inknest_notes/sync/sync_cloud_client.dart';
+import 'package:inknest_notes/sync/sync_resource_map_store.dart';
+import 'package:inknest_notes/sync/sync_state.dart';
 import 'package:inknest_notes/sync/sync_upload_models.dart';
 
 void main() {
@@ -78,6 +80,19 @@ void main() {
         deviceId: 'device-1',
       );
       await stateStore.markChangesPageApplied('cursor-1');
+      await FileSyncResourceMapStore(
+        rootDirectory: root,
+        userId: 'user-1',
+        deviceId: 'device-1',
+      ).replaceAll([
+        SyncResourceMapping(
+          localKey: notebookSyncLocalKey(local.id),
+          resourceType: SyncResourceType.notebook,
+          remoteResourceId: local.id,
+          revision: 1,
+          contentHash: 'a' * 64,
+        ),
+      ]);
       final cloud = _PullCloudClient(
         bootstrapSnapshot: _sharedBootstrap(local.id),
         pages: [

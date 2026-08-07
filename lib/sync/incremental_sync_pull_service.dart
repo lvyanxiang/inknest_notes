@@ -6,6 +6,7 @@ import 'package:inknest_notes/sync/file_sync_state_store.dart';
 import 'package:inknest_notes/sync/sync_bootstrap.dart';
 import 'package:inknest_notes/sync/sync_changes.dart';
 import 'package:inknest_notes/sync/sync_cloud_client.dart';
+import 'package:inknest_notes/sync/sync_resource_map_store.dart';
 
 enum IncrementalSyncPullStatus {
   notInitialized,
@@ -63,6 +64,20 @@ class IncrementalSyncPullService {
         status: IncrementalSyncPullStatus.notInitialized,
       );
     }
+    final resourceMap = FileSyncResourceMapStore(
+      rootDirectory: rootDirectory,
+      userId: userId,
+      deviceId: deviceId,
+    );
+    final mappings = await resourceMap.load();
+    if (mappings.isEmpty) {
+      final local = await readLocalSyncLibraryInventory(repository);
+      if (local.hasLibrary) {
+        return const IncrementalSyncPullResult(
+          status: IncrementalSyncPullStatus.notInitialized,
+        );
+      }
+    }
     if (state.hasPendingWork) {
       return const IncrementalSyncPullResult(
         status: IncrementalSyncPullStatus.requiresReconciliation,
@@ -113,6 +128,12 @@ class IncrementalSyncPullService {
       assetClient: cloudClient,
       syncStateStore: stateStore,
     ).downloadAndApplyCloudOnly(bootstrap: bootstrap, assessment: assessment);
+    await resourceMap.replaceAll(
+      await buildSyncResourceMappings(
+        repository: repository,
+        bootstrap: bootstrap,
+      ),
+    );
     await stateStore.markChangesPageApplied(cursor);
     return IncrementalSyncPullResult(
       status: IncrementalSyncPullStatus.applied,

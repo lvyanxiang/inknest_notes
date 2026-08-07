@@ -1,0 +1,247 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:inknest_notes/storage/notebook_repository.dart';
+import 'package:inknest_notes/sync/sync_bootstrap.dart';
+import 'package:inknest_notes/sync/sync_state.dart';
+
+class SyncResourceMapping {
+  const SyncResourceMapping({
+    required this.localKey,
+    required this.resourceType,
+    required this.remoteResourceId,
+    required this.revision,
+    required this.contentHash,
+  });
+
+  final String localKey;
+  final SyncResourceType resourceType;
+  final String remoteResourceId;
+  final int revision;
+  final String contentHash;
+
+  SyncResourceMapping copyWith({int? revision, String? contentHash}) =>
+      SyncResourceMapping(
+        localKey: localKey,
+        resourceType: resourceType,
+        remoteResourceId: remoteResourceId,
+        revision: revision ?? this.revision,
+        contentHash: contentHash ?? this.contentHash,
+      );
+
+  factory SyncResourceMapping.fromJson(Map<String, Object?> json) {
+    final revision = json['revision'];
+    final contentHash = json['contentHash'];
+    if (revision is! int ||
+        revision < 0 ||
+        contentHash is! String ||
+        !RegExp(r'^[0-9a-f]{64}$').hasMatch(contentHash)) {
+      throw const FormatException('Invalid synchronization resource mapping.');
+    }
+    return SyncResourceMapping(
+      localKey: json['localKey']! as String,
+      resourceType: SyncResourceType.fromApiValue(
+        json['resourceType']! as String,
+      ),
+      remoteResourceId: json['remoteResourceId']! as String,
+      revision: revision,
+      contentHash: contentHash,
+    );
+  }
+
+  Map<String, Object?> toJson() => {
+    'localKey': localKey,
+    'resourceType': resourceType.apiValue,
+    'remoteResourceId': remoteResourceId,
+    'revision': revision,
+    'contentHash': contentHash,
+  };
+}
+
+class FileSyncResourceMapStore {
+  FileSyncResourceMapStore({
+    required Directory rootDirectory,
+    required String userId,
+    required String deviceId,
+  }) : _file = File(
+         '${rootDirectory.path}/sync/$userId/$deviceId/resources.json',
+       );
+
+  final File _file;
+  Future<void> _writeQueue = Future.value();
+  int _temporaryFileCounter = 0;
+
+  Future<List<SyncResourceMapping>> load() async {
+    await _writeQueue.catchError((_) {});
+    return _read();
+  }
+
+  Future<List<SyncResourceMapping>> _read() async {
+    if (!await _file.exists()) return const [];
+    final decoded = jsonDecode(await _file.readAsString());
+    if (decoded is! Map<String, Object?> || decoded['formatVersion'] != 1) {
+      throw const FormatException('Invalid synchronization resource map.');
+    }
+    final rawResources = decoded['resources'];
+    if (rawResources is! List<Object?> ||
+        rawResources.any((item) => item is! Map<Object?, Object?>)) {
+      throw const FormatException('Invalid synchronization resource map.');
+    }
+    final resources = rawResources
+        .map(
+          (item) => SyncResourceMapping.fromJson(
+            (item! as Map<Object?, Object?>).cast<String, Object?>(),
+          ),
+        )
+        .toList();
+    if (resources.map((item) => item.localKey).toSet().length !=
+        resources.length) {
+      throw const FormatException('Duplicate local synchronization mapping.');
+    }
+    return resources;
+  }
+
+  Future<SyncResourceMapping?> find(String localKey) async {
+    final resources = await load();
+    for (final resource in resources) {
+      if (resource.localKey == localKey) return resource;
+    }
+    return null;
+  }
+
+  Future<void> replaceAll(List<SyncResourceMapping> resources) {
+    return _enqueueWrite(() async {
+      await _write(resources);
+    });
+  }
+
+  Future<void> updateRemote({
+    required SyncResourceType resourceType,
+    required String remoteResourceId,
+    required int revision,
+    required String contentHash,
+  }) {
+    return _enqueueWrite(() async {
+      final resources = await _read();
+      final hasResource = resources.any(
+        (resource) =>
+            resource.resourceType == resourceType &&
+            resource.remoteResourceId == remoteResourceId,
+      );
+      if (!hasResource) {
+        throw StateError(
+          'The committed resource is missing from the local sync map.',
+        );
+      }
+      final updated = [
+        for (final resource in resources)
+          if (resource.resourceType == resourceType &&
+              resource.remoteResourceId == remoteResourceId)
+            resource.copyWith(revision: revision, contentHash: contentHash)
+          else
+            resource,
+      ];
+      await _write(updated);
+    });
+  }
+
+  Future<void> _enqueueWrite(Future<void> Function() action) {
+    final previous = _writeQueue;
+    final next = previous.catchError((_) {}).then((_) => action());
+    _writeQueue = next;
+    return next;
+  }
+
+  Future<void> _write(List<SyncResourceMapping> resources) async {
+    await _file.parent.create(recursive: true);
+    final sorted = resources.toList()
+      ..sort((left, right) => left.localKey.compareTo(right.localKey));
+    final temporary = File('${_file.path}.tmp-${_temporaryFileCounter++}');
+    await temporary.writeAsString(
+      const JsonEncoder.withIndent('  ').convert({
+        'formatVersion': 1,
+        'resources': sorted.map((item) => item.toJson()).toList(),
+      }),
+      flush: true,
+    );
+    if (await _file.exists()) await _file.delete();
+    await temporary.rename(_file.path);
+  }
+}
+
+String notebookSyncLocalKey(String notebookId) => 'notebook:$notebookId';
+
+String pageSyncLocalKey(String notebookId, String pageId) =>
+    'page:$notebookId:$pageId';
+
+String canvasSyncLocalKey(String notebookId) => 'infinite_canvas:$notebookId';
+
+Future<List<SyncResourceMapping>> buildSyncResourceMappings({
+  required NotebookRepository repository,
+  required CloudSyncBootstrap bootstrap,
+}) async {
+  final folders = await repository.listFolders();
+  final notebooks = [
+    ...await repository.listNotebooks(),
+    for (final folder in folders)
+      ...await repository.listNotebooks(folderId: folder.id),
+    ...await repository.listNotebooks(archived: true),
+  ];
+  final cloudNotebooks = {
+    for (final notebook in bootstrap.notebooks) notebook.id: notebook,
+  };
+  final mappings = <SyncResourceMapping>[];
+  for (final notebook in notebooks) {
+    final cloudNotebook = cloudNotebooks[notebook.id];
+    if (cloudNotebook == null) continue;
+    mappings.add(
+      SyncResourceMapping(
+        localKey: notebookSyncLocalKey(notebook.id),
+        resourceType: SyncResourceType.notebook,
+        remoteResourceId: cloudNotebook.id,
+        revision: cloudNotebook.revision,
+        contentHash: cloudNotebook.contentHash,
+      ),
+    );
+    if (notebook.layoutMode.name == 'paged') {
+      final cloudPages =
+          bootstrap.pages
+              .where((page) => page.notebookId == notebook.id)
+              .toList()
+            ..sort((left, right) => left.position.compareTo(right.position));
+      for (final (position, localPageId) in notebook.pageIds.indexed) {
+        if (position >= cloudPages.length ||
+            cloudPages[position].position != position) {
+          continue;
+        }
+        final cloudPage = cloudPages[position];
+        mappings.add(
+          SyncResourceMapping(
+            localKey: pageSyncLocalKey(notebook.id, localPageId),
+            resourceType: SyncResourceType.page,
+            remoteResourceId: cloudPage.id,
+            revision: cloudPage.revision,
+            contentHash: cloudPage.contentHash,
+          ),
+        );
+      }
+    } else {
+      final cloudCanvases = bootstrap.infiniteCanvases.where(
+        (canvas) => canvas.notebookId == notebook.id,
+      );
+      if (cloudCanvases.length == 1) {
+        final cloudCanvas = cloudCanvases.single;
+        mappings.add(
+          SyncResourceMapping(
+            localKey: canvasSyncLocalKey(notebook.id),
+            resourceType: SyncResourceType.infiniteCanvas,
+            remoteResourceId: cloudCanvas.id,
+            revision: cloudCanvas.revision,
+            contentHash: cloudCanvas.contentHash,
+          ),
+        );
+      }
+    }
+  }
+  return mappings;
+}

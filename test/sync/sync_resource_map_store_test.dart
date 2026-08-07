@@ -1,0 +1,89 @@
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:inknest_notes/storage/file_notebook_repository.dart';
+import 'package:inknest_notes/sync/sync_bootstrap.dart';
+import 'package:inknest_notes/sync/sync_resource_map_store.dart';
+import 'package:inknest_notes/sync/sync_state.dart';
+
+void main() {
+  test('builds and persists local-to-cloud page mappings', () async {
+    final root = await Directory.systemTemp.createTemp('inknest-map-');
+    addTearDown(() => root.delete(recursive: true));
+    final repository = FileNotebookRepository(rootDirectory: root);
+    final notebook = await repository.createNotebook(title: 'Mapped notes');
+    final now = DateTime.utc(2026, 8, 7);
+    final bootstrap = CloudSyncBootstrap(
+      inventory: SyncLibraryInventory(notebookIds: [notebook.id]),
+      baseCursor: 'cursor-1',
+      folders: const [],
+      notebooks: [
+        CloudSyncNotebook(
+          id: notebook.id,
+          folderId: null,
+          title: notebook.title,
+          layoutMode: 'paged',
+          isArchived: false,
+          revision: 3,
+          contentHash: 'a' * 64,
+          content: const {},
+          conflictOf: null,
+          createdAt: now,
+          updatedAt: now,
+        ),
+      ],
+      pages: [
+        CloudSyncPage(
+          id: 'remote-page-1',
+          notebookId: notebook.id,
+          position: 0,
+          width: 768,
+          height: 1024,
+          coordinateSpaceVersion: 1,
+          rotationQuarterTurns: 0,
+          template: 'blank',
+          revision: 4,
+          contentHash: 'b' * 64,
+          content: const {},
+          conflictOf: null,
+          createdAt: now,
+          updatedAt: now,
+        ),
+      ],
+      infiniteCanvases: const [],
+      assets: const [],
+    );
+    final store = FileSyncResourceMapStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    );
+
+    await store.replaceAll(
+      await buildSyncResourceMappings(
+        repository: repository,
+        bootstrap: bootstrap,
+      ),
+    );
+
+    final restartedStore = FileSyncResourceMapStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    );
+    final page = await restartedStore.find(
+      pageSyncLocalKey(notebook.id, notebook.pageIds.single),
+    );
+    expect(page?.resourceType, SyncResourceType.page);
+    expect(page?.remoteResourceId, 'remote-page-1');
+    expect(page?.revision, 4);
+
+    await restartedStore.updateRemote(
+      resourceType: SyncResourceType.page,
+      remoteResourceId: 'remote-page-1',
+      revision: 5,
+      contentHash: 'c' * 64,
+    );
+    expect((await restartedStore.find(page!.localKey))?.revision, 5);
+  });
+}

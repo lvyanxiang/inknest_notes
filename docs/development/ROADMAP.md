@@ -220,5 +220,6 @@ documents/
 
 ## Current Focus
 
-Milestone 8 is active. Continue Phase 5 first-sign-in Merge with local-only
-upload and shared-Revision reconciliation before background incremental sync.
+Milestone 8 is active. Continue Phase 5 incremental sync by extending the
+working page-save `/sync/commit` queue to notebook metadata and infinite canvas,
+then reconcile shared pull changes, deletes, conflicts, and Tombstones.

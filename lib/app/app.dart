@@ -8,6 +8,7 @@ import 'package:inknest_notes/storage/file_notebook_repository.dart';
 import 'package:inknest_notes/storage/notebook_repository.dart';
 import 'package:inknest_notes/sync/first_sign_in_sync_service.dart';
 import 'package:inknest_notes/sync/inknest_api_client.dart';
+import 'package:inknest_notes/sync/sync_mutation_tracker.dart';
 import 'package:path_provider/path_provider.dart';
 
 class InkNestApp extends StatefulWidget {
@@ -72,8 +73,13 @@ class _InkNestAppState extends State<InkNestApp> {
     }
 
     final documentsDirectory = await getApplicationDocumentsDirectory();
+    final mutationTracker = SyncMutationTracker(
+      rootDirectory: documentsDirectory,
+      activeSession: () => _authController.session,
+    );
     final repository = FileNotebookRepository(
       rootDirectory: documentsDirectory,
+      onPagePersisted: mutationTracker.pageSaved,
     );
     final apiClient = _ownedApiClient;
     return _AppResources(
