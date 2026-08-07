@@ -87,6 +87,11 @@ class InMemoryNotebookRepository implements NotebookRepository {
 
   @override
   Future<void> deleteFolder(NotebookFolder folder) async {
+    await applySyncedFolderDeletion(folder);
+  }
+
+  @override
+  Future<void> applySyncedFolderDeletion(NotebookFolder folder) async {
     _folders.removeWhere((existing) => existing.id == folder.id);
     for (final notebook in _notebooks.toList()) {
       if (notebook.folderId == folder.id) {

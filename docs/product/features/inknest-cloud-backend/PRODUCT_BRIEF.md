@@ -239,8 +239,10 @@ The first slice sets no retention period and performs no physical cleanup.
   local frozen operation. It never silently chooses the latest request.
 - Folder creation and rename use their own Revision, Content Hash, durable
   metadata operation, and normal change pull. Concurrent renames preserve the
-  local frozen operation instead of overwriting either name. Folder deletion,
-  page ordering, and canvas background remain outside this slice.
+  local frozen operation instead of overwriting either name. Folder deletion
+  removes only the organizer and moves every contained notebook to the root on
+  all devices; it is not a recoverable notebook deletion. Page ordering and
+  canvas background remain outside this slice.
 
 ## Acceptance Criteria
 
@@ -361,8 +363,9 @@ The first slice sets no retention period and performs no physical cleanup.
   rewritten to cloud IDs and unuploaded attachment references blocked.
   Notebook title, archive state, and placement among already synchronized
   folders now share the same durable queue and explicit three-way metadata
-  contract. Folder creation/rename now use the same durable incremental flow;
-  folder deletion, page structure, canvas background, attachment
+  contract. Folder creation/rename/delete now use the same durable incremental
+  flow; deleting a folder keeps its notebooks at the library root. Page
+  structure, canvas background, attachment
   upload, and divergent canvas recovery remain later contract slices. Existing
   notebook/page/canvas content now also downloads from another device when the
   change feed proves a continuous Revision chain and bootstrap structure still

@@ -5,19 +5,16 @@
 - Milestone: Backend Phase 5 incremental-sync App integration is in progress;
   initialized sessions now push saved page, notebook-content, and infinite-
   canvas edits, explicit notebook title/archive/existing-folder metadata,
-  incremental folder creation/rename,
+  incremental folder creation/rename/deletion,
   mapped whole-notebook deletes, and structurally safe trailing-page deletes
   before applying safe `/sync/changes` updates.
-- Next task: Add safe incremental folder deletion, including moving contained
-  notebooks to the root on every device, before page-order and canvas-
-  background contracts.
-  Arbitrary middle-page deletion and standalone canvas deletion remain blocked
-  on their corresponding structural contracts.
-- Last completed: Existing folder creation and rename actions now use the
-  durable incremental queue. Folders have server-owned Revision/Content Hash;
-  `/sync/commit` creates or renames them atomically, rejects concurrent rename
-  with `sync_folder_metadata_conflict`, and `/sync/changes` applies new or
-  continuously renamed folders without adding new shelf controls.
+- Next task: Define and connect the page-structure contract for page ordering
+  and safe middle-page deletion before the canvas-background contract.
+  Standalone canvas deletion remains blocked on its structural contract.
+- Last completed: Existing Delete Folder now enters the durable incremental
+  queue. `/sync/commit` atomically moves contained notebooks to the root and
+  deletes only the organizer; `/sync/changes` applies or confirms that result
+  on every device without adding the folder to Recently Deleted.
 
 ## Decisions
 
@@ -153,9 +150,10 @@
   IDs. Page saves remain locally successful if queue-sidecar persistence fails.
 - Treat `/sync/commit` as a content plus explicit notebook-metadata contract.
   Notebook title, archive state, and an already-synchronized folder ID travel
-  in `metadata/baseMetadata`, never inside content. Folder create/rename uses
-  its own revisioned metadata operation; folder deletion, page order, and
-  canvas background remain unsupported and must not be claimed as synchronized.
+  in `metadata/baseMetadata`, never inside content. Folder create/rename/delete
+  uses its own revisioned operation; deleting a folder moves its notebooks to
+  the root and never creates a Tombstone. Page order and canvas background
+  remain unsupported and must not be claimed as synchronized.
   Queue notebook/canvas content only when every page/asset
   reference can be rewritten to verified cloud state.
 - Limit incremental page deletion to a mapped trailing page while at least one
@@ -780,6 +778,11 @@
   synchronization; the backend passes 51 unit/API tests and 15 PostgreSQL/
   MinIO integration tests. Alembic upgrades both the development database and
   an independent empty database to `20260807_0013`, with no schema drift.
+- `flutter test` passes with 257 tests after safe folder deletion
+  synchronization; the backend passes 52 unit/API tests and 15 PostgreSQL/
+  MinIO integration tests. Focused coverage proves unsent-create cancellation,
+  mapped delete queuing, cross-device root movement, atomic server changes, and
+  exact idempotent replay. Ruff, mypy, Flutter analysis, and diff checks pass.
 
 ## Notes
 

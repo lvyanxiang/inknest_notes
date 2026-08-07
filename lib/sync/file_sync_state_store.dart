@@ -235,6 +235,22 @@ class FileSyncStateStore {
     });
   }
 
+  Future<bool> cancelPendingFolderCreation(String resourceId) {
+    return _mutate((state) {
+      final index = state.pendingOperations.indexWhere(
+        (operation) =>
+            operation.resourceType == SyncResourceType.folder &&
+            operation.resourceId == resourceId &&
+            operation.operation == SyncOperationKind.upsert &&
+            operation.baseRevision == 0 &&
+            operation.baseMetadata == null,
+      );
+      if (index == -1) return false;
+      state.pendingOperations.removeAt(index);
+      return true;
+    });
+  }
+
   Future<SyncCommitBatch?> prepareNextCommit({int maxOperations = 100}) {
     if (maxOperations < 1 || maxOperations > 100) {
       throw ArgumentError.value(

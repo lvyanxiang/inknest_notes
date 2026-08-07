@@ -437,6 +437,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
     if (pullResult.confirmedLocalPageDeletionCount > 0) {
       return '已确认本机的页面删除同步到云端。';
     }
+    if (pullResult.deletedFolderCount > 0) {
+      return '已同步其他设备的文件夹删除；其中的笔记已移回资料库根目录。';
+    }
+    if (pullResult.confirmedLocalFolderDeletionCount > 0) {
+      return '已确认本机的文件夹删除同步到云端；其中的笔记仍保留在资料库。';
+    }
     if (pullResult.appliedSharedResourceCount > 0) {
       return '已上传 ${pushResult.uploadedOperationCount} 项本地更改，'
           '同步 ${pullResult.changeCount} 项云端更改，更新 '
@@ -1298,7 +1304,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(_syncStatus.message)));
-      } else if (pullResult.confirmedLocalDeletionCount > 0) {
+      } else if (pullResult.confirmedLocalDeletionCount > 0 ||
+          pullResult.confirmedLocalFolderDeletionCount > 0) {
         setState(() {
           _syncStatus = const _LibrarySyncStatus(
             _LibrarySyncPhase.completed,
@@ -1306,7 +1313,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
           );
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('已将删除同步到云端，其他设备将在下次同步时移除这本笔记。')),
+          SnackBar(
+            content: Text(
+              pullResult.confirmedLocalFolderDeletionCount > 0
+                  ? '已将文件夹删除同步到云端；笔记仍保留在资料库。'
+                  : '已将删除同步到云端，其他设备将在下次同步时移除这本笔记。',
+            ),
+          ),
         );
       } else if (pullResult.status ==
               IncrementalSyncPullStatus.requiresReconciliation ||

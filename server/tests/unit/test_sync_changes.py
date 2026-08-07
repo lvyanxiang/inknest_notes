@@ -467,6 +467,106 @@ async def test_sync_commit_creates_and_renames_folder_with_conflict_guard(
     assert (stored.name, stored.revision) == ("Renamed", 2)
 
 
+async def test_sync_commit_deletes_folder_and_moves_notebooks_to_root(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    registered = await register(client, "sync-folder-delete@example.com")
+    user_id = UUID(registered["user"]["id"])
+    device_id = UUID(registered["device"]["id"])
+    headers = bearer(registered["accessToken"])
+    initial_changes = await client.get("/api/v1/sync/changes", headers=headers)
+    created = await client.post(
+        "/api/v1/sync/commit",
+        headers=headers,
+        json={
+            "deviceId": str(device_id),
+            "idempotencyKey": "folder-delete-create",
+            "baseCursor": initial_changes.json()["nextCursor"],
+            "operations": [
+                {
+                    "operationId": "create-folder",
+                    "operation": "upsert",
+                    "resourceType": "folder",
+                    "resourceId": "folder-to-delete",
+                    "baseRevision": 0,
+                    "metadata": {"name": "Projects"},
+                }
+            ],
+        },
+    )
+    assert created.status_code == 200
+    notebook = await LibraryRepository(db_session).create_notebook(
+        user_id=user_id,
+        notebook_id="folder-delete-notebook",
+        title="Plan",
+        layout_mode="paged",
+        folder_id="folder-to-delete",
+    )
+    notebook_id = notebook.id
+    await ContentRepository(db_session).save_notebook_content(
+        user_id=user_id,
+        notebook_id=notebook_id,
+        base_revision=0,
+        content={},
+        device_id=device_id,
+    )
+    await db_session.commit()
+    before_delete = await client.get("/api/v1/sync/changes", headers=headers)
+    payload = {
+        "deviceId": str(device_id),
+        "idempotencyKey": "folder-delete-commit",
+        "baseCursor": before_delete.json()["nextCursor"],
+        "operations": [
+            {
+                "operationId": "delete-folder",
+                "operation": "delete",
+                "resourceType": "folder",
+                "resourceId": "folder-to-delete",
+                "baseRevision": 1,
+            }
+        ],
+    }
+    deleted = await client.post("/api/v1/sync/commit", headers=headers, json=payload)
+    replayed = await client.post("/api/v1/sync/commit", headers=headers, json=payload)
+    bootstrap = await client.get("/api/v1/sync/bootstrap", headers=headers)
+    after_delete = await client.get(
+        "/api/v1/sync/changes",
+        headers=headers,
+        params={"cursor": before_delete.json()["nextCursor"]},
+    )
+    db_session.expire_all()
+    stored_folder = await db_session.scalar(
+        select(Folder).where(Folder.id == "folder-to-delete")
+    )
+    stored_notebook = await db_session.scalar(
+        select(Notebook).where(Notebook.id == notebook_id)
+    )
+
+    assert deleted.status_code == 200
+    assert deleted.json()["results"][0] == {
+        "operationId": "delete-folder",
+        "resourceType": "folder",
+        "resourceId": "folder-to-delete",
+        "revision": 2,
+        "contentHash": created.json()["results"][0]["contentHash"],
+        "changed": True,
+        "outcome": "deleted",
+        "conflict": None,
+        "tombstone": None,
+    }
+    assert replayed.json() == {**deleted.json(), "replayed": True}
+    assert stored_folder is None
+    assert stored_notebook is not None
+    assert (stored_notebook.folder_id, stored_notebook.revision) == (None, 2)
+    assert bootstrap.json()["folderIds"] == []
+    assert bootstrap.json()["notebooks"][0]["folderId"] is None
+    assert [
+        (change["resourceType"], change["operation"])
+        for change in after_delete.json()["changes"]
+    ] == [("notebook", "upsert"), ("folder", "delete")]
+
+
 async def test_failed_sync_batch_rolls_back_prior_operations_and_retry_reservation(
     client: AsyncClient,
     db_session: AsyncSession,

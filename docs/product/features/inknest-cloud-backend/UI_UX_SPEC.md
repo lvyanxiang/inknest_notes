@@ -103,9 +103,11 @@ continue-local state without overwriting either side.
    writing.
 5. A local edit containing an attachment not yet verified in cloud remains
    local and does not claim upload success. Existing folder creation/rename
-   uses the same background status and retry flow without new controls. Folder
-   deletion, page structure, and canvas background remain local until their
-   explicit contracts exist.
+   and deletion use the same background status and retry flow without new
+   controls. Deleting a folder retains its existing confirmation, moves its
+   notebooks to the library root, and never appears in Recently Deleted. Page
+   structure and canvas background remain local until their explicit contracts
+   exist.
 
 ### Conflict recovery
 
@@ -301,7 +303,9 @@ continue-local state without overwriting either side.
   Existing New Folder and Rename actions now also queue folder metadata. A new
   or renamed folder appears on another device through the normal shelf refresh;
   a concurrent rename uses the same non-blocking failed/retry status and keeps
-  the local operation. Folder deletion remains local-only in this slice.
+  the local operation. Existing Delete Folder uses the same flow: remote devices
+  remove the folder and show its notebooks at the root, with concise sync-status
+  feedback and no additional shelf control.
 - Intentional deviations: The server reserves the copy ID immediately but only
   materializes a normal notebook/page when the user chooses Keep Both. This
   avoids temporary duplicate library entries while preserving both snapshots.

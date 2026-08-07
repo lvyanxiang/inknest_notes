@@ -382,7 +382,24 @@ class SyncService:
     ) -> SyncCommitOperationResult:
         if operation.operation == "delete":
             if operation.resource_type == "folder":
-                raise RuntimeError("validated folder delete is unsupported")
+                try:
+                    folder_delete_result = await self._content.delete_folder(
+                        user_id=user_id,
+                        device_id=device_id,
+                        folder_id=operation.resource_id,
+                        base_revision=operation.base_revision,
+                    )
+                except (LibraryResourceNotFoundError, RevisionConflictError) as error:
+                    raise SyncOperationFailedError(operation, error) from error
+                return SyncCommitOperationResult(
+                    operation_id=operation.operation_id,
+                    resource_type=operation.resource_type,
+                    resource_id=operation.resource_id,
+                    revision=folder_delete_result.revision,
+                    content_hash=folder_delete_result.content_hash,
+                    changed=folder_delete_result.created_revision,
+                    outcome="deleted",
+                )
             try:
                 delete_result = await self._tombstones.delete(
                     user_id=user_id,

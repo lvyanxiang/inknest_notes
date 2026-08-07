@@ -22,6 +22,7 @@ typedef NotebookContentPersistedCallback =
 typedef NotebookMetadataPersistedCallback =
     Future<void> Function(Notebook notebook);
 typedef FolderPersistedCallback = Future<void> Function(NotebookFolder folder);
+typedef FolderDeletedCallback = Future<void> Function(NotebookFolder folder);
 typedef InfiniteCanvasPersistedCallback =
     Future<void> Function(Notebook notebook, InfiniteCanvasDocument document);
 typedef NotebookDeletedCallback = Future<void> Function(Notebook notebook);
@@ -36,6 +37,7 @@ class FileNotebookRepository implements NotebookRepository {
     this.onNotebookContentPersisted,
     this.onNotebookMetadataPersisted,
     this.onFolderPersisted,
+    this.onFolderDeleted,
     this.onInfiniteCanvasPersisted,
     this.onNotebookDeleted,
     this.onPageDeleted,
@@ -52,6 +54,7 @@ class FileNotebookRepository implements NotebookRepository {
   final NotebookContentPersistedCallback? onNotebookContentPersisted;
   final NotebookMetadataPersistedCallback? onNotebookMetadataPersisted;
   final FolderPersistedCallback? onFolderPersisted;
+  final FolderDeletedCallback? onFolderDeleted;
   final InfiniteCanvasPersistedCallback? onInfiniteCanvasPersisted;
   final NotebookDeletedCallback? onNotebookDeleted;
   final PageDeletedCallback? onPageDeleted;
@@ -141,12 +144,37 @@ class FileNotebookRepository implements NotebookRepository {
   @override
   Future<void> deleteFolder(NotebookFolder folder) async {
     final folders = await _readFolders();
+    final notebooks = await _readIndex();
+    final updatedFolders = [
+      for (final existingFolder in folders)
+        if (existingFolder.id != folder.id) existingFolder,
+    ];
+    final updatedNotebooks = [
+      for (final notebook in notebooks)
+        if (notebook.folderId == folder.id)
+          notebook.copyWith(folderId: null, updatedAt: DateTime.now())
+        else
+          notebook,
+    ];
+    try {
+      await _writeFolders(updatedFolders);
+      await _writeIndex(updatedNotebooks);
+      await onFolderDeleted?.call(folder);
+    } on Object {
+      await _writeFolders(folders);
+      await _writeIndex(notebooks);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> applySyncedFolderDeletion(NotebookFolder folder) async {
+    final folders = await _readFolders();
+    final notebooks = await _readIndex();
     await _writeFolders([
       for (final existingFolder in folders)
         if (existingFolder.id != folder.id) existingFolder,
     ]);
-
-    final notebooks = await _readIndex();
     await _writeIndex([
       for (final notebook in notebooks)
         if (notebook.folderId == folder.id)

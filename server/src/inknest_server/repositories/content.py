@@ -172,6 +172,92 @@ class ContentRepository:
             created_revision=True,
         )
 
+    async def delete_folder(
+        self,
+        *,
+        user_id: UUID,
+        folder_id: str,
+        base_revision: int,
+        device_id: UUID,
+    ) -> ContentSaveResult:
+        """Delete an organizer after moving every contained notebook to root."""
+        await self._ensure_active_device_owned(user_id=user_id, device_id=device_id)
+        folder = await self._session.scalar(
+            select(Folder)
+            .where(Folder.id == folder_id, Folder.user_id == user_id)
+            .with_for_update()
+        )
+        if folder is None:
+            raise LibraryResourceNotFoundError("folder", folder_id)
+        if folder.revision != base_revision:
+            raise RevisionConflictError(
+                expected_revision=base_revision,
+                current_revision=folder.revision,
+            )
+
+        notebooks = list(
+            await self._session.scalars(
+                select(Notebook)
+                .where(
+                    Notebook.user_id == user_id,
+                    Notebook.folder_id == folder_id,
+                )
+                .with_for_update()
+            )
+        )
+        for notebook in notebooks:
+            if notebook.deleted_at is not None:
+                notebook.folder_id = None
+                continue
+            next_revision = notebook.revision + 1
+            next_hash = (
+                notebook.content_hash
+                if notebook.revision > 0
+                else calculate_content_hash(notebook.content)
+            )
+            self._session.add(
+                ContentRevision(
+                    user_id=user_id,
+                    resource_type="notebook",
+                    resource_id=notebook.id,
+                    revision=next_revision,
+                    content_hash=next_hash,
+                    content=notebook.content,
+                    device_id=device_id,
+                )
+            )
+            notebook.folder_id = None
+            notebook.revision = next_revision
+            notebook.content_hash = next_hash
+            await self._session.flush()
+            await self._changes.append_upsert(
+                user_id=user_id,
+                resource_type="notebook",
+                resource_id=notebook.id,
+                payload=notebook_snapshot(notebook),
+                revision=notebook.revision,
+                content_hash=notebook.content_hash,
+                device_id=device_id,
+            )
+
+        deleted_revision = folder.revision + 1
+        deleted_hash = folder.content_hash
+        await self._changes.append_delete(
+            user_id=user_id,
+            resource_type="folder",
+            resource_id=folder.id,
+            revision=deleted_revision,
+            content_hash=deleted_hash,
+            device_id=device_id,
+        )
+        await self._session.delete(folder)
+        await self._session.flush()
+        return ContentSaveResult(
+            revision=deleted_revision,
+            content_hash=deleted_hash,
+            created_revision=True,
+        )
+
     async def save_notebook_content(
         self,
         *,

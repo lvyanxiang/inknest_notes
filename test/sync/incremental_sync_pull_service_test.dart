@@ -399,6 +399,109 @@ void main() {
     expect((await stateStore.loadSnapshot()).lastAppliedCursor, 'cursor-2');
   });
 
+  test('deletes a shared folder and moves its notebook to root', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'inknest-pull-folder-delete-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final repository = FileNotebookRepository(rootDirectory: root);
+    final folder = await repository.createFolder('Projects');
+    final created = await repository.createNotebook(title: 'Plan');
+    final notebook = await repository.moveNotebookToFolder(created, folder.id);
+    final stateStore = FileSyncStateStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    );
+    await stateStore.markChangesPageApplied('cursor-1');
+    await FileSyncResourceMapStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    ).replaceAll([
+      SyncResourceMapping(
+        localKey: folderSyncLocalKey(folder.id),
+        resourceType: SyncResourceType.folder,
+        remoteResourceId: folder.id,
+        revision: 1,
+        contentHash: 'f' * 64,
+        folderMetadata: {'name': folder.name},
+      ),
+      SyncResourceMapping(
+        localKey: notebookSyncLocalKey(notebook.id),
+        resourceType: SyncResourceType.notebook,
+        remoteResourceId: notebook.id,
+        revision: 1,
+        contentHash: 'e' * 64,
+        notebookMetadata: {
+          'title': notebook.title,
+          'isArchived': false,
+          'folderId': folder.id,
+        },
+      ),
+    ]);
+    final now = DateTime.utc(2026, 8, 7);
+    final cloud = _PullCloudClient(
+      bootstrapSnapshot: CloudSyncBootstrap(
+        inventory: SyncLibraryInventory(notebookIds: [notebook.id]),
+        baseCursor: 'bootstrap-cursor',
+        folders: const [],
+        notebooks: [
+          CloudSyncNotebook(
+            id: notebook.id,
+            folderId: null,
+            title: notebook.title,
+            layoutMode: 'paged',
+            isArchived: false,
+            revision: 2,
+            contentHash: 'e' * 64,
+            content: const {},
+            conflictOf: null,
+            createdAt: notebook.createdAt,
+            updatedAt: now,
+          ),
+        ],
+        pages: const [],
+        infiniteCanvases: const [],
+        assets: const [],
+      ),
+      pages: [
+        CloudSyncChangePage(
+          changes: [
+            _change(
+              'notebook',
+              notebook.id,
+              revision: 2,
+              contentHash: 'e' * 64,
+            ),
+            _change(
+              'folder',
+              folder.id,
+              revision: 2,
+              contentHash: 'f' * 64,
+              operation: CloudSyncChangeOperation.delete,
+            ),
+          ],
+          nextCursor: 'cursor-2',
+          hasMore: false,
+        ),
+      ],
+    );
+
+    final result = await IncrementalSyncPullService(
+      repository: repository,
+      cloudClient: cloud,
+      rootDirectory: root,
+    ).pull(userId: 'user-1', deviceId: 'device-1');
+
+    expect(result.status, IncrementalSyncPullStatus.applied);
+    expect(result.deletedFolderCount, 1);
+    expect(await repository.listFolders(), isEmpty);
+    expect((await repository.listNotebooks()).single.id, notebook.id);
+    expect((await repository.listNotebooks()).single.folderId, isNull);
+    expect((await stateStore.loadSnapshot()).lastAppliedCursor, 'cursor-2');
+  });
+
   test('confirms a locally created folder and publishes its mapping', () async {
     final root = await Directory.systemTemp.createTemp(
       'inknest-pull-own-folder-',
@@ -1080,12 +1183,13 @@ CloudSyncChange _change(
   int revision = 1,
   String? contentHash,
   String deviceId = 'device-2',
+  CloudSyncChangeOperation operation = CloudSyncChangeOperation.upsert,
 }) {
   return CloudSyncChange(
     changeId: 'change-$resourceId',
     resourceType: CloudSyncChangeResourceType.fromApiValue(resourceType),
     resourceId: resourceId,
-    operation: CloudSyncChangeOperation.upsert,
+    operation: operation,
     revision: revision,
     contentHash: contentHash ?? 'a' * 64,
     payload: const {},

@@ -286,8 +286,10 @@ class SyncCommitOperation(SyncApiModel):
                 "content and metadata must be omitted for a delete operation"
             )
         if self.resource_type == "folder":
-            if self.operation != "upsert" or self.content is not None:
-                raise ValueError("folder synchronization supports metadata upsert only")
+            if self.operation == "delete":
+                return self
+            if self.content is not None:
+                raise ValueError("folder upsert does not support content")
             if not isinstance(self.metadata, SyncFolderMetadata):
                 raise ValueError("folder upsert requires folder metadata")
             if self.base_metadata is not None and not isinstance(

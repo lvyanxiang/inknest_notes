@@ -63,6 +63,8 @@ abstract class NotebookRepository {
 
   Future<NotebookFolder> applySyncedFolder(NotebookFolder folder);
 
+  Future<void> applySyncedFolderDeletion(NotebookFolder folder);
+
   Future<void> deleteFolder(NotebookFolder folder);
 
   Future<Notebook> createNotebook({

@@ -52,6 +52,11 @@ class SyncMutationTracker {
     return _enqueue(() => _trackFolder(folder));
   }
 
+  Future<void> folderDeleted(NotebookFolder folder) {
+    if (_suppressionDepth > 0) return Future.value();
+    return _enqueue(() => _trackFolderDeleted(folder));
+  }
+
   Future<void> infiniteCanvasSaved(
     Notebook notebook,
     InfiniteCanvasDocument document,
@@ -243,6 +248,43 @@ class SyncMutationTracker {
       resourceId: mapping.remoteResourceId,
       baseRevision: mapping.revision,
     );
+  }
+
+  Future<void> _trackFolderDeleted(NotebookFolder folder) async {
+    final session = activeSession();
+    if (session == null) return;
+    final stateStore = _stateStore(session);
+    final mapping = await _resourceMap(
+      session,
+    ).find(folderSyncLocalKey(folder.id));
+    if (mapping != null) {
+      if (mapping.resourceType != SyncResourceType.folder) return;
+      await stateStore.enqueueDelete(
+        resourceType: SyncResourceType.folder,
+        resourceId: mapping.remoteResourceId,
+        baseRevision: mapping.revision,
+      );
+      return;
+    }
+
+    if (await stateStore.cancelPendingFolderCreation(folder.id)) return;
+    final inFlightCreation = (await stateStore.loadSnapshot())
+        .inFlightBatch
+        ?.operations
+        .any(
+          (operation) =>
+              operation.resourceType == SyncResourceType.folder &&
+              operation.resourceId == folder.id &&
+              operation.operation == SyncOperationKind.upsert &&
+              operation.baseRevision == 0,
+        );
+    if (inFlightCreation ?? false) {
+      await stateStore.enqueueDelete(
+        resourceType: SyncResourceType.folder,
+        resourceId: folder.id,
+        baseRevision: 0,
+      );
+    }
   }
 
   Future<void> _trackPageDeleted(Notebook notebook, String pageId) async {

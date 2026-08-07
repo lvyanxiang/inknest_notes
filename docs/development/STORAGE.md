@@ -181,7 +181,11 @@ Folder creation and rename use metadata-only `folder` operations. A newly
 created folder starts without `baseMetadata`; a mapped rename retains the
 oldest applied `name` baseline while later local renames coalesce. The mapping
 is published only after the normal change pull confirms the authoritative
-folder snapshot. Folder deletion is not queued by this contract yet.
+folder snapshot. Deleting a mapped folder queues a content-free delete at its
+applied Revision. Deleting an unsent new folder cancels its pending create; if
+that create is already in flight, the delete waits pending and is rebased after
+the frozen commit succeeds. A remote folder delete removes only `folders.json`
+metadata and moves contained notebook index entries to the root.
 
 ## `sync/restore-recovery/<snapshot-id>/`
 

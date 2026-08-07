@@ -237,6 +237,79 @@ void main() {
   });
 
   test(
+    'deleting an unsent folder creation cancels the cloud operation',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'inknest-folder-delete-local-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      await FileSyncStateStore(
+        rootDirectory: root,
+        userId: 'user-1',
+        deviceId: 'device-1',
+      ).markChangesPageApplied('cursor-1');
+      final tracker = SyncMutationTracker(
+        rootDirectory: root,
+        activeSession: _session,
+      );
+      final repository = FileNotebookRepository(
+        rootDirectory: root,
+        onFolderPersisted: tracker.folderSaved,
+        onFolderDeleted: tracker.folderDeleted,
+      );
+
+      final folder = await repository.createFolder('Temporary');
+      await repository.deleteFolder(folder);
+
+      expect((await _state(root)).pendingOperations, isEmpty);
+    },
+  );
+
+  test('mapped folder deletion queues its applied revision', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'inknest-folder-delete-mapped-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final setupRepository = FileNotebookRepository(rootDirectory: root);
+    final folder = await setupRepository.createFolder('Projects');
+    await FileSyncStateStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    ).markChangesPageApplied('cursor-1');
+    await FileSyncResourceMapStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    ).replaceAll([
+      SyncResourceMapping(
+        localKey: folderSyncLocalKey(folder.id),
+        resourceType: SyncResourceType.folder,
+        remoteResourceId: 'remote-folder',
+        revision: 4,
+        contentHash: 'f' * 64,
+        folderMetadata: const {'name': 'Projects'},
+      ),
+    ]);
+    final tracker = SyncMutationTracker(
+      rootDirectory: root,
+      activeSession: _session,
+    );
+    final repository = FileNotebookRepository(
+      rootDirectory: root,
+      onFolderDeleted: tracker.folderDeleted,
+    );
+
+    await repository.deleteFolder(folder);
+
+    final operation = (await _state(root)).pendingOperations.single;
+    expect(operation.operation, SyncOperationKind.delete);
+    expect(operation.resourceType, SyncResourceType.folder);
+    expect(operation.resourceId, 'remote-folder');
+    expect(operation.baseRevision, 4);
+  });
+
+  test(
     'infinite canvas save queues content without structural background',
     () async {
       final root = await Directory.systemTemp.createTemp('inknest-canvas-');

@@ -338,8 +338,9 @@ Tombstone snapshots.
 
 ### Idempotent synchronization commits
 
-`POST /api/v1/sync/commit` writes explicit notebook metadata, complete JSON
-content, or soft-deletes existing notebooks, pages, and infinite canvases.
+`POST /api/v1/sync/commit` writes explicit folder/notebook metadata, complete
+JSON content, soft-deletes existing notebooks/pages/canvases, or deletes a
+folder organizer while retaining its notebooks at the root.
 First obtain and persist a cursor from
 `GET /sync/changes`, then submit a batch:
 
@@ -399,8 +400,22 @@ omits `baseMetadata`; rename includes the last applied name:
 }
 ```
 
-A concurrent rename returns `409 sync_folder_metadata_conflict`. Folder
-deletion remains outside the incremental contract.
+A concurrent rename returns `409 sync_folder_metadata_conflict`. Folder delete
+uses a content-free operation at the last applied Revision:
+
+```json
+{
+  "operationId": "folder-delete-1",
+  "operation": "delete",
+  "resourceType": "folder",
+  "resourceId": "folder-1",
+  "baseRevision": 2
+}
+```
+
+The transaction moves active contained notebooks to `folderId: null`, emits
+their new snapshots, and then emits the folder delete. It does not delete
+notebook content or create a Tombstone/Recently Deleted item.
 
 The whole batch uses one PostgreSQL transaction. A stale page or notebook with
 different content leaves the original unchanged and returns an operation result

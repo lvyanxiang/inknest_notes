@@ -8,6 +8,7 @@ import 'package:inknest_notes/sync/sync_bootstrap.dart';
 import 'package:inknest_notes/sync/sync_changes.dart';
 import 'package:inknest_notes/sync/sync_cloud_client.dart';
 import 'package:inknest_notes/sync/sync_conflicts.dart';
+import 'package:inknest_notes/sync/sync_folder_deletion_service.dart';
 import 'package:inknest_notes/sync/sync_resource_map_store.dart';
 import 'package:inknest_notes/sync/sync_restore_snapshot.dart';
 import 'package:inknest_notes/sync/sync_mutation_tracker.dart';
@@ -33,6 +34,8 @@ class IncrementalSyncPullResult {
     this.confirmedLocalDeletionCount = 0,
     this.deletedPageCount = 0,
     this.confirmedLocalPageDeletionCount = 0,
+    this.deletedFolderCount = 0,
+    this.confirmedLocalFolderDeletionCount = 0,
     this.receivedConflictCount = 0,
     this.pendingConflicts = const [],
     this.activeTombstones = const [],
@@ -47,6 +50,8 @@ class IncrementalSyncPullResult {
   final int confirmedLocalDeletionCount;
   final int deletedPageCount;
   final int confirmedLocalPageDeletionCount;
+  final int deletedFolderCount;
+  final int confirmedLocalFolderDeletionCount;
   final int receivedConflictCount;
   final List<CloudSyncConflict> pendingConflicts;
   final List<CloudSyncTombstone> activeTombstones;
@@ -55,7 +60,8 @@ class IncrementalSyncPullResult {
       downloadedNotebookCount > 0 ||
       appliedSharedResourceCount > 0 ||
       deletedNotebookCount > 0 ||
-      deletedPageCount > 0;
+      deletedPageCount > 0 ||
+      deletedFolderCount > 0;
 }
 
 /// Pulls all currently available change pages without advancing the local
@@ -243,6 +249,7 @@ class IncrementalSyncPullService {
           .toSet();
       SyncNotebookDeletionResult? notebookDeletion;
       SyncPageDeletionResult? pageDeletion;
+      SyncFolderDeletionResult? folderDeletion;
       if (deletionTypes.length == 1 &&
           deletionTypes.single == CloudSyncChangeResourceType.notebook) {
         notebookDeletion =
@@ -267,8 +274,23 @@ class IncrementalSyncPullService {
               userId: userId,
               deviceId: deviceId,
             );
+      } else if (deletionTypes.length == 1 &&
+          deletionTypes.single == CloudSyncChangeResourceType.folder) {
+        Future<SyncFolderDeletionResult?> applyFolderDeletion() =>
+            SyncFolderDeletionService(repository: repository).applyIfSafe(
+              changes: deletionChanges,
+              bootstrap: bootstrap,
+              mappings: mappings,
+              resourceMap: resourceMap,
+              deviceId: deviceId,
+            );
+        folderDeletion = mutationTracker == null
+            ? await applyFolderDeletion()
+            : await mutationTracker!.runWithoutTracking(applyFolderDeletion);
       }
-      if (notebookDeletion == null && pageDeletion == null) {
+      if (notebookDeletion == null &&
+          pageDeletion == null &&
+          folderDeletion == null) {
         return IncrementalSyncPullResult(
           status: IncrementalSyncPullStatus.requiresReconciliation,
           changeCount: allChanges.length,
@@ -299,6 +321,9 @@ class IncrementalSyncPullService {
         deletedPageCount: pageDeletion?.deletedPageCount ?? 0,
         confirmedLocalPageDeletionCount:
             pageDeletion?.confirmedLocalPageDeletionCount ?? 0,
+        deletedFolderCount: folderDeletion?.deletedFolderCount ?? 0,
+        confirmedLocalFolderDeletionCount:
+            folderDeletion?.confirmedLocalFolderDeletionCount ?? 0,
         receivedConflictCount: receivedConflictCount,
         pendingConflicts: pendingConflicts,
         activeTombstones: activeTombstones,
