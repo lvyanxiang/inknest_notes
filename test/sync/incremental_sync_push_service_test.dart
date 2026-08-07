@@ -11,6 +11,19 @@ import 'package:inknest_notes/sync/sync_state.dart';
 import 'package:inknest_notes/sync/sync_upload_models.dart';
 
 void main() {
+  test('parses a deleted commit outcome from the server contract', () {
+    final result = SyncContentCommitOperationResult.fromJson({
+      'operationId': 'delete-1',
+      'resourceType': 'notebook',
+      'resourceId': 'notebook-1',
+      'revision': 2,
+      'contentHash': 'a' * 64,
+      'outcome': 'deleted',
+    });
+
+    expect(result.outcome, 'deleted');
+  });
+
   test('uploads pending operations and persists returned revision', () async {
     final fixture = await _PushFixture.create();
     addTearDown(fixture.dispose);
@@ -59,6 +72,30 @@ void main() {
       fixture.cloud.requests[0].operationId,
     );
   });
+
+  test(
+    'uploads a notebook delete without advancing its mapped revision',
+    () async {
+      final fixture = await _PushFixture.create(delete: true);
+      addTearDown(fixture.dispose);
+
+      final result = await fixture.service.push(
+        userId: 'user-1',
+        deviceId: 'device-1',
+      );
+
+      expect(result.uploadedOperationCount, 1);
+      expect(fixture.cloud.requests.single.operation['operation'], 'delete');
+      expect(
+        fixture.cloud.requests.single.operation,
+        isNot(contains('content')),
+      );
+      expect(
+        (await fixture.resourceMap.find('notebook:notebook-1'))?.revision,
+        1,
+      );
+    },
+  );
 }
 
 class _PushFixture {
@@ -77,7 +114,10 @@ class _PushFixture {
   IncrementalSyncPushService get service =>
       IncrementalSyncPushService(cloudClient: cloud, rootDirectory: root);
 
-  static Future<_PushFixture> create({int failuresRemaining = 0}) async {
+  static Future<_PushFixture> create({
+    int failuresRemaining = 0,
+    bool delete = false,
+  }) async {
     final root = await Directory.systemTemp.createTemp('inknest-push-');
     final stateStore = FileSyncStateStore(
       rootDirectory: root,
@@ -86,12 +126,20 @@ class _PushFixture {
       idFactory: (prefix) => '$prefix-1',
     );
     await stateStore.markChangesPageApplied('cursor-1');
-    await stateStore.enqueueUpsert(
-      resourceType: SyncResourceType.page,
-      resourceId: 'remote-page-1',
-      baseRevision: 1,
-      content: const {'strokes': <Object?>[]},
-    );
+    if (delete) {
+      await stateStore.enqueueDelete(
+        resourceType: SyncResourceType.notebook,
+        resourceId: 'notebook-1',
+        baseRevision: 1,
+      );
+    } else {
+      await stateStore.enqueueUpsert(
+        resourceType: SyncResourceType.page,
+        resourceId: 'remote-page-1',
+        baseRevision: 1,
+        content: const {'strokes': <Object?>[]},
+      );
+    }
     final resourceMap = FileSyncResourceMapStore(
       rootDirectory: root,
       userId: 'user-1',
@@ -99,9 +147,11 @@ class _PushFixture {
     );
     await resourceMap.replaceAll([
       SyncResourceMapping(
-        localKey: 'page:local:page-1',
-        resourceType: SyncResourceType.page,
-        remoteResourceId: 'remote-page-1',
+        localKey: delete ? 'notebook:notebook-1' : 'page:local:page-1',
+        resourceType: delete
+            ? SyncResourceType.notebook
+            : SyncResourceType.page,
+        remoteResourceId: delete ? 'notebook-1' : 'remote-page-1',
         revision: 1,
         contentHash: 'a' * 64,
       ),
@@ -122,11 +172,13 @@ class _PushRequest {
     required this.idempotencyKey,
     required this.baseCursor,
     required this.operationId,
+    required this.operation,
   });
 
   final String idempotencyKey;
   final String baseCursor;
   final String operationId;
+  final Map<String, Object?> operation;
 }
 
 class _PushCloudClient implements FirstSignInCloudClient {
@@ -148,6 +200,7 @@ class _PushCloudClient implements FirstSignInCloudClient {
         idempotencyKey: idempotencyKey,
         baseCursor: baseCursor,
         operationId: operation['operationId']! as String,
+        operation: operation,
       ),
     );
     if (failuresRemaining > 0) {
@@ -164,7 +217,7 @@ class _PushCloudClient implements FirstSignInCloudClient {
           resourceId: operation['resourceId']! as String,
           revision: 2,
           contentHash: 'b' * 64,
-          outcome: 'applied',
+          outcome: operation['operation'] == 'delete' ? 'deleted' : 'applied',
         ),
       ],
     );

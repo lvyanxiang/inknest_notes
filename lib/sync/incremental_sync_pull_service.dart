@@ -26,6 +26,7 @@ class IncrementalSyncPullResult {
     this.downloadedAssetCount = 0,
     this.appliedSharedResourceCount = 0,
     this.deletedNotebookCount = 0,
+    this.confirmedLocalDeletionCount = 0,
   });
 
   final IncrementalSyncPullStatus status;
@@ -34,6 +35,7 @@ class IncrementalSyncPullResult {
   final int downloadedAssetCount;
   final int appliedSharedResourceCount;
   final int deletedNotebookCount;
+  final int confirmedLocalDeletionCount;
 
   bool get changedLocalLibrary =>
       downloadedNotebookCount > 0 ||
@@ -150,6 +152,7 @@ class IncrementalSyncPullService {
         status: IncrementalSyncPullStatus.applied,
         changeCount: changes.length,
         deletedNotebookCount: deletionResult.deletedNotebookCount,
+        confirmedLocalDeletionCount: deletionResult.confirmedLocalDeletionCount,
       );
     }
     final local = await readLocalSyncLibraryInventory(repository);

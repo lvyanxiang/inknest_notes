@@ -9,9 +9,13 @@ import 'package:inknest_notes/sync/sync_state.dart';
 import 'package:inknest_notes/sync/sync_tombstones.dart';
 
 class SyncNotebookDeletionResult {
-  const SyncNotebookDeletionResult({required this.deletedNotebookCount});
+  const SyncNotebookDeletionResult({
+    required this.deletedNotebookCount,
+    required this.confirmedLocalDeletionCount,
+  });
 
   final int deletedNotebookCount;
+  final int confirmedLocalDeletionCount;
 }
 
 class SyncNotebookDeletionService {
@@ -107,10 +111,15 @@ class SyncNotebookDeletionService {
           }
         }
       }
+      final locallyDeleted =
+          notebook == null &&
+          !sourceExists &&
+          !recoveryExists &&
+          change.deviceId == deviceId;
       final baselineRevision = mapping?.revision ?? tombstone.resourceRevision;
       final baselineHash = mapping?.contentHash ?? tombstone.contentHash;
-      if (notebook == null ||
-          (!alreadyRecovered && mapping == null) ||
+      if ((notebook == null && !locallyDeleted) ||
+          (!alreadyRecovered && !locallyDeleted && mapping == null) ||
           change.revision != baselineRevision + 1 ||
           change.contentHash != baselineHash ||
           tombstone.resourceRevision != baselineRevision) {
@@ -123,6 +132,7 @@ class SyncNotebookDeletionService {
           source: source,
           recovery: recovery,
           alreadyRecovered: alreadyRecovered,
+          locallyDeleted: locallyDeleted,
         ),
       );
     }
@@ -131,6 +141,7 @@ class SyncNotebookDeletionService {
     final moved = <_NotebookDeletionPlan>[];
     try {
       for (final plan in plans) {
+        if (plan.locallyDeleted) continue;
         if (!plan.alreadyRecovered) {
           if (!await plan.source.exists() || await plan.recovery.exists()) {
             throw StateError(
@@ -144,7 +155,7 @@ class SyncNotebookDeletionService {
         await File(
           '${plan.recovery.parent.path}/local-notebook.json',
         ).writeAsString(
-          const JsonEncoder.withIndent('  ').convert(plan.notebook.toJson()),
+          const JsonEncoder.withIndent('  ').convert(plan.notebook!.toJson()),
           flush: true,
         );
         await File('${plan.recovery.parent.path}/tombstone.json').writeAsString(
@@ -154,7 +165,7 @@ class SyncNotebookDeletionService {
           flush: true,
         );
       }
-      final deletedIds = plans.map((plan) => plan.notebook.id).toSet();
+      final deletedIds = plans.map((plan) => plan.tombstone.resourceId).toSet();
       await _replaceJson(indexFile, [
         for (final notebook in notebooks)
           if (!deletedIds.contains(notebook.id)) notebook.toJson(),
@@ -168,7 +179,12 @@ class SyncNotebookDeletionService {
       }
       rethrow;
     }
-    return SyncNotebookDeletionResult(deletedNotebookCount: plans.length);
+    return SyncNotebookDeletionResult(
+      deletedNotebookCount: plans.where((plan) => !plan.locallyDeleted).length,
+      confirmedLocalDeletionCount: plans
+          .where((plan) => plan.locallyDeleted)
+          .length,
+    );
   }
 
   SyncResourceMapping? _mappingFor(
@@ -224,11 +240,13 @@ class _NotebookDeletionPlan {
     required this.source,
     required this.recovery,
     required this.alreadyRecovered,
+    required this.locallyDeleted,
   });
 
-  final Notebook notebook;
+  final Notebook? notebook;
   final CloudSyncTombstone tombstone;
   final Directory source;
   final Directory recovery;
   final bool alreadyRecovered;
+  final bool locallyDeleted;
 }

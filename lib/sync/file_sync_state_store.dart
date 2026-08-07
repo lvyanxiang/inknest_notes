@@ -89,6 +89,7 @@ class FileSyncStateStore {
       );
       if (existingIndex != -1) {
         final updated = state.pendingOperations[existingIndex].copyWith(
+          operation: SyncOperationKind.upsert,
           content: content,
         );
         state.pendingOperations[existingIndex] = updated;
@@ -101,6 +102,53 @@ class FileSyncStateStore {
         resourceId: resourceId,
         baseRevision: baseRevision,
         content: content,
+      );
+      state.pendingOperations.add(operation);
+      return operation;
+    });
+  }
+
+  Future<PendingSyncOperation> enqueueDelete({
+    required SyncResourceType resourceType,
+    required String resourceId,
+    required int baseRevision,
+  }) {
+    if (resourceId.trim().isEmpty) {
+      throw ArgumentError.value(
+        resourceId,
+        'resourceId',
+        'Resource ID must not be empty.',
+      );
+    }
+    if (baseRevision < 0) {
+      throw ArgumentError.value(
+        baseRevision,
+        'baseRevision',
+        'Base revision must be non-negative.',
+      );
+    }
+
+    return _mutate((state) {
+      final resourceKey = '${resourceType.apiValue}:$resourceId';
+      final existingIndex = state.pendingOperations.indexWhere(
+        (operation) => operation.resourceKey == resourceKey,
+      );
+      if (existingIndex != -1) {
+        final updated = state.pendingOperations[existingIndex].copyWith(
+          operation: SyncOperationKind.delete,
+          content: const {},
+        );
+        state.pendingOperations[existingIndex] = updated;
+        return updated;
+      }
+
+      final operation = PendingSyncOperation(
+        operationId: _idFactory('operation'),
+        operation: SyncOperationKind.delete,
+        resourceType: resourceType,
+        resourceId: resourceId,
+        baseRevision: baseRevision,
+        content: const {},
       );
       state.pendingOperations.add(operation);
       return operation;

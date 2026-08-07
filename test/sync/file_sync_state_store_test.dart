@@ -99,6 +99,41 @@ void main() {
     },
   );
 
+  test('coalesces an unsent upsert into a content-free delete', () async {
+    final upsert = await store.enqueueUpsert(
+      resourceType: SyncResourceType.notebook,
+      resourceId: 'notebook-1',
+      baseRevision: 7,
+      content: const {'bookmarkedPageIds': <Object?>[]},
+    );
+    final deletion = await store.enqueueDelete(
+      resourceType: SyncResourceType.notebook,
+      resourceId: 'notebook-1',
+      baseRevision: 99,
+    );
+
+    expect(deletion.operationId, upsert.operationId);
+    expect(deletion.operation, SyncOperationKind.delete);
+    expect(deletion.baseRevision, 7);
+    expect(deletion.toJson(), {
+      'operationId': 'operation-1',
+      'operation': 'delete',
+      'resourceType': 'notebook',
+      'resourceId': 'notebook-1',
+      'baseRevision': 7,
+    });
+
+    final reloaded = FileSyncStateStore(
+      rootDirectory: tempDirectory,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    );
+    expect(
+      (await reloaded.loadSnapshot()).pendingOperations.single.operation,
+      SyncOperationKind.delete,
+    );
+  });
+
   test('persists one exact in-flight request for safe network retry', () async {
     await store.markChangesPageApplied('cursor-before-commit');
     await store.enqueueUpsert(

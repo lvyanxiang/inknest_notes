@@ -205,6 +205,11 @@ The first slice sets no retention period and performs no physical cleanup.
   page/canvas deletes, conflicts, and unsafe batches stop before mutation and
   leave the original Cursor unchanged; the App never uses unconditional
   last-writer-wins replacement.
+- Deleting a mapped whole notebook first persists a content-free delete in the
+  account/device queue, then removes the local shelf entry. The App immediately
+  attempts commit and pull confirmation when online; response loss preserves
+  the exact in-flight request, and offline work retries on the next initialized
+  sync. A queue-write failure leaves the notebook on the shelf.
 - On session restore, an initialized device attempts this pull before showing
   first-sign-in Merge again. Successful additive downloads refresh the library;
   offline or blocked reconciliation leaves local notes available.

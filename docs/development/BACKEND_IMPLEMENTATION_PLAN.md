@@ -431,8 +431,10 @@ checksums.sha256
     页面/附件引用可解析，多资源失败时回滚，完整成功后才刷新资源映射和 Cursor。
   - [x] 应用远端整本笔记的 delete + active Tombstone：校验连续 Revision、映射 Hash
     和最终 bootstrap，先保留完整本地恢复副本，再移出书架并推进 Cursor；重复应用幂等。
-  - [ ] 将本地整本笔记删除加入 `/sync/commit` 队列，并应用页面/画布 Tombstone；当前
-    不可安全表示的删除继续保留旧 Cursor，不猜测性丢弃内容。
+  - [x] 将本地整本笔记删除加入 `/sync/commit` 队列：先持久化无 content 的 delete，
+    在线立即上传，断网与响应丢失按原批次重试，并安全确认本设备产生的 Tombstone。
+  - [ ] 应用页面/画布 Tombstone；当前不可安全表示的删除继续保留旧 Cursor，不猜测性
+    丢弃内容。
   - [ ] 应用并展示冲突变更。
 - [ ] 恢复前快照和失败回滚。
 

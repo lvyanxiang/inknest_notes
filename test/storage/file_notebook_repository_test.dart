@@ -676,6 +676,30 @@ void main() {
     },
   );
 
+  test(
+    'keeps a notebook when its deletion cannot enter the sync queue',
+    () async {
+      final trackedRepository = FileNotebookRepository(
+        rootDirectory: tempDirectory,
+        onNotebookDeleted: (_) async => throw StateError('queue unavailable'),
+      );
+      final notebook = await trackedRepository.createNotebook(title: 'Keep me');
+
+      await expectLater(
+        trackedRepository.deleteNotebook(notebook),
+        throwsStateError,
+      );
+
+      expect((await trackedRepository.listNotebooks()).single.id, notebook.id);
+      expect(
+        Directory(
+          '${tempDirectory.path}/notebooks/${notebook.id}',
+        ).existsSync(),
+        isTrue,
+      );
+    },
+  );
+
   test('creates folders and moves notebooks in and out of folders', () async {
     final folder = await repository.createFolder('Class Notes');
     var notebook = await repository.createNotebook(title: 'Math');

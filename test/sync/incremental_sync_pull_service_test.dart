@@ -353,6 +353,103 @@ void main() {
       expect((await stateStore.loadSnapshot()).lastAppliedCursor, 'cursor-2');
     },
   );
+
+  test('confirms a deletion originated by the same local device', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'inknest-pull-own-delete-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final repository = FileNotebookRepository(rootDirectory: root);
+    final notebook = await repository.createNotebook(title: 'Delete here');
+    final stateStore = FileSyncStateStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    );
+    await stateStore.markChangesPageApplied('cursor-1');
+    await FileSyncResourceMapStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    ).replaceAll([
+      SyncResourceMapping(
+        localKey: notebookSyncLocalKey(notebook.id),
+        resourceType: SyncResourceType.notebook,
+        remoteResourceId: notebook.id,
+        revision: 1,
+        contentHash: 'a' * 64,
+      ),
+    ]);
+    await repository.deleteNotebook(notebook);
+    final deletedAt = DateTime.utc(2026, 8, 7);
+    final cloud = _PullCloudClient(
+      bootstrapSnapshot: CloudSyncBootstrap(
+        inventory: SyncLibraryInventory(),
+        baseCursor: 'bootstrap-cursor',
+        folders: const [],
+        notebooks: const [],
+        pages: const [],
+        infiniteCanvases: const [],
+        assets: const [],
+      ),
+      pages: [
+        CloudSyncChangePage(
+          changes: [
+            CloudSyncChange(
+              changeId: 'delete-notebook',
+              resourceType: CloudSyncChangeResourceType.notebook,
+              resourceId: notebook.id,
+              operation: CloudSyncChangeOperation.delete,
+              revision: 2,
+              contentHash: 'a' * 64,
+              payload: null,
+              deviceId: 'device-1',
+              createdAt: deletedAt,
+            ),
+            CloudSyncChange(
+              changeId: 'tombstone-notebook',
+              resourceType: CloudSyncChangeResourceType.tombstone,
+              resourceId: 'tombstone-1',
+              operation: CloudSyncChangeOperation.upsert,
+              revision: null,
+              contentHash: null,
+              payload: {
+                'id': 'tombstone-1',
+                'resourceType': 'notebook',
+                'resourceId': notebook.id,
+                'baseRevision': 1,
+                'resourceRevision': 1,
+                'deletedRevision': 2,
+                'contentHash': 'a' * 64,
+                'content': const <String, Object?>{},
+                'state': 'active',
+                'deletedAt': deletedAt.toIso8601String(),
+              },
+              deviceId: 'device-1',
+              createdAt: deletedAt,
+            ),
+          ],
+          nextCursor: 'cursor-2',
+          hasMore: false,
+        ),
+      ],
+    );
+
+    final result = await IncrementalSyncPullService(
+      repository: repository,
+      cloudClient: cloud,
+      rootDirectory: root,
+    ).pull(userId: 'user-1', deviceId: 'device-1');
+
+    expect(result.status, IncrementalSyncPullStatus.applied);
+    expect(result.deletedNotebookCount, 0);
+    expect(result.confirmedLocalDeletionCount, 1);
+    expect((await stateStore.loadSnapshot()).lastAppliedCursor, 'cursor-2');
+    expect(
+      await Directory('${root.path}/sync/user-1/device-1/deleted').exists(),
+      isFalse,
+    );
+  });
 }
 
 CloudSyncChange _change(

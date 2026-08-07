@@ -263,9 +263,11 @@ continue-local state without overwriting either side.
   into the signed-in library. Shared-ID content uses server Revision/Content
   Hash outcomes; incompatible structure/assets and divergent canvas content
   remain blocked. Remote whole-notebook Tombstones now remove the item from the
-  shelf after preserving a local recovery copy and announce that result. Local
-  delete upload, page/canvas deletion, Recently Deleted, and conflict list/detail
-  UI are not started.
+  shelf after preserving a local recovery copy and announce that result. A local
+  mapped whole-notebook delete now uploads immediately, confirms cross-device
+  removal when online, and reports durable automatic retry when offline.
+  Page/canvas deletion, Recently Deleted, and conflict list/detail UI are not
+  started.
 - Intentional deviations: The server reserves the copy ID immediately but only
   materializes a normal notebook/page when the user chooses Keep Both. This
   avoids temporary duplicate library entries while preserving both snapshots.

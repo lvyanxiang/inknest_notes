@@ -7,6 +7,7 @@ import 'package:inknest_notes/models/pdf_outline_entry.dart';
 import 'package:inknest_notes/sync/file_sync_state_store.dart';
 import 'package:inknest_notes/sync/inknest_api_models.dart';
 import 'package:inknest_notes/sync/sync_resource_map_store.dart';
+import 'package:inknest_notes/sync/sync_state.dart';
 
 typedef ActiveSyncSession = InkNestAuthSession? Function();
 
@@ -46,6 +47,11 @@ class SyncMutationTracker {
   ) {
     if (_suppressionDepth > 0) return Future.value();
     return _enqueue(() => _trackInfiniteCanvas(notebook, document));
+  }
+
+  Future<void> notebookDeleted(Notebook notebook) {
+    if (_suppressionDepth > 0) return Future.value();
+    return _enqueue(() => _trackNotebookDeleted(notebook));
   }
 
   Future<void> _enqueue(Future<void> Function() action) {
@@ -159,6 +165,22 @@ class SyncMutationTracker {
       resourceId: mapping.remoteResourceId,
       baseRevision: mapping.revision,
       content: content,
+    );
+  }
+
+  Future<void> _trackNotebookDeleted(Notebook notebook) async {
+    final session = activeSession();
+    if (session == null) return;
+    final mapping = await _resourceMap(
+      session,
+    ).find(notebookSyncLocalKey(notebook.id));
+    if (mapping == null || mapping.resourceType != SyncResourceType.notebook) {
+      return;
+    }
+    await _stateStore(session).enqueueDelete(
+      resourceType: mapping.resourceType,
+      resourceId: mapping.remoteResourceId,
+      baseRevision: mapping.revision,
     );
   }
 

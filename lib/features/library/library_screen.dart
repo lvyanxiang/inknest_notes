@@ -258,6 +258,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
                     ? '已同步 ${pullResult.changeCount} 项云端更改，从书架移除 '
                           '${pullResult.deletedNotebookCount} 本已在其他设备删除的笔记；'
                           '本地恢复副本已保留。'
+                    : pullResult.confirmedLocalDeletionCount > 0
+                    ? '已将删除同步到云端，其他设备将在下次同步时移除这本笔记。'
                     : pullResult.appliedSharedResourceCount > 0
                     ? '已上传 ${pushResult.uploadedOperationCount} 项本地更改，'
                           '同步 ${pullResult.changeCount} 项云端更改，更新 '
@@ -679,6 +681,40 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
     await widget.notebookRepository.deleteNotebook(notebook);
     await _loadNotebooks();
+    await _syncLocalNotebookDeletion();
+  }
+
+  Future<void> _syncLocalNotebookDeletion() async {
+    final session = widget.authController.session;
+    final service = widget.firstSignInSyncService;
+    if (session == null || service == null) return;
+    try {
+      final pushResult = await service.pushIncremental(
+        userId: session.user.id,
+        deviceId: session.device.id,
+      );
+      final pullResult = await service.pullIncremental(
+        userId: session.user.id,
+        deviceId: session.device.id,
+      );
+      if (!mounted) return;
+      if (pullResult.confirmedLocalDeletionCount > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已将删除同步到云端，其他设备将在下次同步时移除这本笔记。')),
+        );
+      } else if (pullResult.status ==
+              IncrementalSyncPullStatus.requiresReconciliation ||
+          pushResult.preservedConflictCount > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('删除遇到其他设备的编辑，云端内容已保留待协调。')),
+        );
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('笔记已从本机删除；云端删除将在联网后自动重试。')));
+    }
   }
 
   Future<bool> _confirmDeleteNotebook(Notebook notebook) async {

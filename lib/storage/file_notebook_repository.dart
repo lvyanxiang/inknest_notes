@@ -21,6 +21,7 @@ typedef NotebookContentPersistedCallback =
     Future<void> Function(Notebook notebook);
 typedef InfiniteCanvasPersistedCallback =
     Future<void> Function(Notebook notebook, InfiniteCanvasDocument document);
+typedef NotebookDeletedCallback = Future<void> Function(Notebook notebook);
 
 class FileNotebookRepository implements NotebookRepository {
   FileNotebookRepository({
@@ -29,6 +30,7 @@ class FileNotebookRepository implements NotebookRepository {
     this.onPagePersisted,
     this.onNotebookContentPersisted,
     this.onInfiniteCanvasPersisted,
+    this.onNotebookDeleted,
   }) : _notebooksDirectory = Directory('${rootDirectory.path}/notebooks'),
        _pdfImportInspector =
            pdfImportInspector ?? const PdfrxPdfImportInspector();
@@ -41,6 +43,7 @@ class FileNotebookRepository implements NotebookRepository {
   final PagePersistedCallback? onPagePersisted;
   final NotebookContentPersistedCallback? onNotebookContentPersisted;
   final InfiniteCanvasPersistedCallback? onInfiniteCanvasPersisted;
+  final NotebookDeletedCallback? onNotebookDeleted;
   Future<void> _storageWriteQueue = Future.value();
   int _temporaryFileCounter = 0;
 
@@ -492,10 +495,17 @@ class FileNotebookRepository implements NotebookRepository {
   @override
   Future<void> deleteNotebook(Notebook notebook) async {
     final notebooks = await _readIndex();
-    await _writeIndex([
-      for (final existingNotebook in notebooks)
-        if (existingNotebook.id != notebook.id) existingNotebook,
-    ]);
+    await _writeIndex(
+      notebooks
+          .where((existingNotebook) => existingNotebook.id != notebook.id)
+          .toList(),
+    );
+    try {
+      await onNotebookDeleted?.call(notebook);
+    } on Object {
+      await _writeIndex(notebooks);
+      rethrow;
+    }
 
     final notebookDirectory = _notebookDirectory(notebook);
     if (await notebookDirectory.exists()) {

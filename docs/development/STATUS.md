@@ -4,16 +4,15 @@
 
 - Milestone: Backend Phase 5 incremental-sync App integration is in progress;
   initialized sessions now push saved page, notebook-content, and infinite-
-  canvas edits before applying safe `/sync/changes` content and whole-notebook
-  deletion updates.
-- Next task: Queue local whole-notebook deletes through `/sync/commit`, then
-  connect page/canvas deletion and conflict persistence/presentation. Structural
-  fields still require a future API contract.
-- Last completed: A continuous remote notebook delete plus active Tombstone now
-  removes the notebook from the shelf only after moving its complete local
-  directory into an account/device recovery area. Retried application is
-  idempotent, while unsupported page/canvas deletes leave Cursor unchanged for
-  reconciliation.
+  canvas edits and mapped whole-notebook deletes before applying safe
+  `/sync/changes` updates.
+- Next task: Connect page/canvas deletion and Tombstone application, then
+  conflict persistence/presentation. Structural fields still require a future
+  API contract.
+- Last completed: Deleting a mapped notebook now durably coalesces a content-
+  free delete into the local queue, immediately attempts `/sync/commit`, retries
+  unchanged after network failure, and recognizes its own returned delete plus
+  Tombstone before advancing Cursor. Queue failure restores the shelf entry.
 
 ## Decisions
 
@@ -713,6 +712,10 @@
   focused coverage includes notebook page-reference reversal, page text content,
   infinite-canvas state, Cursor gating, and the visible “更新已有内容” result.
   `flutter analyze` and `git diff --check` pass; no backend route changed.
+- `flutter test` passes with 214 tests after local whole-notebook delete upload;
+  focused coverage includes queue coalescing, content-free commit serialization,
+  response-loss retry, repository rollback, and same-device Tombstone
+  confirmation. `flutter analyze` passes; no backend route changed.
 
 ## Notes
 

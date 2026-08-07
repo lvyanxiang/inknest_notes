@@ -17,9 +17,28 @@ enum SyncResourceType {
   }
 }
 
+enum SyncOperationKind {
+  upsert('upsert'),
+  delete('delete');
+
+  const SyncOperationKind(this.apiValue);
+
+  final String apiValue;
+
+  static SyncOperationKind fromApiValue(String value) {
+    return values.firstWhere(
+      (kind) => kind.apiValue == value,
+      orElse: () => throw FormatException(
+        'Unsupported synchronization operation: $value',
+      ),
+    );
+  }
+}
+
 class PendingSyncOperation {
   PendingSyncOperation({
     required this.operationId,
+    this.operation = SyncOperationKind.upsert,
     required this.resourceType,
     required this.resourceId,
     required this.baseRevision,
@@ -27,6 +46,7 @@ class PendingSyncOperation {
   }) : content = Map.unmodifiable(_copyJsonObject(content));
 
   final String operationId;
+  final SyncOperationKind operation;
   final SyncResourceType resourceType;
   final String resourceId;
   final int baseRevision;
@@ -35,11 +55,13 @@ class PendingSyncOperation {
   String get resourceKey => '${resourceType.apiValue}:$resourceId';
 
   PendingSyncOperation copyWith({
+    SyncOperationKind? operation,
     int? baseRevision,
     Map<String, Object?>? content,
   }) {
     return PendingSyncOperation(
       operationId: operationId,
+      operation: operation ?? this.operation,
       resourceType: resourceType,
       resourceId: resourceId,
       baseRevision: baseRevision ?? this.baseRevision,
@@ -48,11 +70,9 @@ class PendingSyncOperation {
   }
 
   factory PendingSyncOperation.fromJson(Map<String, Object?> json) {
-    if (json['operation'] != 'upsert') {
-      throw const FormatException(
-        'Only upsert synchronization operations are supported.',
-      );
-    }
+    final operation = SyncOperationKind.fromApiValue(
+      json['operation']! as String,
+    );
     final baseRevision = json['baseRevision'];
     if (baseRevision is! int || baseRevision < 0) {
       throw const FormatException(
@@ -61,24 +81,33 @@ class PendingSyncOperation {
     }
     return PendingSyncOperation(
       operationId: json['operationId']! as String,
+      operation: operation,
       resourceType: SyncResourceType.fromApiValue(
         json['resourceType']! as String,
       ),
       resourceId: json['resourceId']! as String,
       baseRevision: baseRevision,
-      content: (json['content']! as Map<Object?, Object?>)
-          .cast<String, Object?>(),
+      content: switch (operation) {
+        SyncOperationKind.upsert =>
+          (json['content']! as Map<Object?, Object?>).cast<String, Object?>(),
+        SyncOperationKind.delete =>
+          json.containsKey('content')
+              ? throw const FormatException(
+                  'Delete synchronization operations must omit content.',
+                )
+              : const {},
+      },
     );
   }
 
   Map<String, Object?> toJson() {
     return {
       'operationId': operationId,
-      'operation': 'upsert',
+      'operation': operation.apiValue,
       'resourceType': resourceType.apiValue,
       'resourceId': resourceId,
       'baseRevision': baseRevision,
-      'content': content,
+      if (operation == SyncOperationKind.upsert) 'content': content,
     };
   }
 }

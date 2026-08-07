@@ -76,7 +76,8 @@ The file stores:
 - `formatVersion`: currently `1`.
 - `lastAppliedCursor`: the opaque server Cursor for the last pull page that was
   completely and safely applied locally.
-- `pendingOperations`: coalesced notebook, page, or infinite-canvas upserts.
+- `pendingOperations`: coalesced notebook, page, or infinite-canvas upserts,
+  plus mapped whole-notebook deletes.
 - `inFlightBatch`: the exact `baseCursor`, idempotency Key, operations, and
   creation time for a request that may need byte-for-byte semantic retry.
 
@@ -85,6 +86,13 @@ network failure leaves the in-flight batch unchanged. A successful whole-batch
 response clears only that batch; edits made while it was uploading remain
 pending and receive the successful server Revision as their next
 `baseRevision`.
+
+A whole-notebook delete replaces any unsent upsert for the same mapped resource
+while preserving its oldest `baseRevision` and operation ID. Its serialized
+operation uses `operation: delete` and omits `content`. The shelf entry is
+removed only after this queue write succeeds; a queue failure restores the
+original index entry. Online deletion immediately attempts push/pull, while an
+offline deletion remains durable for startup retry.
 
 The Cursor returned by `POST /sync/commit` is not automatically treated as
 locally applied. It may include another device's interleaved changes. Only the

@@ -211,6 +211,44 @@ void main() {
       expect((await _state(root)).pendingOperations, isEmpty);
     },
   );
+
+  test('deleting a mapped notebook queues its remote delete', () async {
+    final root = await Directory.systemTemp.createTemp('inknest-delete-track-');
+    addTearDown(() => root.delete(recursive: true));
+    final setupRepository = FileNotebookRepository(rootDirectory: root);
+    final notebook = await setupRepository.createNotebook(title: 'Tracked');
+    await FileSyncResourceMapStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    ).replaceAll([
+      SyncResourceMapping(
+        localKey: notebookSyncLocalKey(notebook.id),
+        resourceType: SyncResourceType.notebook,
+        remoteResourceId: notebook.id,
+        revision: 5,
+        contentHash: 'a' * 64,
+      ),
+    ]);
+    final tracker = SyncMutationTracker(
+      rootDirectory: root,
+      activeSession: _session,
+    );
+    final repository = FileNotebookRepository(
+      rootDirectory: root,
+      onNotebookDeleted: tracker.notebookDeleted,
+    );
+
+    await repository.deleteNotebook(notebook);
+
+    final operation = (await _state(root)).pendingOperations.single;
+    expect(operation.operation, SyncOperationKind.delete);
+    expect(operation.resourceType, SyncResourceType.notebook);
+    expect(operation.resourceId, notebook.id);
+    expect(operation.baseRevision, 5);
+    expect(operation.toJson(), isNot(contains('content')));
+    expect(await repository.listNotebooks(), isEmpty);
+  });
 }
 
 Future<SyncStateSnapshot> _state(Directory root) => FileSyncStateStore(

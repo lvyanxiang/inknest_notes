@@ -62,13 +62,20 @@ class IncrementalSyncPushService {
             .toList(),
       );
       _validateResponse(batch, response);
+      final operationsById = {
+        for (final operation in batch.operations)
+          operation.operationId: operation,
+      };
       for (final result in response.results) {
-        await resourceMap.updateRemote(
-          resourceType: SyncResourceType.fromApiValue(result.resourceType),
-          remoteResourceId: result.resourceId,
-          revision: result.revision,
-          contentHash: result.contentHash,
-        );
+        if (operationsById[result.operationId]!.operation ==
+            SyncOperationKind.upsert) {
+          await resourceMap.updateRemote(
+            resourceType: SyncResourceType.fromApiValue(result.resourceType),
+            remoteResourceId: result.resourceId,
+            revision: result.revision,
+            contentHash: result.contentHash,
+          );
+        }
       }
       await stateStore.markCommitSucceeded(
         idempotencyKey: batch.idempotencyKey,
@@ -82,7 +89,11 @@ class IncrementalSyncPushService {
       );
       uploaded += batch.operations.length;
       conflicts += response.results
-          .where((result) => result.outcome == 'conflict')
+          .where(
+            (result) =>
+                result.outcome == 'conflict' ||
+                result.outcome == 'delete_conflict',
+          )
           .length;
     }
     return IncrementalSyncPushResult(

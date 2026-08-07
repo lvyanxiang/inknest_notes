@@ -115,7 +115,13 @@ class SyncContentCommitOperationResult {
     if (!const {'notebook', 'page', 'infinite_canvas'}.contains(resourceType) ||
         revision is! int ||
         revision < 0 ||
-        !const {'applied', 'unchanged', 'conflict'}.contains(outcome)) {
+        !const {
+          'applied',
+          'unchanged',
+          'conflict',
+          'deleted',
+          'delete_conflict',
+        }.contains(outcome)) {
       throw const FormatException('Invalid shared-content commit result.');
     }
     return SyncContentCommitOperationResult(
