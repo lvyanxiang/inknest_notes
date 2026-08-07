@@ -3,17 +3,16 @@
 ## Current
 
 - Milestone: Backend Phase 5 first-sign-in merge and new-device restore is in
-  progress; server-side upload/download contracts now cover complete library
-  structure, JSON content, and verified PDF/image/audio assets. Flutter now
-  performs visible first-sign-in detection, cloud-only restore, and verified
-  local-only upload of structure, content, PDFs, images, and audio.
-- Next task: Reconcile shared stable IDs by server Revision/Content Hash before
-  enabling the Merge action for mixed libraries.
-- Last completed: A local-only device can confirm Merge, upload folders,
-  notebooks, pages/canvases and referenced attachments through the real API,
-  verify the completed cloud bootstrap, and then persist its Cursor. Notebook
-  content now includes recording, outline, and bookmark metadata. Shared IDs
-  remain blocked rather than overwritten.
+  progress; Flutter now executes cloud-only restore, local-only upload, and a
+  safely gated mixed-library Merge through the real API.
+- Next task: Add the Flutter pending-conflict list/detail flow and explicit
+  recovery for shared structural metadata, attachment, and infinite-canvas
+  differences that mixed Merge currently blocks safely.
+- Last completed: Mixed Merge strictly verifies shared structure and attachment
+  hashes, submits shared content to `/sync/commit` with an unknown base
+  Revision so the server decides unchanged versus conflict by Content Hash,
+  transfers local/cloud-only roots, and saves the final Cursor only after the
+  complete bootstrap inventory matches locally.
 
 ## Decisions
 
@@ -119,6 +118,11 @@
   separators, preserved Unicode/array order, and rejected non-finite numbers;
   freeze matching cross-client numeric serialization before Flutter computes
   or compares canonical hashes itself.
+- Reconcile first-sign-in shared content through the server instead of
+  calculating canonical hashes in Dart: submit `baseRevision: 0`, accept
+  Content Hash equality as unchanged, preserve notebook/page divergence as a
+  conflict, and stop on unsupported structural, attachment, or canvas
+  divergence.
 - Use email/password for the first account flow without mandatory email
   verification during initial development. Use short-lived JWT access tokens
   and rotating opaque refresh tokens; store only refresh-token hashes and bind
@@ -652,6 +656,15 @@
   legacy notebook-scoped page ID `page-1`: upload now derives a stable remote
   page ID from notebook ID plus local page ID and rewrites transmitted bookmark,
   PDF outline, and audio page references without mutating local files.
+- Focused Flutter tests passed for the typed `/sync/commit` request, shared
+  unchanged/conflict result parsing, mixed upload/download orchestration,
+  final Cursor persistence, incompatible shared-metadata blocking, and the
+  enabled mixed Merge confirmation UI.
+- `flutter test` passed with 192 tests after the mixed-library Merge slice;
+  `flutter analyze` and `git diff --check` passed.
+- Backend `uv run pytest tests/unit/test_sync_changes.py` passed with 11 tests,
+  confirming unchanged-by-Content-Hash and Revision-conflict preservation used
+  by the Flutter shared-content integration.
 
 ## Notes
 

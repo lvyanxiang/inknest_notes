@@ -227,7 +227,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
       session: session,
     );
     if (!mounted || result == null) return;
-    if (result.restoreResult != null) await _loadNotebooks();
+    if (result.restoreResult != null || result.mixedResult != null) {
+      await _loadNotebooks();
+    }
     if (!mounted) return;
     final message = result.restoreResult != null
         ? '已恢复 ${result.restoreResult!.downloadedNotebookCount} 本笔记和 '
@@ -235,6 +237,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
         : result.uploadResult != null
         ? '已保护 ${result.uploadResult!.uploadedNotebookCount} 本笔记和 '
               '${result.uploadResult!.uploadedAssetCount} 个附件。'
+        : result.mixedResult != null
+        ? '已上传 ${result.mixedResult!.uploadedNotebookCount} 本、恢复 '
+              '${result.mixedResult!.downloadedNotebookCount} 本笔记；'
+              '保留 ${result.mixedResult!.preservedConflictCount} 个待处理冲突。'
         : null;
     if (message == null) return;
     ScaffoldMessenger.of(

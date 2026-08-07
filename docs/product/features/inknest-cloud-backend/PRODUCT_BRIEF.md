@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Size: Large
-- Updated: 2026-08-06
+- Updated: 2026-08-07
 - Roadmap link: `docs/development/ROADMAP.md#milestone-8-sync-and-backup-paused`
 
 ## Problem
@@ -140,8 +140,12 @@ The first slice sets no retention period and performs no physical cleanup.
 - The signed-in App now presents this plan. A pure cloud-only new device can
   confirm the completed verified restore path and refresh the shelf after
   success. A local-only device can upload its complete supported library and
-  verified attachments, then save the refreshed bootstrap Cursor. Mixed plans
-  remain preview-only until shared-Revision orchestration is complete.
+  verified attachments, then save the refreshed bootstrap Cursor. A mixed
+  library can now confirm Merge: shared structures and attachments must match
+  exactly, while shared notebook/page/canvas content is submitted with an
+  unknown base Revision so the server can return unchanged by Content Hash or
+  preserve a notebook/page conflict. Unsupported structural, attachment, or
+  canvas-content conflicts stop safely instead of guessing an overwrite.
 
 ### Library structure and JSON content transfer foundation
 
@@ -277,8 +281,8 @@ The first slice sets no retention period and performs no physical cleanup.
 - UI/UX spec: `UI_UX_SPEC.md` defines first-sign-in detection plus the future
   conflict recovery flow. Account registration/sign-in/sign-out, visible
   detection, deterministic preview, offline/retry feedback, pure cloud-only
-  restore, and local-only upload progress are implemented. Mixed-library
-  execution and conflict UI remain later slices.
+  restore, local-only upload, and safely gated mixed-library execution are
+  implemented. Conflict list/detail UI remains a later slice.
 - Implementation status: Phase 4 incremental synchronization is complete and
   Phase 5 library-presence detection, Merge planning, and server-side transfer
   contracts through page/infinite-canvas JSON and ready asset bytes are
@@ -290,7 +294,11 @@ The first slice sets no retention period and performs no physical cleanup.
   notebooks immediately. Local-only structure/content upload now calls Merge
   Commit; referenced assets use presigned PUT plus server-side size/SHA-256
   verification, and notebook content retains recording/outline/bookmark data.
-  Shared-Revision reconciliation remains.
+  Shared-ID reconciliation now calls the typed incremental commit contract and
+  uses server Revision/Content Hash outcomes before transferring either side's
+  independent resources. Structural metadata, attachment differences, and
+  divergent infinite-canvas content remain blocked pending explicit recovery
+  support.
 - Verification: Backend tests cover authentication, account isolation,
   revisioned content, asset transfer, cursors, atomic/idempotent commits, page
   and notebook conflicts, all resolution choices, soft delete/restore, both
@@ -313,5 +321,7 @@ The first slice sets no retention period and performs no physical cleanup.
   drift fails in tests. The complete backend run passes 49
   non-integration tests and 15 PostgreSQL/MinIO integration tests, including
   ready-only bootstrap visibility and real PDF/image/audio byte round trips;
-  the complete Flutter test suite passes; staging tests cover verified success,
-  corrupt downloads, and mid-apply rollback, and static analysis passes.
+  the complete Flutter suite passes with 192 tests. The mixed-library slice is
+  additionally covered by 11 focused backend sync-change tests; staging tests
+  cover verified success, corrupt downloads, and mid-apply rollback, and
+  static analysis passes.

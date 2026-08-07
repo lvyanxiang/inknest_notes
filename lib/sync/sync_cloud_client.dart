@@ -23,6 +23,13 @@ abstract interface class FirstSignInCloudClient
     required List<Map<String, Object?>> operations,
   });
 
+  Future<SyncContentCommitResult> commitSharedContent({
+    required String deviceId,
+    required String idempotencyKey,
+    required String baseCursor,
+    required List<Map<String, Object?>> operations,
+  });
+
   Future<CloudAssetUploadSession> createAssetUploadSession(
     LocalSyncAsset asset,
   );

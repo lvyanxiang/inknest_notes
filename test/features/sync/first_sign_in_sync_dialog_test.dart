@@ -48,7 +48,7 @@ void main() {
     );
   });
 
-  testWidgets('mixed library preview does not offer an unsafe partial merge', (
+  testWidgets('mixed library preview confirms coordinated Merge', (
     tester,
   ) async {
     final service = _FakeFirstSignInSyncService(
@@ -72,13 +72,10 @@ void main() {
     await tester.pump();
 
     expect(find.textContaining('不会按同名笔记覆盖'), findsOneWidget);
-    final mergeButton = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, '共享版本协调将在下一步开放'),
-    );
-    expect(mergeButton.onPressed, isNull);
-    await tester.tap(find.text('稍后'));
+    expect(find.text('合并（推荐）'), findsOneWidget);
+    await tester.tap(find.text('合并（推荐）'));
     await tester.pump();
-    expect(service.restoreCalls, 0);
+    expect(service.restoreCalls, 1);
   });
 
   testWidgets('local-only preview uploads after confirmation', (tester) async {
@@ -199,6 +196,21 @@ class _FakeFirstSignInSyncService implements FirstSignInSyncService {
     return const LocalMergeUploadResult(
       uploadedNotebookCount: 1,
       uploadedAssetCount: 2,
+    );
+  }
+
+  @override
+  Future<MixedLibraryMergeResult> mergeMixed({
+    required FirstSignInSyncPreview preview,
+    required String userId,
+    required String deviceId,
+  }) async {
+    restoreCalls++;
+    return const MixedLibraryMergeResult(
+      uploadedNotebookCount: 1,
+      downloadedNotebookCount: 1,
+      transferredAssetCount: 2,
+      preservedConflictCount: 0,
     );
   }
 }

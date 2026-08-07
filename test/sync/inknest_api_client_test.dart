@@ -100,6 +100,81 @@ void main() {
     },
   );
 
+  test('shared-content commit uses the incremental sync contract', () async {
+    late RequestOptions captured;
+    final dio = Dio();
+    final store = MemoryAuthSessionStore(
+      StoredAuthSession.fromSession(
+        InkNestAuthSession.fromJson(_authJson()),
+        issuedAt: DateTime.utc(2026, 8, 6),
+      ),
+    );
+    final client = InkNestApiClient(
+      config: InkNestApiConfig.fromEnvironment(
+        overrideBaseUrl: 'https://api.example.com',
+      ),
+      dio: dio,
+      refreshDio: Dio(),
+      sessionStore: store,
+      clock: () => DateTime.utc(2026, 8, 6, 0, 1),
+    );
+    _resolveRequests(dio, (options) {
+      captured = options;
+      return (
+        status: 200,
+        data: {
+          'idempotencyKey': 'reconcile-1',
+          'replayed': false,
+          'results': [
+            {
+              'operationId': 'operation-1',
+              'resourceType': 'page',
+              'resourceId': 'page-1',
+              'revision': 2,
+              'contentHash': 'a' * 64,
+              'changed': false,
+              'outcome': 'conflict',
+              'conflict': <String, Object?>{},
+              'tombstone': null,
+            },
+          ],
+          'nextCursor': 'cursor-2',
+        },
+      );
+    });
+    final operations = [
+      {
+        'operationId': 'operation-1',
+        'operation': 'upsert',
+        'resourceType': 'page',
+        'resourceId': 'page-1',
+        'baseRevision': 0,
+        'content': <String, Object?>{'strokes': <Object?>[]},
+      },
+    ];
+
+    final result = await client.commitSharedContent(
+      deviceId: 'device-1',
+      idempotencyKey: 'reconcile-1',
+      baseCursor: 'cursor-1',
+      operations: operations,
+    );
+
+    expect(captured.method, 'POST');
+    expect(
+      captured.uri.toString(),
+      'https://api.example.com/api/v1/sync/commit',
+    );
+    expect(captured.data, {
+      'deviceId': 'device-1',
+      'idempotencyKey': 'reconcile-1',
+      'baseCursor': 'cursor-1',
+      'operations': operations,
+    });
+    expect(result.results.single.outcome, 'conflict');
+    expect(result.nextCursor, 'cursor-2');
+  });
+
   test(
     'asset download URL is authenticated but signed object GET is not',
     () async {

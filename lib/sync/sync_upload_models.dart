@@ -90,3 +90,79 @@ class SyncMergeCommitResult {
     );
   }
 }
+
+class SyncContentCommitOperationResult {
+  const SyncContentCommitOperationResult({
+    required this.operationId,
+    required this.resourceType,
+    required this.resourceId,
+    required this.revision,
+    required this.contentHash,
+    required this.outcome,
+  });
+
+  final String operationId;
+  final String resourceType;
+  final String resourceId;
+  final int revision;
+  final String contentHash;
+  final String outcome;
+
+  factory SyncContentCommitOperationResult.fromJson(Map<String, Object?> json) {
+    final resourceType = requiredString(json, 'resourceType');
+    final revision = json['revision'];
+    final outcome = requiredString(json, 'outcome');
+    if (!const {'notebook', 'page', 'infinite_canvas'}.contains(resourceType) ||
+        revision is! int ||
+        revision < 0 ||
+        !const {'applied', 'unchanged', 'conflict'}.contains(outcome)) {
+      throw const FormatException('Invalid shared-content commit result.');
+    }
+    return SyncContentCommitOperationResult(
+      operationId: requiredString(json, 'operationId'),
+      resourceType: resourceType,
+      resourceId: requiredString(json, 'resourceId'),
+      revision: revision,
+      contentHash: requiredSha256(json, 'contentHash'),
+      outcome: outcome,
+    );
+  }
+}
+
+class SyncContentCommitResult {
+  SyncContentCommitResult({
+    required this.idempotencyKey,
+    required this.nextCursor,
+    required List<SyncContentCommitOperationResult> results,
+  }) : results = List.unmodifiable(results);
+
+  final String idempotencyKey;
+  final String nextCursor;
+  final List<SyncContentCommitOperationResult> results;
+
+  factory SyncContentCommitResult.fromJson(Map<String, Object?> json) {
+    final rawResults = json['results'];
+    if (rawResults is! List<Object?> ||
+        rawResults.any((item) => item is! Map<Object?, Object?>)) {
+      throw const FormatException('Invalid shared-content commit response.');
+    }
+    final results = rawResults
+        .map(
+          (item) => SyncContentCommitOperationResult.fromJson(
+            (item! as Map<Object?, Object?>).cast<String, Object?>(),
+          ),
+        )
+        .toList();
+    if (results.map((item) => item.operationId).toSet().length !=
+        results.length) {
+      throw const FormatException(
+        'Shared-content commit results contain duplicate operations.',
+      );
+    }
+    return SyncContentCommitResult(
+      idempotencyKey: requiredString(json, 'idempotencyKey'),
+      nextCursor: requiredString(json, 'nextCursor'),
+      results: results,
+    );
+  }
+}

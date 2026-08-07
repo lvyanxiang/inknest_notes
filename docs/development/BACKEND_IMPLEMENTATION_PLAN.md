@@ -1,7 +1,7 @@
 # InkNest Notes 服务端实施计划
 
 - 状态：Phase 4 已完成，Phase 5 实施中
-- 更新时间：2026-08-06
+- 更新时间：2026-08-07
 - 产品 Brief：`docs/product/features/inknest-cloud-backend/PRODUCT_BRIEF.md`
 - 对应路线图：Milestone 8 / Post-MVP 6 Sync And Backup
 
@@ -410,7 +410,12 @@ checksums.sha256
     下载并在成功后刷新书架，本地独有或混合资料库只展示计划，不提前执行不完整合并。
   - [x] Flutter 本地独有上传：Merge Commit 传输文件夹、笔记本正文、页面/画布，PDF、
     图片和音频通过预签名会话上传并由服务端校验；完成后重新 bootstrap 验证并保存
-    Cursor。共享稳定 ID 仍等待 Revision 协调。
+    Cursor。
+  - [x] Flutter 混合资料库编排：共同稳定 ID 的结构和附件先做严格一致性校验，笔记本、
+    页面和画布正文以未知基线调用 `/sync/commit`；服务端按 Content Hash 返回 unchanged，
+    或按 Revision 为笔记本/页面保留冲突。随后上传本地独有、回滚式下载云端独有，并只
+    在最终 bootstrap 清单完整匹配后保存 Cursor。结构、附件或暂不支持的画布冲突仍安全
+    停止，不执行猜测性覆盖。
 - [ ] 显示同步进度、失败项和重试状态。
 - [ ] 新设备全量 bootstrap 后切换至增量同步。
 - [ ] 恢复前快照和失败回滚。

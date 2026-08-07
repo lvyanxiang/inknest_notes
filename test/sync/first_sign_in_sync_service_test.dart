@@ -1,7 +1,10 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:inknest_notes/models/note_page.dart';
+import 'package:inknest_notes/models/notebook.dart';
 import 'package:inknest_notes/storage/file_notebook_repository.dart';
 import 'package:inknest_notes/sync/file_sync_state_store.dart';
 import 'package:inknest_notes/sync/first_sign_in_sync_service.dart';
@@ -103,6 +106,262 @@ void main() {
       expect(state.lastAppliedCursor, 'cursor-complete');
     },
   );
+
+  test(
+    'mixed Merge reconciles shared content before upload and restore',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'inknest-mixed-merge-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      final repository = FileNotebookRepository(rootDirectory: root);
+      final shared = await repository.createNotebook(title: 'Shared notes');
+      final localOnly = await repository.createNotebook(title: 'Local notes');
+      final sharedRemotePageId = _remotePageId(
+        shared.id,
+        shared.pageIds.single,
+      );
+      final cloud = _MixedFirstSignInCloudClient(
+        sharedNotebook: shared,
+        sharedRemotePageId: sharedRemotePageId,
+      );
+      final service = ApiFirstSignInSyncService(
+        repository: repository,
+        apiClient: cloud,
+        rootDirectory: root,
+      );
+
+      final preview = await service.inspect();
+      final result = await service.mergeMixed(
+        preview: preview,
+        userId: 'user-1',
+        deviceId: 'device-1',
+      );
+
+      expect(result.uploadedNotebookCount, 1);
+      expect(result.downloadedNotebookCount, 1);
+      expect(result.preservedConflictCount, 1);
+      expect(
+        cloud.reconciledOperations.map((item) => item['resourceType']),
+        containsAll(['notebook', 'page']),
+      );
+      expect(
+        cloud.reconciledOperations.every((item) => item['baseRevision'] == 0),
+        isTrue,
+      );
+      expect(cloud.uploadedNotebookIds, contains(localOnly.id));
+      expect(
+        (await repository.listNotebooks()).map((item) => item.id),
+        contains('cloud-only'),
+      );
+      final state = await FileSyncStateStore(
+        rootDirectory: root,
+        userId: 'user-1',
+        deviceId: 'device-1',
+      ).loadSnapshot();
+      expect(state.lastAppliedCursor, 'cursor-complete');
+    },
+  );
+
+  test(
+    'mixed Merge rejects incompatible shared metadata before commit',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'inknest-mixed-blocked-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      final repository = FileNotebookRepository(rootDirectory: root);
+      final shared = await repository.createNotebook(title: 'Local title');
+      final cloud = _MixedFirstSignInCloudClient(
+        sharedNotebook: shared,
+        sharedRemotePageId: _remotePageId(shared.id, shared.pageIds.single),
+        sharedTitleOverride: 'Cloud title',
+      );
+      final service = ApiFirstSignInSyncService(
+        repository: repository,
+        apiClient: cloud,
+        rootDirectory: root,
+      );
+
+      final preview = await service.inspect();
+
+      await expectLater(
+        service.mergeMixed(
+          preview: preview,
+          userId: 'user-1',
+          deviceId: 'device-1',
+        ),
+        throwsStateError,
+      );
+      expect(cloud.reconciledOperations, isEmpty);
+      expect(cloud.uploadedNotebookIds, isEmpty);
+    },
+  );
+}
+
+String _remotePageId(String notebookId, String localPageId) =>
+    'page-${sha256.convert(utf8.encode('$notebookId\u0000$localPageId')).toString().substring(0, 40)}';
+
+class _MixedFirstSignInCloudClient implements FirstSignInCloudClient {
+  _MixedFirstSignInCloudClient({
+    required this.sharedNotebook,
+    required this.sharedRemotePageId,
+    this.sharedTitleOverride,
+  });
+
+  final Notebook sharedNotebook;
+  final String sharedRemotePageId;
+  final String? sharedTitleOverride;
+  final List<Map<String, Object?>> reconciledOperations = [];
+  final Set<String> uploadedNotebookIds = {};
+
+  @override
+  Future<CloudSyncBootstrap> bootstrap() async {
+    final now = DateTime.utc(2026, 8, 7);
+    final notebookIds = {
+      sharedNotebook.id,
+      'cloud-only',
+      ...uploadedNotebookIds,
+    };
+    return CloudSyncBootstrap(
+      inventory: SyncLibraryInventory(notebookIds: notebookIds),
+      baseCursor: uploadedNotebookIds.isEmpty
+          ? 'cursor-preview'
+          : 'cursor-complete',
+      folders: const [],
+      notebooks: [
+        CloudSyncNotebook(
+          id: sharedNotebook.id,
+          folderId: null,
+          title: sharedTitleOverride ?? sharedNotebook.title,
+          layoutMode: 'paged',
+          isArchived: false,
+          revision: 1,
+          contentHash: 'a' * 64,
+          content: const {},
+          conflictOf: null,
+          createdAt: now,
+          updatedAt: now,
+        ),
+        CloudSyncNotebook(
+          id: 'cloud-only',
+          folderId: null,
+          title: 'Cloud notes',
+          layoutMode: 'paged',
+          isArchived: false,
+          revision: 1,
+          contentHash: 'b' * 64,
+          content: const {},
+          conflictOf: null,
+          createdAt: now,
+          updatedAt: now,
+        ),
+      ],
+      pages: [
+        CloudSyncPage(
+          id: sharedRemotePageId,
+          notebookId: sharedNotebook.id,
+          position: 0,
+          width: 768,
+          height: 1024,
+          coordinateSpaceVersion: 1,
+          rotationQuarterTurns: 0,
+          template: 'blank',
+          revision: 1,
+          contentHash: 'c' * 64,
+          content: const {'strokes': <Object?>[]},
+          conflictOf: null,
+          createdAt: now,
+          updatedAt: now,
+        ),
+        CloudSyncPage(
+          id: 'cloud-page',
+          notebookId: 'cloud-only',
+          position: 0,
+          width: 768,
+          height: 1024,
+          coordinateSpaceVersion: 1,
+          rotationQuarterTurns: 0,
+          template: 'blank',
+          revision: 1,
+          contentHash: 'd' * 64,
+          content: const {'strokes': <Object?>[]},
+          conflictOf: null,
+          createdAt: now,
+          updatedAt: now,
+        ),
+      ],
+      infiniteCanvases: const [],
+      assets: const [],
+    );
+  }
+
+  @override
+  Future<SyncContentCommitResult> commitSharedContent({
+    required String deviceId,
+    required String idempotencyKey,
+    required String baseCursor,
+    required List<Map<String, Object?>> operations,
+  }) async {
+    reconciledOperations.addAll(operations);
+    return SyncContentCommitResult(
+      idempotencyKey: idempotencyKey,
+      nextCursor: 'cursor-reconciled',
+      results: [
+        for (final operation in operations)
+          SyncContentCommitOperationResult(
+            operationId: operation['operationId']! as String,
+            resourceType: operation['resourceType']! as String,
+            resourceId: operation['resourceId']! as String,
+            revision: 1,
+            contentHash: 'e' * 64,
+            outcome: operation['resourceType'] == 'page'
+                ? 'conflict'
+                : 'unchanged',
+          ),
+      ],
+    );
+  }
+
+  @override
+  Future<SyncMergeCommitResult> commitInitialMerge({
+    required String deviceId,
+    required String idempotencyKey,
+    required String baseCursor,
+    required List<Map<String, Object?>> operations,
+  }) async {
+    uploadedNotebookIds.addAll(
+      operations
+          .where((item) => item['resourceType'] == 'notebook')
+          .map((item) => item['resourceId']! as String),
+    );
+    return const SyncMergeCommitResult(nextCursor: 'cursor-uploaded');
+  }
+
+  @override
+  Future<CloudAssetUploadSession> createAssetUploadSession(
+    LocalSyncAsset asset,
+  ) => throw UnimplementedError();
+
+  @override
+  Future<void> uploadAssetFile(
+    CloudAssetUploadSession session,
+    LocalSyncAsset asset,
+  ) => throw UnimplementedError();
+
+  @override
+  Future<void> completeAssetUpload(String uploadId) =>
+      throw UnimplementedError();
+
+  @override
+  Future<CloudAssetDownload> createAssetDownload(String assetId) =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> downloadAssetToFile(
+    CloudAssetDownload download,
+    File destination,
+  ) => throw UnimplementedError();
 }
 
 class _FakeFirstSignInCloudClient implements FirstSignInCloudClient {
@@ -156,6 +415,14 @@ class _FakeFirstSignInCloudClient implements FirstSignInCloudClient {
     );
     return const SyncMergeCommitResult(nextCursor: 'cursor-merged');
   }
+
+  @override
+  Future<SyncContentCommitResult> commitSharedContent({
+    required String deviceId,
+    required String idempotencyKey,
+    required String baseCursor,
+    required List<Map<String, Object?>> operations,
+  }) => throw UnimplementedError();
 
   final Set<String> _notebookIds = {};
 

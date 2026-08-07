@@ -1,7 +1,7 @@
 # InkNest Cloud Sync And Recovery UI/UX Specification
 
 - Status: Accepted
-- Updated: 2026-08-06
+- Updated: 2026-08-07
 - Product brief: `PRODUCT_BRIEF.md`
 - Affected surfaces: Future sync status panel, conflict detail sheet, Recently
   Deleted list, notebook shelf and Pages panel
@@ -42,9 +42,11 @@ message rather than a blocking decision dialog.
    library. Retry repeats only the read-only detection request in this slice.
 
 The App now implements the detection dialog and state model. A cloud-only new
-device can explicitly confirm a verified, rollback-safe restore, and a
-local-only device can confirm verified cloud protection. Mixed plans remain
-preview-only until shared-Revision reconciliation is available.
+device can explicitly confirm a verified, rollback-safe restore, a local-only
+device can confirm verified cloud protection, and a mixed library can confirm
+the safely gated shared-Revision flow. Incompatible shared structure,
+attachments, or unsupported canvas conflicts return to an actionable retry /
+continue-local state without overwriting either side.
 
 ### Account entry, sign-in, and registration
 
@@ -75,10 +77,11 @@ preview-only until shared-Revision reconciliation is available.
   preview must not promise that either device's copy will overwrite the other.
 - `合并（推荐）` remains the primary action. `稍后` exits without executing the
   plan, and rebuilding the preview after retry must produce the same ordering.
-- The current screen shows these counts after authentication. It enables
-  `合并（推荐）` for completed cloud-only restore and local-only upload paths;
-  mixed execution stays unavailable with an explicit explanation rather than
-  performing a partial merge.
+- The current screen shows these counts after authentication and enables
+  `合并（推荐）` for cloud-only restore, local-only upload, and mixed execution.
+  Mixed execution coordinates shared content first, then transfers independent
+  resources; a safety-gate failure explains that no uncertain content was
+  overwritten and offers Retry or local continuation.
 
 ### Conflict recovery
 
@@ -199,7 +202,7 @@ preview-only until shared-Revision reconciliation is available.
 
 - [x] First-sign-in detection distinguishes empty, local-only, cloud-only, and
   local-plus-cloud states without modifying the local library.
-- [ ] Local-plus-cloud emphasizes `合并（推荐）`, never deduplicates by title,
+- [x] Local-plus-cloud emphasizes `合并（推荐）`, never deduplicates by title,
   and lets the user continue offline without losing local content.
 - [x] The App can derive deterministic upload, download, and shared-ID
   reconciliation counts without exposing a delete or replace-local action.
@@ -230,10 +233,11 @@ preview-only until shared-Revision reconciliation is available.
 
 - Status: Account UI/session delivery is complete. First-sign-in detection,
   deterministic Merge preview, error/retry states, confirmed cloud-only
-  restore, and local-only verified upload are wired into the signed-in library.
-  Shared-ID reconciliation is not wired, so mixed Merge remains preview-only. Conflict
-  and Tombstone server contracts are delivered; their Flutter UI is not
-  started.
+  restore, local-only verified upload, and safely gated mixed Merge are wired
+  into the signed-in library. Shared-ID content uses server Revision/Content
+  Hash outcomes; incompatible structure/assets and divergent canvas content
+  remain blocked. Conflict and Tombstone server contracts are delivered; their
+  Flutter list/detail UI is not started.
 - Intentional deviations: The server reserves the copy ID immediately but only
   materializes a normal notebook/page when the user chooses Keep Both. This
   avoids temporary duplicate library entries while preserving both snapshots.

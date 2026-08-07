@@ -7,10 +7,15 @@ import 'package:inknest_notes/sync/sync_bootstrap.dart';
 import 'package:inknest_notes/sync/sync_merge_plan.dart';
 
 class FirstSignInSyncDialogResult {
-  const FirstSignInSyncDialogResult({this.restoreResult, this.uploadResult});
+  const FirstSignInSyncDialogResult({
+    this.restoreResult,
+    this.uploadResult,
+    this.mixedResult,
+  });
 
   final BootstrapRestoreResult? restoreResult;
   final LocalMergeUploadResult? uploadResult;
+  final MixedLibraryMergeResult? mixedResult;
 }
 
 Future<FirstSignInSyncDialogResult?> showFirstSignInSyncDialog({
@@ -89,7 +94,9 @@ class _FirstSignInSyncDialogState extends State<_FirstSignInSyncDialog> {
   Future<void> _executeMerge() async {
     final preview = _preview;
     if (preview == null ||
-        (!preview.canRestoreCloudOnly && !preview.canUploadLocalOnly)) {
+        (!preview.canRestoreCloudOnly &&
+            !preview.canUploadLocalOnly &&
+            !preview.canMergeMixed)) {
       return;
     }
     setState(() => _state = _DialogState.restoring);
@@ -102,8 +109,16 @@ class _FirstSignInSyncDialogState extends State<_FirstSignInSyncDialog> {
                 deviceId: widget.session.device.id,
               ),
             )
-          : FirstSignInSyncDialogResult(
+          : preview.canUploadLocalOnly
+          ? FirstSignInSyncDialogResult(
               uploadResult: await widget.service.uploadLocalOnly(
+                preview: preview,
+                userId: widget.session.user.id,
+                deviceId: widget.session.device.id,
+              ),
+            )
+          : FirstSignInSyncDialogResult(
+              mixedResult: await widget.service.mergeMixed(
                 preview: preview,
                 userId: widget.session.user.id,
                 deviceId: widget.session.device.id,
@@ -117,6 +132,8 @@ class _FirstSignInSyncDialogState extends State<_FirstSignInSyncDialog> {
         _transferFailed = true;
         _errorMessage = preview.canUploadLocalOnly
             ? '上传没有完成，本地笔记不受影响；已完成的部分可以安全重试。'
+            : preview.canMergeMixed
+            ? '合并没有完成；无法安全协调的内容未被覆盖，你可以重试或继续使用本地笔记。'
             : '恢复没有完成，已回滚本次写入；你可以安全重试。';
         _state = _DialogState.error;
       });
@@ -146,7 +163,11 @@ class _FirstSignInSyncDialogState extends State<_FirstSignInSyncDialog> {
     _DialogState.checking => '正在检查笔记',
     _DialogState.preview => '安全合并笔记',
     _DialogState.restoring =>
-      _preview?.canUploadLocalOnly == true ? '正在保护本地笔记' : '正在恢复云端笔记',
+      _preview?.canUploadLocalOnly == true
+          ? '正在保护本地笔记'
+          : _preview?.canMergeMixed == true
+          ? '正在安全合并笔记'
+          : '正在恢复云端笔记',
     _DialogState.error => _authenticationExpired ? '需要重新登录' : '检查未完成',
   };
 
@@ -158,6 +179,8 @@ class _FirstSignInSyncDialogState extends State<_FirstSignInSyncDialog> {
       return _ProgressMessage(
         message: _preview?.canUploadLocalOnly == true
             ? '正在上传并校验笔记和附件，请不要关闭 App。'
+            : _preview?.canMergeMixed == true
+            ? '正在协调共同版本、传输独有笔记并做最终校验，请不要关闭 App。'
             : '正在下载并校验笔记和附件，请不要关闭 App。',
       );
     }
@@ -187,9 +210,13 @@ class _FirstSignInSyncDialogState extends State<_FirstSignInSyncDialog> {
         _CountRow(label: '需要安全协调', count: shared),
         const SizedBox(height: 12),
         Text(
-          preview.canRestoreCloudOnly || preview.canUploadLocalOnly
+          preview.canRestoreCloudOnly ||
+                  preview.canUploadLocalOnly ||
+                  preview.canMergeMixed
               ? preview.canUploadLocalOnly
                     ? '附件通过大小和 SHA-256 校验后才会成为可恢复的云端文件。'
+                    : preview.canMergeMixed
+                    ? '共同正文由服务端按 Revision 和 Content Hash 协调；无法证明安全时会保留冲突或停止合并。'
                     : '恢复失败会自动回滚，不会留下半本笔记。'
               : '当前版本尚未执行本地上传或共同版本协调；选择稍后不会改变任何本地内容。',
           style: Theme.of(context).textTheme.bodySmall,
@@ -222,7 +249,9 @@ class _FirstSignInSyncDialogState extends State<_FirstSignInSyncDialog> {
       ];
     }
     final canMerge =
-        _preview!.canRestoreCloudOnly || _preview!.canUploadLocalOnly;
+        _preview!.canRestoreCloudOnly ||
+        _preview!.canUploadLocalOnly ||
+        _preview!.canMergeMixed;
     return [
       TextButton(
         onPressed: () => Navigator.of(context).pop(),
@@ -230,7 +259,7 @@ class _FirstSignInSyncDialogState extends State<_FirstSignInSyncDialog> {
       ),
       FilledButton(
         onPressed: canMerge ? _executeMerge : null,
-        child: Text(canMerge ? '合并（推荐）' : '共享版本协调将在下一步开放'),
+        child: Text(canMerge ? '合并（推荐）' : '暂时无法安全合并'),
       ),
     ];
   }

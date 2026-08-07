@@ -175,6 +175,28 @@ class InkNestApiClient
   }
 
   @override
+  Future<SyncContentCommitResult> commitSharedContent({
+    required String deviceId,
+    required String idempotencyKey,
+    required String baseCursor,
+    required List<Map<String, Object?>> operations,
+  }) async {
+    return SyncContentCommitResult.fromJson(
+      await _postObject(
+        'sync/commit',
+        data: {
+          'deviceId': deviceId,
+          'idempotencyKey': idempotencyKey,
+          'baseCursor': baseCursor,
+          'operations': operations,
+        },
+        expectedStatus: 200,
+        skipAuth: false,
+      ),
+    );
+  }
+
+  @override
   Future<CloudAssetUploadSession> createAssetUploadSession(
     LocalSyncAsset asset,
   ) async {
