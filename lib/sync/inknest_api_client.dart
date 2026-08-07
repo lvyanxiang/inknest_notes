@@ -8,6 +8,7 @@ import 'package:inknest_notes/sync/inknest_api_config.dart';
 import 'package:inknest_notes/sync/inknest_api_models.dart';
 import 'package:inknest_notes/sync/sync_bootstrap.dart';
 import 'package:inknest_notes/sync/sync_cloud_client.dart';
+import 'package:inknest_notes/sync/sync_changes.dart';
 import 'package:inknest_notes/sync/sync_upload_models.dart';
 
 class InkNestApiException implements Exception {
@@ -149,6 +150,26 @@ class InkNestApiClient
   Future<CloudSyncBootstrap> bootstrap() async {
     return CloudSyncBootstrap.fromJson(
       await _getObject('sync/bootstrap', expectedStatus: 200),
+    );
+  }
+
+  @override
+  Future<CloudSyncChangePage> listChanges({
+    String? cursor,
+    int limit = 100,
+  }) async {
+    if (cursor != null && (cursor.isEmpty || cursor.trim() != cursor)) {
+      throw ArgumentError.value(cursor, 'cursor', 'Cursor must not be empty.');
+    }
+    if (limit < 1 || limit > 500) {
+      throw ArgumentError.value(limit, 'limit', 'Limit must be from 1 to 500.');
+    }
+    return CloudSyncChangePage.fromJson(
+      await _getObject(
+        'sync/changes',
+        expectedStatus: 200,
+        queryParameters: {'cursor': ?cursor, 'limit': limit},
+      ),
     );
   }
 
@@ -427,9 +448,13 @@ class InkNestApiClient
   Future<Map<String, Object?>> _getObject(
     String path, {
     required int expectedStatus,
+    Map<String, Object?>? queryParameters,
   }) async {
     try {
-      final response = await _dio.get<Object?>(path);
+      final response = await _dio.get<Object?>(
+        path,
+        queryParameters: queryParameters,
+      );
       return _decodeObject(response, expectedStatus: expectedStatus);
     } on DioException catch (error) {
       throw _exceptionFromDio(error);

@@ -9,6 +9,7 @@ import 'package:inknest_notes/storage/file_notebook_repository.dart';
 import 'package:inknest_notes/sync/file_sync_state_store.dart';
 import 'package:inknest_notes/sync/first_sign_in_sync_service.dart';
 import 'package:inknest_notes/sync/sync_bootstrap.dart';
+import 'package:inknest_notes/sync/sync_changes.dart';
 import 'package:inknest_notes/sync/sync_cloud_client.dart';
 import 'package:inknest_notes/sync/sync_upload_models.dart';
 
@@ -216,6 +217,10 @@ class _MixedFirstSignInCloudClient implements FirstSignInCloudClient {
   final Set<String> uploadedNotebookIds = {};
 
   @override
+  Future<CloudSyncChangePage> listChanges({String? cursor, int limit = 100}) =>
+      throw UnimplementedError();
+
+  @override
   Future<CloudSyncBootstrap> bootstrap() async {
     final now = DateTime.utc(2026, 8, 7);
     final notebookIds = {
@@ -368,6 +373,10 @@ class _FakeFirstSignInCloudClient implements FirstSignInCloudClient {
   final operations = <Map<String, Object?>>[];
   LocalSyncAsset? uploadedAsset;
   bool _completed = false;
+
+  @override
+  Future<CloudSyncChangePage> listChanges({String? cursor, int limit = 100}) =>
+      throw UnimplementedError();
 
   @override
   Future<CloudSyncBootstrap> bootstrap() async {

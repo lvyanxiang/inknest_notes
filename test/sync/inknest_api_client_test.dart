@@ -9,6 +9,7 @@ import 'package:inknest_notes/auth/auth_session_store.dart';
 import 'package:inknest_notes/sync/inknest_api_client.dart';
 import 'package:inknest_notes/sync/inknest_api_config.dart';
 import 'package:inknest_notes/sync/inknest_api_models.dart';
+import 'package:inknest_notes/sync/sync_changes.dart';
 import 'package:inknest_notes/sync/sync_upload_models.dart';
 
 void main() {
@@ -99,6 +100,66 @@ void main() {
       expect(bootstrap.assets.single.id, 'asset-1');
     },
   );
+
+  test('changes downloads one authenticated cursor page', () async {
+    late RequestOptions captured;
+    final dio = Dio();
+    final store = MemoryAuthSessionStore(
+      StoredAuthSession.fromSession(
+        InkNestAuthSession.fromJson(_authJson()),
+        issuedAt: DateTime.utc(2026, 8, 6),
+      ),
+    );
+    final client = InkNestApiClient(
+      config: InkNestApiConfig.fromEnvironment(
+        overrideBaseUrl: 'https://api.example.com',
+      ),
+      dio: dio,
+      refreshDio: Dio(),
+      sessionStore: store,
+      clock: () => DateTime.utc(2026, 8, 6, 0, 1),
+    );
+    _resolveRequests(dio, (options) {
+      captured = options;
+      return (
+        status: 200,
+        data: {
+          'changes': [
+            {
+              'changeId': '11111111-1111-4111-8111-111111111111',
+              'resourceType': 'page',
+              'resourceId': 'page-1',
+              'operation': 'upsert',
+              'revision': 2,
+              'contentHash': 'a' * 64,
+              'payload': {
+                'id': 'page-1',
+                'notebookId': 'notebook-1',
+                'content': <String, Object?>{'strokes': <Object?>[]},
+              },
+              'deviceId': 'device-2',
+              'createdAt': '2026-08-06T00:00:00Z',
+            },
+          ],
+          'nextCursor': 'cursor-2',
+          'hasMore': true,
+        },
+      );
+    });
+
+    final page = await client.listChanges(cursor: 'cursor-1', limit: 25);
+
+    expect(captured.method, 'GET');
+    expect(
+      captured.uri.toString(),
+      'https://api.example.com/api/v1/sync/changes?cursor=cursor-1&limit=25',
+    );
+    expect(captured.headers['Authorization'], 'Bearer access-token-value');
+    expect(page.changes.single.resourceType, CloudSyncChangeResourceType.page);
+    expect(page.changes.single.revision, 2);
+    expect(page.nextCursor, 'cursor-2');
+    expect(page.hasMore, isTrue);
+  });
 
   test('shared-content commit uses the incremental sync contract', () async {
     late RequestOptions captured;

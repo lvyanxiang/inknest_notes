@@ -2,17 +2,14 @@
 
 ## Current
 
-- Milestone: Backend Phase 5 first-sign-in merge and new-device restore is in
-  progress; Flutter now executes cloud-only restore, local-only upload, and a
-  safely gated mixed-library Merge through the real API.
-- Next task: Add the Flutter pending-conflict list/detail flow and explicit
-  recovery for shared structural metadata, attachment, and infinite-canvas
-  differences that mixed Merge currently blocks safely.
-- Last completed: Mixed Merge strictly verifies shared structure and attachment
-  hashes, submits shared content to `/sync/commit` with an unknown base
-  Revision so the server decides unchanged versus conflict by Content Hash,
-  transfers local/cloud-only roots, and saves the final Cursor only after the
-  complete bootstrap inventory matches locally.
+- Milestone: Backend Phase 5 first-sign-in merge and incremental-sync App
+  integration is in progress; the existing server contracts are now consumed
+  from Flutter without adding new API routes.
+- Next task: Apply `/sync/changes` pages to local notebook resources and advance
+  the stored Cursor only after each complete page is safely persisted.
+- Last completed: Flutter now calls the existing authenticated
+  `GET /sync/changes` contract with Cursor/limit pagination and strictly parses
+  folder, notebook, page, canvas, asset, conflict, and Tombstone changes.
 
 ## Decisions
 
@@ -123,6 +120,10 @@
   Content Hash equality as unchanged, preserve notebook/page divergence as a
   conflict, and stop on unsupported structural, attachment, or canvas
   divergence.
+- Continue App integration against existing backend contracts before proposing
+  new routes. `/sync/changes` download must be connected before expanding
+  conflict presentation APIs, and its `nextCursor` is not persisted until the
+  complete returned page has been applied locally.
 - Use email/password for the first account flow without mandatory email
   verification during initial development. Use short-lived JWT access tokens
   and rotating opaque refresh tokens; store only refresh-token hashes and bind
@@ -665,6 +666,9 @@
 - Backend `uv run pytest tests/unit/test_sync_changes.py` passed with 11 tests,
   confirming unchanged-by-Content-Hash and Revision-conflict preservation used
   by the Flutter shared-content integration.
+- Focused Flutter API/service tests pass after adding typed `/sync/changes`
+  pagination and response parsing; the complete Flutter suite passes with 193
+  tests, `flutter analyze` passes, and no backend source or route changed.
 
 ## Notes
 
