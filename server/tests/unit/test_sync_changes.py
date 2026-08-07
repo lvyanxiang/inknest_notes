@@ -290,6 +290,103 @@ async def test_sync_commit_is_atomic_and_idempotent(
     assert key_reused.json()["error"]["code"] == "sync_idempotency_key_reused"
 
 
+async def test_sync_commit_updates_notebook_metadata_and_rejects_concurrent_structure(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    registered = await register(client, "sync-notebook-metadata@example.com")
+    user_id = UUID(registered["user"]["id"])
+    library = LibraryRepository(db_session)
+    await library.create_folder(
+        user_id=user_id,
+        folder_id="metadata-folder",
+        name="Projects",
+    )
+    notebook = await library.create_notebook(
+        user_id=user_id,
+        notebook_id="metadata-notebook",
+        title="Before",
+        layout_mode="paged",
+    )
+    notebook_id = notebook.id
+    await db_session.commit()
+    changes = await client.get(
+        "/api/v1/sync/changes",
+        headers=bearer(registered["accessToken"]),
+    )
+    base_metadata = {
+        "title": "Before",
+        "isArchived": False,
+        "folderId": None,
+    }
+    payload = {
+        "deviceId": registered["device"]["id"],
+        "idempotencyKey": "metadata-update-1",
+        "baseCursor": changes.json()["nextCursor"],
+        "operations": [
+            {
+                "operationId": "metadata-operation-1",
+                "operation": "upsert",
+                "resourceType": "notebook",
+                "resourceId": notebook_id,
+                "baseRevision": 0,
+                "baseMetadata": base_metadata,
+                "metadata": {
+                    "title": "After",
+                    "isArchived": True,
+                    "folderId": "metadata-folder",
+                },
+            }
+        ],
+    }
+
+    committed = await client.post(
+        "/api/v1/sync/commit",
+        json=payload,
+        headers=bearer(registered["accessToken"]),
+    )
+    replayed = await client.post(
+        "/api/v1/sync/commit",
+        json=payload,
+        headers=bearer(registered["accessToken"]),
+    )
+    conflict = await client.post(
+        "/api/v1/sync/commit",
+        json={
+            **payload,
+            "idempotencyKey": "metadata-update-2",
+            "operations": [
+                {
+                    **payload["operations"][0],
+                    "operationId": "metadata-operation-2",
+                    "metadata": {**base_metadata, "title": "Other"},
+                }
+            ],
+        },
+        headers=bearer(registered["accessToken"]),
+    )
+    db_session.expire_all()
+    stored = await db_session.scalar(
+        select(Notebook).where(
+            Notebook.id == notebook_id,
+            Notebook.user_id == user_id,
+        )
+    )
+
+    assert committed.status_code == 200
+    assert committed.json()["results"][0]["revision"] == 1
+    assert replayed.json() == {**committed.json(), "replayed": True}
+    assert conflict.status_code == 409
+    assert conflict.json()["error"]["code"] == "sync_notebook_metadata_conflict"
+    assert conflict.json()["error"]["details"]["fields"] == ["title"]
+    assert stored is not None
+    assert (stored.title, stored.is_archived, stored.folder_id) == (
+        "After",
+        True,
+        "metadata-folder",
+    )
+
+
 async def test_failed_sync_batch_rolls_back_prior_operations_and_retry_reservation(
     client: AsyncClient,
     db_session: AsyncSession,

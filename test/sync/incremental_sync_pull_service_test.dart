@@ -178,6 +178,103 @@ void main() {
     },
   );
 
+  test('applies a continuous notebook metadata update', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'inknest-pull-metadata-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final repository = FileNotebookRepository(rootDirectory: root);
+    final folder = await repository.createFolder('Projects');
+    final local = await repository.createNotebook(title: 'Before');
+    final stateStore = FileSyncStateStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    );
+    await stateStore.markChangesPageApplied('cursor-1');
+    await FileSyncResourceMapStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    ).replaceAll([
+      SyncResourceMapping(
+        localKey: notebookSyncLocalKey(local.id),
+        resourceType: SyncResourceType.notebook,
+        remoteResourceId: local.id,
+        revision: 1,
+        contentHash: 'a' * 64,
+        notebookMetadata: const {
+          'title': 'Before',
+          'isArchived': false,
+          'folderId': null,
+        },
+      ),
+    ]);
+    final now = DateTime.utc(2026, 8, 7);
+    final bootstrap = CloudSyncBootstrap(
+      inventory: SyncLibraryInventory(
+        folderIds: [folder.id],
+        notebookIds: [local.id],
+      ),
+      baseCursor: 'bootstrap-cursor',
+      folders: [
+        CloudSyncFolder(
+          id: folder.id,
+          name: folder.name,
+          createdAt: folder.createdAt,
+          updatedAt: folder.updatedAt,
+        ),
+      ],
+      notebooks: [
+        CloudSyncNotebook(
+          id: local.id,
+          folderId: folder.id,
+          title: 'After',
+          layoutMode: 'paged',
+          isArchived: true,
+          revision: 2,
+          contentHash: 'a' * 64,
+          content: const {},
+          conflictOf: null,
+          createdAt: now,
+          updatedAt: now,
+        ),
+      ],
+      pages: const [],
+      infiniteCanvases: const [],
+      assets: const [],
+    );
+    final cloud = _PullCloudClient(
+      bootstrapSnapshot: bootstrap,
+      pages: [
+        CloudSyncChangePage(
+          changes: [
+            _change(
+              'notebook',
+              local.id,
+              revision: 2,
+              contentHash: 'a' * 64,
+            ),
+          ],
+          nextCursor: 'cursor-2',
+          hasMore: false,
+        ),
+      ],
+    );
+
+    final result = await IncrementalSyncPullService(
+      repository: repository,
+      cloudClient: cloud,
+      rootDirectory: root,
+    ).pull(userId: 'user-1', deviceId: 'device-1');
+
+    expect(result.status, IncrementalSyncPullStatus.applied);
+    final updated = (await repository.listNotebooks(archived: true)).single;
+    expect(updated.title, 'After');
+    expect(updated.folderId, folder.id);
+    expect((await stateStore.loadSnapshot()).lastAppliedCursor, 'cursor-2');
+  });
+
   test('applies a continuous shared page content update', () async {
     final root = await Directory.systemTemp.createTemp('inknest-pull-page-');
     addTearDown(() => root.delete(recursive: true));

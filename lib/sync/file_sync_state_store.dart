@@ -91,6 +91,7 @@ class FileSyncStateStore {
         final updated = state.pendingOperations[existingIndex].copyWith(
           operation: SyncOperationKind.upsert,
           content: content,
+          includesContent: true,
         );
         state.pendingOperations[existingIndex] = updated;
         return updated;
@@ -102,6 +103,45 @@ class FileSyncStateStore {
         resourceId: resourceId,
         baseRevision: baseRevision,
         content: content,
+      );
+      state.pendingOperations.add(operation);
+      return operation;
+    });
+  }
+
+  Future<PendingSyncOperation> enqueueNotebookMetadata({
+    required String resourceId,
+    required int baseRevision,
+    required Map<String, Object?> baseMetadata,
+    required Map<String, Object?> metadata,
+  }) {
+    if (resourceId.trim().isEmpty || baseRevision < 0) {
+      throw ArgumentError('Invalid notebook metadata synchronization state.');
+    }
+    return _mutate((state) {
+      final resourceKey = '${SyncResourceType.notebook.apiValue}:$resourceId';
+      final existingIndex = state.pendingOperations.indexWhere(
+        (operation) => operation.resourceKey == resourceKey,
+      );
+      if (existingIndex != -1) {
+        final existing = state.pendingOperations[existingIndex];
+        final updated = existing.copyWith(
+          operation: SyncOperationKind.upsert,
+          metadata: metadata,
+          baseMetadata: existing.baseMetadata ?? baseMetadata,
+        );
+        state.pendingOperations[existingIndex] = updated;
+        return updated;
+      }
+      final operation = PendingSyncOperation(
+        operationId: _idFactory('operation'),
+        resourceType: SyncResourceType.notebook,
+        resourceId: resourceId,
+        baseRevision: baseRevision,
+        content: const {},
+        includesContent: false,
+        metadata: metadata,
+        baseMetadata: baseMetadata,
       );
       state.pendingOperations.add(operation);
       return operation;
@@ -137,6 +177,7 @@ class FileSyncStateStore {
         final updated = state.pendingOperations[existingIndex].copyWith(
           operation: SyncOperationKind.delete,
           content: const {},
+          includesContent: false,
         );
         state.pendingOperations[existingIndex] = updated;
         return updated;

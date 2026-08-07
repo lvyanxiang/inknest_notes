@@ -12,6 +12,7 @@ from inknest_server.content.canonical_json import normalized_json_object
 from inknest_server.models.auth import Device
 from inknest_server.models.library import (
     ContentRevision,
+    Folder,
     InfiniteCanvas,
     Notebook,
     Page,
@@ -44,6 +45,12 @@ class ResourceDeletedError(Exception):
         super().__init__("the resource is soft-deleted")
 
 
+class NotebookMetadataConflictError(Exception):
+    def __init__(self, fields: list[str]) -> None:
+        self.fields = fields
+        super().__init__("notebook metadata changed concurrently")
+
+
 @dataclass(frozen=True, slots=True)
 class ContentSaveResult:
     revision: int
@@ -67,6 +74,25 @@ class ContentRepository:
         content: dict[str, object],
         device_id: UUID | None = None,
     ) -> ContentSaveResult:
+        return await self.save_notebook(
+            user_id=user_id,
+            notebook_id=notebook_id,
+            base_revision=base_revision,
+            content=content,
+            device_id=device_id,
+        )
+
+    async def save_notebook(
+        self,
+        *,
+        user_id: UUID,
+        notebook_id: str,
+        base_revision: int,
+        content: dict[str, object] | None = None,
+        metadata: dict[str, object] | None = None,
+        base_metadata: dict[str, object] | None = None,
+        device_id: UUID | None = None,
+    ) -> ContentSaveResult:
         resource = await self._session.scalar(
             select(Notebook)
             .where(Notebook.id == notebook_id, Notebook.user_id == user_id)
@@ -74,13 +100,97 @@ class ContentRepository:
         )
         if resource is None:
             raise LibraryResourceNotFoundError("notebook", notebook_id)
-        return await self._save(
-            resource=resource,
-            resource_type="notebook",
+        if device_id is not None:
+            await self._ensure_active_device_owned(user_id=user_id, device_id=device_id)
+        if resource.deleted_at is not None:
+            raise ResourceDeletedError(current_revision=resource.revision)
+
+        current_metadata: dict[str, object] = {
+            "title": resource.title,
+            "isArchived": resource.is_archived,
+            "folderId": resource.folder_id,
+        }
+        merged_metadata = dict(current_metadata)
+        if metadata is not None:
+            if base_metadata is None:
+                raise ValueError("base_metadata is required with metadata")
+            conflicting_fields: list[str] = []
+            for field in ("title", "isArchived", "folderId"):
+                desired = metadata[field]
+                baseline = base_metadata[field]
+                current = current_metadata[field]
+                if desired == baseline:
+                    continue
+                if current not in {baseline, desired}:
+                    conflicting_fields.append(field)
+                else:
+                    merged_metadata[field] = desired
+            if conflicting_fields:
+                raise NotebookMetadataConflictError(conflicting_fields)
+            folder_id = merged_metadata["folderId"]
+            if folder_id is not None:
+                folder = await self._session.scalar(
+                    select(Folder).where(
+                        Folder.id == folder_id, Folder.user_id == user_id
+                    )
+                )
+                if folder is None:
+                    raise LibraryResourceNotFoundError("folder", str(folder_id))
+
+        normalized_content = (
+            normalized_json_object(content) if content is not None else resource.content
+        )
+        new_hash = calculate_content_hash(normalized_content)
+        content_changed = resource.content_hash != new_hash
+        metadata_changed = merged_metadata != current_metadata
+        if content_changed and resource.revision != base_revision:
+            raise RevisionConflictError(
+                expected_revision=base_revision,
+                current_revision=resource.revision,
+            )
+        if not content_changed and not metadata_changed:
+            return ContentSaveResult(
+                revision=resource.revision,
+                content_hash=resource.content_hash,
+                created_revision=False,
+            )
+
+        next_revision = resource.revision + 1
+        self._session.add(
+            ContentRevision(
+                user_id=user_id,
+                resource_type="notebook",
+                resource_id=resource.id,
+                revision=next_revision,
+                content_hash=new_hash,
+                content=normalized_content,
+                device_id=device_id,
+            )
+        )
+        resource.revision = next_revision
+        resource.content_hash = new_hash
+        resource.content = normalized_content
+        resource.title = str(merged_metadata["title"])
+        resource.is_archived = bool(merged_metadata["isArchived"])
+        resource.folder_id = (
+            str(merged_metadata["folderId"])
+            if merged_metadata["folderId"] is not None
+            else None
+        )
+        await self._session.flush()
+        await self._changes.append_upsert(
             user_id=user_id,
-            base_revision=base_revision,
-            content=content,
+            resource_type="notebook",
+            resource_id=resource.id,
+            payload=notebook_snapshot(resource),
+            revision=next_revision,
+            content_hash=new_hash,
             device_id=device_id,
+        )
+        return ContentSaveResult(
+            revision=next_revision,
+            content_hash=new_hash,
+            created_revision=True,
         )
 
     async def save_page_content(

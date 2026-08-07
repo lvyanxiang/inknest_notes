@@ -78,6 +78,14 @@ void main() {
     expect(page?.resourceType, SyncResourceType.page);
     expect(page?.remoteResourceId, 'remote-page-1');
     expect(page?.revision, 4);
+    final notebookMapping = await restartedStore.find(
+      notebookSyncLocalKey(notebook.id),
+    );
+    expect(notebookMapping?.notebookMetadata, {
+      'title': 'Mapped notes',
+      'isArchived': false,
+      'folderId': null,
+    });
     expect(
       await restartedStore.hasCloudAsset(notebook.id, 'assets/image.png'),
       isTrue,

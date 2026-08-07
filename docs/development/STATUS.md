@@ -4,18 +4,20 @@
 
 - Milestone: Backend Phase 5 incremental-sync App integration is in progress;
   initialized sessions now push saved page, notebook-content, and infinite-
-  canvas edits, mapped whole-notebook deletes, and structurally safe trailing-
-  page deletes before applying safe `/sync/changes` updates.
-- Next task: Define and implement the first structural synchronization contract
-  for notebook title, archive state, and folder placement. Arbitrary page
-  deletion, page reordering, and standalone canvas deletion remain blocked on
-  their corresponding structural contracts.
-- Last completed: Cloud-only restore, mixed first-sign-in Merge, and additive
-  incremental download now run inside a verified local recovery snapshot. The
-  snapshot covers the complete notebook library plus account/device sync
-  sidecars; mapping, metadata, or Cursor handoff failure restores the exact
-  pre-operation local state before surfacing a retryable error. Successful
-  handoff removes the transient snapshot.
+  canvas edits, explicit notebook title/archive/existing-folder metadata,
+  mapped whole-notebook deletes, and structurally safe trailing-page deletes
+  before applying safe `/sync/changes` updates.
+- Next task: Add incremental folder lifecycle synchronization for folder
+  creation and rename before page-order and canvas-background contracts.
+  Arbitrary middle-page deletion and standalone canvas deletion remain blocked
+  on their corresponding structural contracts.
+- Last completed: Existing notebook title, archive state, and placement among
+  already synchronized folders now use an explicit `/sync/commit`
+  `metadata/baseMetadata` contract. Flutter queues the existing shelf actions,
+  applies continuous remote metadata Revisions, and persists their baseline in
+  the resource map. The server field-merges against that baseline, rejects a
+  true same-field race with `sync_notebook_metadata_conflict`, and leaves the
+  local frozen operation available instead of silently overwriting it.
 
 ## Decisions
 
@@ -149,10 +151,12 @@
   application. A legacy initialized session with local notes but no mapping
   re-enters the safe first-sign-in Merge path instead of guessing remote page
   IDs. Page saves remain locally successful if queue-sidecar persistence fails.
-- Treat `/sync/commit` as a content-only contract. Do not encode notebook title,
-  archive/folder placement, page order, or canvas background into content and
-  claim those structural changes synchronized. Queue notebook/canvas content
-  only when every page/asset reference can be rewritten to verified cloud state.
+- Treat `/sync/commit` as a content plus explicit notebook-metadata contract.
+  Notebook title, archive state, and an already-synchronized folder ID travel
+  in `metadata/baseMetadata`, never inside content. Folder lifecycle, page
+  order, and canvas background remain unsupported and must not be claimed as
+  synchronized. Queue notebook/canvas content only when every page/asset
+  reference can be rewritten to verified cloud state.
 - Limit incremental page deletion to a mapped trailing page while at least one
   page remains. The current server contract does not compact later page
   positions or carry structural location in Tombstones, so middle-page deletion
@@ -766,6 +770,11 @@
   sidecar, resource-map obstacle, and Cursor restoration when cloud-only,
   mixed-Merge, or additive-download handoff fails. `flutter analyze` and
   `git diff --check` pass; no backend route changed.
+- `flutter test` passes with 248 tests after notebook metadata synchronization;
+  the backend passes 50 unit/API tests and 15 PostgreSQL/MinIO integration
+  tests. Focused coverage includes durable metadata coalescing, cross-device
+  title/archive/folder application, idempotent replay, and atomic same-field
+  conflict rejection. Ruff, mypy, Flutter analysis, and diff checks pass.
 
 ## Notes
 

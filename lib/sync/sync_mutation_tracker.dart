@@ -41,6 +41,11 @@ class SyncMutationTracker {
     return _enqueue(() => _trackNotebookContent(notebook));
   }
 
+  Future<void> notebookMetadataSaved(Notebook notebook) {
+    if (_suppressionDepth > 0) return Future.value();
+    return _enqueue(() => _trackNotebookMetadata(notebook));
+  }
+
   Future<void> infiniteCanvasSaved(
     Notebook notebook,
     InfiniteCanvasDocument document,
@@ -146,6 +151,30 @@ class SyncMutationTracker {
       resourceId: mapping.remoteResourceId,
       baseRevision: mapping.revision,
       content: content,
+    );
+  }
+
+  Future<void> _trackNotebookMetadata(Notebook notebook) async {
+    final session = activeSession();
+    if (session == null) return;
+    final mapping = await _resourceMap(
+      session,
+    ).find(notebookSyncLocalKey(notebook.id));
+    final baseMetadata = mapping?.notebookMetadata;
+    if (mapping == null ||
+        mapping.resourceType != SyncResourceType.notebook ||
+        baseMetadata == null) {
+      return;
+    }
+    await _stateStore(session).enqueueNotebookMetadata(
+      resourceId: mapping.remoteResourceId,
+      baseRevision: mapping.revision,
+      baseMetadata: baseMetadata,
+      metadata: {
+        'title': notebook.title,
+        'isArchived': notebook.isArchived,
+        'folderId': notebook.folderId,
+      },
     );
   }
 

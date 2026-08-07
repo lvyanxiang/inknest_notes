@@ -12,6 +12,7 @@ class SyncResourceMapping {
     required this.remoteResourceId,
     required this.revision,
     required this.contentHash,
+    this.notebookMetadata,
   });
 
   final String localKey;
@@ -19,15 +20,20 @@ class SyncResourceMapping {
   final String remoteResourceId;
   final int revision;
   final String contentHash;
+  final Map<String, Object?>? notebookMetadata;
 
-  SyncResourceMapping copyWith({int? revision, String? contentHash}) =>
-      SyncResourceMapping(
-        localKey: localKey,
-        resourceType: resourceType,
-        remoteResourceId: remoteResourceId,
-        revision: revision ?? this.revision,
-        contentHash: contentHash ?? this.contentHash,
-      );
+  SyncResourceMapping copyWith({
+    int? revision,
+    String? contentHash,
+    Map<String, Object?>? notebookMetadata,
+  }) => SyncResourceMapping(
+    localKey: localKey,
+    resourceType: resourceType,
+    remoteResourceId: remoteResourceId,
+    revision: revision ?? this.revision,
+    contentHash: contentHash ?? this.contentHash,
+    notebookMetadata: notebookMetadata ?? this.notebookMetadata,
+  );
 
   factory SyncResourceMapping.fromJson(Map<String, Object?> json) {
     final revision = json['revision'];
@@ -46,6 +52,12 @@ class SyncResourceMapping {
       remoteResourceId: json['remoteResourceId']! as String,
       revision: revision,
       contentHash: contentHash,
+      notebookMetadata: json['notebookMetadata'] == null
+          ? null
+          : Map.unmodifiable(
+              (json['notebookMetadata']! as Map<Object?, Object?>)
+                  .cast<String, Object?>(),
+            ),
     );
   }
 
@@ -55,6 +67,7 @@ class SyncResourceMapping {
     'remoteResourceId': remoteResourceId,
     'revision': revision,
     'contentHash': contentHash,
+    if (notebookMetadata != null) 'notebookMetadata': notebookMetadata,
   };
 }
 
@@ -147,6 +160,7 @@ class FileSyncResourceMapStore {
     required String remoteResourceId,
     required int revision,
     required String contentHash,
+    Map<String, Object?>? notebookMetadata,
   }) {
     return _enqueueWrite(() async {
       final document = await _read();
@@ -164,7 +178,11 @@ class FileSyncResourceMapStore {
         for (final resource in document.resources)
           if (resource.resourceType == resourceType &&
               resource.remoteResourceId == remoteResourceId)
-            resource.copyWith(revision: revision, contentHash: contentHash)
+            resource.copyWith(
+              revision: revision,
+              contentHash: contentHash,
+              notebookMetadata: notebookMetadata,
+            )
           else
             resource,
       ];
@@ -243,6 +261,7 @@ Future<List<SyncResourceMapping>> buildSyncResourceMappings({
         remoteResourceId: cloudNotebook.id,
         revision: cloudNotebook.revision,
         contentHash: cloudNotebook.contentHash,
+        notebookMetadata: notebookSyncMetadata(cloudNotebook),
       ),
     );
     if (notebook.layoutMode.name == 'paged') {
@@ -287,6 +306,12 @@ Future<List<SyncResourceMapping>> buildSyncResourceMappings({
   }
   return mappings;
 }
+
+Map<String, Object?> notebookSyncMetadata(CloudSyncNotebook notebook) => {
+  'title': notebook.title,
+  'isArchived': notebook.isArchived,
+  'folderId': notebook.folderId,
+};
 
 class _SyncResourceMapDocument {
   const _SyncResourceMapDocument({

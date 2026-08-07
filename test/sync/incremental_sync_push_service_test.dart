@@ -121,6 +121,23 @@ void main() {
       expect(result.preservedDeleteEditCount, 1);
     },
   );
+
+  test('metadata commit waits for pull before advancing its mapping', () async {
+    final fixture = await _PushFixture.create(metadata: true);
+    addTearDown(fixture.dispose);
+
+    await fixture.service.push(userId: 'user-1', deviceId: 'device-1');
+
+    expect(fixture.cloud.requests.single.operation, isNot(contains('content')));
+    expect(fixture.cloud.requests.single.operation['metadata'], {
+      'title': 'After',
+      'isArchived': true,
+      'folderId': null,
+    });
+    final mapping = await fixture.resourceMap.find('notebook:notebook-1');
+    expect(mapping?.revision, 1);
+    expect(mapping?.notebookMetadata?['title'], 'Before');
+  });
 }
 
 class _PushFixture {
@@ -142,6 +159,7 @@ class _PushFixture {
   static Future<_PushFixture> create({
     int failuresRemaining = 0,
     bool delete = false,
+    bool metadata = false,
     String? outcome,
   }) async {
     final root = await Directory.systemTemp.createTemp('inknest-push-');
@@ -158,6 +176,21 @@ class _PushFixture {
         resourceId: 'notebook-1',
         baseRevision: 1,
       );
+    } else if (metadata) {
+      await stateStore.enqueueNotebookMetadata(
+        resourceId: 'notebook-1',
+        baseRevision: 1,
+        baseMetadata: const {
+          'title': 'Before',
+          'isArchived': false,
+          'folderId': null,
+        },
+        metadata: const {
+          'title': 'After',
+          'isArchived': true,
+          'folderId': null,
+        },
+      );
     } else {
       await stateStore.enqueueUpsert(
         resourceType: SyncResourceType.page,
@@ -173,13 +206,18 @@ class _PushFixture {
     );
     await resourceMap.replaceAll([
       SyncResourceMapping(
-        localKey: delete ? 'notebook:notebook-1' : 'page:local:page-1',
-        resourceType: delete
+        localKey: delete || metadata
+            ? 'notebook:notebook-1'
+            : 'page:local:page-1',
+        resourceType: delete || metadata
             ? SyncResourceType.notebook
             : SyncResourceType.page,
-        remoteResourceId: delete ? 'notebook-1' : 'remote-page-1',
+        remoteResourceId: delete || metadata ? 'notebook-1' : 'remote-page-1',
         revision: 1,
         contentHash: 'a' * 64,
+        notebookMetadata: metadata
+            ? const {'title': 'Before', 'isArchived': false, 'folderId': null}
+            : null,
       ),
     ]);
     return _PushFixture(

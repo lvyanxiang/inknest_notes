@@ -235,6 +235,18 @@ class SyncMergeCommitResponse(SyncApiModel):
     next_cursor: str
 
 
+class SyncNotebookMetadata(SyncApiModel):
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        extra="forbid",
+        populate_by_name=True,
+    )
+
+    title: str = Field(min_length=1, max_length=300)
+    is_archived: bool
+    folder_id: str | None = Field(default=None, min_length=1, max_length=128)
+
+
 class SyncCommitOperation(SyncApiModel):
     operation_id: str = Field(min_length=1, max_length=128)
     operation: Literal["upsert", "delete"]
@@ -242,13 +254,30 @@ class SyncCommitOperation(SyncApiModel):
     resource_id: str = Field(min_length=1, max_length=128)
     base_revision: int = Field(ge=0)
     content: dict[str, object] | None = None
+    metadata: SyncNotebookMetadata | None = None
+    base_metadata: SyncNotebookMetadata | None = None
 
     @model_validator(mode="after")
     def validate_operation_content(self) -> SyncCommitOperation:
-        if self.operation == "upsert" and self.content is None:
-            raise ValueError("content is required for an upsert operation")
-        if self.operation == "delete" and self.content is not None:
-            raise ValueError("content must be omitted for a delete operation")
+        if (
+            self.operation == "upsert"
+            and self.content is None
+            and self.metadata is None
+        ):
+            raise ValueError("content or metadata is required for an upsert operation")
+        if self.operation == "delete" and (
+            self.content is not None
+            or self.metadata is not None
+            or self.base_metadata is not None
+        ):
+            raise ValueError(
+                "content and metadata must be omitted for a delete operation"
+            )
+        if self.metadata is not None:
+            if self.resource_type != "notebook" or self.base_metadata is None:
+                raise ValueError("notebook metadata requires notebook baseMetadata")
+        elif self.base_metadata is not None:
+            raise ValueError("baseMetadata requires metadata")
         return self
 
 

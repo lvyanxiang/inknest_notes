@@ -158,7 +158,7 @@ All application routes use the base URL `http://127.0.0.1:8000/api/v1`.
 | `GET` | `/sync/bootstrap` | Bearer Access Token | Read library structure, JSON content, and verified asset metadata before a first merge. |
 | `POST` | `/sync/merge/commit` | Bearer Access Token | Atomically and idempotently create local-only library structure and JSON content. |
 | `GET` | `/sync/changes?cursor=...&limit=...` | Bearer Access Token | Read ordered changes for the current user and receive the next opaque cursor. |
-| `POST` | `/sync/commit` | Bearer Access Token | Atomically commit an idempotent batch of existing notebook, page, or infinite-canvas content updates or soft deletes. |
+| `POST` | `/sync/commit` | Bearer Access Token | Atomically commit an idempotent batch of existing notebook metadata/content, page/canvas content, or soft deletes. |
 | `POST` | `/sync/conflicts/{conflict_id}/resolve` | Bearer Access Token | Resolve an owned page/notebook conflict by keeping the original, using the submitted version, or keeping both. |
 | `POST` | `/sync/tombstones/{tombstone_id}/restore` | Bearer Access Token | Restore the full snapshot represented by one active owned Tombstone as a new Revision. |
 
@@ -338,8 +338,9 @@ Tombstone snapshots.
 
 ### Idempotent synchronization commits
 
-`POST /api/v1/sync/commit` writes complete JSON content or soft-deletes existing
-notebooks, pages, and infinite canvases. First obtain and persist a cursor from
+`POST /api/v1/sync/commit` writes explicit notebook metadata, complete JSON
+content, or soft-deletes existing notebooks, pages, and infinite canvases.
+First obtain and persist a cursor from
 `GET /sync/changes`, then submit a batch:
 
 ```bash
@@ -360,6 +361,28 @@ curl -X POST 'http://127.0.0.1:8000/api/v1/sync/commit' \
     }]
   }'
 ```
+
+For a notebook rename, archive/restore, or move to an already synchronized
+folder, send `metadata` separately from content together with the last applied
+`baseMetadata`:
+
+```json
+{
+  "operationId": "notebook-metadata-1",
+  "operation": "upsert",
+  "resourceType": "notebook",
+  "resourceId": "<existing-notebook-id>",
+  "baseRevision": 4,
+  "baseMetadata": {"title":"Before","isArchived":false,"folderId":null},
+  "metadata": {"title":"After","isArchived":true,"folderId":"folder-1"}
+}
+```
+
+The server compares each changed field with its baseline. Unrelated content
+Revisions do not block a safe metadata update. If the same field changed on
+another device, the batch returns `409 sync_notebook_metadata_conflict` and no
+operation is committed. Folder creation/rename/delete is not part of this
+contract yet.
 
 The whole batch uses one PostgreSQL transaction. A stale page or notebook with
 different content leaves the original unchanged and returns an operation result
@@ -592,9 +615,9 @@ an unknown future representation can be preserved without server rewriting.
 The `assets` table stores only object metadata and MinIO object keys; file bytes
 remain in MinIO.
 
-There are no public library CRUD routes yet. The incremental feed, content-only
-sync commit route for existing revisioned resources, and upload sessions are
-the current library-related routes.
+There are no public library CRUD routes yet. The incremental feed, explicit
+notebook-metadata/content sync commit route for existing revisioned resources,
+and upload sessions are the current library-related routes.
 Inspect these tables in
 Navicat/pgAdmin, or run the repository tests from `server/`:
 

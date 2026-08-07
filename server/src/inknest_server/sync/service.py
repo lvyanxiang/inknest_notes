@@ -7,6 +7,7 @@ from inknest_server.content.canonical_json import content_hash
 from inknest_server.models import SyncChange
 from inknest_server.repositories.content import (
     ContentRepository,
+    NotebookMetadataConflictError,
     ResourceDeletedError,
     RevisionConflictError,
 )
@@ -61,7 +62,12 @@ class SyncOperationFailedError(Exception):
     def __init__(
         self,
         operation: SyncCommitOperation,
-        cause: RevisionConflictError | LibraryResourceNotFoundError,
+        cause: (
+            RevisionConflictError
+            | NotebookMetadataConflictError
+            | ResourceDeletedError
+            | LibraryResourceNotFoundError
+        ),
     ) -> None:
         self.operation = operation
         self.cause = cause
@@ -393,18 +399,28 @@ class SyncService:
                 tombstone=SyncTombstoneResponse.model_validate(delete_result.tombstone),
             )
 
-        if operation.content is None:
-            raise RuntimeError("validated upsert operation has no content")
         try:
             if operation.resource_type == "notebook":
-                content_result = await self._content.save_notebook_content(
+                content_result = await self._content.save_notebook(
                     user_id=user_id,
                     notebook_id=operation.resource_id,
                     base_revision=operation.base_revision,
                     content=operation.content,
+                    metadata=(
+                        operation.metadata.model_dump(mode="json", by_alias=True)
+                        if operation.metadata is not None
+                        else None
+                    ),
+                    base_metadata=(
+                        operation.base_metadata.model_dump(mode="json", by_alias=True)
+                        if operation.base_metadata is not None
+                        else None
+                    ),
                     device_id=device_id,
                 )
             elif operation.resource_type == "page":
+                if operation.content is None:
+                    raise RuntimeError("validated page upsert has no content")
                 content_result = await self._content.save_page_content(
                     user_id=user_id,
                     page_id=operation.resource_id,
@@ -413,6 +429,8 @@ class SyncService:
                     device_id=device_id,
                 )
             else:
+                if operation.content is None:
+                    raise RuntimeError("validated canvas upsert has no content")
                 content_result = await self._content.save_infinite_canvas_content(
                     user_id=user_id,
                     canvas_id=operation.resource_id,
@@ -420,7 +438,9 @@ class SyncService:
                     content=operation.content,
                     device_id=device_id,
                 )
-        except ResourceDeletedError:
+        except ResourceDeletedError as error:
+            if operation.content is None:
+                raise SyncOperationFailedError(operation, error) from error
             tombstone_result = await self._tombstones.preserve_edit_after_delete(
                 user_id=user_id,
                 device_id=device_id,
@@ -442,6 +462,8 @@ class SyncService:
             )
         except RevisionConflictError as error:
             if operation.resource_type in {"notebook", "page"}:
+                if operation.content is None:
+                    raise SyncOperationFailedError(operation, error) from error
                 conflict = await self._conflicts.create(
                     user_id=user_id,
                     device_id=device_id,
@@ -461,7 +483,10 @@ class SyncService:
                     conflict=SyncConflictResponse.model_validate(conflict),
                 )
             raise SyncOperationFailedError(operation, error) from error
-        except LibraryResourceNotFoundError as error:
+        except (
+            NotebookMetadataConflictError,
+            LibraryResourceNotFoundError,
+        ) as error:
             raise SyncOperationFailedError(operation, error) from error
         return SyncCommitOperationResult(
             operation_id=operation.operation_id,

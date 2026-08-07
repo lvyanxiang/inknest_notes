@@ -86,7 +86,8 @@ continue-local state without overwriting either side.
 ### Background incremental synchronization
 
 1. After an existing signed-in session becomes active, InkNest first uploads
-   persisted page, bookmark/notebook-content, and safe infinite-canvas edits,
+   persisted page, bookmark/notebook-content, notebook title/archive/existing-
+   folder placement, and safe infinite-canvas edits,
    then checks the saved Cursor and downloads available change pages without
    covering the library or editor.
 2. A successful upload announces how many local changes were sent. A safe
@@ -101,8 +102,8 @@ continue-local state without overwriting either side.
    immediately to local use with a concise retry-later message; it never blocks
    writing.
 5. A local edit containing an attachment not yet verified in cloud remains
-   local and does not claim upload success. Structural changes unsupported by
-   the current content-only contract likewise remain local.
+   local and does not claim upload success. Folder lifecycle, page structure,
+   and canvas background remain local until their explicit contracts exist.
 
 ### Conflict recovery
 
@@ -290,6 +291,11 @@ continue-local state without overwriting either side.
   boundary rather than only staged-file cleanup: if final mapping, metadata, or
   Cursor persistence fails, the shelf and device sync state are restored to
   their pre-operation contents before Retry or Continue Offline is offered.
+  Existing shelf Rename, Archive/Restore, and Move actions now also queue
+  notebook metadata without adding new controls. A remote accepted update
+  appears through the normal refreshed shelf; a true concurrent same-field
+  change uses the existing non-blocking sync failure/retry state while both the
+  local shelf value and frozen operation remain intact.
 - Intentional deviations: The server reserves the copy ID immediately but only
   materializes a normal notebook/page when the user chooses Keep Both. This
   avoids temporary duplicate library entries while preserving both snapshots.

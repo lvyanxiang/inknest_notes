@@ -225,6 +225,22 @@ The first slice sets no retention period and performs no physical cleanup.
   first-sign-in Merge again. Successful additive downloads refresh the library;
   offline or blocked reconciliation leaves local notes available.
 
+### Notebook metadata synchronization contract
+
+- Existing Rename, Archive/Restore, and Move actions remain immediate local
+  shelf operations. For a mapped notebook, Flutter coalesces their latest
+  `title`, `isArchived`, and nullable `folderId` into the durable sync queue.
+- `/sync/commit` carries metadata separately from notebook JSON content and
+  includes the last applied metadata baseline. The server applies only fields
+  whose current value still matches that baseline, allowing an unrelated
+  content Revision to coexist with a metadata update.
+- A same-field concurrent structure change returns
+  `sync_notebook_metadata_conflict`, rolls back the batch, and retains the
+  local frozen operation. It never silently chooses the latest request.
+- Folder creation/rename/delete, page ordering, and canvas background remain
+  outside this slice. A folder move is synchronized only when that stable
+  folder ID already exists in the account and on the receiving device.
+
 ## Acceptance Criteria
 
 - [x] A user can register, sign in, refresh a session, sign out, and revoke a
@@ -341,8 +357,10 @@ The first slice sets no retention period and performs no physical cleanup.
   seeds page ID/Revision mappings; response-loss retries preserve the exact
   in-flight request. Notebook bookmarks/verified existing attachment metadata
   and infinite-canvas content now use the same queue, with local page references
-  rewritten to cloud IDs and unuploaded attachment references blocked. Title,
-  archive/folder placement, page structure, canvas background, attachment
+  rewritten to cloud IDs and unuploaded attachment references blocked.
+  Notebook title, archive state, and placement among already synchronized
+  folders now share the same durable queue and explicit three-way metadata
+  contract. Folder lifecycle, page structure, canvas background, attachment
   upload, and divergent canvas recovery remain later contract slices. Existing
   notebook/page/canvas content now also downloads from another device when the
   change feed proves a continuous Revision chain and bootstrap structure still
@@ -387,10 +405,10 @@ The first slice sets no retention period and performs no physical cleanup.
   `20260806_0012` is current and adds restorable, unique notebook-relative
   asset paths. A shared bootstrap JSON fixture is parsed by
   both the Flutter DTOs and the FastAPI response schema so client/server field
-  drift fails in tests. The complete backend run passes 49
+  drift fails in tests. The complete backend run passes 50
   non-integration tests and 15 PostgreSQL/MinIO integration tests, including
   ready-only bootstrap visibility and real PDF/image/audio byte round trips;
-  the complete Flutter suite passes with 245 tests. The mixed-library slice is
+  the complete Flutter suite passes with 248 tests. The mixed-library slice is
   additionally covered by 11 focused backend sync-change tests; staging tests
   cover verified success, corrupt downloads, and mid-apply rollback, and
   static analysis passes.

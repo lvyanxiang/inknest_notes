@@ -44,6 +44,9 @@ class SharedSyncApplyService {
     }
 
     final notebooks = await _allNotebooks();
+    final folderIds = (await repository.listFolders())
+        .map((folder) => folder.id)
+        .toSet();
     final changesByResource = <String, List<CloudSyncChange>>{};
     for (final change in changes) {
       changesByResource.putIfAbsent(_remoteKey(change), () => []).add(change);
@@ -81,6 +84,7 @@ class SharedSyncApplyService {
         notebooks: notebooks,
         mappings: mappings,
         resourceMap: resourceMap,
+        folderIds: folderIds,
       );
       if (action == null) return null;
       actions.add(action);
@@ -263,6 +267,7 @@ class SharedSyncApplyService {
     required List<Notebook> notebooks,
     required List<SyncResourceMapping> mappings,
     required FileSyncResourceMapStore resourceMap,
+    required Set<String> folderIds,
   }) {
     return switch (snapshot) {
       _NotebookSharedSnapshot() => _buildNotebookAction(
@@ -271,6 +276,7 @@ class SharedSyncApplyService {
         notebooks,
         mappings,
         resourceMap,
+        folderIds,
       ),
       _PageSharedSnapshot() => _buildPageAction(
         mapping,
@@ -294,13 +300,12 @@ class SharedSyncApplyService {
     List<Notebook> notebooks,
     List<SyncResourceMapping> mappings,
     FileSyncResourceMapStore resourceMap,
+    Set<String> folderIds,
   ) async {
     final local = _findNotebook(notebooks, cloud.id);
     if (local == null ||
         mapping.localKey != notebookSyncLocalKey(local.id) ||
-        cloud.title != local.title ||
-        cloud.folderId != local.folderId ||
-        cloud.isArchived != local.isArchived ||
+        (cloud.folderId != null && !folderIds.contains(cloud.folderId)) ||
         cloud.layoutMode != local.layoutMode.name) {
       return null;
     }
@@ -320,12 +325,12 @@ class SharedSyncApplyService {
     final updated = Notebook.fromJson({
       ...content,
       'id': local.id,
-      'title': local.title,
+      'title': cloud.title,
       'createdAt': local.createdAt.toIso8601String(),
       'updatedAt': cloud.updatedAt.toIso8601String(),
       'pageIds': local.pageIds,
-      'isArchived': local.isArchived,
-      if (local.folderId != null) 'folderId': local.folderId,
+      'isArchived': cloud.isArchived,
+      if (cloud.folderId != null) 'folderId': cloud.folderId,
       'layoutMode': local.layoutMode.name,
     });
     if (!_notebookReferencesAreLocal(updated) ||

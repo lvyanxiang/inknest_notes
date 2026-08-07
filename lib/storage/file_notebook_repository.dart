@@ -19,6 +19,8 @@ typedef PagePersistedCallback =
     Future<void> Function(Notebook notebook, NotePage page);
 typedef NotebookContentPersistedCallback =
     Future<void> Function(Notebook notebook);
+typedef NotebookMetadataPersistedCallback =
+    Future<void> Function(Notebook notebook);
 typedef InfiniteCanvasPersistedCallback =
     Future<void> Function(Notebook notebook, InfiniteCanvasDocument document);
 typedef NotebookDeletedCallback = Future<void> Function(Notebook notebook);
@@ -31,6 +33,7 @@ class FileNotebookRepository implements NotebookRepository {
     PdfImportInspector? pdfImportInspector,
     this.onPagePersisted,
     this.onNotebookContentPersisted,
+    this.onNotebookMetadataPersisted,
     this.onInfiniteCanvasPersisted,
     this.onNotebookDeleted,
     this.onPageDeleted,
@@ -45,6 +48,7 @@ class FileNotebookRepository implements NotebookRepository {
   final PdfImportInspector _pdfImportInspector;
   final PagePersistedCallback? onPagePersisted;
   final NotebookContentPersistedCallback? onNotebookContentPersisted;
+  final NotebookMetadataPersistedCallback? onNotebookMetadataPersisted;
   final InfiniteCanvasPersistedCallback? onInfiniteCanvasPersisted;
   final NotebookDeletedCallback? onNotebookDeleted;
   final PageDeletedCallback? onPageDeleted;
@@ -499,6 +503,11 @@ class FileNotebookRepository implements NotebookRepository {
     );
 
     await _replaceNotebook(updatedNotebook);
+    try {
+      await onNotebookMetadataPersisted?.call(updatedNotebook);
+    } on Object {
+      // Local rename remains saved if cloud queueing fails.
+    }
     return updatedNotebook;
   }
 
@@ -546,6 +555,11 @@ class FileNotebookRepository implements NotebookRepository {
     );
 
     await _replaceNotebook(updatedNotebook);
+    try {
+      await onNotebookMetadataPersisted?.call(updatedNotebook);
+    } on Object {
+      // Local archive state remains saved if cloud queueing fails.
+    }
     return updatedNotebook;
   }
 
@@ -581,6 +595,11 @@ class FileNotebookRepository implements NotebookRepository {
     );
 
     await _replaceNotebook(updatedNotebook);
+    try {
+      await onNotebookMetadataPersisted?.call(updatedNotebook);
+    } on Object {
+      // Local folder placement remains saved if cloud queueing fails.
+    }
     return updatedNotebook;
   }
 

@@ -43,7 +43,16 @@ class PendingSyncOperation {
     required this.resourceId,
     required this.baseRevision,
     required Map<String, Object?> content,
-  }) : content = Map.unmodifiable(_copyJsonObject(content));
+    this.includesContent = true,
+    Map<String, Object?>? metadata,
+    Map<String, Object?>? baseMetadata,
+  }) : content = Map.unmodifiable(_copyJsonObject(content)),
+       metadata = metadata == null
+           ? null
+           : Map.unmodifiable(_copyJsonObject(metadata)),
+       baseMetadata = baseMetadata == null
+           ? null
+           : Map.unmodifiable(_copyJsonObject(baseMetadata));
 
   final String operationId;
   final SyncOperationKind operation;
@@ -51,6 +60,9 @@ class PendingSyncOperation {
   final String resourceId;
   final int baseRevision;
   final Map<String, Object?> content;
+  final bool includesContent;
+  final Map<String, Object?>? metadata;
+  final Map<String, Object?>? baseMetadata;
 
   String get resourceKey => '${resourceType.apiValue}:$resourceId';
 
@@ -58,6 +70,9 @@ class PendingSyncOperation {
     SyncOperationKind? operation,
     int? baseRevision,
     Map<String, Object?>? content,
+    bool? includesContent,
+    Map<String, Object?>? metadata,
+    Map<String, Object?>? baseMetadata,
   }) {
     return PendingSyncOperation(
       operationId: operationId,
@@ -66,6 +81,9 @@ class PendingSyncOperation {
       resourceId: resourceId,
       baseRevision: baseRevision ?? this.baseRevision,
       content: content ?? this.content,
+      includesContent: includesContent ?? this.includesContent,
+      metadata: metadata ?? this.metadata,
+      baseMetadata: baseMetadata ?? this.baseMetadata,
     );
   }
 
@@ -88,8 +106,9 @@ class PendingSyncOperation {
       resourceId: json['resourceId']! as String,
       baseRevision: baseRevision,
       content: switch (operation) {
-        SyncOperationKind.upsert =>
+        SyncOperationKind.upsert when json.containsKey('content') =>
           (json['content']! as Map<Object?, Object?>).cast<String, Object?>(),
+        SyncOperationKind.upsert => const {},
         SyncOperationKind.delete =>
           json.containsKey('content')
               ? throw const FormatException(
@@ -97,6 +116,16 @@ class PendingSyncOperation {
                 )
               : const {},
       },
+      includesContent:
+          operation == SyncOperationKind.upsert && json.containsKey('content'),
+      metadata: json['metadata'] == null
+          ? null
+          : (json['metadata']! as Map<Object?, Object?>)
+                .cast<String, Object?>(),
+      baseMetadata: json['baseMetadata'] == null
+          ? null
+          : (json['baseMetadata']! as Map<Object?, Object?>)
+                .cast<String, Object?>(),
     );
   }
 
@@ -107,7 +136,12 @@ class PendingSyncOperation {
       'resourceType': resourceType.apiValue,
       'resourceId': resourceId,
       'baseRevision': baseRevision,
-      if (operation == SyncOperationKind.upsert) 'content': content,
+      if (operation == SyncOperationKind.upsert && includesContent)
+        'content': content,
+      if (operation == SyncOperationKind.upsert && metadata != null)
+        'metadata': metadata,
+      if (operation == SyncOperationKind.upsert && baseMetadata != null)
+        'baseMetadata': baseMetadata,
     };
   }
 }

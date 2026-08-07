@@ -9,6 +9,10 @@ from inknest_server.api.dependencies import (
 )
 from inknest_server.errors import ApiError
 from inknest_server.repositories import RevisionConflictError
+from inknest_server.repositories.content import (
+    NotebookMetadataConflictError,
+    ResourceDeletedError,
+)
 from inknest_server.repositories.sync import SyncIdempotencyKeyReusedError
 from inknest_server.sync import (
     InvalidSyncCursorError,
@@ -205,6 +209,23 @@ async def commit_sync_changes(
                 message="A resource changed after the submitted base revision.",
                 status_code=409,
                 details=details,
+            ) from error
+        if isinstance(error.cause, NotebookMetadataConflictError):
+            raise ApiError(
+                code="sync_notebook_metadata_conflict",
+                message="Notebook organization changed concurrently.",
+                status_code=409,
+                details={**details, "fields": error.cause.fields},
+            ) from error
+        if isinstance(error.cause, ResourceDeletedError):
+            raise ApiError(
+                code="sync_resource_deleted",
+                message="The notebook was deleted on another device.",
+                status_code=409,
+                details={
+                    **details,
+                    "currentRevision": error.cause.current_revision,
+                },
             ) from error
         raise ApiError(
             code="sync_resource_not_found",

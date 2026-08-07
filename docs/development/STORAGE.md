@@ -151,7 +151,10 @@ Recently Deleted. Failures keep the active record visible for retry.
 
 The versioned resource map connects local repository keys to account-global
 cloud IDs. Each entry stores its resource type, remote ID, latest server
-Revision, and Content Hash. `cloudAssetKeys` records notebook-relative assets
+Revision, and Content Hash. Notebook entries also store the last applied
+`notebookMetadata` baseline (`title`, `isArchived`, and nullable `folderId`) so
+later local organization changes can use a safe three-way comparison.
+`cloudAssetKeys` records notebook-relative assets
 verified by the latest applied bootstrap. Paged notes use a notebook-qualified
 local page key because legacy local files may reuse `page-1` in different
 notebooks.
@@ -162,6 +165,14 @@ and does not guess a cloud ID. Successful `/sync/commit` results update the
 mapped Revision and hash before the frozen in-flight batch is cleared.
 Notebook and canvas content that references a page or attachment is queued only
 when that reference resolves through this verified map.
+
+Notebook rename, archive/restore, and movement among already synchronized
+folders coalesce into the same pending notebook operation. Its API form carries
+`metadata` plus the original `baseMetadata`; metadata-only operations omit
+`content`. After a successful commit, the normal change pull applies the
+authoritative field-merged snapshot and then updates both the Revision and
+metadata baseline. A true same-field concurrent change leaves the frozen
+operation and local shelf state intact for later coordination.
 
 ## `sync/restore-recovery/<snapshot-id>/`
 

@@ -77,8 +77,9 @@ class IncrementalSyncPushService {
             operation.operationId: operation,
         };
         for (final result in response.results) {
-          if (operationsById[result.operationId]!.operation ==
-              SyncOperationKind.upsert) {
+          final operation = operationsById[result.operationId]!;
+          if (operation.operation == SyncOperationKind.upsert &&
+              operation.metadata == null) {
             await resourceMap.updateRemote(
               resourceType: SyncResourceType.fromApiValue(result.resourceType),
               remoteResourceId: result.resourceId,
@@ -97,6 +98,19 @@ class IncrementalSyncPushService {
               ),
           ],
         );
+        for (final result in response.results) {
+          final operation = operationsById[result.operationId]!;
+          if (result.outcome == 'conflict' &&
+              operation.metadata != null &&
+              operation.baseMetadata != null) {
+            await stateStore.enqueueNotebookMetadata(
+              resourceId: operation.resourceId,
+              baseRevision: result.revision,
+              baseMetadata: operation.baseMetadata!,
+              metadata: operation.metadata!,
+            );
+          }
+        }
         uploaded += batch.operations.length;
         conflicts += response.results
             .where(
