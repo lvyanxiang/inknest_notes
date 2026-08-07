@@ -7,6 +7,13 @@
 
 当前共有 15 张业务表，以及 1 张由 Alembic 自动管理的结构版本表。
 
+本文档对应的当前 Alembic 迁移头为 `20260807_0014`。其中：
+
+- `20260807_0013` 为 `folders` 增加同步所需的 `revision` 和
+  `content_hash`。
+- `20260807_0014` 为 `tombstones` 增加 `structure_metadata`，并把页面
+  位置唯一约束调整为只约束未删除页面的部分唯一索引。
+
 ## 核心关系
 
 ```text
@@ -80,10 +87,14 @@ Access Token 过期后，App 使用 Refresh Token 换取新的 Access Token。
 | `id` | App 生成的稳定文件夹 ID。 |
 | `user_id` | 文件夹所属用户。 |
 | `name` | 文件夹名称。 |
+| `revision` | 文件夹当前服务端版本号；创建、改名等有效同步变更会递增。 |
+| `content_hash` | 文件夹同步元数据的 SHA-256，用于幂等判断和并发修改校验。 |
 | `created_at` | 创建时间。 |
 | `updated_at` | 最后更新时间。 |
 
 `id + user_id` 是联合主键，保证不同账号的数据隔离。
+`revision = 0` 时 `content_hash` 为空；进入版本化同步后，`revision > 0`
+且 `content_hash` 必须是 64 位 SHA-256 字符串。
 
 ### `notebooks`：笔记本
 
@@ -131,6 +142,12 @@ Access Token 过期后，App 使用 Refresh Token 换取新的 Access Token。
 | `updated_at` | 最后更新时间。 |
 
 用户画一笔并完成同步后，主要变化的是 `content`、`content_hash`、`revision` 和 `updated_at`。
+
+同一本笔记中，只有 `deleted_at IS NULL` 的活动页面要求 `position` 唯一，
+对应部分唯一索引 `uq_pages_active_notebook_owner_position`。软删除页面可以保留
+删除前的位置；删除中间页时，后续活动页会在同一事务中向前压紧，恢复时再根据墓碑
+记录的位置插回。这样既能保持活动页序连续，也不会因为软删除历史记录占用旧位置而
+阻止新增或恢复页面。
 
 ### `infinite_canvases`：无限画布
 
@@ -310,6 +327,7 @@ Access Token 过期后，App 使用 Refresh Token 换取新的 Access Token。
 | `deleted_revision` | 删除动作对应的服务端版本号。 |
 | `content_hash` | 删除前内容的 SHA-256。 |
 | `content` | 删除前的完整内容快照。 |
+| `structure_metadata` | 删除前的结构位置 JSON。页面保存 `notebookId` 和从 0 开始的 `position`；当前其他资源保存空对象。 |
 | `deleted_by_device_id` | 执行删除的设备。 |
 | `deleted_at` | 删除时间。 |
 | `state` | `active` 表示仍处于删除状态，`restored` 表示已经恢复。 |
@@ -332,6 +350,8 @@ Access Token 过期后，App 使用 Refresh Token 换取新的 Access Token。
 
 它只表示数据库结构版本，不记录用户笔记的内容变化。
 
+当前完成迁移后，`version_num` 应为 `20260807_0014`。
+
 ## App 操作与数据位置速查
 
 | App 操作 | 主要数据位置 |
@@ -352,4 +372,20 @@ Access Token 过期后，App 使用 Refresh Token 换取新的 Access Token。
 
 可以使用 Navicat、DBeaver 或 pgAdmin 连接 PostgreSQL 查看表结构和数据。数据库结构发生变化时，需要通过 SQLAlchemy 模型和 Alembic 迁移维护，不能只在可视化工具里手工修改表。
 
-本次只是增加说明文档，没有修改数据库结构，因此不需要新建或执行 Alembic 迁移。
+SQLAlchemy 模型只描述代码期望的结构，修改模型不会自动更新 PostgreSQL。实际结构
+变更必须通过 Alembic revision 落地，并检查其中的 `upgrade()`、`downgrade()`、索引、
+约束和默认值。
+
+本次操作只是让说明文档追平已经存在的 `0013`、`0014` 迁移，没有再创建新的迁移。
+尚未升级的开发数据库需要在 `server/` 目录执行：
+
+```bash
+uv run alembic upgrade head
+uv run alembic current
+uv run alembic check
+```
+
+预期 `alembic current` 显示 `20260807_0014 (head)`，`alembic check` 显示没有新的升级
+操作。不要把 `alembic downgrade -1` 当作日常清理命令；本次 `0014` 的 downgrade 会
+删除 `structure_metadata`，而恢复旧的全表页面位置唯一约束时，如果已有软删除页与活动页
+占用相同位置，还可能执行失败。生产环境应优先备份并通过新的向前迁移修正问题。
