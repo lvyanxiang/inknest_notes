@@ -54,6 +54,11 @@ class SyncMutationTracker {
     return _enqueue(() => _trackNotebookDeleted(notebook));
   }
 
+  Future<void> pageDeleted(Notebook notebook, String pageId) {
+    if (_suppressionDepth > 0) return Future.value();
+    return _enqueue(() => _trackPageDeleted(notebook, pageId));
+  }
+
   Future<void> _enqueue(Future<void> Function() action) {
     final next = _queue.catchError((_) {}).then((_) => action());
     _queue = next;
@@ -175,6 +180,25 @@ class SyncMutationTracker {
       session,
     ).find(notebookSyncLocalKey(notebook.id));
     if (mapping == null || mapping.resourceType != SyncResourceType.notebook) {
+      return;
+    }
+    await _stateStore(session).enqueueDelete(
+      resourceType: mapping.resourceType,
+      resourceId: mapping.remoteResourceId,
+      baseRevision: mapping.revision,
+    );
+  }
+
+  Future<void> _trackPageDeleted(Notebook notebook, String pageId) async {
+    if (notebook.pageIds.length <= 1 || notebook.pageIds.last != pageId) {
+      return;
+    }
+    final session = activeSession();
+    if (session == null) return;
+    final mapping = await _resourceMap(
+      session,
+    ).find(pageSyncLocalKey(notebook.id, pageId));
+    if (mapping == null || mapping.resourceType != SyncResourceType.page) {
       return;
     }
     await _stateStore(session).enqueueDelete(

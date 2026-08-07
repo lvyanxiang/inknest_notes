@@ -101,6 +101,39 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     controller.dispose();
   });
+
+  testWidgets('remote page deletion reports preserved recovery copy', (
+    tester,
+  ) async {
+    final controller = AuthController(
+      service: _RestoredAuthService(),
+      deviceName: 'Test iPad',
+      platform: 'ios',
+    );
+    await controller.initialize();
+    final sync = _StartupSyncService(
+      uploadedOperationCount: 0,
+      pullResult: const IncrementalSyncPullResult(
+        status: IncrementalSyncPullStatus.applied,
+        changeCount: 2,
+        deletedPageCount: 1,
+      ),
+    );
+
+    await tester.pumpWidget(
+      InkNestApp(
+        notebookRepository: InMemoryNotebookRepository(),
+        authController: controller,
+        firstSignInSyncService: sync,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('可恢复的本地页面副本已保留'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    controller.dispose();
+  });
 }
 
 class _StartupSyncService implements FirstSignInSyncService {

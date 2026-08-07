@@ -22,6 +22,8 @@ typedef NotebookContentPersistedCallback =
 typedef InfiniteCanvasPersistedCallback =
     Future<void> Function(Notebook notebook, InfiniteCanvasDocument document);
 typedef NotebookDeletedCallback = Future<void> Function(Notebook notebook);
+typedef PageDeletedCallback =
+    Future<void> Function(Notebook notebook, String pageId);
 
 class FileNotebookRepository implements NotebookRepository {
   FileNotebookRepository({
@@ -31,6 +33,7 @@ class FileNotebookRepository implements NotebookRepository {
     this.onNotebookContentPersisted,
     this.onInfiniteCanvasPersisted,
     this.onNotebookDeleted,
+    this.onPageDeleted,
   }) : _notebooksDirectory = Directory('${rootDirectory.path}/notebooks'),
        _pdfImportInspector =
            pdfImportInspector ?? const PdfrxPdfImportInspector();
@@ -44,6 +47,7 @@ class FileNotebookRepository implements NotebookRepository {
   final NotebookContentPersistedCallback? onNotebookContentPersisted;
   final InfiniteCanvasPersistedCallback? onInfiniteCanvasPersisted;
   final NotebookDeletedCallback? onNotebookDeleted;
+  final PageDeletedCallback? onPageDeleted;
   Future<void> _storageWriteQueue = Future.value();
   int _temporaryFileCounter = 0;
 
@@ -656,6 +660,12 @@ class FileNotebookRepository implements NotebookRepository {
     );
 
     await _replaceNotebook(updatedNotebook);
+    try {
+      await onPageDeleted?.call(notebook, pageId);
+    } on Object {
+      await _replaceNotebook(notebook);
+      rethrow;
+    }
     final pageFile = _pageFile(notebook, pageId);
     if (await pageFile.exists()) {
       await pageFile.delete();

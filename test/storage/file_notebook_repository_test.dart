@@ -700,6 +700,31 @@ void main() {
     },
   );
 
+  test('keeps a page when its deletion cannot enter the sync queue', () async {
+    final trackedRepository = FileNotebookRepository(
+      rootDirectory: tempDirectory,
+      onPageDeleted: (_, _) async => throw StateError('queue unavailable'),
+    );
+    var notebook = await trackedRepository.createNotebook(title: 'Keep page');
+    notebook = await trackedRepository.addPage(notebook);
+    final deletedPageId = notebook.pageIds.last;
+
+    await expectLater(
+      trackedRepository.deletePage(notebook, deletedPageId),
+      throwsStateError,
+    );
+
+    final reloaded = (await trackedRepository.listNotebooks()).single;
+    expect(reloaded.pageIds, notebook.pageIds);
+    expect(
+      File(
+        '${tempDirectory.path}/notebooks/${notebook.id}/pages/'
+        '$deletedPageId.json',
+      ).existsSync(),
+      isTrue,
+    );
+  });
+
   test('creates folders and moves notebooks in and out of folders', () async {
     final folder = await repository.createFolder('Class Notes');
     var notebook = await repository.createNotebook(title: 'Math');

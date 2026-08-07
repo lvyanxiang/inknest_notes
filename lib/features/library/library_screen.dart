@@ -260,6 +260,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
                           '本地恢复副本已保留。'
                     : pullResult.confirmedLocalDeletionCount > 0
                     ? '已将删除同步到云端，其他设备将在下次同步时移除这本笔记。'
+                    : pullResult.deletedPageCount > 0
+                    ? '已同步其他设备的页面删除；可恢复的本地页面副本已保留。'
+                    : pullResult.confirmedLocalPageDeletionCount > 0
+                    ? '已确认本机的页面删除同步到云端。'
                     : pullResult.appliedSharedResourceCount > 0
                     ? '已上传 ${pushResult.uploadedOperationCount} 项本地更改，'
                           '同步 ${pullResult.changeCount} 项云端更改，更新 '

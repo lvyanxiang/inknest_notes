@@ -266,8 +266,10 @@ continue-local state without overwriting either side.
   shelf after preserving a local recovery copy and announce that result. A local
   mapped whole-notebook delete now uploads immediately, confirms cross-device
   removal when online, and reports durable automatic retry when offline.
-  Page/canvas deletion, Recently Deleted, and conflict list/detail UI are not
-  started.
+  Safe trailing-page deletion now queues and applies across devices, with a
+  calm startup confirmation and a preserved recovery copy. Middle-page deletion
+  remains local until page-order sync exists; standalone canvas deletion has no
+  App entry point. Recently Deleted and conflict list/detail UI are not started.
 - Intentional deviations: The server reserves the copy ID immediately but only
   materializes a normal notebook/page when the user chooses Keep Both. This
   avoids temporary duplicate library entries while preserving both snapshots.

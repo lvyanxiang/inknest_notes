@@ -132,3 +132,10 @@ process stops after the move but before Cursor persistence, retry recognizes the
 same recovery directory and completes idempotently. Page and infinite-canvas
 deletions are not stored here until the local repository can represent them
 without leaving an invalid notebook.
+
+For a safe remote trailing-page deletion, the same Tombstone directory stores
+`page.json`, `location.json`, and `tombstone.json`. The first file is the exact
+local page, the second records notebook ID, page ID, and former position, and
+the third records the validated server Tombstone. The page is removed from the
+notebook index only after the recovery files can be created; failures restore
+the original index and page file.

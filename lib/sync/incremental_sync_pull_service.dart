@@ -10,6 +10,7 @@ import 'package:inknest_notes/sync/sync_cloud_client.dart';
 import 'package:inknest_notes/sync/sync_resource_map_store.dart';
 import 'package:inknest_notes/sync/sync_mutation_tracker.dart';
 import 'package:inknest_notes/sync/sync_notebook_deletion_service.dart';
+import 'package:inknest_notes/sync/sync_page_deletion_service.dart';
 
 enum IncrementalSyncPullStatus {
   notInitialized,
@@ -27,6 +28,8 @@ class IncrementalSyncPullResult {
     this.appliedSharedResourceCount = 0,
     this.deletedNotebookCount = 0,
     this.confirmedLocalDeletionCount = 0,
+    this.deletedPageCount = 0,
+    this.confirmedLocalPageDeletionCount = 0,
   });
 
   final IncrementalSyncPullStatus status;
@@ -36,11 +39,14 @@ class IncrementalSyncPullResult {
   final int appliedSharedResourceCount;
   final int deletedNotebookCount;
   final int confirmedLocalDeletionCount;
+  final int deletedPageCount;
+  final int confirmedLocalPageDeletionCount;
 
   bool get changedLocalLibrary =>
       downloadedNotebookCount > 0 ||
       appliedSharedResourceCount > 0 ||
-      deletedNotebookCount > 0;
+      deletedNotebookCount > 0 ||
+      deletedPageCount > 0;
 }
 
 /// Pulls all currently available change pages without advancing the local
@@ -124,17 +130,40 @@ class IncrementalSyncPullService {
           change.resourceType == CloudSyncChangeResourceType.tombstone,
     );
     if (hasDeletionChanges) {
-      final deletionResult =
-          await SyncNotebookDeletionService(
-            rootDirectory: rootDirectory,
-          ).applyIfSafe(
-            changes: changes,
-            bootstrap: bootstrap,
-            mappings: mappings,
-            userId: userId,
-            deviceId: deviceId,
-          );
-      if (deletionResult == null) {
+      final deletionTypes = changes
+          .where(
+            (change) => change.operation == CloudSyncChangeOperation.delete,
+          )
+          .map((change) => change.resourceType)
+          .toSet();
+      SyncNotebookDeletionResult? notebookDeletion;
+      SyncPageDeletionResult? pageDeletion;
+      if (deletionTypes.length == 1 &&
+          deletionTypes.single == CloudSyncChangeResourceType.notebook) {
+        notebookDeletion =
+            await SyncNotebookDeletionService(
+              rootDirectory: rootDirectory,
+            ).applyIfSafe(
+              changes: changes,
+              bootstrap: bootstrap,
+              mappings: mappings,
+              userId: userId,
+              deviceId: deviceId,
+            );
+      } else if (deletionTypes.length == 1 &&
+          deletionTypes.single == CloudSyncChangeResourceType.page) {
+        pageDeletion =
+            await SyncPageDeletionService(
+              rootDirectory: rootDirectory,
+            ).applyIfSafe(
+              changes: changes,
+              bootstrap: bootstrap,
+              mappings: mappings,
+              userId: userId,
+              deviceId: deviceId,
+            );
+      }
+      if (notebookDeletion == null && pageDeletion == null) {
         return IncrementalSyncPullResult(
           status: IncrementalSyncPullStatus.requiresReconciliation,
           changeCount: changes.length,
@@ -151,8 +180,12 @@ class IncrementalSyncPullService {
       return IncrementalSyncPullResult(
         status: IncrementalSyncPullStatus.applied,
         changeCount: changes.length,
-        deletedNotebookCount: deletionResult.deletedNotebookCount,
-        confirmedLocalDeletionCount: deletionResult.confirmedLocalDeletionCount,
+        deletedNotebookCount: notebookDeletion?.deletedNotebookCount ?? 0,
+        confirmedLocalDeletionCount:
+            notebookDeletion?.confirmedLocalDeletionCount ?? 0,
+        deletedPageCount: pageDeletion?.deletedPageCount ?? 0,
+        confirmedLocalPageDeletionCount:
+            pageDeletion?.confirmedLocalPageDeletionCount ?? 0,
       );
     }
     final local = await readLocalSyncLibraryInventory(repository);

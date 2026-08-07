@@ -4,15 +4,15 @@
 
 - Milestone: Backend Phase 5 incremental-sync App integration is in progress;
   initialized sessions now push saved page, notebook-content, and infinite-
-  canvas edits and mapped whole-notebook deletes before applying safe
-  `/sync/changes` updates.
-- Next task: Connect page/canvas deletion and Tombstone application, then
-  conflict persistence/presentation. Structural fields still require a future
-  API contract.
-- Last completed: Deleting a mapped notebook now durably coalesces a content-
-  free delete into the local queue, immediately attempts `/sync/commit`, retries
-  unchanged after network failure, and recognizes its own returned delete plus
-  Tombstone before advancing Cursor. Queue failure restores the shelf entry.
+  canvas edits, mapped whole-notebook deletes, and structurally safe trailing-
+  page deletes before applying safe `/sync/changes` updates.
+- Next task: Connect conflict persistence/presentation. Arbitrary page deletion,
+  page reordering, and standalone canvas deletion remain blocked on a structural
+  synchronization contract.
+- Last completed: A mapped non-final trailing page can now enqueue a content-
+  free delete; another device applies it only when the remaining page positions
+  still match, after preserving page JSON, location, and Tombstone recovery
+  files. Middle-page and only-page cases remain local/reconciliation-safe.
 
 ## Decisions
 
@@ -139,6 +139,11 @@
   archive/folder placement, page order, or canvas background into content and
   claim those structural changes synchronized. Queue notebook/canvas content
   only when every page/asset reference can be rewritten to verified cloud state.
+- Limit incremental page deletion to a mapped trailing page while at least one
+  page remains. The current server contract does not compact later page
+  positions or carry structural location in Tombstones, so middle-page deletion
+  must remain local and must not claim cloud success. Standalone canvas deletion
+  has no App action; deleting an infinite-canvas notebook uses notebook deletion.
 - Apply shared pull content from the final typed bootstrap snapshot, but require
   every `/sync/changes` Revision between the mapped local baseline and that
   snapshot. Reject gaps, structural divergence, unknown attachments, conflicts,
@@ -716,6 +721,10 @@
   focused coverage includes queue coalescing, content-free commit serialization,
   response-loss retry, repository rollback, and same-device Tombstone
   confirmation. `flutter analyze` passes; no backend route changed.
+- `flutter test` passes with 221 tests after safe trailing-page deletion upload
+  and application; focused coverage includes queue rollback, middle-page gating,
+  same-device confirmation, remote recovery files, and visible sync feedback.
+  `flutter analyze` passes; no backend route changed.
 
 ## Notes
 

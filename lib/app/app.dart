@@ -83,6 +83,7 @@ class _InkNestAppState extends State<InkNestApp> {
       onNotebookContentPersisted: mutationTracker.notebookContentSaved,
       onInfiniteCanvasPersisted: mutationTracker.infiniteCanvasSaved,
       onNotebookDeleted: mutationTracker.notebookDeleted,
+      onPageDeleted: mutationTracker.pageDeleted,
     );
     final apiClient = _ownedApiClient;
     return _AppResources(
