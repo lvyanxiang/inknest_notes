@@ -324,7 +324,11 @@ The first slice sets no retention period and performs no physical cleanup.
   and infinite-canvas content now use the same queue, with local page references
   rewritten to cloud IDs and unuploaded attachment references blocked. Title,
   archive/folder placement, page structure, canvas background, attachment
-  upload, and divergent canvas recovery remain later contract slices.
+  upload, and divergent canvas recovery remain later contract slices. Existing
+  notebook/page/canvas content now also downloads from another device when the
+  change feed proves a continuous Revision chain and bootstrap structure still
+  matches local state; failed multi-resource application rolls back before the
+  Cursor advances.
 - Verification: Backend tests cover authentication, account isolation,
   revisioned content, asset transfer, cursors, atomic/idempotent commits, page
   and notebook conflicts, all resolution choices, soft delete/restore, both

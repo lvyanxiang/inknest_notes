@@ -37,9 +37,49 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     controller.dispose();
   });
+
+  testWidgets('shared pull reports updated existing content', (tester) async {
+    final controller = AuthController(
+      service: _RestoredAuthService(),
+      deviceName: 'Test iPad',
+      platform: 'ios',
+    );
+    await controller.initialize();
+    final sync = _StartupSyncService(
+      uploadedOperationCount: 0,
+      pullResult: const IncrementalSyncPullResult(
+        status: IncrementalSyncPullStatus.applied,
+        changeCount: 1,
+        appliedSharedResourceCount: 1,
+      ),
+    );
+
+    await tester.pumpWidget(
+      InkNestApp(
+        notebookRepository: InMemoryNotebookRepository(),
+        authController: controller,
+        firstSignInSyncService: sync,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('更新 1 项已有内容'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    controller.dispose();
+  });
 }
 
 class _StartupSyncService implements FirstSignInSyncService {
+  _StartupSyncService({
+    this.uploadedOperationCount = 2,
+    this.pullResult = const IncrementalSyncPullResult(
+      status: IncrementalSyncPullStatus.upToDate,
+    ),
+  });
+
+  final int uploadedOperationCount;
+  final IncrementalSyncPullResult pullResult;
   final List<String> calls = [];
 
   @override
@@ -48,8 +88,8 @@ class _StartupSyncService implements FirstSignInSyncService {
     required String deviceId,
   }) async {
     calls.add('push');
-    return const IncrementalSyncPushResult(
-      uploadedOperationCount: 2,
+    return IncrementalSyncPushResult(
+      uploadedOperationCount: uploadedOperationCount,
       preservedConflictCount: 0,
     );
   }
@@ -60,9 +100,7 @@ class _StartupSyncService implements FirstSignInSyncService {
     required String deviceId,
   }) async {
     calls.add('pull');
-    return const IncrementalSyncPullResult(
-      status: IncrementalSyncPullStatus.upToDate,
-    );
+    return pullResult;
   }
 
   @override

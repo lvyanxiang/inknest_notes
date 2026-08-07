@@ -94,6 +94,7 @@ class _InkNestAppState extends State<InkNestApp> {
                   repository: repository,
                   apiClient: apiClient,
                   rootDirectory: documentsDirectory,
+                  mutationTracker: mutationTracker,
                 )),
     );
   }

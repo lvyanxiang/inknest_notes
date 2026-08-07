@@ -220,7 +220,8 @@ documents/
 
 ## Current Focus
 
-Milestone 8 is active. Continue Phase 5 incremental sync by reconciling shared
-pull changes, then connect deletes, conflicts, and Tombstones. The working
-`/sync/commit` queue covers pages, safe notebook content, and safe infinite-
-canvas content; structural fields still need an explicit server contract.
+Milestone 8 is active. Continue Phase 5 incremental sync with deletes and
+Tombstones, then connect conflict persistence/presentation. The working content
+path now covers upload and continuous-Revision download for pages, safe notebook
+content, and safe infinite-canvas content; structural fields still need an
+explicit server contract.

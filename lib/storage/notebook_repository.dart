@@ -116,6 +116,8 @@ abstract class NotebookRepository {
     NotebookAudioRecording recording,
   );
 
+  Future<Notebook> applySyncedNotebookContent(Notebook notebook);
+
   Future<Notebook> addPage(Notebook notebook);
 
   Future<Notebook> insertPage(Notebook notebook, int index);

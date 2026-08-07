@@ -3,10 +3,12 @@ import 'dart:io';
 import 'package:inknest_notes/storage/notebook_repository.dart';
 import 'package:inknest_notes/sync/bootstrap_restore_service.dart';
 import 'package:inknest_notes/sync/file_sync_state_store.dart';
+import 'package:inknest_notes/sync/shared_sync_apply_service.dart';
 import 'package:inknest_notes/sync/sync_bootstrap.dart';
 import 'package:inknest_notes/sync/sync_changes.dart';
 import 'package:inknest_notes/sync/sync_cloud_client.dart';
 import 'package:inknest_notes/sync/sync_resource_map_store.dart';
+import 'package:inknest_notes/sync/sync_mutation_tracker.dart';
 
 enum IncrementalSyncPullStatus {
   notInitialized,
@@ -21,32 +23,35 @@ class IncrementalSyncPullResult {
     this.changeCount = 0,
     this.downloadedNotebookCount = 0,
     this.downloadedAssetCount = 0,
+    this.appliedSharedResourceCount = 0,
   });
 
   final IncrementalSyncPullStatus status;
   final int changeCount;
   final int downloadedNotebookCount;
   final int downloadedAssetCount;
+  final int appliedSharedResourceCount;
 
-  bool get changedLocalLibrary => downloadedNotebookCount > 0;
+  bool get changedLocalLibrary =>
+      downloadedNotebookCount > 0 || appliedSharedResourceCount > 0;
 }
 
 /// Pulls all currently available change pages without advancing the local
-/// Cursor, then applies only changes that are provably additive.
-///
-/// Existing local resources, deletes, conflicts, and Tombstones require the
-/// later Revision-aware reconciliation slice. They never overwrite local data
-/// and leave the Cursor unchanged.
+/// Cursor, then applies additive roots or continuous Revision-checked content
+/// updates. Deletes, structural divergence, conflicts, and Tombstones leave
+/// local data and the Cursor unchanged.
 class IncrementalSyncPullService {
   const IncrementalSyncPullService({
     required this.repository,
     required this.cloudClient,
     required this.rootDirectory,
+    this.mutationTracker,
   });
 
   final NotebookRepository repository;
   final FirstSignInCloudClient cloudClient;
   final Directory rootDirectory;
+  final SyncMutationTracker? mutationTracker;
 
   Future<IncrementalSyncPullResult> pull({
     required String userId,
@@ -111,6 +116,40 @@ class IncrementalSyncPullService {
       local: local,
       cloud: bootstrap.inventory,
     );
+    final hasCloudOnlyRoots =
+        assessment.cloudOnlyFolderIds.isNotEmpty ||
+        assessment.cloudOnlyNotebookIds.isNotEmpty;
+    if (!hasCloudOnlyRoots) {
+      final applyService = SharedSyncApplyService(repository: repository);
+      Future<SharedSyncApplyResult?> applyShared() => applyService.applyIfSafe(
+        changes: changes,
+        bootstrap: bootstrap,
+        mappings: mappings,
+        resourceMap: resourceMap,
+      );
+      final sharedResult = mutationTracker == null
+          ? await applyShared()
+          : await mutationTracker!.runWithoutTracking(applyShared);
+      if (sharedResult == null) {
+        return IncrementalSyncPullResult(
+          status: IncrementalSyncPullStatus.requiresReconciliation,
+          changeCount: changes.length,
+        );
+      }
+      await resourceMap.replaceAll(
+        await buildSyncResourceMappings(
+          repository: repository,
+          bootstrap: bootstrap,
+        ),
+        cloudAssetKeys: buildCloudAssetKeys(bootstrap),
+      );
+      await stateStore.markChangesPageApplied(cursor);
+      return IncrementalSyncPullResult(
+        status: IncrementalSyncPullStatus.applied,
+        changeCount: changes.length,
+        appliedSharedResourceCount: sharedResult.appliedResourceCount,
+      );
+    }
     if (!_canApplyAdditively(
       changes: changes,
       bootstrap: bootstrap,

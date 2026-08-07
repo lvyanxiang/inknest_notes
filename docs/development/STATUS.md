@@ -4,15 +4,13 @@
 
 - Milestone: Backend Phase 5 incremental-sync App integration is in progress;
   initialized sessions now push saved page, notebook-content, and infinite-
-  canvas edits through `/sync/commit` before safe `/sync/changes` download.
-- Next task: Apply shared-resource pull updates without overwriting newer local
-  edits, then connect delete/conflict/Tombstone handling. Title, archive, folder,
-  page structure, and canvas background require a future structural API contract.
-- Last completed: Bookmark and safe existing-recording metadata rewrites local
-  page references to cloud IDs before queueing complete notebook content.
-  Infinite-canvas content also queues when every referenced image is already a
-  verified cloud asset; otherwise the local save succeeds without a partial
-  cloud reference.
+  canvas edits before applying safe `/sync/changes` content updates.
+- Next task: Connect delete and Tombstone change handling, followed by conflict
+  persistence/presentation. Structural fields still require a future API contract.
+- Last completed: Existing notebook, page, and infinite-canvas content from
+  another device now applies only across a continuous Revision chain, matching
+  local structure, and verified page/asset references. Multi-resource writes
+  roll back on failure; resource mappings and Cursor advance only afterward.
 
 ## Decisions
 
@@ -139,6 +137,11 @@
   archive/folder placement, page order, or canvas background into content and
   claim those structural changes synchronized. Queue notebook/canvas content
   only when every page/asset reference can be rewritten to verified cloud state.
+- Apply shared pull content from the final typed bootstrap snapshot, but require
+  every `/sync/changes` Revision between the mapped local baseline and that
+  snapshot. Reject gaps, structural divergence, unknown attachments, deletes,
+  conflicts, and Tombstones without advancing Cursor. Suppress mutation tracking
+  during remote application so downloaded content is not re-enqueued as upload.
 - Use email/password for the first account flow without mandatory email
   verification during initial development. Use short-lived JWT access tokens
   and rotating opaque refresh tokens; store only refresh-token hashes and bind
@@ -700,6 +703,10 @@
 - `flutter test` passes with 203 tests after notebook/canvas content tracking;
   `flutter analyze` and `git diff --check` pass, with no backend source or route
   change.
+- `flutter test` passes with 206 tests after shared-content download application;
+  focused coverage includes notebook page-reference reversal, page text content,
+  infinite-canvas state, Cursor gating, and the visible “更新已有内容” result.
+  `flutter analyze` and `git diff --check` pass; no backend route changed.
 
 ## Notes
 

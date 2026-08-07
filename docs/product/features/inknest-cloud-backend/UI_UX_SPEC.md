@@ -92,6 +92,8 @@ continue-local state without overwriting either side.
 2. A successful upload announces how many local changes were sent. A safe
    additive download refreshes the shelf and includes cloud changes and
    received notebooks in the same calm confirmation.
+   Safe updates to existing content instead report how many existing items were
+   updated and refresh repository-derived library state before the confirmation.
 3. A shared-resource update, delete, conflict, Tombstone, or local pending
    upload keeps the local library and Cursor unchanged and shows a calm
    “需要协调” message.

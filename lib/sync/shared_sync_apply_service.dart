@@ -1,0 +1,508 @@
+import 'package:inknest_notes/models/infinite_canvas_document.dart';
+import 'package:inknest_notes/models/notebook.dart';
+import 'package:inknest_notes/models/note_page.dart';
+import 'package:inknest_notes/models/pdf_outline_entry.dart';
+import 'package:inknest_notes/storage/notebook_repository.dart';
+import 'package:inknest_notes/sync/sync_bootstrap.dart';
+import 'package:inknest_notes/sync/sync_changes.dart';
+import 'package:inknest_notes/sync/sync_resource_map_store.dart';
+import 'package:inknest_notes/sync/sync_state.dart';
+
+class SharedSyncApplyResult {
+  const SharedSyncApplyResult({required this.appliedResourceCount});
+
+  final int appliedResourceCount;
+}
+
+class SharedSyncAtomicApplyException extends StateError {
+  SharedSyncAtomicApplyException(super.message);
+}
+
+class SharedSyncApplyService {
+  const SharedSyncApplyService({required this.repository});
+
+  final NotebookRepository repository;
+
+  Future<SharedSyncApplyResult?> applyIfSafe({
+    required List<CloudSyncChange> changes,
+    required CloudSyncBootstrap bootstrap,
+    required List<SyncResourceMapping> mappings,
+    required FileSyncResourceMapStore resourceMap,
+  }) async {
+    if (changes.any(
+      (change) =>
+          change.operation != CloudSyncChangeOperation.upsert ||
+          !const {
+            CloudSyncChangeResourceType.notebook,
+            CloudSyncChangeResourceType.page,
+            CloudSyncChangeResourceType.infiniteCanvas,
+          }.contains(change.resourceType) ||
+          change.revision == null ||
+          change.contentHash == null,
+    )) {
+      return null;
+    }
+
+    final notebooks = await _allNotebooks();
+    final changesByResource = <String, List<CloudSyncChange>>{};
+    for (final change in changes) {
+      changesByResource.putIfAbsent(_remoteKey(change), () => []).add(change);
+    }
+    final actions = <_SharedApplyAction>[];
+    for (final entry in changesByResource.entries) {
+      final first = entry.value.first;
+      final mapping = _findRemoteMapping(mappings, first);
+      if (mapping == null ||
+          !_hasContinuousRevisionChain(mapping, entry.value)) {
+        return null;
+      }
+      final snapshot = _snapshotFor(first, bootstrap);
+      if (snapshot == null ||
+          snapshot.revision != _finalRevision(mapping, entry.value) ||
+          snapshot.contentHash != _finalHash(mapping, entry.value)) {
+        return null;
+      }
+      if (mapping.revision == snapshot.revision) continue;
+      final action = await _buildAction(
+        mapping: mapping,
+        snapshot: snapshot,
+        notebooks: notebooks,
+        mappings: mappings,
+        resourceMap: resourceMap,
+      );
+      if (action == null) return null;
+      actions.add(action);
+    }
+
+    final applied = <_SharedApplyAction>[];
+    try {
+      for (final action in actions) {
+        await action.apply();
+        applied.add(action);
+      }
+    } on Object {
+      try {
+        for (final action in applied.reversed) {
+          await action.rollback();
+        }
+      } on Object {
+        throw SharedSyncAtomicApplyException(
+          'Shared synchronization failed and local rollback was incomplete.',
+        );
+      }
+      rethrow;
+    }
+    return SharedSyncApplyResult(appliedResourceCount: actions.length);
+  }
+
+  bool _hasContinuousRevisionChain(
+    SyncResourceMapping mapping,
+    List<CloudSyncChange> changes,
+  ) {
+    var revision = mapping.revision;
+    var contentHash = mapping.contentHash;
+    for (final change in changes) {
+      final nextRevision = change.revision!;
+      final nextHash = change.contentHash!;
+      if (nextRevision < revision) continue;
+      if (nextRevision == revision) {
+        if (nextHash != contentHash) return false;
+        continue;
+      }
+      if (nextRevision != revision + 1) return false;
+      revision = nextRevision;
+      contentHash = nextHash;
+    }
+    return true;
+  }
+
+  int _finalRevision(
+    SyncResourceMapping mapping,
+    List<CloudSyncChange> changes,
+  ) => changes.fold(
+    mapping.revision,
+    (revision, change) =>
+        change.revision! > revision ? change.revision! : revision,
+  );
+
+  String _finalHash(
+    SyncResourceMapping mapping,
+    List<CloudSyncChange> changes,
+  ) {
+    var revision = mapping.revision;
+    var hash = mapping.contentHash;
+    for (final change in changes) {
+      if (change.revision! > revision) {
+        revision = change.revision!;
+        hash = change.contentHash!;
+      }
+    }
+    return hash;
+  }
+
+  _SharedSnapshot? _snapshotFor(
+    CloudSyncChange change,
+    CloudSyncBootstrap bootstrap,
+  ) {
+    return switch (change.resourceType) {
+      CloudSyncChangeResourceType.notebook => _findSnapshot(
+        bootstrap.notebooks,
+        change.resourceId,
+        (item) => item.id,
+        (item) => _SharedSnapshot.notebook(item),
+      ),
+      CloudSyncChangeResourceType.page => _findSnapshot(
+        bootstrap.pages,
+        change.resourceId,
+        (item) => item.id,
+        (item) => _SharedSnapshot.page(item),
+      ),
+      CloudSyncChangeResourceType.infiniteCanvas => _findSnapshot(
+        bootstrap.infiniteCanvases,
+        change.resourceId,
+        (item) => item.id,
+        (item) => _SharedSnapshot.canvas(item),
+      ),
+      _ => null,
+    };
+  }
+
+  TOutput? _findSnapshot<TInput, TOutput>(
+    Iterable<TInput> items,
+    String id,
+    String Function(TInput item) idOf,
+    TOutput Function(TInput item) convert,
+  ) {
+    for (final item in items) {
+      if (idOf(item) == id) return convert(item);
+    }
+    return null;
+  }
+
+  Future<_SharedApplyAction?> _buildAction({
+    required SyncResourceMapping mapping,
+    required _SharedSnapshot snapshot,
+    required List<Notebook> notebooks,
+    required List<SyncResourceMapping> mappings,
+    required FileSyncResourceMapStore resourceMap,
+  }) {
+    return switch (snapshot) {
+      _NotebookSharedSnapshot() => _buildNotebookAction(
+        mapping,
+        snapshot.value,
+        notebooks,
+        mappings,
+        resourceMap,
+      ),
+      _PageSharedSnapshot() => _buildPageAction(
+        mapping,
+        snapshot.value,
+        notebooks,
+        mappings,
+        resourceMap,
+      ),
+      _CanvasSharedSnapshot() => _buildCanvasAction(
+        mapping,
+        snapshot.value,
+        notebooks,
+        resourceMap,
+      ),
+    };
+  }
+
+  Future<_SharedApplyAction?> _buildNotebookAction(
+    SyncResourceMapping mapping,
+    CloudSyncNotebook cloud,
+    List<Notebook> notebooks,
+    List<SyncResourceMapping> mappings,
+    FileSyncResourceMapStore resourceMap,
+  ) async {
+    final local = _findNotebook(notebooks, cloud.id);
+    if (local == null ||
+        mapping.localKey != notebookSyncLocalKey(local.id) ||
+        cloud.title != local.title ||
+        cloud.folderId != local.folderId ||
+        cloud.isArchived != local.isArchived ||
+        cloud.layoutMode != local.layoutMode.name) {
+      return null;
+    }
+    final remoteToLocalPageIds = <String, String>{};
+    for (final pageId in local.pageIds) {
+      final pageMapping = _findLocalMapping(
+        mappings,
+        pageSyncLocalKey(local.id, pageId),
+      );
+      if (pageMapping != null) {
+        remoteToLocalPageIds[pageMapping.remoteResourceId] = pageId;
+      }
+    }
+    final content =
+        _rewritePageReferences(cloud.content, remoteToLocalPageIds)!
+            as Map<String, Object?>;
+    final updated = Notebook.fromJson({
+      ...content,
+      'id': local.id,
+      'title': local.title,
+      'createdAt': local.createdAt.toIso8601String(),
+      'updatedAt': cloud.updatedAt.toIso8601String(),
+      'pageIds': local.pageIds,
+      'isArchived': local.isArchived,
+      if (local.folderId != null) 'folderId': local.folderId,
+      'layoutMode': local.layoutMode.name,
+    });
+    if (!_notebookReferencesAreLocal(updated) ||
+        !await _notebookAssetsAreKnown(updated, resourceMap)) {
+      return null;
+    }
+    return _SharedApplyAction(
+      apply: () async {
+        await repository.applySyncedNotebookContent(updated);
+      },
+      rollback: () async {
+        await repository.applySyncedNotebookContent(local);
+      },
+    );
+  }
+
+  Future<_SharedApplyAction?> _buildPageAction(
+    SyncResourceMapping mapping,
+    CloudSyncPage cloud,
+    List<Notebook> notebooks,
+    List<SyncResourceMapping> mappings,
+    FileSyncResourceMapStore resourceMap,
+  ) async {
+    for (final notebook in notebooks) {
+      for (final (position, pageId) in notebook.pageIds.indexed) {
+        if (mapping.localKey != pageSyncLocalKey(notebook.id, pageId)) continue;
+        if (cloud.notebookId != notebook.id || cloud.position != position) {
+          return null;
+        }
+        final local = await repository.loadPage(notebook, pageId);
+        if (cloud.width != local.width ||
+            cloud.height != local.height ||
+            cloud.coordinateSpaceVersion !=
+                local.persistedCoordinateSpaceVersion ||
+            cloud.rotationQuarterTurns != local.rotationQuarterTurns ||
+            cloud.template != local.template.name) {
+          return null;
+        }
+        final updated = NotePage.fromJson({
+          ...cloud.content,
+          'id': local.id,
+          'width': local.width,
+          'height': local.height,
+          'coordinateSpaceVersion': local.persistedCoordinateSpaceVersion,
+          'rotationQuarterTurns': local.rotationQuarterTurns,
+          'template': local.template.name,
+        });
+        if (!await _pageAssetsAreKnown(notebook, updated, resourceMap)) {
+          return null;
+        }
+        return _SharedApplyAction(
+          apply: () => repository.savePage(notebook, updated),
+          rollback: () => repository.savePage(notebook, local),
+        );
+      }
+    }
+    return null;
+  }
+
+  Future<_SharedApplyAction?> _buildCanvasAction(
+    SyncResourceMapping mapping,
+    CloudSyncInfiniteCanvas cloud,
+    List<Notebook> notebooks,
+    FileSyncResourceMapStore resourceMap,
+  ) async {
+    for (final notebook in notebooks) {
+      if (mapping.localKey != canvasSyncLocalKey(notebook.id)) continue;
+      final local = await repository.loadInfiniteCanvas(notebook);
+      if (cloud.notebookId != notebook.id ||
+          cloud.background != local.background.name) {
+        return null;
+      }
+      final updated = InfiniteCanvasDocument.fromJson({
+        ...cloud.content,
+        'background': local.background.name,
+      });
+      for (final image in updated.images) {
+        if (!await resourceMap.hasCloudAsset(notebook.id, image.assetPath)) {
+          return null;
+        }
+      }
+      return _SharedApplyAction(
+        apply: () => repository.saveInfiniteCanvas(notebook, updated),
+        rollback: () => repository.saveInfiniteCanvas(notebook, local),
+      );
+    }
+    return null;
+  }
+
+  Future<List<Notebook>> _allNotebooks() async {
+    final folders = await repository.listFolders();
+    return [
+      ...await repository.listNotebooks(),
+      for (final folder in folders)
+        ...await repository.listNotebooks(folderId: folder.id),
+      ...await repository.listNotebooks(archived: true),
+    ];
+  }
+
+  SyncResourceMapping? _findRemoteMapping(
+    List<SyncResourceMapping> mappings,
+    CloudSyncChange change,
+  ) {
+    final type = switch (change.resourceType) {
+      CloudSyncChangeResourceType.notebook => SyncResourceType.notebook,
+      CloudSyncChangeResourceType.page => SyncResourceType.page,
+      CloudSyncChangeResourceType.infiniteCanvas =>
+        SyncResourceType.infiniteCanvas,
+      _ => null,
+    };
+    if (type == null) return null;
+    for (final mapping in mappings) {
+      if (mapping.resourceType == type &&
+          mapping.remoteResourceId == change.resourceId) {
+        return mapping;
+      }
+    }
+    return null;
+  }
+
+  SyncResourceMapping? _findLocalMapping(
+    List<SyncResourceMapping> mappings,
+    String localKey,
+  ) {
+    for (final mapping in mappings) {
+      if (mapping.localKey == localKey) return mapping;
+    }
+    return null;
+  }
+
+  Notebook? _findNotebook(List<Notebook> notebooks, String id) {
+    for (final notebook in notebooks) {
+      if (notebook.id == id) return notebook;
+    }
+    return null;
+  }
+
+  bool _notebookReferencesAreLocal(Notebook notebook) {
+    final pageIds = notebook.pageIds.toSet();
+    final references = <String>{...notebook.bookmarkedPageIds};
+    void addOutlines(Iterable<PdfOutlineEntry> outlines) {
+      for (final outline in outlines) {
+        if (outline.pageId case final String pageId) references.add(pageId);
+        addOutlines(outline.children);
+      }
+    }
+
+    addOutlines(notebook.pdfOutlines);
+    for (final recording in notebook.audioRecordings) {
+      if (recording.pageId case final String pageId) references.add(pageId);
+    }
+    return pageIds.containsAll(references);
+  }
+
+  Future<bool> _notebookAssetsAreKnown(
+    Notebook notebook,
+    FileSyncResourceMapStore resourceMap,
+  ) async {
+    for (final recording in notebook.audioRecordings) {
+      if (!await resourceMap.hasCloudAsset(notebook.id, recording.assetPath)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  Future<bool> _pageAssetsAreKnown(
+    Notebook notebook,
+    NotePage page,
+    FileSyncResourceMapStore resourceMap,
+  ) async {
+    final paths = <String>{
+      if (page.pdfBackground != null) page.pdfBackground!.assetPath,
+      for (final image in page.images) image.assetPath,
+    };
+    for (final path in paths) {
+      if (!await resourceMap.hasCloudAsset(notebook.id, path)) return false;
+    }
+    return true;
+  }
+
+  String _remoteKey(CloudSyncChange change) =>
+      '${change.resourceType.apiValue}\u0000${change.resourceId}';
+
+  Object? _rewritePageReferences(
+    Object? value,
+    Map<String, String> remoteToLocalPageIds, {
+    String? key,
+  }) {
+    if (key == 'pageId' && value is String) {
+      return remoteToLocalPageIds[value] ?? value;
+    }
+    if (key == 'bookmarkedPageIds' && value is List<Object?>) {
+      return [
+        for (final pageId in value)
+          if (pageId is String) remoteToLocalPageIds[pageId] ?? pageId,
+      ];
+    }
+    if (value is Map) {
+      return <String, Object?>{
+        for (final entry in value.entries)
+          entry.key as String: _rewritePageReferences(
+            entry.value,
+            remoteToLocalPageIds,
+            key: entry.key as String,
+          ),
+      };
+    }
+    if (value is List<Object?>) {
+      return [
+        for (final item in value)
+          _rewritePageReferences(item, remoteToLocalPageIds),
+      ];
+    }
+    return value;
+  }
+}
+
+sealed class _SharedSnapshot {
+  const _SharedSnapshot({required this.revision, required this.contentHash});
+
+  factory _SharedSnapshot.notebook(CloudSyncNotebook value) =
+      _NotebookSharedSnapshot;
+  factory _SharedSnapshot.page(CloudSyncPage value) = _PageSharedSnapshot;
+  factory _SharedSnapshot.canvas(CloudSyncInfiniteCanvas value) =
+      _CanvasSharedSnapshot;
+
+  final int revision;
+  final String contentHash;
+}
+
+class _NotebookSharedSnapshot extends _SharedSnapshot {
+  _NotebookSharedSnapshot(this.value)
+    : super(revision: value.revision, contentHash: value.contentHash);
+
+  final CloudSyncNotebook value;
+}
+
+class _PageSharedSnapshot extends _SharedSnapshot {
+  _PageSharedSnapshot(this.value)
+    : super(revision: value.revision, contentHash: value.contentHash);
+
+  final CloudSyncPage value;
+}
+
+class _CanvasSharedSnapshot extends _SharedSnapshot {
+  _CanvasSharedSnapshot(this.value)
+    : super(revision: value.revision, contentHash: value.contentHash);
+
+  final CloudSyncInfiniteCanvas value;
+}
+
+class _SharedApplyAction {
+  const _SharedApplyAction({required this.apply, required this.rollback});
+
+  final Future<void> Function() apply;
+  final Future<void> Function() rollback;
+}

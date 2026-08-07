@@ -19,12 +19,24 @@ class SyncMutationTracker {
   final Directory rootDirectory;
   final ActiveSyncSession activeSession;
   Future<void> _queue = Future.value();
+  int _suppressionDepth = 0;
+
+  Future<T> runWithoutTracking<T>(Future<T> Function() action) async {
+    _suppressionDepth++;
+    try {
+      return await action();
+    } finally {
+      _suppressionDepth--;
+    }
+  }
 
   Future<void> pageSaved(Notebook notebook, NotePage page) {
+    if (_suppressionDepth > 0) return Future.value();
     return _enqueue(() => _trackPageSaved(notebook, page));
   }
 
   Future<void> notebookContentSaved(Notebook notebook) {
+    if (_suppressionDepth > 0) return Future.value();
     return _enqueue(() => _trackNotebookContent(notebook));
   }
 
@@ -32,6 +44,7 @@ class SyncMutationTracker {
     Notebook notebook,
     InfiniteCanvasDocument document,
   ) {
+    if (_suppressionDepth > 0) return Future.value();
     return _enqueue(() => _trackInfiniteCanvas(notebook, document));
   }
 

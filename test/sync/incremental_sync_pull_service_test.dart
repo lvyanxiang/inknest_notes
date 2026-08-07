@@ -63,7 +63,7 @@ void main() {
   );
 
   test(
-    'leaves cursor and local content unchanged for shared resource update',
+    'applies continuous shared notebook content before advancing cursor',
     () async {
       final root = await Directory.systemTemp.createTemp(
         'inknest-pull-shared-',
@@ -92,12 +92,21 @@ void main() {
           revision: 1,
           contentHash: 'a' * 64,
         ),
+        SyncResourceMapping(
+          localKey: pageSyncLocalKey(local.id, local.pageIds.single),
+          resourceType: SyncResourceType.page,
+          remoteResourceId: 'remote-page',
+          revision: 1,
+          contentHash: 'd' * 64,
+        ),
       ]);
       final cloud = _PullCloudClient(
         bootstrapSnapshot: _sharedBootstrap(local.id),
         pages: [
           CloudSyncChangePage(
-            changes: [_change('notebook', local.id)],
+            changes: [
+              _change('notebook', local.id, revision: 2, contentHash: 'c' * 64),
+            ],
             nextCursor: 'cursor-2',
             hasMore: false,
           ),
@@ -110,21 +119,149 @@ void main() {
         rootDirectory: root,
       ).pull(userId: 'user-1', deviceId: 'device-1');
 
-      expect(result.status, IncrementalSyncPullStatus.requiresReconciliation);
-      expect((await stateStore.loadSnapshot()).lastAppliedCursor, 'cursor-1');
-      expect((await repository.listNotebooks()).single.title, 'Local notes');
+      expect(result.status, IncrementalSyncPullStatus.applied);
+      expect(result.appliedSharedResourceCount, 1);
+      expect((await stateStore.loadSnapshot()).lastAppliedCursor, 'cursor-2');
+      expect((await repository.listNotebooks()).single.bookmarkedPageIds, [
+        local.pageIds.single,
+      ]);
     },
   );
+
+  test('applies a continuous shared page content update', () async {
+    final root = await Directory.systemTemp.createTemp('inknest-pull-page-');
+    addTearDown(() => root.delete(recursive: true));
+    final repository = FileNotebookRepository(rootDirectory: root);
+    final notebook = await repository.createNotebook(title: 'Local notes');
+    final stateStore = FileSyncStateStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    );
+    await stateStore.markChangesPageApplied('cursor-1');
+    await FileSyncResourceMapStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    ).replaceAll([
+      SyncResourceMapping(
+        localKey: notebookSyncLocalKey(notebook.id),
+        resourceType: SyncResourceType.notebook,
+        remoteResourceId: notebook.id,
+        revision: 1,
+        contentHash: 'a' * 64,
+      ),
+      SyncResourceMapping(
+        localKey: pageSyncLocalKey(notebook.id, notebook.pageIds.single),
+        resourceType: SyncResourceType.page,
+        remoteResourceId: 'remote-page',
+        revision: 1,
+        contentHash: 'd' * 64,
+      ),
+    ]);
+    final cloud = _PullCloudClient(
+      bootstrapSnapshot: _sharedPageBootstrap(notebook.id),
+      pages: [
+        CloudSyncChangePage(
+          changes: [
+            _change('page', 'remote-page', revision: 2, contentHash: 'e' * 64),
+          ],
+          nextCursor: 'cursor-2',
+          hasMore: false,
+        ),
+      ],
+    );
+
+    final result = await IncrementalSyncPullService(
+      repository: repository,
+      cloudClient: cloud,
+      rootDirectory: root,
+    ).pull(userId: 'user-1', deviceId: 'device-1');
+
+    expect(result.status, IncrementalSyncPullStatus.applied);
+    final page = await repository.loadPage(notebook, notebook.pageIds.single);
+    expect(page.textBoxes.single.text, 'Cloud text');
+    expect((await stateStore.loadSnapshot()).lastAppliedCursor, 'cursor-2');
+  });
+
+  test('applies a continuous shared infinite-canvas update', () async {
+    final root = await Directory.systemTemp.createTemp('inknest-pull-canvas-');
+    addTearDown(() => root.delete(recursive: true));
+    final repository = FileNotebookRepository(rootDirectory: root);
+    final notebook = await repository.createNotebook(
+      title: 'Canvas',
+      layoutMode: NotebookLayoutMode.infiniteCanvas,
+    );
+    final stateStore = FileSyncStateStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    );
+    await stateStore.markChangesPageApplied('cursor-1');
+    await FileSyncResourceMapStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    ).replaceAll([
+      SyncResourceMapping(
+        localKey: notebookSyncLocalKey(notebook.id),
+        resourceType: SyncResourceType.notebook,
+        remoteResourceId: notebook.id,
+        revision: 1,
+        contentHash: 'a' * 64,
+      ),
+      SyncResourceMapping(
+        localKey: canvasSyncLocalKey(notebook.id),
+        resourceType: SyncResourceType.infiniteCanvas,
+        remoteResourceId: 'remote-canvas',
+        revision: 1,
+        contentHash: 'f' * 64,
+      ),
+    ]);
+    final cloud = _PullCloudClient(
+      bootstrapSnapshot: _sharedCanvasBootstrap(notebook.id),
+      pages: [
+        CloudSyncChangePage(
+          changes: [
+            _change(
+              'infinite_canvas',
+              'remote-canvas',
+              revision: 2,
+              contentHash: '9' * 64,
+            ),
+          ],
+          nextCursor: 'cursor-2',
+          hasMore: false,
+        ),
+      ],
+    );
+
+    final result = await IncrementalSyncPullService(
+      repository: repository,
+      cloudClient: cloud,
+      rootDirectory: root,
+    ).pull(userId: 'user-1', deviceId: 'device-1');
+
+    expect(result.status, IncrementalSyncPullStatus.applied);
+    final canvas = await repository.loadInfiniteCanvas(notebook);
+    expect(canvas.viewportScale, 2);
+    expect(canvas.viewportFocus.dx, 9);
+  });
 }
 
-CloudSyncChange _change(String resourceType, String resourceId) {
+CloudSyncChange _change(
+  String resourceType,
+  String resourceId, {
+  int revision = 1,
+  String? contentHash,
+}) {
   return CloudSyncChange(
     changeId: 'change-$resourceId',
     resourceType: CloudSyncChangeResourceType.fromApiValue(resourceType),
     resourceId: resourceId,
     operation: CloudSyncChangeOperation.upsert,
-    revision: 1,
-    contentHash: 'a' * 64,
+    revision: revision,
+    contentHash: contentHash ?? 'a' * 64,
     payload: const {},
     deviceId: 'device-2',
     createdAt: DateTime.utc(2026, 8, 7),
@@ -185,11 +322,116 @@ CloudSyncBootstrap _sharedBootstrap(String notebookId) {
       CloudSyncNotebook(
         id: notebookId,
         folderId: null,
-        title: 'Cloud edit',
+        title: 'Local notes',
         layoutMode: 'paged',
         isArchived: false,
         revision: 2,
         contentHash: 'c' * 64,
+        content: const {
+          'bookmarkedPageIds': ['remote-page'],
+        },
+        conflictOf: null,
+        createdAt: now,
+        updatedAt: now,
+      ),
+    ],
+    pages: [
+      CloudSyncPage(
+        id: 'remote-page',
+        notebookId: notebookId,
+        position: 0,
+        width: 768,
+        height: 1024,
+        coordinateSpaceVersion: 1,
+        rotationQuarterTurns: 0,
+        template: 'blank',
+        revision: 1,
+        contentHash: 'd' * 64,
+        content: const {'strokes': <Object?>[]},
+        conflictOf: null,
+        createdAt: now,
+        updatedAt: now,
+      ),
+    ],
+    infiniteCanvases: const [],
+    assets: const [],
+  );
+}
+
+CloudSyncBootstrap _sharedPageBootstrap(String notebookId) {
+  final base = _sharedBootstrap(notebookId);
+  final page = base.pages.single;
+  return CloudSyncBootstrap(
+    inventory: base.inventory,
+    baseCursor: base.baseCursor,
+    folders: base.folders,
+    notebooks: [
+      CloudSyncNotebook(
+        id: notebookId,
+        folderId: null,
+        title: 'Local notes',
+        layoutMode: 'paged',
+        isArchived: false,
+        revision: 1,
+        contentHash: 'a' * 64,
+        content: const {},
+        conflictOf: null,
+        createdAt: base.notebooks.single.createdAt,
+        updatedAt: base.notebooks.single.updatedAt,
+      ),
+    ],
+    pages: [
+      CloudSyncPage(
+        id: page.id,
+        notebookId: notebookId,
+        position: 0,
+        width: 768,
+        height: 1024,
+        coordinateSpaceVersion: 1,
+        rotationQuarterTurns: 0,
+        template: 'blank',
+        revision: 2,
+        contentHash: 'e' * 64,
+        content: const {
+          'strokes': <Object?>[],
+          'textBoxes': [
+            {
+              'id': 'text-1',
+              'x': 10,
+              'y': 20,
+              'text': 'Cloud text',
+              'width': 200,
+              'color': 0xFF000000,
+              'fontSize': 24,
+              'style': 'regular',
+            },
+          ],
+        },
+        conflictOf: null,
+        createdAt: page.createdAt,
+        updatedAt: page.updatedAt,
+      ),
+    ],
+    infiniteCanvases: const [],
+    assets: const [],
+  );
+}
+
+CloudSyncBootstrap _sharedCanvasBootstrap(String notebookId) {
+  final now = DateTime.utc(2026, 8, 7);
+  return CloudSyncBootstrap(
+    inventory: SyncLibraryInventory(notebookIds: [notebookId]),
+    baseCursor: 'bootstrap-cursor',
+    folders: const [],
+    notebooks: [
+      CloudSyncNotebook(
+        id: notebookId,
+        folderId: null,
+        title: 'Canvas',
+        layoutMode: 'infiniteCanvas',
+        isArchived: false,
+        revision: 1,
+        contentHash: 'a' * 64,
         content: const {},
         conflictOf: null,
         createdAt: now,
@@ -197,7 +439,25 @@ CloudSyncBootstrap _sharedBootstrap(String notebookId) {
       ),
     ],
     pages: const [],
-    infiniteCanvases: const [],
+    infiniteCanvases: [
+      CloudSyncInfiniteCanvas(
+        id: 'remote-canvas',
+        notebookId: notebookId,
+        background: 'blank',
+        revision: 2,
+        contentHash: '9' * 64,
+        content: const {
+          'strokes': <Object?>[],
+          'textBoxes': <Object?>[],
+          'images': <Object?>[],
+          'shapes': <Object?>[],
+          'viewportFocus': {'dx': 9, 'dy': 12},
+          'viewportScale': 2,
+        },
+        createdAt: now,
+        updatedAt: now,
+      ),
+    ],
     assets: const [],
   );
 }

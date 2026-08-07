@@ -254,9 +254,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                '已上传 ${pushResult.uploadedOperationCount} 项本地更改，'
-                '同步 ${pullResult.changeCount} 项云端更改，下载 '
-                '${pullResult.downloadedNotebookCount} 本笔记。',
+                pullResult.appliedSharedResourceCount > 0
+                    ? '已上传 ${pushResult.uploadedOperationCount} 项本地更改，'
+                          '同步 ${pullResult.changeCount} 项云端更改，更新 '
+                          '${pullResult.appliedSharedResourceCount} 项已有内容。'
+                    : '已上传 ${pushResult.uploadedOperationCount} 项本地更改，'
+                          '同步 ${pullResult.changeCount} 项云端更改，下载 '
+                          '${pullResult.downloadedNotebookCount} 本笔记。',
               ),
             ),
           );

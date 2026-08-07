@@ -426,6 +426,12 @@ class FileNotebookRepository implements NotebookRepository {
   }
 
   @override
+  Future<Notebook> applySyncedNotebookContent(Notebook notebook) async {
+    await _replaceNotebook(notebook);
+    return notebook;
+  }
+
+  @override
   Future<Notebook> renameNotebook(Notebook notebook, String title) async {
     final updatedNotebook = notebook.copyWith(
       title: title.trim().isEmpty ? notebook.title : title.trim(),

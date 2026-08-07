@@ -12,6 +12,7 @@ import 'package:inknest_notes/sync/incremental_sync_pull_service.dart';
 import 'package:inknest_notes/sync/incremental_sync_push_service.dart';
 import 'package:inknest_notes/sync/sync_bootstrap.dart';
 import 'package:inknest_notes/sync/sync_merge_plan.dart';
+import 'package:inknest_notes/sync/sync_mutation_tracker.dart';
 import 'package:inknest_notes/sync/sync_resource_map_store.dart';
 import 'package:inknest_notes/sync/sync_upload_models.dart';
 import 'package:inknest_notes/sync/sync_cloud_client.dart';
@@ -98,11 +99,13 @@ class ApiFirstSignInSyncService implements FirstSignInSyncService {
     required this.repository,
     required this.apiClient,
     required this.rootDirectory,
+    this.mutationTracker,
   });
 
   final NotebookRepository repository;
   final FirstSignInCloudClient apiClient;
   final Directory rootDirectory;
+  final SyncMutationTracker? mutationTracker;
 
   @override
   Future<IncrementalSyncPushResult> pushIncremental({
@@ -124,6 +127,7 @@ class ApiFirstSignInSyncService implements FirstSignInSyncService {
       repository: repository,
       cloudClient: apiClient,
       rootDirectory: rootDirectory,
+      mutationTracker: mutationTracker,
     ).pull(userId: userId, deviceId: deviceId);
   }
 

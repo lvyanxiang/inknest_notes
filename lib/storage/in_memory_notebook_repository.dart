@@ -318,6 +318,12 @@ class InMemoryNotebookRepository implements NotebookRepository {
   }
 
   @override
+  Future<Notebook> applySyncedNotebookContent(Notebook notebook) async {
+    _replaceNotebook(notebook);
+    return notebook;
+  }
+
+  @override
   Future<Notebook> addPage(Notebook notebook) async {
     final pageId = _nextPageId(notebook.pageIds);
     final referencePage = notebook.pageIds.isEmpty
