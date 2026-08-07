@@ -12,6 +12,7 @@ import 'package:inknest_notes/sync/sync_resource_map_store.dart';
 import 'package:inknest_notes/sync/sync_mutation_tracker.dart';
 import 'package:inknest_notes/sync/sync_notebook_deletion_service.dart';
 import 'package:inknest_notes/sync/sync_page_deletion_service.dart';
+import 'package:inknest_notes/sync/sync_tombstones.dart';
 
 enum IncrementalSyncPullStatus {
   notInitialized,
@@ -33,6 +34,7 @@ class IncrementalSyncPullResult {
     this.confirmedLocalPageDeletionCount = 0,
     this.receivedConflictCount = 0,
     this.pendingConflicts = const [],
+    this.activeTombstones = const [],
   });
 
   final IncrementalSyncPullStatus status;
@@ -46,6 +48,7 @@ class IncrementalSyncPullResult {
   final int confirmedLocalPageDeletionCount;
   final int receivedConflictCount;
   final List<CloudSyncConflict> pendingConflicts;
+  final List<CloudSyncTombstone> activeTombstones;
 
   bool get changedLocalLibrary =>
       downloadedNotebookCount > 0 ||
@@ -56,8 +59,9 @@ class IncrementalSyncPullResult {
 
 /// Pulls all currently available change pages without advancing the local
 /// Cursor, then applies additive roots or continuous Revision-checked content
-/// updates. Deletes, structural divergence, conflicts, and Tombstones leave
-/// local data and the Cursor unchanged.
+/// updates. Supported notebook/trailing-page deletes, conflict metadata, and
+/// Tombstones are applied durably; unsafe structural divergence leaves local
+/// data and the Cursor unchanged.
 class IncrementalSyncPullService {
   const IncrementalSyncPullService({
     required this.repository,
@@ -86,12 +90,19 @@ class IncrementalSyncPullService {
       deviceId: deviceId,
     );
     var pendingConflicts = await conflictStore.loadPending();
+    final tombstoneStore = FileSyncTombstoneStore(
+      rootDirectory: rootDirectory,
+      userId: userId,
+      deviceId: deviceId,
+    );
+    var activeTombstones = await tombstoneStore.loadActive();
     final state = await stateStore.loadSnapshot();
     final initialCursor = state.lastAppliedCursor;
     if (initialCursor == null) {
       return IncrementalSyncPullResult(
         status: IncrementalSyncPullStatus.notInitialized,
         pendingConflicts: pendingConflicts,
+        activeTombstones: activeTombstones,
       );
     }
     final resourceMap = FileSyncResourceMapStore(
@@ -106,6 +117,7 @@ class IncrementalSyncPullService {
         return IncrementalSyncPullResult(
           status: IncrementalSyncPullStatus.notInitialized,
           pendingConflicts: pendingConflicts,
+          activeTombstones: activeTombstones,
         );
       }
     }
@@ -113,6 +125,7 @@ class IncrementalSyncPullService {
       return IncrementalSyncPullResult(
         status: IncrementalSyncPullStatus.requiresReconciliation,
         pendingConflicts: pendingConflicts,
+        activeTombstones: activeTombstones,
       );
     }
 
@@ -135,6 +148,7 @@ class IncrementalSyncPullService {
       return IncrementalSyncPullResult(
         status: IncrementalSyncPullStatus.upToDate,
         pendingConflicts: pendingConflicts,
+        activeTombstones: activeTombstones,
       );
     }
 
@@ -142,6 +156,12 @@ class IncrementalSyncPullService {
         .where(
           (change) =>
               change.resourceType == CloudSyncChangeResourceType.conflict,
+        )
+        .toList();
+    final tombstoneChanges = allChanges
+        .where(
+          (change) =>
+              change.resourceType == CloudSyncChangeResourceType.tombstone,
         )
         .toList();
     if (conflictChanges.any(
@@ -153,12 +173,35 @@ class IncrementalSyncPullService {
         status: IncrementalSyncPullStatus.requiresReconciliation,
         changeCount: allChanges.length,
         pendingConflicts: pendingConflicts,
+        activeTombstones: activeTombstones,
+      );
+    }
+    final parsedTombstones = <String, CloudSyncTombstone>{};
+    try {
+      for (final change in tombstoneChanges) {
+        if (change.operation != CloudSyncChangeOperation.upsert ||
+            change.payload == null) {
+          throw const FormatException('Invalid Tombstone change operation.');
+        }
+        final tombstone = CloudSyncTombstone.fromJson(change.payload!);
+        if (tombstone.id != change.resourceId) {
+          throw const FormatException('Tombstone change ID mismatch.');
+        }
+        parsedTombstones[change.changeId] = tombstone;
+      }
+    } on FormatException {
+      return IncrementalSyncPullResult(
+        status: IncrementalSyncPullStatus.requiresReconciliation,
+        changeCount: allChanges.length,
+        pendingConflicts: pendingConflicts,
+        activeTombstones: activeTombstones,
       );
     }
     final changes = allChanges
         .where(
           (change) =>
-              change.resourceType != CloudSyncChangeResourceType.conflict,
+              change.resourceType != CloudSyncChangeResourceType.conflict &&
+              change.resourceType != CloudSyncChangeResourceType.tombstone,
         )
         .toList();
     final receivedConflictCount = conflictChanges
@@ -166,12 +209,16 @@ class IncrementalSyncPullService {
         .length;
     if (changes.isEmpty) {
       pendingConflicts = await conflictStore.applyChanges(conflictChanges);
+      if (tombstoneChanges.isNotEmpty) {
+        activeTombstones = await tombstoneStore.applyChanges(tombstoneChanges);
+      }
       await stateStore.markChangesPageApplied(cursor);
       return IncrementalSyncPullResult(
         status: IncrementalSyncPullStatus.applied,
         changeCount: allChanges.length,
         receivedConflictCount: receivedConflictCount,
         pendingConflicts: pendingConflicts,
+        activeTombstones: activeTombstones,
       );
     }
 
@@ -182,6 +229,11 @@ class IncrementalSyncPullService {
           change.resourceType == CloudSyncChangeResourceType.tombstone,
     );
     if (hasDeletionChanges) {
+      final deletionChanges = [
+        ...changes,
+        for (final change in tombstoneChanges)
+          if (parsedTombstones[change.changeId]?.isActive ?? false) change,
+      ];
       final deletionTypes = changes
           .where(
             (change) => change.operation == CloudSyncChangeOperation.delete,
@@ -196,7 +248,7 @@ class IncrementalSyncPullService {
             await SyncNotebookDeletionService(
               rootDirectory: rootDirectory,
             ).applyIfSafe(
-              changes: changes,
+              changes: deletionChanges,
               bootstrap: bootstrap,
               mappings: mappings,
               userId: userId,
@@ -208,7 +260,7 @@ class IncrementalSyncPullService {
             await SyncPageDeletionService(
               rootDirectory: rootDirectory,
             ).applyIfSafe(
-              changes: changes,
+              changes: deletionChanges,
               bootstrap: bootstrap,
               mappings: mappings,
               userId: userId,
@@ -220,6 +272,7 @@ class IncrementalSyncPullService {
           status: IncrementalSyncPullStatus.requiresReconciliation,
           changeCount: allChanges.length,
           pendingConflicts: pendingConflicts,
+          activeTombstones: activeTombstones,
         );
       }
       await resourceMap.replaceAll(
@@ -231,6 +284,9 @@ class IncrementalSyncPullService {
       );
       if (conflictChanges.isNotEmpty) {
         pendingConflicts = await conflictStore.applyChanges(conflictChanges);
+      }
+      if (tombstoneChanges.isNotEmpty) {
+        activeTombstones = await tombstoneStore.applyChanges(tombstoneChanges);
       }
       await stateStore.markChangesPageApplied(cursor);
       return IncrementalSyncPullResult(
@@ -244,6 +300,7 @@ class IncrementalSyncPullService {
             pageDeletion?.confirmedLocalPageDeletionCount ?? 0,
         receivedConflictCount: receivedConflictCount,
         pendingConflicts: pendingConflicts,
+        activeTombstones: activeTombstones,
       );
     }
     final local = await readLocalSyncLibraryInventory(repository);
@@ -270,6 +327,7 @@ class IncrementalSyncPullService {
           status: IncrementalSyncPullStatus.requiresReconciliation,
           changeCount: allChanges.length,
           pendingConflicts: pendingConflicts,
+          activeTombstones: activeTombstones,
         );
       }
       await resourceMap.replaceAll(
@@ -282,6 +340,9 @@ class IncrementalSyncPullService {
       if (conflictChanges.isNotEmpty) {
         pendingConflicts = await conflictStore.applyChanges(conflictChanges);
       }
+      if (tombstoneChanges.isNotEmpty) {
+        activeTombstones = await tombstoneStore.applyChanges(tombstoneChanges);
+      }
       await stateStore.markChangesPageApplied(cursor);
       return IncrementalSyncPullResult(
         status: IncrementalSyncPullStatus.applied,
@@ -289,6 +350,7 @@ class IncrementalSyncPullService {
         appliedSharedResourceCount: sharedResult.appliedResourceCount,
         receivedConflictCount: receivedConflictCount,
         pendingConflicts: pendingConflicts,
+        activeTombstones: activeTombstones,
       );
     }
     if (!_canApplyAdditively(
@@ -301,6 +363,7 @@ class IncrementalSyncPullService {
         status: IncrementalSyncPullStatus.requiresReconciliation,
         changeCount: allChanges.length,
         pendingConflicts: pendingConflicts,
+        activeTombstones: activeTombstones,
       );
     }
 
@@ -319,6 +382,9 @@ class IncrementalSyncPullService {
     if (conflictChanges.isNotEmpty) {
       pendingConflicts = await conflictStore.applyChanges(conflictChanges);
     }
+    if (tombstoneChanges.isNotEmpty) {
+      activeTombstones = await tombstoneStore.applyChanges(tombstoneChanges);
+    }
     await stateStore.markChangesPageApplied(cursor);
     return IncrementalSyncPullResult(
       status: IncrementalSyncPullStatus.applied,
@@ -327,6 +393,7 @@ class IncrementalSyncPullService {
       downloadedAssetCount: restored.downloadedAssetCount,
       receivedConflictCount: receivedConflictCount,
       pendingConflicts: pendingConflicts,
+      activeTombstones: activeTombstones,
     );
   }
 

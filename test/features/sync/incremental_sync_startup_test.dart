@@ -11,6 +11,8 @@ import 'package:inknest_notes/sync/incremental_sync_push_service.dart';
 import 'package:inknest_notes/sync/inknest_api_models.dart';
 import 'package:inknest_notes/sync/sync_conflict_resolution_service.dart';
 import 'package:inknest_notes/sync/sync_conflicts.dart';
+import 'package:inknest_notes/sync/sync_tombstone_restore_service.dart';
+import 'package:inknest_notes/sync/sync_tombstones.dart';
 
 void main() {
   testWidgets('signed-in startup pushes before pull and reports upload count', (
@@ -239,10 +241,79 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     controller.dispose();
   });
+
+  testWidgets('active Tombstone opens Recently Deleted and can be restored', (
+    tester,
+  ) async {
+    final controller = AuthController(
+      service: _RestoredAuthService(),
+      deviceName: 'Test iPad',
+      platform: 'ios',
+    );
+    await controller.initialize();
+    final tombstone = CloudSyncTombstone.fromJson({
+      'id': 'tombstone-1',
+      'resourceType': 'notebook',
+      'resourceId': 'notebook-1',
+      'baseRevision': 1,
+      'resourceRevision': 1,
+      'deletedRevision': 2,
+      'contentHash': 'a' * 64,
+      'content': const {'bookmarkedPageIds': <Object?>[]},
+      'deletedByDeviceId': 'device-2',
+      'deletedAt': '2026-08-07T00:00:00Z',
+      'state': 'active',
+      'createdAt': '2026-08-07T00:00:00Z',
+    });
+    final sync = _StartupSyncService(
+      uploadedOperationCount: 0,
+      pullResult: IncrementalSyncPullResult(
+        status: IncrementalSyncPullStatus.applied,
+        changeCount: 1,
+        activeTombstones: [tombstone],
+      ),
+    );
+
+    await tester.pumpWidget(
+      InkNestApp(
+        notebookRepository: InMemoryNotebookRepository(),
+        authController: controller,
+        firstSignInSyncService: sync,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('library-recently-deleted')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('最近删除'), findsOneWidget);
+    expect(find.text('已删除的笔记'), findsOneWidget);
+    expect(find.textContaining('当前没有永久删除操作'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const ValueKey('restore-tombstone-tombstone-1')),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pumpAndSettle();
+
+    expect(sync.restoredTombstoneIds, ['tombstone-1']);
+    expect(
+      find.byKey(const ValueKey('library-recently-deleted')),
+      findsNothing,
+    );
+    expect(find.textContaining('已删除的笔记已恢复'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    controller.dispose();
+  });
 }
 
 class _StartupSyncService
-    implements FirstSignInSyncService, SyncConflictResolutionService {
+    implements
+        FirstSignInSyncService,
+        SyncConflictResolutionService,
+        SyncTombstoneRestoreService {
   _StartupSyncService({
     this.uploadedOperationCount = 2,
     this.pullResult = const IncrementalSyncPullResult(
@@ -254,6 +325,21 @@ class _StartupSyncService
   final IncrementalSyncPullResult pullResult;
   final List<String> calls = [];
   final List<SyncConflictResolution> resolutions = [];
+  final List<String> restoredTombstoneIds = [];
+
+  @override
+  Future<SyncTombstoneRestoreResult> restoreTombstone({
+    required String userId,
+    required String deviceId,
+    required String tombstoneId,
+  }) async {
+    restoredTombstoneIds.add(tombstoneId);
+    return const SyncTombstoneRestoreResult(
+      pullResult: IncrementalSyncPullResult(
+        status: IncrementalSyncPullStatus.applied,
+      ),
+    );
+  }
 
   @override
   Future<SyncConflictResolutionResult> resolveConflict({

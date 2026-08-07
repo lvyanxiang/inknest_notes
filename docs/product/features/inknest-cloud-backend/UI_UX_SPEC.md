@@ -242,7 +242,7 @@ continue-local state without overwriting either side.
   metadata.
 - [ ] Portrait, landscape, compact width, keyboard focus and semantic labels
   are verified.
-- [ ] Recently Deleted lists active Tombstones and restores one item without
+- [x] Recently Deleted lists active Tombstones and restores one item without
   blocking writing or implying a retention period that the service has not set.
 - [ ] A delete-versus-edit result explains that the edit was preserved and
   never asks the user to choose between deleting and keeping it.
@@ -272,9 +272,13 @@ continue-local state without overwriting either side.
   detail flow shows original/copy identity and source metadata, emphasizes
   `两个都保留`, confirms replacement choices, disables duplicate submission,
   preserves both snapshots on stale/offline errors, and clears the badge only
-  after the resulting resource changes apply locally. Recently Deleted is not
-  started. Middle-page deletion remains local until page-order sync exists;
-  standalone canvas deletion has no App entry point.
+  after the resulting resource changes apply locally. Active notebook and safe
+  trailing-page Tombstones now survive restart and appear through a badged
+  Recently Deleted sheet with type, deletion time, source device, and Restore.
+  Restore disables duplicate submission and removes the row only after the
+  resource reappears locally; errors retain the row for retry. Middle-page
+  deletion remains local until page-order sync exists; standalone canvas
+  deletion has no App entry point.
 - Intentional deviations: The server reserves the copy ID immediately but only
   materializes a normal notebook/page when the user chooses Keep Both. This
   avoids temporary duplicate library entries while preserving both snapshots.

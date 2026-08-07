@@ -45,6 +45,7 @@ void main() {
           'content': const <String, Object?>{},
           'state': 'active',
           'deletedAt': deletedAt.toIso8601String(),
+          'createdAt': deletedAt.toIso8601String(),
         },
         deviceId: 'device-2',
         createdAt: deletedAt,

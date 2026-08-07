@@ -220,9 +220,10 @@ documents/
 
 ## Current Focus
 
-Milestone 8 is active. Continue Phase 5 incremental sync with active Tombstone
-persistence and Recently Deleted restore. The working path now covers content
-upload, continuous-Revision content download, recoverable whole-notebook and
-safe trailing-page deletion, plus persistent conflict presentation and all
-three conflict-resolution actions. Arbitrary page order and standalone canvas
-deletion still need an explicit structural contract.
+Milestone 8 is active. Continue Phase 5 incremental sync with visible progress,
+failed-item retry state, and delete-versus-edit preservation feedback. The
+working path now covers content upload, continuous-Revision content download,
+recoverable whole-notebook and safe trailing-page deletion, persistent conflict
+resolution, and active Tombstone recovery through Recently Deleted. Arbitrary
+page order and standalone canvas deletion still need an explicit structural
+contract.

@@ -10,6 +10,7 @@ import 'package:inknest_notes/sync/sync_bootstrap.dart';
 import 'package:inknest_notes/sync/sync_cloud_client.dart';
 import 'package:inknest_notes/sync/sync_changes.dart';
 import 'package:inknest_notes/sync/sync_conflicts.dart';
+import 'package:inknest_notes/sync/sync_tombstones.dart';
 import 'package:inknest_notes/sync/sync_upload_models.dart';
 
 class InkNestApiException implements Exception {
@@ -34,7 +35,8 @@ class InkNestApiClient
         AuthService,
         AuthSessionInvalidationSource,
         FirstSignInCloudClient,
-        SyncConflictCloudClient {
+        SyncConflictCloudClient,
+        SyncTombstoneCloudClient {
   InkNestApiClient({
     InkNestApiConfig? config,
     Dio? dio,
@@ -235,6 +237,25 @@ class InkNestApiClient
       await _postObject(
         'sync/conflicts/${Uri.encodeComponent(conflictId)}/resolve',
         data: {'resolution': resolution.apiValue},
+        expectedStatus: 200,
+        skipAuth: false,
+      ),
+    );
+  }
+
+  @override
+  Future<CloudSyncTombstone> restoreSyncTombstone(String tombstoneId) async {
+    if (tombstoneId.isEmpty || tombstoneId.trim() != tombstoneId) {
+      throw ArgumentError.value(
+        tombstoneId,
+        'tombstoneId',
+        'Tombstone ID must not be empty.',
+      );
+    }
+    return CloudSyncTombstone.fromJson(
+      await _postObject(
+        'sync/tombstones/${Uri.encodeComponent(tombstoneId)}/restore',
+        data: const {},
         expectedStatus: 200,
         skipAuth: false,
       ),

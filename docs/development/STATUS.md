@@ -6,16 +6,16 @@
   initialized sessions now push saved page, notebook-content, and infinite-
   canvas edits, mapped whole-notebook deletes, and structurally safe trailing-
   page deletes before applying safe `/sync/changes` updates.
-- Next task: Connect active Tombstone persistence and a non-blocking Recently
-  Deleted restore entry to `POST /sync/tombstones/{tombstoneId}/restore`.
-  Arbitrary page deletion, page reordering, and standalone canvas deletion
-  remain blocked on a structural synchronization contract.
-- Last completed: The conflict detail flow now calls
-  `POST /sync/conflicts/{conflictId}/resolve` for Keep Original, Use Conflict
-  Version, and Keep Both. It confirms replacement choices, handles stale/error
-  states without discarding snapshots, applies the resulting resource and
-  resolved-conflict change range locally, and removes the badge only after
-  local reconciliation succeeds.
+- Next task: Add non-blocking sync progress, failed-item, and retry status for
+  the existing push/pull pipeline, including the delete-versus-edit preserved
+  outcome. Arbitrary page deletion, page reordering, and standalone canvas
+  deletion remain blocked on a structural synchronization contract.
+- Last completed: Active notebook and safe trailing-page Tombstones now persist
+  per account/device and appear in a badged Recently Deleted sheet. Restore
+  calls `POST /sync/tombstones/{tombstoneId}/restore`, then pulls and applies
+  the restored resource before removing the entry; failure leaves the recovery
+  item visible for retry. No permanent-delete or retention-period promise was
+  added.
 
 ## Decisions
 
@@ -746,6 +746,11 @@
   and application; focused coverage includes queue rollback, middle-page gating,
   same-device confirmation, remote recovery files, and visible sync feedback.
   `flutter analyze` passes; no backend route changed.
+- `flutter test` passes with 234 tests after active Tombstone persistence and
+  Recently Deleted restore; focused coverage includes typed transport, durable
+  active/restored state, local notebook reapplication, and the visible restore
+  action. `flutter analyze` and `git diff --check` pass; no backend source or
+  route changed in this App-integration slice.
 
 ## Notes
 

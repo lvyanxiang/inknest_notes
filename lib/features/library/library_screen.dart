@@ -17,6 +17,8 @@ import 'package:inknest_notes/sync/first_sign_in_sync_service.dart';
 import 'package:inknest_notes/sync/incremental_sync_pull_service.dart';
 import 'package:inknest_notes/sync/sync_conflict_resolution_service.dart';
 import 'package:inknest_notes/sync/sync_conflicts.dart';
+import 'package:inknest_notes/sync/sync_tombstone_restore_service.dart';
+import 'package:inknest_notes/sync/sync_tombstones.dart';
 
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({
@@ -183,6 +185,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   String? _checkedSessionKey;
   bool _syncCheckScheduled = false;
   List<CloudSyncConflict> _pendingConflicts = const [];
+  List<CloudSyncTombstone> _activeTombstones = const [];
 
   @override
   void initState() {
@@ -205,8 +208,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final session = widget.authController.session;
     if (session == null) {
       _checkedSessionKey = null;
-      if (_pendingConflicts.isNotEmpty) {
-        setState(() => _pendingConflicts = const []);
+      if (_pendingConflicts.isNotEmpty || _activeTombstones.isNotEmpty) {
+        setState(() {
+          _pendingConflicts = const [];
+          _activeTombstones = const [];
+        });
       }
       return;
     }
@@ -238,7 +244,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
         deviceId: session.device.id,
       );
       if (!mounted) return;
-      setState(() => _pendingConflicts = pullResult.pendingConflicts);
+      setState(() {
+        _pendingConflicts = pullResult.pendingConflicts;
+        _activeTombstones = pullResult.activeTombstones;
+      });
       switch (pullResult.status) {
         case IncrementalSyncPullStatus.notInitialized:
           break;
@@ -590,6 +599,159 @@ class _LibraryScreenState extends State<LibraryScreen> {
           ),
         ) ??
         false;
+  }
+
+  Future<void> _openRecentlyDeleted() async {
+    if (_activeTombstones.isEmpty) return;
+    final restoreService = widget.firstSignInSyncService;
+    String? busyId;
+    String? errorMessage;
+    String? successMessage;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          Future<void> restore(CloudSyncTombstone tombstone) async {
+            if (busyId != null) return;
+            if (restoreService is! SyncTombstoneRestoreService) {
+              setSheetState(() {
+                errorMessage = '当前同步服务暂不支持恢复，请稍后重试。';
+              });
+              return;
+            }
+            final restorer = restoreService as SyncTombstoneRestoreService;
+            final session = widget.authController.session;
+            if (session == null) {
+              setSheetState(() {
+                errorMessage = '登录状态已失效；删除记录仍然保留。';
+              });
+              return;
+            }
+            setSheetState(() {
+              busyId = tombstone.id;
+              errorMessage = null;
+            });
+            try {
+              final result = await restorer.restoreTombstone(
+                userId: session.user.id,
+                deviceId: session.device.id,
+                tombstoneId: tombstone.id,
+              );
+              if (!mounted || !context.mounted) return;
+              setState(() {
+                _pendingConflicts = result.pullResult.pendingConflicts;
+                _activeTombstones = result.pullResult.activeTombstones;
+              });
+              await _loadNotebooks();
+              if (!mounted || !context.mounted) return;
+              successMessage = '${tombstone.resourceLabel}已恢复。';
+              Navigator.of(context).pop();
+            } on SyncTombstoneRestoreException catch (error) {
+              if (!context.mounted) return;
+              setSheetState(() {
+                busyId = null;
+                errorMessage = switch (error.failure) {
+                  SyncTombstoneRestoreFailure.alreadyRestored =>
+                    '此项目已在其他设备恢复，请稍后重新同步。',
+                  SyncTombstoneRestoreFailure.reconciliationRequired =>
+                    '云端已恢复，但本地尚未完成同步；删除记录仍保留，请重试。',
+                  SyncTombstoneRestoreFailure.unavailable =>
+                    '恢复失败，删除记录仍然安全保留，请重试。',
+                };
+              });
+            } on Object {
+              if (!context.mounted) return;
+              setSheetState(() {
+                busyId = null;
+                errorMessage = '恢复失败，删除记录仍然安全保留，请重试。';
+              });
+            }
+          }
+
+          return SafeArea(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 620),
+              child: Column(
+                children: [
+                  ListTile(
+                    title: const Text('最近删除'),
+                    subtitle: Text(
+                      '${_activeTombstones.length} 项可恢复；当前没有永久删除操作。',
+                    ),
+                  ),
+                  if (errorMessage != null)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          errorMessage!,
+                          key: const ValueKey('tombstone-restore-error'),
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ),
+                      ),
+                    ),
+                  const Divider(height: 1),
+                  Expanded(
+                    child: ListView.separated(
+                      itemCount: _activeTombstones.length,
+                      separatorBuilder: (_, _) => const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final tombstone = _activeTombstones[index];
+                        final deletedAt = tombstone.deletedAt.toLocal();
+                        final time =
+                            '${deletedAt.year.toString().padLeft(4, '0')}-'
+                            '${deletedAt.month.toString().padLeft(2, '0')}-'
+                            '${deletedAt.day.toString().padLeft(2, '0')} '
+                            '${deletedAt.hour.toString().padLeft(2, '0')}:'
+                            '${deletedAt.minute.toString().padLeft(2, '0')}';
+                        final source = tombstone.deletedByDeviceId == null
+                            ? '未知设备'
+                            : tombstone.deletedByDeviceId!;
+                        final busy = busyId == tombstone.id;
+                        return ListTile(
+                          leading: Icon(
+                            tombstone.resourceType == 'notebook'
+                                ? Icons.menu_book_outlined
+                                : Icons.description_outlined,
+                          ),
+                          title: Text(tombstone.resourceLabel),
+                          subtitle: Text('$time · 来源设备：$source'),
+                          trailing: FilledButton.tonalIcon(
+                            key: ValueKey('restore-tombstone-${tombstone.id}'),
+                            onPressed: busyId == null
+                                ? () => restore(tombstone)
+                                : null,
+                            icon: busy
+                                ? const SizedBox.square(
+                                    dimension: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.restore),
+                            label: const Text('恢复'),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+    if (mounted && successMessage != null) {
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.clearSnackBars();
+      messenger.showSnackBar(SnackBar(content: Text(successMessage!)));
+    }
   }
 
   Future<void> _loadNotebooks() async {
@@ -1072,6 +1234,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
               onOpenAccount: _openAccount,
               pendingConflictCount: _pendingConflicts.length,
               onOpenConflicts: _openSyncConflicts,
+              recentlyDeletedCount: _activeTombstones.length,
+              onOpenRecentlyDeleted: _openRecentlyDeleted,
             ),
             Expanded(
               child: _isLoading
@@ -1139,6 +1303,8 @@ class _LibraryHeader extends StatelessWidget {
     required this.onOpenAccount,
     required this.pendingConflictCount,
     required this.onOpenConflicts,
+    required this.recentlyDeletedCount,
+    required this.onOpenRecentlyDeleted,
   });
 
   final String title;
@@ -1160,6 +1326,8 @@ class _LibraryHeader extends StatelessWidget {
   final VoidCallback onOpenAccount;
   final int pendingConflictCount;
   final VoidCallback onOpenConflicts;
+  final int recentlyDeletedCount;
+  final VoidCallback onOpenRecentlyDeleted;
 
   @override
   Widget build(BuildContext context) {
@@ -1265,6 +1433,18 @@ class _LibraryHeader extends StatelessWidget {
                             onPressed: onOpenConflicts,
                             tooltip: '$pendingConflictCount sync conflicts',
                             icon: const Icon(Icons.sync_problem_outlined),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      if (recentlyDeletedCount > 0) ...[
+                        Badge.count(
+                          count: recentlyDeletedCount,
+                          child: IconButton(
+                            key: const ValueKey('library-recently-deleted'),
+                            onPressed: onOpenRecentlyDeleted,
+                            tooltip: '最近删除 $recentlyDeletedCount 项',
+                            icon: const Icon(Icons.restore_from_trash_outlined),
                           ),
                         ),
                         const SizedBox(width: 8),

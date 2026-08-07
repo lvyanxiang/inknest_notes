@@ -347,7 +347,12 @@ The first slice sets no retention period and performs no physical cleanup.
   notebook/page/canvas content now also downloads from another device when the
   change feed proves a continuous Revision chain and bootstrap structure still
   matches local state; failed multi-resource application rolls back before the
-  Cursor advances.
+  Cursor advances. The App also persists active notebook and structurally safe
+  trailing-page Tombstones, lists them in Recently Deleted, calls the existing
+  explicit restore endpoint, and removes an item only after the restored
+  resource has been pulled and applied locally. Restore failure keeps the item
+  available for retry; no permanent-delete control or retention promise is
+  exposed.
 - Verification: Backend tests cover authentication, account isolation,
   revisioned content, asset transfer, cursors, atomic/idempotent commits, page
   and notebook conflicts, all resolution choices, soft delete/restore, both

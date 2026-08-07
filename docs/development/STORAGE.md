@@ -19,6 +19,7 @@ sync/
     device-id/
       state.json
       conflicts.json
+      tombstones.json
 ```
 
 ## `notebooks/index.json`
@@ -120,6 +121,20 @@ and content ranges are acknowledged only after the resource update/addition,
 resolved conflict record, resource map, and final Cursor all have a safe
 application path. Retrying a partially applied Keep Both page addition accepts
 the same final-position page and rejects a colliding ID with different content.
+
+## `sync/<user-id>/<device-id>/tombstones.json`
+
+The versioned Tombstone sidecar stores typed soft-delete snapshots and their
+active/restored state. The App derives Recently Deleted from active notebook and
+page records, sorted by deletion time; unsupported standalone-canvas recovery
+does not appear as an action. Restored records remain in the sidecar as durable
+history but disappear from the active list.
+
+Tombstone changes are written atomically before the pull Cursor advances. A
+restore request does not optimistically remove its row: the App first pulls the
+resulting resource upsert and restored Tombstone, applies the notebook or safe
+page locally, updates mappings, and only then advances the Cursor and refreshes
+Recently Deleted. Failures keep the active record visible for retry.
 
 ## `sync/<user-id>/<device-id>/resources.json`
 

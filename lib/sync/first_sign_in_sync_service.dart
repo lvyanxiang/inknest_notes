@@ -14,6 +14,7 @@ import 'package:inknest_notes/sync/sync_bootstrap.dart';
 import 'package:inknest_notes/sync/sync_merge_plan.dart';
 import 'package:inknest_notes/sync/sync_mutation_tracker.dart';
 import 'package:inknest_notes/sync/sync_resource_map_store.dart';
+import 'package:inknest_notes/sync/sync_tombstone_restore_service.dart';
 import 'package:inknest_notes/sync/sync_upload_models.dart';
 import 'package:inknest_notes/sync/sync_cloud_client.dart';
 import 'package:inknest_notes/sync/sync_conflict_resolution_service.dart';
@@ -97,7 +98,10 @@ abstract interface class FirstSignInSyncService {
 }
 
 class ApiFirstSignInSyncService
-    implements FirstSignInSyncService, SyncConflictResolutionService {
+    implements
+        FirstSignInSyncService,
+        SyncConflictResolutionService,
+        SyncTombstoneRestoreService {
   const ApiFirstSignInSyncService({
     required this.repository,
     required this.apiClient,
@@ -158,6 +162,31 @@ class ApiFirstSignInSyncService
       deviceId: deviceId,
       conflictId: conflictId,
       resolution: resolution,
+    );
+  }
+
+  @override
+  Future<SyncTombstoneRestoreResult> restoreTombstone({
+    required String userId,
+    required String deviceId,
+    required String tombstoneId,
+  }) {
+    final tombstoneClient = apiClient;
+    if (tombstoneClient is! SyncTombstoneCloudClient) {
+      throw StateError('The cloud client cannot restore Tombstones.');
+    }
+    return ApiSyncTombstoneRestoreService(
+      cloudClient: tombstoneClient as SyncTombstoneCloudClient,
+      pullService: IncrementalSyncPullService(
+        repository: repository,
+        cloudClient: apiClient,
+        rootDirectory: rootDirectory,
+        mutationTracker: mutationTracker,
+      ),
+    ).restoreTombstone(
+      userId: userId,
+      deviceId: deviceId,
+      tombstoneId: tombstoneId,
     );
   }
 

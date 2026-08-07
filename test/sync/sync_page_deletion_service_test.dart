@@ -167,6 +167,7 @@ class _PageDeletionFixture {
           'content': const {'strokes': <Object?>[]},
           'state': 'active',
           'deletedAt': deletedAt.toIso8601String(),
+          'createdAt': deletedAt.toIso8601String(),
         },
         deviceId: deviceId,
         createdAt: deletedAt,

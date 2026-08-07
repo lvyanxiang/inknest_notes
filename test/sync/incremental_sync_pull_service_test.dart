@@ -11,6 +11,7 @@ import 'package:inknest_notes/sync/sync_cloud_client.dart';
 import 'package:inknest_notes/sync/sync_conflicts.dart';
 import 'package:inknest_notes/sync/sync_resource_map_store.dart';
 import 'package:inknest_notes/sync/sync_state.dart';
+import 'package:inknest_notes/sync/sync_tombstones.dart';
 import 'package:inknest_notes/sync/sync_upload_models.dart';
 
 void main() {
@@ -461,6 +462,7 @@ void main() {
                   'content': const <String, Object?>{},
                   'state': 'active',
                   'deletedAt': deletedAt.toIso8601String(),
+                  'createdAt': deletedAt.toIso8601String(),
                 },
                 deviceId: 'device-2',
                 createdAt: deletedAt,
@@ -480,6 +482,7 @@ void main() {
 
       expect(result.status, IncrementalSyncPullStatus.applied);
       expect(result.deletedNotebookCount, 1);
+      expect(result.activeTombstones.single.id, 'tombstone-1');
       expect(await repository.listNotebooks(), isEmpty);
       final recovery = Directory(
         '${root.path}/sync/user-1/device-1/deleted/tombstone-1',
@@ -490,6 +493,61 @@ void main() {
         isTrue,
       );
       expect(await File('${recovery.path}/tombstone.json').exists(), isTrue);
+      expect(
+        await File(
+          '${root.path}/sync/user-1/device-1/tombstones.json',
+        ).exists(),
+        isTrue,
+      );
+      expect((await stateStore.loadSnapshot()).lastAppliedCursor, 'cursor-2');
+    },
+  );
+
+  test(
+    'restored Tombstone downloads its notebook and leaves Recently Deleted',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'inknest-pull-restore-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      final repository = FileNotebookRepository(rootDirectory: root);
+      final stateStore = FileSyncStateStore(
+        rootDirectory: root,
+        userId: 'user-1',
+        deviceId: 'device-1',
+      );
+      await stateStore.markChangesPageApplied('cursor-1');
+      final activePayload = _tombstonePayload();
+      await FileSyncTombstoneStore(
+        rootDirectory: root,
+        userId: 'user-1',
+        deviceId: 'device-1',
+      ).applyChanges([_tombstoneChange(activePayload)]);
+      final restoredPayload = _tombstonePayload(restored: true);
+      final cloud = _PullCloudClient(
+        bootstrapSnapshot: _cloudNotebookBootstrap(),
+        pages: [
+          CloudSyncChangePage(
+            changes: [
+              _change('notebook', 'cloud-notebook', revision: 3),
+              _change('page', 'cloud-page'),
+              _tombstoneChange(restoredPayload),
+            ],
+            nextCursor: 'cursor-2',
+            hasMore: false,
+          ),
+        ],
+      );
+
+      final result = await IncrementalSyncPullService(
+        repository: repository,
+        cloudClient: cloud,
+        rootDirectory: root,
+      ).pull(userId: 'user-1', deviceId: 'device-1');
+
+      expect(result.status, IncrementalSyncPullStatus.applied);
+      expect(result.activeTombstones, isEmpty);
+      expect((await repository.listNotebooks()).single.title, 'Cloud notes');
       expect((await stateStore.loadSnapshot()).lastAppliedCursor, 'cursor-2');
     },
   );
@@ -564,6 +622,7 @@ void main() {
                 'content': const <String, Object?>{},
                 'state': 'active',
                 'deletedAt': deletedAt.toIso8601String(),
+                'createdAt': deletedAt.toIso8601String(),
               },
               deviceId: 'device-1',
               createdAt: deletedAt,
@@ -744,6 +803,37 @@ CloudSyncChange _conflictChange({
     createdAt: DateTime.utc(2026, 8, 7),
   );
 }
+
+Map<String, Object?> _tombstonePayload({bool restored = false}) => {
+  'id': 'tombstone-1',
+  'resourceType': 'notebook',
+  'resourceId': 'cloud-notebook',
+  'baseRevision': 1,
+  'resourceRevision': 1,
+  'deletedRevision': 2,
+  'contentHash': 'a' * 64,
+  'content': const {'bookmarkedPageIds': <Object?>[]},
+  'deletedByDeviceId': 'device-2',
+  'deletedAt': '2026-08-07T00:00:00Z',
+  'state': restored ? 'restored' : 'active',
+  if (restored) 'resolution': 'restored_snapshot',
+  if (restored) 'restoredByDeviceId': 'device-1',
+  if (restored) 'restoredAt': '2026-08-07T01:00:00Z',
+  'createdAt': '2026-08-07T00:00:00Z',
+};
+
+CloudSyncChange _tombstoneChange(Map<String, Object?> payload) =>
+    CloudSyncChange(
+      changeId: 'change-tombstone-${payload['state']}',
+      resourceType: CloudSyncChangeResourceType.tombstone,
+      resourceId: 'tombstone-1',
+      operation: CloudSyncChangeOperation.upsert,
+      revision: null,
+      contentHash: null,
+      payload: payload,
+      deviceId: 'device-2',
+      createdAt: DateTime.utc(2026, 8, 7),
+    );
 
 CloudSyncBootstrap _cloudNotebookBootstrap() {
   final now = DateTime.utc(2026, 8, 7);

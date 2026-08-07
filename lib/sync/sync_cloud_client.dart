@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:inknest_notes/sync/sync_bootstrap.dart';
 import 'package:inknest_notes/sync/sync_changes.dart';
 import 'package:inknest_notes/sync/sync_conflicts.dart';
+import 'package:inknest_notes/sync/sync_tombstones.dart';
 import 'package:inknest_notes/sync/sync_upload_models.dart';
 
 abstract interface class CloudAssetTransferClient {
@@ -19,6 +20,10 @@ abstract interface class SyncConflictCloudClient {
     required String conflictId,
     required SyncConflictResolution resolution,
   });
+}
+
+abstract interface class SyncTombstoneCloudClient {
+  Future<CloudSyncTombstone> restoreSyncTombstone(String tombstoneId);
 }
 
 abstract interface class FirstSignInCloudClient

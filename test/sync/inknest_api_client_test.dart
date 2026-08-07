@@ -205,6 +205,48 @@ void main() {
     },
   );
 
+  test(
+    'Tombstone restore posts the selected record and parses response',
+    () async {
+      late RequestOptions captured;
+      final dio = Dio();
+      final store = MemoryAuthSessionStore(
+        StoredAuthSession.fromSession(
+          InkNestAuthSession.fromJson(_authJson()),
+          issuedAt: DateTime.utc(2026, 8, 6),
+        ),
+      );
+      final client = InkNestApiClient(
+        config: InkNestApiConfig.fromEnvironment(
+          overrideBaseUrl: 'https://api.example.com',
+        ),
+        dio: dio,
+        refreshDio: Dio(),
+        sessionStore: store,
+        clock: () => DateTime.utc(2026, 8, 6, 0, 1),
+      );
+      _resolveRequests(dio, (options) {
+        captured = options;
+        return (status: 200, data: _restoredTombstoneJson());
+      });
+
+      final tombstone = await client.restoreSyncTombstone(
+        '11111111-1111-4111-8111-111111111111',
+      );
+
+      expect(captured.method, 'POST');
+      expect(
+        captured.uri.toString(),
+        'https://api.example.com/api/v1/sync/tombstones/'
+        '11111111-1111-4111-8111-111111111111/restore',
+      );
+      expect(captured.data, isEmpty);
+      expect(tombstone.resourceId, 'notebook-1');
+      expect(tombstone.state, 'restored');
+      expect(tombstone.resolution, 'restored_snapshot');
+    },
+  );
+
   test('shared-content commit uses the incremental sync contract', () async {
     late RequestOptions captured;
     final dio = Dio();
@@ -753,6 +795,26 @@ Map<String, Object?> _resolvedConflictJson() => {
   'resolution': 'keep_both',
   'resolvedByDeviceId': '33333333-3333-4333-8333-333333333333',
   'resolvedAt': '2026-08-07T01:00:00Z',
+  'createdAt': '2026-08-07T00:00:00Z',
+};
+
+Map<String, Object?> _restoredTombstoneJson() => {
+  'id': '11111111-1111-4111-8111-111111111111',
+  'resourceType': 'notebook',
+  'resourceId': 'notebook-1',
+  'baseRevision': 1,
+  'resourceRevision': 1,
+  'deletedRevision': 2,
+  'contentHash': 'a' * 64,
+  'content': const {'bookmarkedPageIds': <Object?>[]},
+  'deletedByDeviceId': '22222222-2222-4222-8222-222222222222',
+  'deletedAt': '2026-08-07T00:00:00Z',
+  'state': 'restored',
+  'conflictKind': null,
+  'resolution': 'restored_snapshot',
+  'conflictingDeviceId': null,
+  'restoredByDeviceId': '33333333-3333-4333-8333-333333333333',
+  'restoredAt': '2026-08-07T01:00:00Z',
   'createdAt': '2026-08-07T00:00:00Z',
 };
 
