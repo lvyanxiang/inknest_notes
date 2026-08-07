@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:inknest_notes/app/app.dart';
@@ -307,6 +309,124 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     controller.dispose();
   });
+
+  testWidgets('sync status shows progress and then completion', (tester) async {
+    final controller = AuthController(
+      service: _RestoredAuthService(),
+      deviceName: 'Test iPad',
+      platform: 'ios',
+    );
+    await controller.initialize();
+    final gate = Completer<void>();
+    final sync = _StartupSyncService(
+      uploadedOperationCount: 0,
+      pushGate: gate.future,
+    );
+
+    await tester.pumpWidget(
+      InkNestApp(
+        notebookRepository: InMemoryNotebookRepository(),
+        authController: controller,
+        firstSignInSyncService: sync,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    final status = find.byKey(const ValueKey('library-sync-status'));
+    expect(status, findsOneWidget);
+    expect(
+      find.descendant(
+        of: status,
+        matching: find.byType(CircularProgressIndicator),
+      ),
+      findsOneWidget,
+    );
+
+    gate.complete();
+    await tester.pumpAndSettle();
+    await tester.tap(status);
+    await tester.pumpAndSettle();
+
+    expect(find.text('同步完成'), findsOneWidget);
+    expect(find.text('本地笔记与云端已同步。'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    controller.dispose();
+  });
+
+  testWidgets('failed sync keeps item count and retries from status', (
+    tester,
+  ) async {
+    final controller = AuthController(
+      service: _RestoredAuthService(),
+      deviceName: 'Test iPad',
+      platform: 'ios',
+    );
+    await controller.initialize();
+    final sync = _StartupSyncService(
+      uploadedOperationCount: 0,
+      pushFailuresRemaining: 1,
+    );
+
+    await tester.pumpWidget(
+      InkNestApp(
+        notebookRepository: InMemoryNotebookRepository(),
+        authController: controller,
+        firstSignInSyncService: sync,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('library-sync-status')));
+    await tester.pumpAndSettle();
+    expect(find.text('同步失败'), findsOneWidget);
+    expect(find.textContaining('2 项本地更改仍安全保留'), findsWidgets);
+
+    await tester.tap(find.byKey(const ValueKey('retry-library-sync')));
+    await tester.pumpAndSettle();
+
+    expect(sync.calls, ['push', 'push', 'pull']);
+    await tester.tap(find.byKey(const ValueKey('library-sync-status')));
+    await tester.pumpAndSettle();
+    expect(find.text('同步完成'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    controller.dispose();
+  });
+
+  testWidgets('delete conflict calmly reports that the edit was preserved', (
+    tester,
+  ) async {
+    final controller = AuthController(
+      service: _RestoredAuthService(),
+      deviceName: 'Test iPad',
+      platform: 'ios',
+    );
+    await controller.initialize();
+    final sync = _StartupSyncService(
+      uploadedOperationCount: 1,
+      preservedDeleteEditCount: 1,
+    );
+
+    await tester.pumpWidget(
+      InkNestApp(
+        notebookRepository: InMemoryNotebookRepository(),
+        authController: controller,
+        firstSignInSyncService: sync,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('已保留另一台设备上的编辑'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('library-sync-status')));
+    await tester.pumpAndSettle();
+    expect(find.text('编辑已保留'), findsOneWidget);
+    expect(find.byKey(const ValueKey('retry-library-sync')), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    controller.dispose();
+  });
 }
 
 class _StartupSyncService
@@ -316,12 +436,18 @@ class _StartupSyncService
         SyncTombstoneRestoreService {
   _StartupSyncService({
     this.uploadedOperationCount = 2,
+    this.preservedDeleteEditCount = 0,
+    this.pushFailuresRemaining = 0,
+    this.pushGate,
     this.pullResult = const IncrementalSyncPullResult(
       status: IncrementalSyncPullStatus.upToDate,
     ),
   });
 
   final int uploadedOperationCount;
+  final int preservedDeleteEditCount;
+  int pushFailuresRemaining;
+  final Future<void>? pushGate;
   final IncrementalSyncPullResult pullResult;
   final List<String> calls = [];
   final List<SyncConflictResolution> resolutions = [];
@@ -362,9 +488,15 @@ class _StartupSyncService
     required String deviceId,
   }) async {
     calls.add('push');
+    await pushGate;
+    if (pushFailuresRemaining > 0) {
+      pushFailuresRemaining--;
+      throw const IncrementalSyncPushException(pendingOperationCount: 2);
+    }
     return IncrementalSyncPushResult(
       uploadedOperationCount: uploadedOperationCount,
-      preservedConflictCount: 0,
+      preservedConflictCount: preservedDeleteEditCount,
+      preservedDeleteEditCount: preservedDeleteEditCount,
     );
   }
 

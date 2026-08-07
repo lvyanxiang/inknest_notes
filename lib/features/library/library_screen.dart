@@ -15,10 +15,33 @@ import 'package:inknest_notes/models/notebook_layout_mode.dart';
 import 'package:inknest_notes/storage/notebook_repository.dart';
 import 'package:inknest_notes/sync/first_sign_in_sync_service.dart';
 import 'package:inknest_notes/sync/incremental_sync_pull_service.dart';
+import 'package:inknest_notes/sync/incremental_sync_push_service.dart';
 import 'package:inknest_notes/sync/sync_conflict_resolution_service.dart';
 import 'package:inknest_notes/sync/sync_conflicts.dart';
 import 'package:inknest_notes/sync/sync_tombstone_restore_service.dart';
 import 'package:inknest_notes/sync/sync_tombstones.dart';
+
+enum _LibrarySyncPhase {
+  idle,
+  syncing,
+  completed,
+  needsAttention,
+  failed,
+  preservedEdit,
+}
+
+class _LibrarySyncStatus {
+  const _LibrarySyncStatus(this.phase, this.message);
+
+  static const idle = _LibrarySyncStatus(_LibrarySyncPhase.idle, '');
+
+  final _LibrarySyncPhase phase;
+  final String message;
+
+  bool get canRetry =>
+      phase == _LibrarySyncPhase.failed ||
+      phase == _LibrarySyncPhase.needsAttention;
+}
 
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({
@@ -186,6 +209,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   bool _syncCheckScheduled = false;
   List<CloudSyncConflict> _pendingConflicts = const [];
   List<CloudSyncTombstone> _activeTombstones = const [];
+  _LibrarySyncStatus _syncStatus = _LibrarySyncStatus.idle;
 
   @override
   void initState() {
@@ -208,10 +232,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final session = widget.authController.session;
     if (session == null) {
       _checkedSessionKey = null;
-      if (_pendingConflicts.isNotEmpty || _activeTombstones.isNotEmpty) {
+      if (_pendingConflicts.isNotEmpty ||
+          _activeTombstones.isNotEmpty ||
+          _syncStatus.phase != _LibrarySyncPhase.idle) {
         setState(() {
           _pendingConflicts = const [];
           _activeTombstones = const [];
+          _syncStatus = _LibrarySyncStatus.idle;
         });
       }
       return;
@@ -227,13 +254,22 @@ class _LibraryScreenState extends State<LibraryScreen> {
     });
   }
 
-  Future<void> _checkCloudAfterSignIn() async {
+  Future<void> _checkCloudAfterSignIn({bool force = false}) async {
     final session = widget.authController.session;
     final service = widget.firstSignInSyncService;
     if (session == null || service == null) return;
     final sessionKey = '${session.user.id}:${session.device.id}';
-    if (_checkedSessionKey == sessionKey) return;
+    if ((!force && _checkedSessionKey == sessionKey) ||
+        _syncStatus.phase == _LibrarySyncPhase.syncing) {
+      return;
+    }
     _checkedSessionKey = sessionKey;
+    setState(() {
+      _syncStatus = const _LibrarySyncStatus(
+        _LibrarySyncPhase.syncing,
+        '正在上传本地更改并检查云端更新…',
+      );
+    });
     try {
       final pushResult = await service.pushIncremental(
         userId: session.user.id,
@@ -250,13 +286,30 @@ class _LibraryScreenState extends State<LibraryScreen> {
       });
       switch (pullResult.status) {
         case IncrementalSyncPullStatus.notInitialized:
+          setState(() => _syncStatus = _LibrarySyncStatus.idle);
           break;
         case IncrementalSyncPullStatus.upToDate:
-          if (pushResult.uploadedOperationCount > 0) {
+          final message = pushResult.uploadedOperationCount > 0
+              ? '已上传 ${pushResult.uploadedOperationCount} 项本地更改，当前已同步。'
+              : '本地笔记与云端已同步。';
+          setState(() {
+            _syncStatus = _LibrarySyncStatus(
+              pushResult.preservedDeleteEditCount > 0
+                  ? _LibrarySyncPhase.preservedEdit
+                  : _LibrarySyncPhase.completed,
+              pushResult.preservedDeleteEditCount > 0
+                  ? '已保留另一台设备上的编辑，无需处理。'
+                  : message,
+            );
+          });
+          if (pushResult.uploadedOperationCount > 0 ||
+              pushResult.preservedDeleteEditCount > 0) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(
-                  '已上传 ${pushResult.uploadedOperationCount} 项本地更改。',
+                  pushResult.preservedDeleteEditCount > 0
+                      ? _syncStatus.message
+                      : '已上传 ${pushResult.uploadedOperationCount} 项本地更改。',
                 ),
               ),
             );
@@ -267,50 +320,68 @@ class _LibraryScreenState extends State<LibraryScreen> {
             await _loadNotebooks();
           }
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                pullResult.receivedConflictCount > 0
-                    ? '${pullResult.receivedConflictCount} 个同步冲突待处理；两个版本都已保留。'
-                    : pullResult.deletedNotebookCount > 0
-                    ? '已同步 ${pullResult.changeCount} 项云端更改，从书架移除 '
-                          '${pullResult.deletedNotebookCount} 本已在其他设备删除的笔记；'
-                          '本地恢复副本已保留。'
-                    : pullResult.confirmedLocalDeletionCount > 0
-                    ? '已将删除同步到云端，其他设备将在下次同步时移除这本笔记。'
-                    : pullResult.deletedPageCount > 0
-                    ? '已同步其他设备的页面删除；可恢复的本地页面副本已保留。'
-                    : pullResult.confirmedLocalPageDeletionCount > 0
-                    ? '已确认本机的页面删除同步到云端。'
-                    : pullResult.appliedSharedResourceCount > 0
-                    ? '已上传 ${pushResult.uploadedOperationCount} 项本地更改，'
-                          '同步 ${pullResult.changeCount} 项云端更改，更新 '
-                          '${pullResult.appliedSharedResourceCount} 项已有内容。'
-                    : '已上传 ${pushResult.uploadedOperationCount} 项本地更改，'
-                          '同步 ${pullResult.changeCount} 项云端更改，下载 '
-                          '${pullResult.downloadedNotebookCount} 本笔记。',
-              ),
-            ),
+          final message = _incrementalSyncResultMessage(
+            pushResult: pushResult,
+            pullResult: pullResult,
           );
+          setState(() {
+            _syncStatus = _LibrarySyncStatus(
+              pushResult.preservedDeleteEditCount > 0
+                  ? _LibrarySyncPhase.preservedEdit
+                  : pullResult.receivedConflictCount > 0
+                  ? _LibrarySyncPhase.needsAttention
+                  : _LibrarySyncPhase.completed,
+              message,
+            );
+          });
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(message)));
           return;
         case IncrementalSyncPullStatus.requiresReconciliation:
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                pushResult.uploadedOperationCount == 0
-                    ? '检测到需要协调的云端更改；本地笔记未被覆盖。'
-                    : '已上传 ${pushResult.uploadedOperationCount} 项本地更改；'
-                          '检测到需要协调的云端更改，本地笔记未被覆盖。',
-              ),
-            ),
-          );
+          final message = pushResult.preservedDeleteEditCount > 0
+              ? '已保留另一台设备上的编辑，无需在删除和编辑之间选择。'
+              : pushResult.uploadedOperationCount == 0
+              ? '检测到需要协调的云端更改；本地笔记未被覆盖。'
+              : '已上传 ${pushResult.uploadedOperationCount} 项本地更改；'
+                    '检测到需要协调的云端更改，本地笔记未被覆盖。';
+          setState(() {
+            _syncStatus = _LibrarySyncStatus(
+              pushResult.preservedDeleteEditCount > 0
+                  ? _LibrarySyncPhase.preservedEdit
+                  : _LibrarySyncPhase.needsAttention,
+              message,
+            );
+          });
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(message)));
           return;
       }
-    } catch (_) {
+    } on IncrementalSyncPushException catch (error) {
       if (!mounted) return;
+      final count = error.pendingOperationCount;
+      setState(() {
+        _syncStatus = _LibrarySyncStatus(
+          _LibrarySyncPhase.failed,
+          count > 0 ? '同步失败，$count 项本地更改仍安全保留，等待重试。' : '同步失败，本地笔记未受影响，可以重试。',
+        );
+      });
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('暂时无法同步云端更改，已继续使用本地笔记。')));
+      ).showSnackBar(SnackBar(content: Text(_syncStatus.message)));
+      return;
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _syncStatus = const _LibrarySyncStatus(
+          _LibrarySyncPhase.failed,
+          '暂时无法检查云端更改；本地笔记未受影响，可以重试。',
+        );
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_syncStatus.message)));
       return;
     }
     final result = await showFirstSignInSyncDialog(
@@ -335,9 +406,82 @@ class _LibraryScreenState extends State<LibraryScreen> {
               '保留 ${result.mixedResult!.preservedConflictCount} 个待处理冲突。'
         : null;
     if (message == null) return;
+    setState(() {
+      _syncStatus = _LibrarySyncStatus(_LibrarySyncPhase.completed, message);
+    });
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  String _incrementalSyncResultMessage({
+    required IncrementalSyncPushResult pushResult,
+    required IncrementalSyncPullResult pullResult,
+  }) {
+    if (pushResult.preservedDeleteEditCount > 0) {
+      return '已保留另一台设备上的编辑，无需在删除和编辑之间选择。';
+    }
+    if (pullResult.receivedConflictCount > 0) {
+      return '${pullResult.receivedConflictCount} 个同步冲突待处理；两个版本都已保留。';
+    }
+    if (pullResult.deletedNotebookCount > 0) {
+      return '已同步 ${pullResult.changeCount} 项云端更改，从书架移除 '
+          '${pullResult.deletedNotebookCount} 本已在其他设备删除的笔记；本地恢复副本已保留。';
+    }
+    if (pullResult.confirmedLocalDeletionCount > 0) {
+      return '已将删除同步到云端，其他设备将在下次同步时移除这本笔记。';
+    }
+    if (pullResult.deletedPageCount > 0) {
+      return '已同步其他设备的页面删除；可恢复的本地页面副本已保留。';
+    }
+    if (pullResult.confirmedLocalPageDeletionCount > 0) {
+      return '已确认本机的页面删除同步到云端。';
+    }
+    if (pullResult.appliedSharedResourceCount > 0) {
+      return '已上传 ${pushResult.uploadedOperationCount} 项本地更改，'
+          '同步 ${pullResult.changeCount} 项云端更改，更新 '
+          '${pullResult.appliedSharedResourceCount} 项已有内容。';
+    }
+    return '已上传 ${pushResult.uploadedOperationCount} 项本地更改，'
+        '同步 ${pullResult.changeCount} 项云端更改，下载 '
+        '${pullResult.downloadedNotebookCount} 本笔记。';
+  }
+
+  Future<void> _openSyncStatus() async {
+    if (_syncStatus.phase == _LibrarySyncPhase.idle) return;
+    final retry = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 4, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                _syncStatusTitle(_syncStatus.phase),
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 8),
+              Text(_syncStatus.message),
+              if (_syncStatus.canRetry) ...[
+                const SizedBox(height: 20),
+                FilledButton.icon(
+                  key: const ValueKey('retry-library-sync'),
+                  onPressed: () => Navigator.of(context).pop(true),
+                  icon: const Icon(Icons.sync_rounded),
+                  label: const Text('重试同步'),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+    if (retry == true && mounted) {
+      await _checkCloudAfterSignIn(force: true);
+    }
   }
 
   Future<void> _openSyncConflicts() async {
@@ -1124,6 +1268,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final session = widget.authController.session;
     final service = widget.firstSignInSyncService;
     if (session == null || service == null) return;
+    setState(() {
+      _syncStatus = const _LibrarySyncStatus(
+        _LibrarySyncPhase.syncing,
+        '正在将删除同步到云端…',
+      );
+    });
     try {
       final pushResult = await service.pushIncremental(
         userId: session.user.id,
@@ -1134,22 +1284,72 @@ class _LibraryScreenState extends State<LibraryScreen> {
         deviceId: session.device.id,
       );
       if (!mounted) return;
-      if (pullResult.confirmedLocalDeletionCount > 0) {
+      setState(() {
+        _pendingConflicts = pullResult.pendingConflicts;
+        _activeTombstones = pullResult.activeTombstones;
+      });
+      if (pushResult.preservedDeleteEditCount > 0) {
+        setState(() {
+          _syncStatus = const _LibrarySyncStatus(
+            _LibrarySyncPhase.preservedEdit,
+            '删除遇到另一台设备的新编辑；编辑内容已自动保留，无需处理。',
+          );
+        });
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(_syncStatus.message)));
+      } else if (pullResult.confirmedLocalDeletionCount > 0) {
+        setState(() {
+          _syncStatus = const _LibrarySyncStatus(
+            _LibrarySyncPhase.completed,
+            '已将删除同步到云端，其他设备将在下次同步时更新。',
+          );
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('已将删除同步到云端，其他设备将在下次同步时移除这本笔记。')),
         );
       } else if (pullResult.status ==
               IncrementalSyncPullStatus.requiresReconciliation ||
           pushResult.preservedConflictCount > 0) {
+        setState(() {
+          _syncStatus = const _LibrarySyncStatus(
+            _LibrarySyncPhase.needsAttention,
+            '删除同步需要协调；本地和云端内容均未被猜测性覆盖。',
+          );
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('删除遇到其他设备的编辑，云端内容已保留待协调。')),
         );
+      } else {
+        setState(() {
+          _syncStatus = const _LibrarySyncStatus(
+            _LibrarySyncPhase.completed,
+            '删除同步已完成。',
+          );
+        });
       }
-    } catch (_) {
+    } on IncrementalSyncPushException catch (error) {
       if (!mounted) return;
+      setState(() {
+        _syncStatus = _LibrarySyncStatus(
+          _LibrarySyncPhase.failed,
+          '笔记已从本机删除；${error.pendingOperationCount} 项更改仍安全保留，等待重试。',
+        );
+      });
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('笔记已从本机删除；云端删除将在联网后自动重试。')));
+      ).showSnackBar(SnackBar(content: Text(_syncStatus.message)));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _syncStatus = const _LibrarySyncStatus(
+          _LibrarySyncPhase.failed,
+          '笔记已从本机删除；云端删除仍安全保留，等待联网后重试。',
+        );
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_syncStatus.message)));
     }
   }
 
@@ -1236,6 +1436,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
               onOpenConflicts: _openSyncConflicts,
               recentlyDeletedCount: _activeTombstones.length,
               onOpenRecentlyDeleted: _openRecentlyDeleted,
+              syncStatus: _syncStatus,
+              onOpenSyncStatus: _openSyncStatus,
             ),
             Expanded(
               child: _isLoading
@@ -1305,6 +1507,8 @@ class _LibraryHeader extends StatelessWidget {
     required this.onOpenConflicts,
     required this.recentlyDeletedCount,
     required this.onOpenRecentlyDeleted,
+    required this.syncStatus,
+    required this.onOpenSyncStatus,
   });
 
   final String title;
@@ -1328,6 +1532,8 @@ class _LibraryHeader extends StatelessWidget {
   final VoidCallback onOpenConflicts;
   final int recentlyDeletedCount;
   final VoidCallback onOpenRecentlyDeleted;
+  final _LibrarySyncStatus syncStatus;
+  final VoidCallback onOpenSyncStatus;
 
   @override
   Widget build(BuildContext context) {
@@ -1425,6 +1631,15 @@ class _LibraryHeader extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 8),
+                      if (syncStatus.phase != _LibrarySyncPhase.idle) ...[
+                        IconButton(
+                          key: const ValueKey('library-sync-status'),
+                          onPressed: onOpenSyncStatus,
+                          tooltip: _syncStatusTitle(syncStatus.phase),
+                          icon: _syncStatusIcon(context, syncStatus.phase),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
                       if (pendingConflictCount > 0) ...[
                         Badge.count(
                           count: pendingConflictCount,
@@ -1488,6 +1703,40 @@ class _LibraryHeader extends StatelessWidget {
       ),
     );
   }
+}
+
+String _syncStatusTitle(_LibrarySyncPhase phase) => switch (phase) {
+  _LibrarySyncPhase.idle => '同步状态',
+  _LibrarySyncPhase.syncing => '正在同步',
+  _LibrarySyncPhase.completed => '同步完成',
+  _LibrarySyncPhase.needsAttention => '同步需要处理',
+  _LibrarySyncPhase.failed => '同步失败',
+  _LibrarySyncPhase.preservedEdit => '编辑已保留',
+};
+
+Widget _syncStatusIcon(BuildContext context, _LibrarySyncPhase phase) {
+  if (phase == _LibrarySyncPhase.syncing) {
+    return const SizedBox.square(
+      dimension: 20,
+      child: CircularProgressIndicator(strokeWidth: 2),
+    );
+  }
+  final colorScheme = Theme.of(context).colorScheme;
+  return Icon(
+    switch (phase) {
+      _LibrarySyncPhase.idle => Icons.cloud_outlined,
+      _LibrarySyncPhase.syncing => Icons.sync_rounded,
+      _LibrarySyncPhase.completed => Icons.cloud_done_outlined,
+      _LibrarySyncPhase.needsAttention => Icons.sync_problem_outlined,
+      _LibrarySyncPhase.failed => Icons.cloud_off_outlined,
+      _LibrarySyncPhase.preservedEdit => Icons.cloud_done_outlined,
+    },
+    color: switch (phase) {
+      _LibrarySyncPhase.failed => colorScheme.error,
+      _LibrarySyncPhase.needsAttention => colorScheme.tertiary,
+      _ => null,
+    },
+  );
 }
 
 class _LibraryAccountButton extends StatelessWidget {

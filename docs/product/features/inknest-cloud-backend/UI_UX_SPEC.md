@@ -3,7 +3,7 @@
 - Status: Accepted
 - Updated: 2026-08-07
 - Product brief: `PRODUCT_BRIEF.md`
-- Affected surfaces: Future sync status panel, conflict detail sheet, Recently
+- Affected surfaces: Sync status panel, conflict detail sheet, Recently
   Deleted list, notebook shelf and Pages panel
 
 ## Recommendation
@@ -14,8 +14,8 @@ recoverable copy without replacing the open notebook. Let the user review the
 source device/time and explicitly choose Keep Original, Use Conflict Version,
 or Keep Both.
 
-The server slice implements the contract and persistence only. Flutter UI work
-must follow this specification in a later slice.
+The Flutter library now implements the non-blocking status entry, conflict
+recovery, and supported Recently Deleted recovery described here.
 
 Ordinary deletion should remove the item from its normal library immediately
 without implying permanent destruction. A future Recently Deleted entry point
@@ -244,7 +244,7 @@ continue-local state without overwriting either side.
   are verified.
 - [x] Recently Deleted lists active Tombstones and restores one item without
   blocking writing or implying a retention period that the service has not set.
-- [ ] A delete-versus-edit result explains that the edit was preserved and
+- [x] A delete-versus-edit result explains that the edit was preserved and
   never asks the user to choose between deleting and keeping it.
 
 ## Verification
@@ -278,7 +278,11 @@ continue-local state without overwriting either side.
   Restore disables duplicate submission and removes the row only after the
   resource reappears locally; errors retain the row for retry. Middle-page
   deletion remains local until page-order sync exists; standalone canvas
-  deletion has no App entry point.
+  deletion has no App entry point. The library header now also shows syncing,
+  completed, needs-attention, failed, and edit-preserved states. Its sheet
+  reports durable failed-operation counts and provides Retry; retry reuses the
+  frozen idempotent batch. A `delete_conflict` is presented as a calm successful
+  preservation outcome with no resolution action.
 - Intentional deviations: The server reserves the copy ID immediately but only
   materializes a normal notebook/page when the user chooses Keep Both. This
   avoids temporary duplicate library entries while preserving both snapshots.

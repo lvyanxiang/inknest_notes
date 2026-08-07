@@ -6,16 +6,15 @@
   initialized sessions now push saved page, notebook-content, and infinite-
   canvas edits, mapped whole-notebook deletes, and structurally safe trailing-
   page deletes before applying safe `/sync/changes` updates.
-- Next task: Add non-blocking sync progress, failed-item, and retry status for
-  the existing push/pull pipeline, including the delete-versus-edit preserved
-  outcome. Arbitrary page deletion, page reordering, and standalone canvas
-  deletion remain blocked on a structural synchronization contract.
-- Last completed: Active notebook and safe trailing-page Tombstones now persist
-  per account/device and appear in a badged Recently Deleted sheet. Restore
-  calls `POST /sync/tombstones/{tombstoneId}/restore`, then pulls and applies
-  the restored resource before removing the entry; failure leaves the recovery
-  item visible for retry. No permanent-delete or retention-period promise was
-  added.
+- Next task: Verify and complete the new-device full-bootstrap handoff into
+  normal incremental synchronization. Arbitrary page deletion, page reordering,
+  and standalone canvas deletion remain blocked on a structural synchronization
+  contract.
+- Last completed: The library header now exposes non-blocking synchronization
+  progress, completion, reconciliation, failure, and delete/edit-preserved
+  states. Failed upload state reports the number of durable pending operations
+  and retries the same frozen batch; `delete_conflict` calmly explains that the
+  other device's edit was preserved and requires no user choice.
 
 ## Decisions
 
@@ -751,6 +750,11 @@
   active/restored state, local notebook reapplication, and the visible restore
   action. `flutter analyze` and `git diff --check` pass; no backend source or
   route changed in this App-integration slice.
+- `flutter test` passes with 238 tests after visible sync status and retry;
+  focused coverage includes in-progress/completed UI, durable failed-operation
+  counts, retrying the frozen batch, and separate delete/edit-preserved
+  feedback. `flutter analyze` and `git diff --check` pass; no backend source or
+  route changed.
 
 ## Notes
 

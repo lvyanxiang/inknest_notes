@@ -51,7 +51,13 @@ void main() {
 
     await expectLater(
       fixture.service.push(userId: 'user-1', deviceId: 'device-1'),
-      throwsStateError,
+      throwsA(
+        isA<IncrementalSyncPushException>().having(
+          (error) => error.pendingOperationCount,
+          'pendingOperationCount',
+          1,
+        ),
+      ),
     );
     final failedState = await fixture.stateStore.loadSnapshot();
     expect(failedState.inFlightBatch, isNotNull);
@@ -96,6 +102,25 @@ void main() {
       );
     },
   );
+
+  test(
+    'reports delete/edit preservation separately from other conflicts',
+    () async {
+      final fixture = await _PushFixture.create(
+        delete: true,
+        outcome: 'delete_conflict',
+      );
+      addTearDown(fixture.dispose);
+
+      final result = await fixture.service.push(
+        userId: 'user-1',
+        deviceId: 'device-1',
+      );
+
+      expect(result.preservedConflictCount, 1);
+      expect(result.preservedDeleteEditCount, 1);
+    },
+  );
 }
 
 class _PushFixture {
@@ -117,6 +142,7 @@ class _PushFixture {
   static Future<_PushFixture> create({
     int failuresRemaining = 0,
     bool delete = false,
+    String? outcome,
   }) async {
     final root = await Directory.systemTemp.createTemp('inknest-push-');
     final stateStore = FileSyncStateStore(
@@ -160,7 +186,10 @@ class _PushFixture {
       root: root,
       stateStore: stateStore,
       resourceMap: resourceMap,
-      cloud: _PushCloudClient(failuresRemaining: failuresRemaining),
+      cloud: _PushCloudClient(
+        failuresRemaining: failuresRemaining,
+        outcome: outcome,
+      ),
     );
   }
 
@@ -182,9 +211,10 @@ class _PushRequest {
 }
 
 class _PushCloudClient implements FirstSignInCloudClient {
-  _PushCloudClient({required this.failuresRemaining});
+  _PushCloudClient({required this.failuresRemaining, this.outcome});
 
   int failuresRemaining;
+  final String? outcome;
   final List<_PushRequest> requests = [];
 
   @override
@@ -217,7 +247,9 @@ class _PushCloudClient implements FirstSignInCloudClient {
           resourceId: operation['resourceId']! as String,
           revision: 2,
           contentHash: 'b' * 64,
-          outcome: operation['operation'] == 'delete' ? 'deleted' : 'applied',
+          outcome:
+              outcome ??
+              (operation['operation'] == 'delete' ? 'deleted' : 'applied'),
         ),
       ],
     );

@@ -10,10 +10,18 @@ class IncrementalSyncPushResult {
   const IncrementalSyncPushResult({
     required this.uploadedOperationCount,
     required this.preservedConflictCount,
+    this.preservedDeleteEditCount = 0,
   });
 
   final int uploadedOperationCount;
   final int preservedConflictCount;
+  final int preservedDeleteEditCount;
+}
+
+class IncrementalSyncPushException implements Exception {
+  const IncrementalSyncPushException({required this.pendingOperationCount});
+
+  final int pendingOperationCount;
 }
 
 class IncrementalSyncPushService {
@@ -41,6 +49,7 @@ class IncrementalSyncPushService {
     );
     var uploaded = 0;
     var conflicts = 0;
+    var deleteEditConflicts = 0;
 
     final initialState = await stateStore.loadSnapshot();
     if (initialState.lastAppliedCursor == null) {
@@ -50,55 +59,68 @@ class IncrementalSyncPushService {
       );
     }
 
-    while (true) {
-      final batch = await stateStore.prepareNextCommit();
-      if (batch == null) break;
-      final response = await cloudClient.commitSharedContent(
-        deviceId: deviceId,
-        idempotencyKey: batch.idempotencyKey,
-        baseCursor: batch.baseCursor,
-        operations: batch.operations
-            .map((operation) => operation.toJson())
-            .toList(),
-      );
-      _validateResponse(batch, response);
-      final operationsById = {
-        for (final operation in batch.operations)
-          operation.operationId: operation,
-      };
-      for (final result in response.results) {
-        if (operationsById[result.operationId]!.operation ==
-            SyncOperationKind.upsert) {
-          await resourceMap.updateRemote(
-            resourceType: SyncResourceType.fromApiValue(result.resourceType),
-            remoteResourceId: result.resourceId,
-            revision: result.revision,
-            contentHash: result.contentHash,
-          );
-        }
-      }
-      await stateStore.markCommitSucceeded(
-        idempotencyKey: batch.idempotencyKey,
-        results: [
-          for (final result in response.results)
-            SyncOperationCommitResult(
-              operationId: result.operationId,
+    try {
+      while (true) {
+        final batch = await stateStore.prepareNextCommit();
+        if (batch == null) break;
+        final response = await cloudClient.commitSharedContent(
+          deviceId: deviceId,
+          idempotencyKey: batch.idempotencyKey,
+          baseCursor: batch.baseCursor,
+          operations: batch.operations
+              .map((operation) => operation.toJson())
+              .toList(),
+        );
+        _validateResponse(batch, response);
+        final operationsById = {
+          for (final operation in batch.operations)
+            operation.operationId: operation,
+        };
+        for (final result in response.results) {
+          if (operationsById[result.operationId]!.operation ==
+              SyncOperationKind.upsert) {
+            await resourceMap.updateRemote(
+              resourceType: SyncResourceType.fromApiValue(result.resourceType),
+              remoteResourceId: result.resourceId,
               revision: result.revision,
-            ),
-        ],
+              contentHash: result.contentHash,
+            );
+          }
+        }
+        await stateStore.markCommitSucceeded(
+          idempotencyKey: batch.idempotencyKey,
+          results: [
+            for (final result in response.results)
+              SyncOperationCommitResult(
+                operationId: result.operationId,
+                revision: result.revision,
+              ),
+          ],
+        );
+        uploaded += batch.operations.length;
+        conflicts += response.results
+            .where(
+              (result) =>
+                  result.outcome == 'conflict' ||
+                  result.outcome == 'delete_conflict',
+            )
+            .length;
+        deleteEditConflicts += response.results
+            .where((result) => result.outcome == 'delete_conflict')
+            .length;
+      }
+    } on Object {
+      final failedState = await stateStore.loadSnapshot();
+      throw IncrementalSyncPushException(
+        pendingOperationCount:
+            failedState.pendingOperations.length +
+            (failedState.inFlightBatch?.operations.length ?? 0),
       );
-      uploaded += batch.operations.length;
-      conflicts += response.results
-          .where(
-            (result) =>
-                result.outcome == 'conflict' ||
-                result.outcome == 'delete_conflict',
-          )
-          .length;
     }
     return IncrementalSyncPushResult(
       uploadedOperationCount: uploaded,
       preservedConflictCount: conflicts,
+      preservedDeleteEditCount: deleteEditConflicts,
     );
   }
 

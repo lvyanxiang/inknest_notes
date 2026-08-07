@@ -352,7 +352,12 @@ The first slice sets no retention period and performs no physical cleanup.
   explicit restore endpoint, and removes an item only after the restored
   resource has been pulled and applied locally. Restore failure keeps the item
   available for retry; no permanent-delete control or retention promise is
-  exposed.
+  exposed. Background incremental sync now has a library-header status entry
+  for progress, completion, reconciliation, and failure. Failed uploads report
+  the number of durable queued/in-flight operations and retry the unchanged
+  idempotent batch. Delete/edit races use the server's `delete_conflict` outcome
+  to explain that the other device's edit was preserved without asking for a
+  destructive choice.
 - Verification: Backend tests cover authentication, account isolation,
   revisioned content, asset transfer, cursors, atomic/idempotent commits, page
   and notebook conflicts, all resolution choices, soft delete/restore, both
