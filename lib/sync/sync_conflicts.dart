@@ -4,6 +4,17 @@ import 'dart:io';
 import 'package:inknest_notes/sync/inknest_api_models.dart';
 import 'package:inknest_notes/sync/sync_changes.dart';
 
+enum SyncConflictResolution {
+  keepOriginal('keep_original', '保留原版本'),
+  useConflict('use_conflict', '使用冲突版本'),
+  keepBoth('keep_both', '两个都保留');
+
+  const SyncConflictResolution(this.apiValue, this.label);
+
+  final String apiValue;
+  final String label;
+}
+
 class CloudSyncConflict {
   CloudSyncConflict({
     required this.id,
@@ -46,6 +57,13 @@ class CloudSyncConflict {
 
   bool get isPending => status == 'pending';
 
+  String get originalDisplayName {
+    const suffix = '（冲突副本）';
+    return copyDisplayName.endsWith(suffix)
+        ? copyDisplayName.substring(0, copyDisplayName.length - suffix.length)
+        : originalResourceId;
+  }
+
   factory CloudSyncConflict.fromJson(Map<String, Object?> json) {
     final resourceType = requiredString(json, 'resourceType');
     final baseRevision = requiredNonNegativeInt(json, 'baseRevision');
@@ -69,7 +87,7 @@ class CloudSyncConflict {
     return CloudSyncConflict(
       id: requiredString(json, 'id'),
       resourceType: resourceType,
-      originalResourceId: requiredString(json, 'conflictOf'),
+      originalResourceId: _originalResourceId(json),
       copyResourceId: requiredString(json, 'copyResourceId'),
       copyDisplayName: requiredString(json, 'copyDisplayName'),
       baseRevision: baseRevision,
@@ -164,6 +182,21 @@ class FileSyncConflictStore {
     return next;
   }
 
+  Future<List<CloudSyncConflict>> applyConflict(CloudSyncConflict conflict) {
+    final change = CloudSyncChange(
+      changeId: 'local-conflict-response-${conflict.id}',
+      resourceType: CloudSyncChangeResourceType.conflict,
+      resourceId: conflict.id,
+      operation: CloudSyncChangeOperation.upsert,
+      revision: null,
+      contentHash: null,
+      payload: conflict.toJson(),
+      deviceId: conflict.resolvedByDeviceId ?? conflict.sourceDeviceId,
+      createdAt: conflict.resolvedAt ?? conflict.createdAt,
+    );
+    return applyChanges([change]);
+  }
+
   Future<List<CloudSyncConflict>> _read() async {
     if (!await _file.exists()) return [];
     final decoded = jsonDecode(await _file.readAsString());
@@ -212,4 +245,19 @@ DateTime? _optionalDateTime(Map<String, Object?> json, String key) {
   if (value == null) return null;
   if (value is! String) throw FormatException('$key must be a date or null.');
   return DateTime.parse(value).toUtc();
+}
+
+String _originalResourceId(Map<String, Object?> json) {
+  final conflictOf = json['conflictOf'];
+  final originalResourceId = json['originalResourceId'];
+  if (conflictOf != null && originalResourceId != null) {
+    throw const FormatException(
+      'Conflict payload must use one original-resource field.',
+    );
+  }
+  final value = conflictOf ?? originalResourceId;
+  if (value is! String || value.isEmpty || value.trim() != value) {
+    throw const FormatException('Conflict original resource ID is invalid.');
+  }
+  return value;
 }

@@ -439,6 +439,59 @@ class FileNotebookRepository implements NotebookRepository {
   }
 
   @override
+  Future<Notebook> applySyncedPageAddition(
+    Notebook notebook,
+    NotePage page,
+  ) async {
+    final preparedPage = preparePageForNormalSave(page);
+    return _runStorageWrite(() async {
+      final notebooks = await _readIndex();
+      final current = notebooks.firstWhere(
+        (item) => item.id == notebook.id,
+        orElse: () => notebook,
+      );
+      if (current.pageIds.contains(preparedPage.id)) {
+        final existing = await _readPageFile(
+          _pageFile(current, preparedPage.id),
+        );
+        if (const JsonEncoder().convert(existing.toJson()) !=
+            const JsonEncoder().convert(preparedPage.toJson())) {
+          throw StateError('A synchronized page ID already has other content.');
+        }
+        return current;
+      }
+
+      final pageFile = _pageFile(current, preparedPage.id);
+      final existedBefore = await pageFile.exists();
+      if (existedBefore) {
+        final existing = await _readPageFile(pageFile);
+        if (const JsonEncoder().convert(existing.toJson()) !=
+            const JsonEncoder().convert(preparedPage.toJson())) {
+          throw StateError(
+            'A synchronized page file already has other content.',
+          );
+        }
+      } else {
+        await _writeJsonFile(pageFile, preparedPage.toJson());
+      }
+      final updated = current.copyWith(
+        updatedAt: DateTime.now(),
+        pageIds: [...current.pageIds, preparedPage.id],
+      );
+      try {
+        await _writeIndex([
+          for (final item in notebooks)
+            if (item.id == current.id) updated else item,
+        ]);
+      } on Object {
+        if (!existedBefore && await pageFile.exists()) await pageFile.delete();
+        rethrow;
+      }
+      return updated;
+    });
+  }
+
+  @override
   Future<Notebook> renameNotebook(Notebook notebook, String title) async {
     final updatedNotebook = notebook.copyWith(
       title: title.trim().isEmpty ? notebook.title : title.trim(),

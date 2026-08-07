@@ -16,6 +16,8 @@ import 'package:inknest_notes/sync/sync_mutation_tracker.dart';
 import 'package:inknest_notes/sync/sync_resource_map_store.dart';
 import 'package:inknest_notes/sync/sync_upload_models.dart';
 import 'package:inknest_notes/sync/sync_cloud_client.dart';
+import 'package:inknest_notes/sync/sync_conflict_resolution_service.dart';
+import 'package:inknest_notes/sync/sync_conflicts.dart';
 
 class FirstSignInSyncPreview {
   const FirstSignInSyncPreview({
@@ -94,7 +96,8 @@ abstract interface class FirstSignInSyncService {
   });
 }
 
-class ApiFirstSignInSyncService implements FirstSignInSyncService {
+class ApiFirstSignInSyncService
+    implements FirstSignInSyncService, SyncConflictResolutionService {
   const ApiFirstSignInSyncService({
     required this.repository,
     required this.apiClient,
@@ -129,6 +132,33 @@ class ApiFirstSignInSyncService implements FirstSignInSyncService {
       rootDirectory: rootDirectory,
       mutationTracker: mutationTracker,
     ).pull(userId: userId, deviceId: deviceId);
+  }
+
+  @override
+  Future<SyncConflictResolutionResult> resolveConflict({
+    required String userId,
+    required String deviceId,
+    required String conflictId,
+    required SyncConflictResolution resolution,
+  }) {
+    final conflictClient = apiClient;
+    if (conflictClient is! SyncConflictCloudClient) {
+      throw StateError('The cloud client cannot resolve sync conflicts.');
+    }
+    return ApiSyncConflictResolutionService(
+      cloudClient: conflictClient as SyncConflictCloudClient,
+      pullService: IncrementalSyncPullService(
+        repository: repository,
+        cloudClient: apiClient,
+        rootDirectory: rootDirectory,
+        mutationTracker: mutationTracker,
+      ),
+    ).resolveConflict(
+      userId: userId,
+      deviceId: deviceId,
+      conflictId: conflictId,
+      resolution: resolution,
+    );
   }
 
   @override

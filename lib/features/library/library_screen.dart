@@ -15,6 +15,7 @@ import 'package:inknest_notes/models/notebook_layout_mode.dart';
 import 'package:inknest_notes/storage/notebook_repository.dart';
 import 'package:inknest_notes/sync/first_sign_in_sync_service.dart';
 import 'package:inknest_notes/sync/incremental_sync_pull_service.dart';
+import 'package:inknest_notes/sync/sync_conflict_resolution_service.dart';
 import 'package:inknest_notes/sync/sync_conflicts.dart';
 
 class LibraryScreen extends StatefulWidget {
@@ -366,20 +367,229 @@ class _LibraryScreenState extends State<LibraryScreen> {
                       leading: const Icon(Icons.call_split_outlined),
                       title: Text(conflict.copyDisplayName),
                       subtitle: Text('$resourceLabel · $time'),
-                      trailing: const Icon(Icons.lock_outline),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () async {
+                        Navigator.of(context).pop();
+                        await Future<void>.delayed(Duration.zero);
+                        if (mounted) await _openConflictDetail(conflict);
+                      },
                     );
                   },
                 ),
               ),
               const Padding(
                 padding: EdgeInsets.fromLTRB(24, 12, 24, 20),
-                child: Text('当前为只读展示，不会自动覆盖任何版本。'),
+                child: Text('选择一项后，可明确决定保留哪个版本。'),
               ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  Future<void> _openConflictDetail(CloudSyncConflict conflict) async {
+    final resolutionService = widget.firstSignInSyncService;
+    SyncConflictResolution? busyResolution;
+    String? errorMessage;
+    String? successMessage;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          Future<void> resolve(SyncConflictResolution resolution) async {
+            if (busyResolution != null) return;
+            if (resolutionService is! SyncConflictResolutionService) {
+              setSheetState(() {
+                errorMessage = '当前同步服务暂不支持处理冲突，请稍后重试。';
+              });
+              return;
+            }
+            final resolver = resolutionService as SyncConflictResolutionService;
+            if (resolution != SyncConflictResolution.keepBoth) {
+              final confirmed = await _confirmConflictResolution(
+                context,
+                resolution,
+              );
+              if (!confirmed || !context.mounted) return;
+            }
+            setSheetState(() {
+              busyResolution = resolution;
+              errorMessage = null;
+            });
+            final session = widget.authController.session;
+            if (session == null) {
+              setSheetState(() {
+                busyResolution = null;
+                errorMessage = '登录状态已失效；两份版本仍然安全保留。';
+              });
+              return;
+            }
+            try {
+              final result = await resolver.resolveConflict(
+                userId: session.user.id,
+                deviceId: session.device.id,
+                conflictId: conflict.id,
+                resolution: resolution,
+              );
+              if (!mounted || !context.mounted) return;
+              setState(() {
+                _pendingConflicts = result.pullResult.pendingConflicts;
+              });
+              await _loadNotebooks();
+              if (!mounted || !context.mounted) return;
+              successMessage = '${resolution.label}完成，云端和本地已同步。';
+              Navigator.of(context).pop();
+            } on SyncConflictResolutionException catch (error) {
+              if (!context.mounted) return;
+              setSheetState(() {
+                busyResolution = null;
+                errorMessage = switch (error.failure) {
+                  SyncConflictResolutionFailure.staleOriginal =>
+                    '原版本已再次更新，不能直接替换。可改选“保留原版本”或“两个都保留”。',
+                  SyncConflictResolutionFailure.alreadyResolved =>
+                    '这项冲突已在其他设备处理，请稍后重新同步。',
+                  SyncConflictResolutionFailure.reconciliationRequired =>
+                    '云端已收到选择，但本地尚未完成同步；两份版本仍保留，请重试。',
+                  SyncConflictResolutionFailure.unavailable =>
+                    '处理失败，两份版本仍然安全保留，请重试。',
+                };
+              });
+            } on Object {
+              if (!context.mounted) return;
+              setSheetState(() {
+                busyResolution = null;
+                errorMessage = '处理失败，两份版本仍然安全保留，请重试。';
+              });
+            }
+          }
+
+          final source = conflict.sourceDeviceId == null
+              ? '未知设备'
+              : conflict.sourceDeviceId!;
+          return SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(24, 4, 24, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    '处理同步冲突',
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    conflict.resourceType == 'page' ? '页面冲突' : '笔记冲突',
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
+                  const SizedBox(height: 16),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.description_outlined),
+                    title: Text(conflict.originalDisplayName),
+                    subtitle: const Text('当前原版本'),
+                  ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.call_split_outlined),
+                    title: Text(conflict.copyDisplayName),
+                    subtitle: Text('来自设备：$source'),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '两个版本都已安全保留。请选择处理结果；关闭此页面不会做任何更改。',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  if (errorMessage != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      errorMessage!,
+                      key: const ValueKey('conflict-resolution-error'),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 20),
+                  FilledButton.icon(
+                    key: const ValueKey('conflict-keep-both'),
+                    onPressed: busyResolution == null
+                        ? () => resolve(SyncConflictResolution.keepBoth)
+                        : null,
+                    icon: busyResolution == SyncConflictResolution.keepBoth
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.copy_all_outlined),
+                    label: const Text('两个都保留（推荐）'),
+                  ),
+                  const SizedBox(height: 10),
+                  OutlinedButton(
+                    key: const ValueKey('conflict-keep-original'),
+                    onPressed: busyResolution == null
+                        ? () => resolve(SyncConflictResolution.keepOriginal)
+                        : null,
+                    child: const Text('保留原版本'),
+                  ),
+                  const SizedBox(height: 10),
+                  OutlinedButton(
+                    key: const ValueKey('conflict-use-conflict'),
+                    onPressed: busyResolution == null
+                        ? () => resolve(SyncConflictResolution.useConflict)
+                        : null,
+                    child: const Text('使用冲突版本'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: busyResolution == null
+                        ? () => Navigator.of(context).pop()
+                        : null,
+                    child: const Text('取消'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+    if (mounted && successMessage != null) {
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.clearSnackBars();
+      messenger.showSnackBar(SnackBar(content: Text(successMessage!)));
+    }
+  }
+
+  Future<bool> _confirmConflictResolution(
+    BuildContext context,
+    SyncConflictResolution resolution,
+  ) async {
+    final description = resolution == SyncConflictResolution.keepOriginal
+        ? '将结束这个待处理冲突并继续使用当前原版本。冲突快照仍保留用于恢复。'
+        : '将用冲突版本更新当前原版本。若原版本已再次变化，操作会安全停止。';
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text('确认${resolution.label}？'),
+            content: Text(description),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                key: const ValueKey('confirm-conflict-resolution'),
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('确认'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
   }
 
   Future<void> _loadNotebooks() async {

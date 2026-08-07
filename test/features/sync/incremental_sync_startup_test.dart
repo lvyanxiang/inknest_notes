@@ -9,6 +9,7 @@ import 'package:inknest_notes/sync/first_sign_in_sync_service.dart';
 import 'package:inknest_notes/sync/incremental_sync_pull_service.dart';
 import 'package:inknest_notes/sync/incremental_sync_push_service.dart';
 import 'package:inknest_notes/sync/inknest_api_models.dart';
+import 'package:inknest_notes/sync/sync_conflict_resolution_service.dart';
 import 'package:inknest_notes/sync/sync_conflicts.dart';
 
 void main() {
@@ -196,12 +197,52 @@ void main() {
     expect(find.text('第 1 页（冲突副本）'), findsOneWidget);
     expect(find.text('1 项待处理；两个版本都已安全保留。'), findsOneWidget);
 
+    await tester.tap(find.text('第 1 页（冲突副本）'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('处理同步冲突'), findsOneWidget);
+    expect(find.text('第 1 页'), findsOneWidget);
+    expect(find.byKey(const ValueKey('conflict-keep-both')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('conflict-keep-original')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('conflict-use-conflict')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('conflict-keep-original')));
+    await tester.pumpAndSettle();
+    expect(find.text('确认保留原版本？'), findsOneWidget);
+    await tester.tap(
+      find.descendant(of: find.byType(AlertDialog), matching: find.text('取消')),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('conflict-use-conflict')));
+    await tester.pumpAndSettle();
+    expect(find.text('确认使用冲突版本？'), findsOneWidget);
+    await tester.tap(
+      find.descendant(of: find.byType(AlertDialog), matching: find.text('取消')),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('conflict-keep-both')));
+    await tester.pump();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pump();
+
+    expect(sync.resolutions, [SyncConflictResolution.keepBoth]);
+    expect(find.byKey(const ValueKey('library-sync-conflicts')), findsNothing);
+    expect(find.text('处理同步冲突'), findsNothing);
+    expect(find.textContaining('两个都保留完成'), findsOneWidget);
+
     await tester.pumpWidget(const SizedBox.shrink());
     controller.dispose();
   });
 }
 
-class _StartupSyncService implements FirstSignInSyncService {
+class _StartupSyncService
+    implements FirstSignInSyncService, SyncConflictResolutionService {
   _StartupSyncService({
     this.uploadedOperationCount = 2,
     this.pullResult = const IncrementalSyncPullResult(
@@ -212,6 +253,22 @@ class _StartupSyncService implements FirstSignInSyncService {
   final int uploadedOperationCount;
   final IncrementalSyncPullResult pullResult;
   final List<String> calls = [];
+  final List<SyncConflictResolution> resolutions = [];
+
+  @override
+  Future<SyncConflictResolutionResult> resolveConflict({
+    required String userId,
+    required String deviceId,
+    required String conflictId,
+    required SyncConflictResolution resolution,
+  }) async {
+    resolutions.add(resolution);
+    return const SyncConflictResolutionResult(
+      pullResult: IncrementalSyncPullResult(
+        status: IncrementalSyncPullStatus.applied,
+      ),
+    );
+  }
 
   @override
   Future<IncrementalSyncPushResult> pushIncremental({

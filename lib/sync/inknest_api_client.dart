@@ -9,6 +9,7 @@ import 'package:inknest_notes/sync/inknest_api_models.dart';
 import 'package:inknest_notes/sync/sync_bootstrap.dart';
 import 'package:inknest_notes/sync/sync_cloud_client.dart';
 import 'package:inknest_notes/sync/sync_changes.dart';
+import 'package:inknest_notes/sync/sync_conflicts.dart';
 import 'package:inknest_notes/sync/sync_upload_models.dart';
 
 class InkNestApiException implements Exception {
@@ -32,7 +33,8 @@ class InkNestApiClient
     implements
         AuthService,
         AuthSessionInvalidationSource,
-        FirstSignInCloudClient {
+        FirstSignInCloudClient,
+        SyncConflictCloudClient {
   InkNestApiClient({
     InkNestApiConfig? config,
     Dio? dio,
@@ -211,6 +213,28 @@ class InkNestApiClient
           'baseCursor': baseCursor,
           'operations': operations,
         },
+        expectedStatus: 200,
+        skipAuth: false,
+      ),
+    );
+  }
+
+  @override
+  Future<CloudSyncConflict> resolveSyncConflict({
+    required String conflictId,
+    required SyncConflictResolution resolution,
+  }) async {
+    if (conflictId.isEmpty || conflictId.trim() != conflictId) {
+      throw ArgumentError.value(
+        conflictId,
+        'conflictId',
+        'Conflict ID must not be empty.',
+      );
+    }
+    return CloudSyncConflict.fromJson(
+      await _postObject(
+        'sync/conflicts/${Uri.encodeComponent(conflictId)}/resolve',
+        data: {'resolution': resolution.apiValue},
         expectedStatus: 200,
         skipAuth: false,
       ),

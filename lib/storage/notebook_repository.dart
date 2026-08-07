@@ -118,6 +118,8 @@ abstract class NotebookRepository {
 
   Future<Notebook> applySyncedNotebookContent(Notebook notebook);
 
+  Future<Notebook> applySyncedPageAddition(Notebook notebook, NotePage page);
+
   Future<Notebook> addPage(Notebook notebook);
 
   Future<Notebook> insertPage(Notebook notebook, int index);

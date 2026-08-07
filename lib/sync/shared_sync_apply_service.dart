@@ -52,12 +52,24 @@ class SharedSyncApplyService {
     for (final entry in changesByResource.entries) {
       final first = entry.value.first;
       final mapping = _findRemoteMapping(mappings, first);
-      if (mapping == null ||
-          !_hasContinuousRevisionChain(mapping, entry.value)) {
+      final snapshot = _snapshotFor(first, bootstrap);
+      if (snapshot == null) {
         return null;
       }
-      final snapshot = _snapshotFor(first, bootstrap);
-      if (snapshot == null ||
+      if (mapping == null) {
+        final addition = await _buildNewPageAction(
+          first: first,
+          changes: entry.value,
+          snapshot: snapshot,
+          notebooks: notebooks,
+          mappings: mappings,
+          resourceMap: resourceMap,
+        );
+        if (addition == null) return null;
+        actions.add(addition);
+        continue;
+      }
+      if (!_hasContinuousRevisionChain(mapping, entry.value) ||
           snapshot.revision != _finalRevision(mapping, entry.value) ||
           snapshot.contentHash != _finalHash(mapping, entry.value)) {
         return null;
@@ -93,6 +105,72 @@ class SharedSyncApplyService {
       rethrow;
     }
     return SharedSyncApplyResult(appliedResourceCount: actions.length);
+  }
+
+  Future<_SharedApplyAction?> _buildNewPageAction({
+    required CloudSyncChange first,
+    required List<CloudSyncChange> changes,
+    required _SharedSnapshot snapshot,
+    required List<Notebook> notebooks,
+    required List<SyncResourceMapping> mappings,
+    required FileSyncResourceMapStore resourceMap,
+  }) async {
+    if (first.resourceType != CloudSyncChangeResourceType.page ||
+        snapshot is! _PageSharedSnapshot ||
+        !_hasContinuousNewRevisionChain(changes) ||
+        snapshot.revision != changes.last.revision ||
+        snapshot.contentHash != changes.last.contentHash) {
+      return null;
+    }
+    final cloud = snapshot.value;
+    final notebook = _findNotebook(notebooks, cloud.notebookId);
+    final alreadyApplied =
+        cloud.position < (notebook?.pageIds.length ?? 0) &&
+        notebook?.pageIds[cloud.position] == cloud.id;
+    if (notebook == null ||
+        notebook.layoutMode.name != 'paged' ||
+        (cloud.position != notebook.pageIds.length && !alreadyApplied) ||
+        (notebook.pageIds.contains(cloud.id) && !alreadyApplied) ||
+        _findRemoteNotebookMapping(mappings, cloud.notebookId) == null) {
+      return null;
+    }
+    final page = NotePage.fromJson({
+      ...cloud.content,
+      'id': cloud.id,
+      'width': cloud.width,
+      'height': cloud.height,
+      'coordinateSpaceVersion': cloud.coordinateSpaceVersion,
+      'rotationQuarterTurns': cloud.rotationQuarterTurns,
+      'template': cloud.template,
+    });
+    if (!await _pageAssetsAreKnown(notebook, page, resourceMap)) return null;
+
+    Notebook? appliedNotebook;
+    final shouldAppend = !alreadyApplied;
+    return _SharedApplyAction(
+      apply: () async {
+        appliedNotebook = await repository.applySyncedPageAddition(
+          notebook,
+          page,
+        );
+      },
+      rollback: () async {
+        final applied = appliedNotebook;
+        if (shouldAppend && applied != null) {
+          await repository.deletePage(applied, page.id);
+        }
+      },
+    );
+  }
+
+  bool _hasContinuousNewRevisionChain(List<CloudSyncChange> changes) {
+    var revision = 0;
+    for (final change in changes) {
+      final nextRevision = change.revision;
+      if (nextRevision == null || nextRevision != revision + 1) return false;
+      revision = nextRevision;
+    }
+    return true;
   }
 
   bool _hasContinuousRevisionChain(
@@ -374,6 +452,19 @@ class SharedSyncApplyService {
   ) {
     for (final mapping in mappings) {
       if (mapping.localKey == localKey) return mapping;
+    }
+    return null;
+  }
+
+  SyncResourceMapping? _findRemoteNotebookMapping(
+    List<SyncResourceMapping> mappings,
+    String notebookId,
+  ) {
+    for (final mapping in mappings) {
+      if (mapping.resourceType == SyncResourceType.notebook &&
+          mapping.remoteResourceId == notebookId) {
+        return mapping;
+      }
     }
     return null;
   }

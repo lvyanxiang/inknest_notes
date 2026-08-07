@@ -40,6 +40,21 @@ void main() {
       expect(await store.loadPending(), isEmpty);
     },
   );
+
+  test('parses the resolve response alias and derives the original label', () {
+    final payload = _conflictPayload(
+      status: 'resolved',
+      resolution: 'keep_original',
+      resolvedAt: '2026-08-07T01:00:00Z',
+    )..['originalResourceId'] = 'page-2';
+    payload.remove('conflictOf');
+
+    final conflict = CloudSyncConflict.fromJson(payload);
+
+    expect(conflict.originalResourceId, 'page-2');
+    expect(conflict.originalDisplayName, '第 2 页');
+    expect(conflict.isPending, isFalse);
+  });
 }
 
 CloudSyncChange _change(Map<String, Object?> payload) => CloudSyncChange(

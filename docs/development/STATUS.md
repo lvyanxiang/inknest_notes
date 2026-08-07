@@ -6,15 +6,16 @@
   initialized sessions now push saved page, notebook-content, and infinite-
   canvas edits, mapped whole-notebook deletes, and structurally safe trailing-
   page deletes before applying safe `/sync/changes` updates.
-- Next task: Connect the three conflict-resolution actions to
-  `POST /sync/conflicts/{conflictId}/resolve`, then reconcile the selected
-  result locally. Arbitrary page deletion, page reordering, and standalone
-  canvas deletion remain blocked on a structural synchronization contract.
-- Last completed: Conflict-only `/sync/changes` pages are now strictly parsed
-  and persisted per account/device before advancing the Cursor. Pending page or
-  notebook conflicts survive restart and appear from a badged library-header
-  entry in a read-only list without blocking writing or overwriting either
-  version.
+- Next task: Connect active Tombstone persistence and a non-blocking Recently
+  Deleted restore entry to `POST /sync/tombstones/{tombstoneId}/restore`.
+  Arbitrary page deletion, page reordering, and standalone canvas deletion
+  remain blocked on a structural synchronization contract.
+- Last completed: The conflict detail flow now calls
+  `POST /sync/conflicts/{conflictId}/resolve` for Keep Original, Use Conflict
+  Version, and Keep Both. It confirms replacement choices, handles stale/error
+  states without discarding snapshots, applies the resulting resource and
+  resolved-conflict change range locally, and removes the badge only after
+  local reconciliation succeeds.
 
 ## Decisions
 
@@ -105,6 +106,12 @@
   a mixed range remains at the prior Cursor until all included resource changes
   can be applied together. Conflict arrival uses a persistent header badge and
   user-opened list rather than interrupting the editor with a modal.
+- Treat conflict resolution as endpoint confirmation followed by a normal
+  Cursor pull, not as a local-only dismissal. Mixed resource/conflict ranges
+  must apply the resource first, rebuild mappings, persist the resolved
+  conflict, and only then advance the Cursor. Keep Both may append a reserved
+  page copy only at the final server position; other structural additions stay
+  reconciliation-safe.
 - Store Flutter sync state under an account/device sidecar, not inside notebook
   JSON. Coalesce unsent edits per resource while preserving the oldest
   `baseRevision`; freeze an in-flight request until exact retry succeeds; keep
@@ -265,6 +272,13 @@
 - Keep unresolved legacy content viewable, navigable, zoomable, searchable, and exportable without allowing normal save, rotate, copy, or duplicate paths to overwrite its source JSON.
 
 ## Verification
+
+- Flutter formatting, the full 230-test suite, `flutter analyze`, and
+  `git diff --check` pass after conflict resolution integration. Focused tests
+  cover the authenticated endpoint contract, response/change aliases,
+  persisted resolution, stale-original mapping, mixed resource/conflict
+  ranges, Keep Both page append, replacement confirmations, completion
+  feedback, and badge removal. No backend or schema files changed.
 
 - Flutter's full 183-test suite passes and `flutter analyze` reports no issues.
   New restore tests cover a complete cloud-only restore, size/SHA failure with

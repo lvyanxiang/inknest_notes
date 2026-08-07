@@ -116,8 +116,10 @@ durable history but no longer appear in that list.
 A conflict-only change range is written atomically before the pull Cursor is
 advanced. On restart, the list is loaded before requesting newer changes, so a
 pending badge cannot disappear merely because the App closed. Mixed conflict
-and content ranges are not partially persisted or acknowledged until the whole
-range has a safe application path.
+and content ranges are acknowledged only after the resource update/addition,
+resolved conflict record, resource map, and final Cursor all have a safe
+application path. Retrying a partially applied Keep Both page addition accepts
+the same final-position page and rejects a colliding ID with different content.
 
 ## `sync/<user-id>/<device-id>/resources.json`
 

@@ -117,10 +117,10 @@ class IncrementalSyncPullService {
     }
 
     var cursor = initialCursor;
-    final changes = <CloudSyncChange>[];
+    final allChanges = <CloudSyncChange>[];
     for (var pageNumber = 0; pageNumber < 100; pageNumber++) {
       final page = await cloudClient.listChanges(cursor: cursor, limit: 500);
-      changes.addAll(page.changes);
+      allChanges.addAll(page.changes);
       cursor = page.nextCursor;
       if (!page.hasMore) break;
       if (pageNumber == 99) {
@@ -128,7 +128,7 @@ class IncrementalSyncPullService {
       }
     }
 
-    if (changes.isEmpty) {
+    if (allChanges.isEmpty) {
       if (cursor != initialCursor) {
         await stateStore.markChangesPageApplied(cursor);
       }
@@ -138,20 +138,39 @@ class IncrementalSyncPullService {
       );
     }
 
-    final conflictOnly = changes.every(
+    final conflictChanges = allChanges
+        .where(
+          (change) =>
+              change.resourceType == CloudSyncChangeResourceType.conflict,
+        )
+        .toList();
+    if (conflictChanges.any(
       (change) =>
-          change.resourceType == CloudSyncChangeResourceType.conflict &&
-          change.operation == CloudSyncChangeOperation.upsert,
-    );
-    if (conflictOnly) {
-      pendingConflicts = await conflictStore.applyChanges(changes);
+          change.operation != CloudSyncChangeOperation.upsert ||
+          change.payload == null,
+    )) {
+      return IncrementalSyncPullResult(
+        status: IncrementalSyncPullStatus.requiresReconciliation,
+        changeCount: allChanges.length,
+        pendingConflicts: pendingConflicts,
+      );
+    }
+    final changes = allChanges
+        .where(
+          (change) =>
+              change.resourceType != CloudSyncChangeResourceType.conflict,
+        )
+        .toList();
+    final receivedConflictCount = conflictChanges
+        .where((change) => change.payload?['status'] == 'pending')
+        .length;
+    if (changes.isEmpty) {
+      pendingConflicts = await conflictStore.applyChanges(conflictChanges);
       await stateStore.markChangesPageApplied(cursor);
       return IncrementalSyncPullResult(
         status: IncrementalSyncPullStatus.applied,
-        changeCount: changes.length,
-        receivedConflictCount: changes
-            .where((change) => change.payload?['status'] == 'pending')
-            .length,
+        changeCount: allChanges.length,
+        receivedConflictCount: receivedConflictCount,
         pendingConflicts: pendingConflicts,
       );
     }
@@ -199,7 +218,7 @@ class IncrementalSyncPullService {
       if (notebookDeletion == null && pageDeletion == null) {
         return IncrementalSyncPullResult(
           status: IncrementalSyncPullStatus.requiresReconciliation,
-          changeCount: changes.length,
+          changeCount: allChanges.length,
           pendingConflicts: pendingConflicts,
         );
       }
@@ -210,16 +229,20 @@ class IncrementalSyncPullService {
         ),
         cloudAssetKeys: buildCloudAssetKeys(bootstrap),
       );
+      if (conflictChanges.isNotEmpty) {
+        pendingConflicts = await conflictStore.applyChanges(conflictChanges);
+      }
       await stateStore.markChangesPageApplied(cursor);
       return IncrementalSyncPullResult(
         status: IncrementalSyncPullStatus.applied,
-        changeCount: changes.length,
+        changeCount: allChanges.length,
         deletedNotebookCount: notebookDeletion?.deletedNotebookCount ?? 0,
         confirmedLocalDeletionCount:
             notebookDeletion?.confirmedLocalDeletionCount ?? 0,
         deletedPageCount: pageDeletion?.deletedPageCount ?? 0,
         confirmedLocalPageDeletionCount:
             pageDeletion?.confirmedLocalPageDeletionCount ?? 0,
+        receivedConflictCount: receivedConflictCount,
         pendingConflicts: pendingConflicts,
       );
     }
@@ -245,7 +268,7 @@ class IncrementalSyncPullService {
       if (sharedResult == null) {
         return IncrementalSyncPullResult(
           status: IncrementalSyncPullStatus.requiresReconciliation,
-          changeCount: changes.length,
+          changeCount: allChanges.length,
           pendingConflicts: pendingConflicts,
         );
       }
@@ -256,11 +279,15 @@ class IncrementalSyncPullService {
         ),
         cloudAssetKeys: buildCloudAssetKeys(bootstrap),
       );
+      if (conflictChanges.isNotEmpty) {
+        pendingConflicts = await conflictStore.applyChanges(conflictChanges);
+      }
       await stateStore.markChangesPageApplied(cursor);
       return IncrementalSyncPullResult(
         status: IncrementalSyncPullStatus.applied,
-        changeCount: changes.length,
+        changeCount: allChanges.length,
         appliedSharedResourceCount: sharedResult.appliedResourceCount,
+        receivedConflictCount: receivedConflictCount,
         pendingConflicts: pendingConflicts,
       );
     }
@@ -272,7 +299,7 @@ class IncrementalSyncPullService {
     )) {
       return IncrementalSyncPullResult(
         status: IncrementalSyncPullStatus.requiresReconciliation,
-        changeCount: changes.length,
+        changeCount: allChanges.length,
         pendingConflicts: pendingConflicts,
       );
     }
@@ -289,12 +316,16 @@ class IncrementalSyncPullService {
       ),
       cloudAssetKeys: buildCloudAssetKeys(bootstrap),
     );
+    if (conflictChanges.isNotEmpty) {
+      pendingConflicts = await conflictStore.applyChanges(conflictChanges);
+    }
     await stateStore.markChangesPageApplied(cursor);
     return IncrementalSyncPullResult(
       status: IncrementalSyncPullStatus.applied,
-      changeCount: changes.length,
+      changeCount: allChanges.length,
       downloadedNotebookCount: restored.downloadedNotebookCount,
       downloadedAssetCount: restored.downloadedAssetCount,
+      receivedConflictCount: receivedConflictCount,
       pendingConflicts: pendingConflicts,
     );
   }

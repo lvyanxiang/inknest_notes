@@ -10,6 +10,7 @@ import 'package:inknest_notes/sync/inknest_api_client.dart';
 import 'package:inknest_notes/sync/inknest_api_config.dart';
 import 'package:inknest_notes/sync/inknest_api_models.dart';
 import 'package:inknest_notes/sync/sync_changes.dart';
+import 'package:inknest_notes/sync/sync_conflicts.dart';
 import 'package:inknest_notes/sync/sync_upload_models.dart';
 
 void main() {
@@ -160,6 +161,49 @@ void main() {
     expect(page.nextCursor, 'cursor-2');
     expect(page.hasMore, isTrue);
   });
+
+  test(
+    'conflict resolution posts the selected outcome and parses response',
+    () async {
+      late RequestOptions captured;
+      final dio = Dio();
+      final store = MemoryAuthSessionStore(
+        StoredAuthSession.fromSession(
+          InkNestAuthSession.fromJson(_authJson()),
+          issuedAt: DateTime.utc(2026, 8, 6),
+        ),
+      );
+      final client = InkNestApiClient(
+        config: InkNestApiConfig.fromEnvironment(
+          overrideBaseUrl: 'https://api.example.com',
+        ),
+        dio: dio,
+        refreshDio: Dio(),
+        sessionStore: store,
+        clock: () => DateTime.utc(2026, 8, 6, 0, 1),
+      );
+      _resolveRequests(dio, (options) {
+        captured = options;
+        return (status: 200, data: _resolvedConflictJson());
+      });
+
+      final conflict = await client.resolveSyncConflict(
+        conflictId: '11111111-1111-4111-8111-111111111111',
+        resolution: SyncConflictResolution.keepBoth,
+      );
+
+      expect(captured.method, 'POST');
+      expect(
+        captured.uri.toString(),
+        'https://api.example.com/api/v1/sync/conflicts/'
+        '11111111-1111-4111-8111-111111111111/resolve',
+      );
+      expect(captured.data, {'resolution': 'keep_both'});
+      expect(conflict.originalResourceId, 'page-1');
+      expect(conflict.resolution, 'keep_both');
+      expect(conflict.isPending, isFalse);
+    },
+  );
 
   test('shared-content commit uses the incremental sync contract', () async {
     late RequestOptions captured;
@@ -691,6 +735,26 @@ Map<String, Object?> _authJson({
     },
   };
 }
+
+Map<String, Object?> _resolvedConflictJson() => {
+  'id': '11111111-1111-4111-8111-111111111111',
+  'resourceType': 'page',
+  'originalResourceId': 'page-1',
+  'copyResourceId': 'page-copy-1',
+  'copyDisplayName': '第 1 页（冲突副本）',
+  'baseRevision': 1,
+  'currentRevision': 2,
+  'submittedContentHash': 'a' * 64,
+  'submittedContent': const {'strokes': <Object?>[]},
+  'currentContentHash': 'b' * 64,
+  'currentContent': const {'strokes': <Object?>[]},
+  'sourceDeviceId': '22222222-2222-4222-8222-222222222222',
+  'status': 'resolved',
+  'resolution': 'keep_both',
+  'resolvedByDeviceId': '33333333-3333-4333-8333-333333333333',
+  'resolvedAt': '2026-08-07T01:00:00Z',
+  'createdAt': '2026-08-07T00:00:00Z',
+};
 
 Map<String, Object?> _bootstrapJson() {
   const timestamp = '2026-08-06T00:00:00Z';

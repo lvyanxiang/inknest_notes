@@ -37,9 +37,11 @@ leave the authoritative resource unchanged and persist both snapshots in a
 pending conflict record with a stable reserved copy ID. The App will offer
 Keep Original, Use Conflict Version, and Keep Both. Keep Both materializes the
 reserved resource with `conflictOf` ancestry; retries reuse the same conflict.
-The current App slice persists received conflict events across restart and
-exposes a non-blocking header badge plus read-only list; explicit resolution is
-the next integration slice.
+The App persists received conflict events across restart and exposes a
+non-blocking header badge, list, and detail flow. All three outcomes call the
+authenticated resolution endpoint and consume the resulting Cursor changes;
+the badge clears only after local content and mappings match the confirmed
+outcome.
 
 For delete-versus-edit races, edited content wins automatically regardless of
 arrival order. A normal delete is a reversible soft delete backed by a full

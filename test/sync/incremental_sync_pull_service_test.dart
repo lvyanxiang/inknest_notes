@@ -8,6 +8,7 @@ import 'package:inknest_notes/sync/incremental_sync_pull_service.dart';
 import 'package:inknest_notes/sync/sync_bootstrap.dart';
 import 'package:inknest_notes/sync/sync_changes.dart';
 import 'package:inknest_notes/sync/sync_cloud_client.dart';
+import 'package:inknest_notes/sync/sync_conflicts.dart';
 import 'package:inknest_notes/sync/sync_resource_map_store.dart';
 import 'package:inknest_notes/sync/sync_state.dart';
 import 'package:inknest_notes/sync/sync_upload_models.dart';
@@ -181,6 +182,145 @@ void main() {
     expect(result.status, IncrementalSyncPullStatus.applied);
     final page = await repository.loadPage(notebook, notebook.pageIds.single);
     expect(page.textBoxes.single.text, 'Cloud text');
+    expect((await stateStore.loadSnapshot()).lastAppliedCursor, 'cursor-2');
+  });
+
+  test('applies a resolved conflict with its original-page update', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'inknest-pull-resolved-conflict-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final repository = FileNotebookRepository(rootDirectory: root);
+    final notebook = await repository.createNotebook(title: 'Local notes');
+    final stateStore = FileSyncStateStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    );
+    await stateStore.markChangesPageApplied('cursor-1');
+    await FileSyncResourceMapStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    ).replaceAll([
+      SyncResourceMapping(
+        localKey: notebookSyncLocalKey(notebook.id),
+        resourceType: SyncResourceType.notebook,
+        remoteResourceId: notebook.id,
+        revision: 1,
+        contentHash: 'a' * 64,
+      ),
+      SyncResourceMapping(
+        localKey: pageSyncLocalKey(notebook.id, notebook.pageIds.single),
+        resourceType: SyncResourceType.page,
+        remoteResourceId: 'remote-page',
+        revision: 1,
+        contentHash: 'd' * 64,
+      ),
+    ]);
+    final conflictStore = FileSyncConflictStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    );
+    await conflictStore.applyChanges([_conflictChange()]);
+    final cloud = _PullCloudClient(
+      bootstrapSnapshot: _sharedPageBootstrap(notebook.id),
+      pages: [
+        CloudSyncChangePage(
+          changes: [
+            _change('page', 'remote-page', revision: 2, contentHash: 'e' * 64),
+            _conflictChange(status: 'resolved', resolution: 'use_conflict'),
+          ],
+          nextCursor: 'cursor-2',
+          hasMore: false,
+        ),
+      ],
+    );
+
+    final result = await IncrementalSyncPullService(
+      repository: repository,
+      cloudClient: cloud,
+      rootDirectory: root,
+    ).pull(userId: 'user-1', deviceId: 'device-1');
+
+    expect(result.status, IncrementalSyncPullStatus.applied);
+    expect(result.pendingConflicts, isEmpty);
+    final page = await repository.loadPage(notebook, notebook.pageIds.single);
+    expect(page.textBoxes.single.text, 'Cloud text');
+    expect((await stateStore.loadSnapshot()).lastAppliedCursor, 'cursor-2');
+  });
+
+  test('appends a keep-both page copy before resolving the conflict', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'inknest-pull-conflict-copy-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final repository = FileNotebookRepository(rootDirectory: root);
+    final notebook = await repository.createNotebook(title: 'Local notes');
+    final stateStore = FileSyncStateStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    );
+    await stateStore.markChangesPageApplied('cursor-1');
+    await FileSyncResourceMapStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    ).replaceAll([
+      SyncResourceMapping(
+        localKey: notebookSyncLocalKey(notebook.id),
+        resourceType: SyncResourceType.notebook,
+        remoteResourceId: notebook.id,
+        revision: 1,
+        contentHash: 'a' * 64,
+      ),
+      SyncResourceMapping(
+        localKey: pageSyncLocalKey(notebook.id, notebook.pageIds.single),
+        resourceType: SyncResourceType.page,
+        remoteResourceId: 'remote-page',
+        revision: 1,
+        contentHash: 'd' * 64,
+      ),
+    ]);
+    final conflictStore = FileSyncConflictStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    );
+    await conflictStore.applyChanges([_conflictChange()]);
+    final cloud = _PullCloudClient(
+      bootstrapSnapshot: _keepBothPageBootstrap(notebook.id),
+      pages: [
+        CloudSyncChangePage(
+          changes: [
+            _change(
+              'page',
+              'page-conflict-copy',
+              revision: 1,
+              contentHash: 'f' * 64,
+            ),
+            _conflictChange(status: 'resolved', resolution: 'keep_both'),
+          ],
+          nextCursor: 'cursor-2',
+          hasMore: false,
+        ),
+      ],
+    );
+
+    final result = await IncrementalSyncPullService(
+      repository: repository,
+      cloudClient: cloud,
+      rootDirectory: root,
+    ).pull(userId: 'user-1', deviceId: 'device-1');
+
+    expect(result.status, IncrementalSyncPullStatus.applied);
+    expect(result.pendingConflicts, isEmpty);
+    final updated = (await repository.listNotebooks()).single;
+    expect(updated.pageIds, [notebook.pageIds.single, 'page-conflict-copy']);
+    final copy = await repository.loadPage(updated, 'page-conflict-copy');
+    expect(copy.textBoxes.single.text, 'Offline copy');
     expect((await stateStore.loadSnapshot()).lastAppliedCursor, 'cursor-2');
   });
 
@@ -567,6 +707,44 @@ CloudSyncChange _change(
   );
 }
 
+CloudSyncChange _conflictChange({
+  String status = 'pending',
+  String? resolution,
+}) {
+  final payload = <String, Object?>{
+    'id': 'conflict-1',
+    'resourceType': 'page',
+    'conflictOf': 'remote-page',
+    'copyResourceId': 'page-conflict-copy',
+    'copyDisplayName': '第 1 页（冲突副本）',
+    'baseRevision': 0,
+    'currentRevision': 1,
+    'submittedContentHash': 'f' * 64,
+    'submittedContent': const {'strokes': <Object?>[]},
+    'currentContentHash': 'd' * 64,
+    'currentContent': const {'strokes': <Object?>[]},
+    'sourceDeviceId': 'device-2',
+    'status': status,
+    'createdAt': '2026-08-07T00:00:00Z',
+  };
+  if (resolution != null) {
+    payload['resolution'] = resolution;
+    payload['resolvedByDeviceId'] = 'device-1';
+    payload['resolvedAt'] = '2026-08-07T01:00:00Z';
+  }
+  return CloudSyncChange(
+    changeId: 'change-conflict-$status',
+    resourceType: CloudSyncChangeResourceType.conflict,
+    resourceId: 'conflict-1',
+    operation: CloudSyncChangeOperation.upsert,
+    revision: null,
+    contentHash: null,
+    payload: payload,
+    deviceId: 'device-2',
+    createdAt: DateTime.utc(2026, 8, 7),
+  );
+}
+
 CloudSyncBootstrap _cloudNotebookBootstrap() {
   final now = DateTime.utc(2026, 8, 7);
   return CloudSyncBootstrap(
@@ -709,6 +887,66 @@ CloudSyncBootstrap _sharedPageBootstrap(String notebookId) {
         conflictOf: null,
         createdAt: page.createdAt,
         updatedAt: page.updatedAt,
+      ),
+    ],
+    infiniteCanvases: const [],
+    assets: const [],
+  );
+}
+
+CloudSyncBootstrap _keepBothPageBootstrap(String notebookId) {
+  final base = _sharedBootstrap(notebookId);
+  final original = base.pages.single;
+  return CloudSyncBootstrap(
+    inventory: base.inventory,
+    baseCursor: base.baseCursor,
+    folders: base.folders,
+    notebooks: [
+      CloudSyncNotebook(
+        id: notebookId,
+        folderId: null,
+        title: 'Local notes',
+        layoutMode: 'paged',
+        isArchived: false,
+        revision: 1,
+        contentHash: 'a' * 64,
+        content: const {},
+        conflictOf: null,
+        createdAt: base.notebooks.single.createdAt,
+        updatedAt: base.notebooks.single.updatedAt,
+      ),
+    ],
+    pages: [
+      original,
+      CloudSyncPage(
+        id: 'page-conflict-copy',
+        notebookId: notebookId,
+        position: 1,
+        width: 768,
+        height: 1024,
+        coordinateSpaceVersion: 1,
+        rotationQuarterTurns: 0,
+        template: 'blank',
+        revision: 1,
+        contentHash: 'f' * 64,
+        content: const {
+          'strokes': <Object?>[],
+          'textBoxes': [
+            {
+              'id': 'text-copy',
+              'x': 10,
+              'y': 20,
+              'text': 'Offline copy',
+              'width': 200,
+              'color': 0xFF000000,
+              'fontSize': 24,
+              'style': 'regular',
+            },
+          ],
+        },
+        conflictOf: 'remote-page',
+        createdAt: original.createdAt,
+        updatedAt: original.updatedAt,
       ),
     ],
     infiniteCanvases: const [],
