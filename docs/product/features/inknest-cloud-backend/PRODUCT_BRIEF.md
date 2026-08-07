@@ -215,12 +215,11 @@ The first slice sets no retention period and performs no physical cleanup.
   attempts commit and pull confirmation when online; response loss preserves
   the exact in-flight request, and offline work retries on the next initialized
   sync. A queue-write failure leaves the notebook on the shelf.
-- A mapped trailing page may use the same durable delete queue only when the
-  paged notebook retains at least one page. Remote application requires the
-  final bootstrap to contain the remaining pages at contiguous, matching
-  positions, and preserves the deleted page plus location metadata locally.
-  Middle-page deletion remains local because the current server contract does
-  not compact or restore page positions safely; it must not claim cloud success.
+- Any mapped page may use the same durable delete queue when the paged notebook
+  retains at least one page. The server compacts later active positions and the
+  final bootstrap must match the remaining local order. Tombstones preserve the
+  original notebook/position so restore reinserts the page there; local recovery
+  metadata retains the same location.
 - On session restore, an initialized device attempts this pull before showing
   first-sign-in Merge again. Successful additive downloads refresh the library;
   offline or blocked reconciliation leaves local notes available.

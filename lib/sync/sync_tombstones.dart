@@ -14,6 +14,7 @@ class CloudSyncTombstone {
     required this.deletedRevision,
     required this.contentHash,
     required Map<String, Object?> content,
+    required Map<String, Object?> structureMetadata,
     required this.deletedByDeviceId,
     required this.deletedAt,
     required this.state,
@@ -23,7 +24,8 @@ class CloudSyncTombstone {
     required this.restoredByDeviceId,
     required this.restoredAt,
     required this.createdAt,
-  }) : content = Map.unmodifiable(content);
+  }) : content = Map.unmodifiable(content),
+       structureMetadata = Map.unmodifiable(structureMetadata);
 
   final String id;
   final String resourceType;
@@ -33,6 +35,7 @@ class CloudSyncTombstone {
   final int? deletedRevision;
   final String contentHash;
   final Map<String, Object?> content;
+  final Map<String, Object?> structureMetadata;
   final String? deletedByDeviceId;
   final DateTime deletedAt;
   final String state;
@@ -90,6 +93,12 @@ class CloudSyncTombstone {
       deletedRevision: deletedRevision as int?,
       contentHash: requiredSha256(json, 'contentHash'),
       content: copyJsonObject(json['content'], 'tombstone.content'),
+      structureMetadata: json['structureMetadata'] == null
+          ? const {}
+          : copyJsonObject(
+              json['structureMetadata'],
+              'tombstone.structureMetadata',
+            ),
       deletedByDeviceId: _optionalString(json, 'deletedByDeviceId'),
       deletedAt: requiredDateTime(json, 'deletedAt'),
       state: state,
@@ -111,6 +120,7 @@ class CloudSyncTombstone {
     'deletedRevision': deletedRevision,
     'contentHash': contentHash,
     'content': content,
+    'structureMetadata': structureMetadata,
     if (deletedByDeviceId != null) 'deletedByDeviceId': deletedByDeviceId,
     'deletedAt': deletedAt.toUtc().toIso8601String(),
     'state': state,

@@ -44,6 +44,7 @@ from inknest_server.sync.service import (
     SyncOperationFailedError,
 )
 from inknest_server.sync.tombstones import (
+    LastPageDeletionError,
     SyncTombstoneNotFoundError,
     SyncTombstoneStateError,
 )
@@ -234,6 +235,13 @@ async def commit_sync_changes(
                     **details,
                     "currentRevision": error.cause.current_revision,
                 },
+            ) from error
+        if isinstance(error.cause, LastPageDeletionError):
+            raise ApiError(
+                code="sync_last_page_delete_blocked",
+                message="A paged notebook must keep at least one page.",
+                status_code=409,
+                details=details,
             ) from error
         raise ApiError(
             code="sync_resource_not_found",

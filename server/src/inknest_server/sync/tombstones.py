@@ -41,6 +41,10 @@ class SyncTombstoneStateError(Exception):
         super().__init__(f"tombstone cannot be restored from state {state}")
 
 
+class LastPageDeletionError(Exception):
+    pass
+
+
 @dataclass(frozen=True, slots=True)
 class TombstoneMutation:
     tombstone: Tombstone
@@ -89,6 +93,7 @@ class TombstoneService:
 
         normalized_content = normalized_json_object(resource.content)
         current_hash = calculate_content_hash(normalized_content)
+        structure_metadata = self._structure_metadata(resource)
         if resource.revision != base_revision:
             tombstone = Tombstone(
                 user_id=user_id,
@@ -99,6 +104,7 @@ class TombstoneService:
                 deleted_revision=None,
                 content_hash=current_hash,
                 content=normalized_content,
+                structure_metadata=structure_metadata,
                 deleted_by_device_id=device_id,
                 deleted_at=datetime.now(UTC),
                 state="restored",
@@ -118,6 +124,19 @@ class TombstoneService:
                 changed=False,
                 outcome="delete_conflict",
             )
+        if isinstance(resource, Page):
+            sibling = await self._session.scalar(
+                select(Page.id)
+                .where(
+                    Page.user_id == user_id,
+                    Page.notebook_id == resource.notebook_id,
+                    Page.deleted_at.is_(None),
+                    Page.id != resource.id,
+                )
+                .limit(1)
+            )
+            if sibling is None:
+                raise LastPageDeletionError
 
         deleted_at = datetime.now(UTC)
         next_revision = resource.revision + 1
@@ -134,6 +153,12 @@ class TombstoneService:
             content_hash=current_hash,
             content=normalized_content,
         )
+        if isinstance(resource, Page):
+            await self._compact_pages_after_delete(
+                page=resource,
+                user_id=user_id,
+                device_id=device_id,
+            )
         tombstone = Tombstone(
             user_id=user_id,
             resource_type=resource_type,
@@ -143,6 +168,7 @@ class TombstoneService:
             deleted_revision=next_revision,
             content_hash=current_hash,
             content=normalized_content,
+            structure_metadata=structure_metadata,
             deleted_by_device_id=device_id,
             deleted_at=deleted_at,
             state="active",
@@ -200,6 +226,13 @@ class TombstoneService:
             )
 
         next_revision = resource.revision + 1
+        if isinstance(resource, Page):
+            await self._prepare_page_restore(
+                page=resource,
+                structure_metadata=tombstone.structure_metadata,
+                user_id=user_id,
+                device_id=device_id,
+            )
         resource.revision = next_revision
         resource.content_hash = new_hash
         resource.content = normalized_content
@@ -264,6 +297,13 @@ class TombstoneService:
             raise SyncTombstoneStateError(tombstone.state)
 
         next_revision = resource.revision + 1
+        if isinstance(resource, Page):
+            await self._prepare_page_restore(
+                page=resource,
+                structure_metadata=tombstone.structure_metadata,
+                user_id=user_id,
+                device_id=device_id,
+            )
         resource.revision = next_revision
         resource.content_hash = tombstone.content_hash
         resource.content = normalized_json_object(tombstone.content)
@@ -293,6 +333,131 @@ class TombstoneService:
         )
         await self._append_tombstone_change(tombstone, device_id=device_id)
         return tombstone
+
+    async def _compact_pages_after_delete(
+        self,
+        *,
+        page: Page,
+        user_id: UUID,
+        device_id: UUID,
+    ) -> None:
+        siblings = list(
+            await self._session.scalars(
+                select(Page)
+                .where(
+                    Page.user_id == user_id,
+                    Page.notebook_id == page.notebook_id,
+                    Page.deleted_at.is_(None),
+                    Page.id != page.id,
+                )
+                .order_by(Page.position, Page.id)
+                .with_for_update()
+            )
+        )
+        await self._reposition_pages(
+            pages=siblings,
+            desired_positions={item.id: index for index, item in enumerate(siblings)},
+            user_id=user_id,
+            device_id=device_id,
+        )
+
+    async def _prepare_page_restore(
+        self,
+        *,
+        page: Page,
+        structure_metadata: dict[str, object],
+        user_id: UUID,
+        device_id: UUID,
+    ) -> None:
+        notebook_id = structure_metadata.get("notebookId")
+        position = structure_metadata.get("position")
+        if notebook_id != page.notebook_id or not isinstance(position, int):
+            raise RuntimeError("page tombstone has invalid structure metadata")
+        siblings = list(
+            await self._session.scalars(
+                select(Page)
+                .where(
+                    Page.user_id == user_id,
+                    Page.notebook_id == page.notebook_id,
+                    Page.deleted_at.is_(None),
+                    Page.id != page.id,
+                )
+                .order_by(Page.position, Page.id)
+                .with_for_update()
+            )
+        )
+        restored_position = min(max(position, 0), len(siblings))
+        desired_positions = {
+            item.id: index if index < restored_position else index + 1
+            for index, item in enumerate(siblings)
+        }
+        await self._reposition_pages(
+            pages=siblings,
+            desired_positions=desired_positions,
+            user_id=user_id,
+            device_id=device_id,
+        )
+        page.position = restored_position
+
+    async def _reposition_pages(
+        self,
+        *,
+        pages: list[Page],
+        desired_positions: dict[str, int],
+        user_id: UUID,
+        device_id: UUID,
+    ) -> None:
+        changed = [
+            page for page in pages if desired_positions[page.id] != page.position
+        ]
+        if not changed:
+            return
+        temporary_base = (
+            max((page.position for page in pages), default=0) + len(pages) + 1
+        )
+        for index, page in enumerate(pages):
+            page.position = temporary_base + index
+        await self._session.flush()
+        for page in pages:
+            page.position = desired_positions[page.id]
+        for page in changed:
+            next_revision = page.revision + 1
+            content_hash = (
+                page.content_hash
+                if page.revision > 0
+                else calculate_content_hash(page.content)
+            )
+            page.revision = next_revision
+            page.content_hash = content_hash
+            await self._append_revision(
+                user_id=user_id,
+                device_id=device_id,
+                resource_type="page",
+                resource_id=page.id,
+                revision=next_revision,
+                content_hash=content_hash,
+                content=page.content,
+            )
+        await self._session.flush()
+        for page in changed:
+            await self._changes.append_upsert(
+                user_id=user_id,
+                resource_type="page",
+                resource_id=page.id,
+                payload=page_snapshot(page),
+                revision=page.revision,
+                content_hash=page.content_hash,
+                device_id=device_id,
+            )
+
+    @staticmethod
+    def _structure_metadata(resource: RevisionedResource) -> dict[str, object]:
+        if isinstance(resource, Page):
+            return {
+                "notebookId": resource.notebook_id,
+                "position": resource.position,
+            }
+        return {}
 
     async def _locked_resource(
         self,

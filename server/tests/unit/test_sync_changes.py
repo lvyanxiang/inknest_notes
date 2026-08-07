@@ -1220,6 +1220,15 @@ async def test_sync_soft_delete_supports_pages_and_infinite_canvases(
         height=1024,
         coordinate_space_version=1,
     )
+    survivor_page = await library.create_page(
+        user_id=user_id,
+        notebook_id=paged.id,
+        page_id="delete-page-survivor",
+        position=1,
+        width=768,
+        height=1024,
+        coordinate_space_version=1,
+    )
     infinite = await library.create_notebook(
         user_id=user_id,
         notebook_id="delete-canvas-parent",
@@ -1235,6 +1244,12 @@ async def test_sync_soft_delete_supports_pages_and_infinite_canvases(
     await content.save_page_content(
         user_id=user_id,
         page_id=page.id,
+        base_revision=0,
+        content={"strokes": []},
+    )
+    await content.save_page_content(
+        user_id=user_id,
+        page_id=survivor_page.id,
         base_revision=0,
         content={"strokes": []},
     )
@@ -1286,3 +1301,187 @@ async def test_sync_soft_delete_supports_pages_and_infinite_canvases(
     assert [
         item["tombstone"]["resourceType"] for item in response.json()["results"]
     ] == ["page", "infinite_canvas"]
+
+
+async def test_sync_rejects_deleting_the_only_page(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    registered = await register(client, "sync-delete-only-page@example.com")
+    user_id = UUID(registered["user"]["id"])
+    library = LibraryRepository(db_session)
+    notebook = await library.create_notebook(
+        user_id=user_id,
+        notebook_id="only-page-parent",
+        title="One page",
+        layout_mode="paged",
+    )
+    page = await library.create_page(
+        user_id=user_id,
+        notebook_id=notebook.id,
+        page_id="only-page",
+        position=0,
+        width=768,
+        height=1024,
+        coordinate_space_version=1,
+    )
+    await ContentRepository(db_session).save_page_content(
+        user_id=user_id,
+        page_id=page.id,
+        base_revision=0,
+        content={"strokes": []},
+    )
+    page_id = page.id
+    await db_session.commit()
+    before = await client.get(
+        "/api/v1/sync/changes",
+        headers=bearer(registered["accessToken"]),
+    )
+
+    response = await client.post(
+        "/api/v1/sync/commit",
+        headers=bearer(registered["accessToken"]),
+        json={
+            "deviceId": registered["device"]["id"],
+            "idempotencyKey": "delete-only-page",
+            "baseCursor": before.json()["nextCursor"],
+            "operations": [
+                {
+                    "operationId": "delete-only-page",
+                    "operation": "delete",
+                    "resourceType": "page",
+                    "resourceId": page_id,
+                    "baseRevision": 1,
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "sync_last_page_delete_blocked"
+
+
+async def test_middle_page_delete_compacts_and_restore_reinserts_original_position(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    registered = await register(client, "sync-middle-page@example.com")
+    user_id = UUID(registered["user"]["id"])
+    device_id = UUID(registered["device"]["id"])
+    headers = bearer(registered["accessToken"])
+    library = LibraryRepository(db_session)
+    notebook = await library.create_notebook(
+        user_id=user_id,
+        notebook_id="middle-page-parent",
+        title="Three pages",
+        layout_mode="paged",
+    )
+    notebook_id = notebook.id
+    pages = [
+        await library.create_page(
+            user_id=user_id,
+            notebook_id=notebook_id,
+            page_id=f"middle-page-{index + 1}",
+            position=index,
+            width=768,
+            height=1024,
+            coordinate_space_version=1,
+        )
+        for index in range(3)
+    ]
+    content = ContentRepository(db_session)
+    for page in pages:
+        await content.save_page_content(
+            user_id=user_id,
+            page_id=page.id,
+            base_revision=0,
+            content={"strokes": []},
+            device_id=device_id,
+        )
+    page_ids = [page.id for page in pages]
+    await db_session.commit()
+    before = await client.get("/api/v1/sync/changes", headers=headers)
+
+    deleted = await client.post(
+        "/api/v1/sync/commit",
+        headers=headers,
+        json={
+            "deviceId": str(device_id),
+            "idempotencyKey": "delete-middle-page",
+            "baseCursor": before.json()["nextCursor"],
+            "operations": [
+                {
+                    "operationId": "delete-page-2",
+                    "operation": "delete",
+                    "resourceType": "page",
+                    "resourceId": page_ids[1],
+                    "baseRevision": 1,
+                }
+            ],
+        },
+    )
+    delete_body = deleted.json()
+    after_delete = await client.get(
+        "/api/v1/sync/changes",
+        headers=headers,
+        params={"cursor": before.json()["nextCursor"]},
+    )
+    db_session.expire_all()
+    active_after_delete = list(
+        await db_session.scalars(
+            select(Page)
+            .where(
+                Page.user_id == user_id,
+                Page.notebook_id == notebook_id,
+                Page.deleted_at.is_(None),
+            )
+            .order_by(Page.position)
+        )
+    )
+
+    assert deleted.status_code == 200
+    tombstone = delete_body["results"][0]["tombstone"]
+    assert tombstone["structureMetadata"] == {
+        "notebookId": notebook_id,
+        "position": 1,
+    }
+    assert [
+        (page.id, page.position, page.revision) for page in active_after_delete
+    ] == [
+        (page_ids[0], 0, 1),
+        (page_ids[2], 1, 2),
+    ]
+    assert [
+        (change["resourceId"], change["operation"])
+        for change in after_delete.json()["changes"]
+    ] == [
+        (page_ids[2], "upsert"),
+        (page_ids[1], "delete"),
+        (tombstone["id"], "upsert"),
+    ]
+
+    restored = await client.post(
+        f"/api/v1/sync/tombstones/{tombstone['id']}/restore",
+        headers=headers,
+    )
+    db_session.expire_all()
+    active_after_restore = list(
+        await db_session.scalars(
+            select(Page)
+            .where(
+                Page.user_id == user_id,
+                Page.notebook_id == notebook_id,
+                Page.deleted_at.is_(None),
+            )
+            .order_by(Page.position)
+        )
+    )
+
+    assert restored.status_code == 200
+    assert [
+        (page.id, page.position, page.revision) for page in active_after_restore
+    ] == [
+        (page_ids[0], 0, 1),
+        (page_ids[1], 1, 3),
+        (page_ids[2], 2, 3),
+    ]

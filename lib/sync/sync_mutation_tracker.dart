@@ -288,7 +288,7 @@ class SyncMutationTracker {
   }
 
   Future<void> _trackPageDeleted(Notebook notebook, String pageId) async {
-    if (notebook.pageIds.length <= 1 || notebook.pageIds.last != pageId) {
+    if (notebook.pageIds.length <= 1 || !notebook.pageIds.contains(pageId)) {
       return;
     }
     final session = activeSession();

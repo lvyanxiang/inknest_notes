@@ -126,6 +126,7 @@ def tombstone_snapshot(tombstone: Tombstone) -> dict[str, object]:
         "deletedRevision": tombstone.deleted_revision,
         "contentHash": tombstone.content_hash,
         "content": tombstone.content,
+        "structureMetadata": tombstone.structure_metadata,
         "deletedByDeviceId": (
             str(tombstone.deleted_by_device_id)
             if tombstone.deleted_by_device_id is not None

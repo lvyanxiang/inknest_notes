@@ -50,7 +50,148 @@ void main() {
     expect(result?.deletedPageCount, 0);
     expect(result?.confirmedLocalPageDeletionCount, 1);
   });
+
+  test('applies a middle-page deletion and keeps the compacted order', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'inknest-middle-page-apply-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final repository = FileNotebookRepository(rootDirectory: root);
+    var notebook = await repository.createNotebook(title: 'Three pages');
+    notebook = await repository.addPage(notebook);
+    notebook = await repository.addPage(notebook);
+    final localIds = notebook.pageIds.toList();
+    final hashes = ['a' * 64, 'b' * 64, 'c' * 64];
+    final mappings = [
+      for (final (index, localId) in localIds.indexed)
+        SyncResourceMapping(
+          localKey: pageSyncLocalKey(notebook.id, localId),
+          resourceType: SyncResourceType.page,
+          remoteResourceId: 'remote-page-${index + 1}',
+          revision: 1,
+          contentHash: hashes[index],
+        ),
+    ];
+    final now = DateTime.utc(2026, 8, 7);
+    final bootstrap = CloudSyncBootstrap(
+      inventory: SyncLibraryInventory(notebookIds: [notebook.id]),
+      baseCursor: 'bootstrap-cursor',
+      folders: const [],
+      notebooks: const [],
+      pages: [
+        _cloudPage(
+          id: 'remote-page-1',
+          notebookId: notebook.id,
+          position: 0,
+          revision: 1,
+          hash: hashes[0],
+          now: now,
+        ),
+        _cloudPage(
+          id: 'remote-page-3',
+          notebookId: notebook.id,
+          position: 1,
+          revision: 2,
+          hash: hashes[2],
+          now: now,
+        ),
+      ],
+      infiniteCanvases: const [],
+      assets: const [],
+    );
+    final changes = [
+      CloudSyncChange(
+        changeId: 'shift-page-3',
+        resourceType: CloudSyncChangeResourceType.page,
+        resourceId: 'remote-page-3',
+        operation: CloudSyncChangeOperation.upsert,
+        revision: 2,
+        contentHash: hashes[2],
+        payload: const {},
+        deviceId: 'device-2',
+        createdAt: now,
+      ),
+      CloudSyncChange(
+        changeId: 'delete-page-2',
+        resourceType: CloudSyncChangeResourceType.page,
+        resourceId: 'remote-page-2',
+        operation: CloudSyncChangeOperation.delete,
+        revision: 2,
+        contentHash: hashes[1],
+        payload: null,
+        deviceId: 'device-2',
+        createdAt: now,
+      ),
+      CloudSyncChange(
+        changeId: 'tombstone-page-2',
+        resourceType: CloudSyncChangeResourceType.tombstone,
+        resourceId: 'tombstone-page-2',
+        operation: CloudSyncChangeOperation.upsert,
+        revision: null,
+        contentHash: null,
+        payload: {
+          'id': 'tombstone-page-2',
+          'resourceType': 'page',
+          'resourceId': 'remote-page-2',
+          'baseRevision': 1,
+          'resourceRevision': 1,
+          'deletedRevision': 2,
+          'contentHash': hashes[1],
+          'content': const {'strokes': <Object?>[]},
+          'structureMetadata': {'notebookId': notebook.id, 'position': 1},
+          'state': 'active',
+          'deletedAt': now.toIso8601String(),
+          'createdAt': now.toIso8601String(),
+        },
+        deviceId: 'device-2',
+        createdAt: now,
+      ),
+    ];
+
+    final result = await SyncPageDeletionService(rootDirectory: root)
+        .applyIfSafe(
+          changes: changes,
+          bootstrap: bootstrap,
+          mappings: mappings,
+          userId: 'user-1',
+          deviceId: 'device-1',
+        );
+
+    expect(result?.deletedPageCount, 1);
+    expect((await repository.listNotebooks()).single.pageIds, [
+      localIds[0],
+      localIds[2],
+    ]);
+    final location = await File(
+      '${root.path}/sync/user-1/device-1/deleted/tombstone-page-2/location.json',
+    ).readAsString();
+    expect(location, contains('"position": 1'));
+  });
 }
+
+CloudSyncPage _cloudPage({
+  required String id,
+  required String notebookId,
+  required int position,
+  required int revision,
+  required String hash,
+  required DateTime now,
+}) => CloudSyncPage(
+  id: id,
+  notebookId: notebookId,
+  position: position,
+  width: 768,
+  height: 1024,
+  coordinateSpaceVersion: 1,
+  rotationQuarterTurns: 0,
+  template: 'blank',
+  revision: revision,
+  contentHash: hash,
+  content: const {'strokes': <Object?>[]},
+  conflictOf: null,
+  createdAt: now,
+  updatedAt: now,
+);
 
 class _PageDeletionFixture {
   const _PageDeletionFixture({
@@ -165,6 +306,7 @@ class _PageDeletionFixture {
           'deletedRevision': 4,
           'contentHash': 'a' * 64,
           'content': const {'strokes': <Object?>[]},
+          'structureMetadata': {'notebookId': notebook.id, 'position': 1},
           'state': 'active',
           'deletedAt': deletedAt.toIso8601String(),
           'createdAt': deletedAt.toIso8601String(),

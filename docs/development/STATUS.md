@@ -6,15 +6,15 @@
   initialized sessions now push saved page, notebook-content, and infinite-
   canvas edits, explicit notebook title/archive/existing-folder metadata,
   incremental folder creation/rename/deletion,
-  mapped whole-notebook deletes, and structurally safe trailing-page deletes
+  mapped whole-notebook deletes, and deletion of any page when another remains
   before applying safe `/sync/changes` updates.
-- Next task: Define and connect the page-structure contract for page ordering
-  and safe middle-page deletion before the canvas-background contract.
-  Standalone canvas deletion remains blocked on its structural contract.
-- Last completed: Existing Delete Folder now enters the durable incremental
-  queue. `/sync/commit` atomically moves contained notebooks to the root and
-  deletes only the organizer; `/sync/changes` applies or confirms that result
-  on every device without adding the folder to Recently Deleted.
+- Next task: Connect explicit page reordering across devices, then define the
+  canvas-background contract. Standalone canvas deletion remains blocked on
+  its structural contract.
+- Last completed: Any mapped page may now be deleted while at least one page
+  remains. The server atomically compacts later positions, Tombstones retain
+  the original page position, and restore reinserts the page there across
+  devices through the normal change pull.
 
 ## Decisions
 
@@ -156,11 +156,11 @@
   remain unsupported and must not be claimed as synchronized.
   Queue notebook/canvas content only when every page/asset
   reference can be rewritten to verified cloud state.
-- Limit incremental page deletion to a mapped trailing page while at least one
-  page remains. The current server contract does not compact later page
-  positions or carry structural location in Tombstones, so middle-page deletion
-  must remain local and must not claim cloud success. Standalone canvas deletion
-  has no App action; deleting an infinite-canvas notebook uses notebook deletion.
+- Allow deletion of any mapped page while at least one page remains. The server
+  stores the original notebook/position in the Tombstone, compacts active page
+  positions transactionally, and restores the page at that position while
+  shifting later pages. Standalone canvas deletion has no App action; deleting
+  an infinite-canvas notebook uses notebook deletion.
 - Apply shared pull content from the final typed bootstrap snapshot, but require
   every `/sync/changes` Revision between the mapped local baseline and that
   snapshot. Reject gaps, structural divergence, unknown attachments, conflicts,
@@ -783,6 +783,11 @@
   MinIO integration tests. Focused coverage proves unsent-create cancellation,
   mapped delete queuing, cross-device root movement, atomic server changes, and
   exact idempotent replay. Ruff, mypy, Flutter analysis, and diff checks pass.
+- `flutter test` passes with 259 tests after middle-page deletion and restore;
+  the backend passes 54 unit/API tests and 15 PostgreSQL/MinIO integration
+  tests. Alembic upgrades the development database and an independent empty
+  database to `20260807_0014` with no schema drift. Focused tests cover delete
+  queuing, position compaction, recovery metadata, and original-position restore.
 
 ## Notes
 

@@ -187,6 +187,13 @@ that create is already in flight, the delete waits pending and is rebased after
 the frozen commit succeeds. A remote folder delete removes only `folders.json`
 metadata and moves contained notebook index entries to the root.
 
+Mapped page deletion may target any page while the notebook retains at least
+one page. The content-free delete is queued at the mapped Revision. The server
+compacts later active positions and emits structural page upserts; the App
+accepts the range only when the final bootstrap order matches every remaining
+local mapping. The Tombstone and local recovery metadata preserve the original
+notebook/position, and restore inserts the page back at that position.
+
 ## `sync/restore-recovery/<snapshot-id>/`
 
 This is a transient internal rollback boundary for cloud-only restore, mixed

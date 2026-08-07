@@ -108,11 +108,14 @@ class Notebook(Base):
 class Page(Base):
     __tablename__ = "pages"
     __table_args__ = (
-        UniqueConstraint(
+        Index(
+            "uq_pages_active_notebook_owner_position",
             "notebook_id",
             "user_id",
             "position",
-            name="uq_pages_notebook_owner_position",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+            sqlite_where=text("deleted_at IS NULL"),
         ),
         ForeignKeyConstraint(
             ["notebook_id", "user_id"],
@@ -608,6 +611,9 @@ class Tombstone(Base):
     deleted_revision: Mapped[int | None] = mapped_column(BigInteger)
     content_hash: Mapped[str] = mapped_column(String(64))
     content: Mapped[dict[str, object]] = mapped_column(JSON)
+    structure_metadata: Mapped[dict[str, object]] = mapped_column(
+        JSON, default=dict, server_default="{}"
+    )
     deleted_by_device_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("devices.id", ondelete="SET NULL"), index=True
     )

@@ -342,17 +342,23 @@ class InMemoryNotebookRepository implements NotebookRepository {
   @override
   Future<Notebook> applySyncedPageAddition(
     Notebook notebook,
-    NotePage page,
-  ) async {
+    NotePage page, {
+    int? position,
+  }) async {
     final preparedPage = preparePageForNormalSave(page);
     final current = _notebooks.firstWhere(
       (item) => item.id == notebook.id,
       orElse: () => notebook,
     );
     if (current.pageIds.contains(preparedPage.id)) return current;
+    final insertionIndex = (position ?? current.pageIds.length)
+        .clamp(0, current.pageIds.length)
+        .toInt();
+    final updatedPageIds = current.pageIds.toList()
+      ..insert(insertionIndex, preparedPage.id);
     final updated = current.copyWith(
       updatedAt: DateTime.now(),
-      pageIds: [...current.pageIds, preparedPage.id],
+      pageIds: updatedPageIds,
     );
     _pages[_pageKey(current, preparedPage.id)] = preparedPage;
     _replaceNotebook(updated);

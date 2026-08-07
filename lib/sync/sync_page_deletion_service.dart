@@ -40,8 +40,16 @@ class SyncPageDeletionService {
               change.operation == CloudSyncChangeOperation.upsert,
         )
         .toList();
+    final pageUpserts = changes
+        .where(
+          (change) =>
+              change.resourceType == CloudSyncChangeResourceType.page &&
+              change.operation == CloudSyncChangeOperation.upsert,
+        )
+        .toList();
     if (deletes.isEmpty ||
-        deletes.length + tombstoneChanges.length != changes.length ||
+        deletes.length + tombstoneChanges.length + pageUpserts.length !=
+            changes.length ||
         deletes.any(
           (change) =>
               change.resourceType != CloudSyncChangeResourceType.page ||
@@ -102,6 +110,14 @@ class SyncPageDeletionService {
       }
 
       final pageIndex = location.notebook.pageIds.indexOf(location.pageId);
+      final structurePosition = tombstone.structureMetadata['position'];
+      final structureNotebookId = tombstone.structureMetadata['notebookId'];
+      if (structurePosition is! int ||
+          structurePosition < 0 ||
+          structureNotebookId != location.notebook.id ||
+          (pageIndex != -1 && structurePosition != pageIndex)) {
+        return null;
+      }
       final source = File(
         '${rootDirectory.path}/notebooks/${location.notebook.id}/pages/'
         '${location.pageId}.json',
@@ -121,9 +137,7 @@ class SyncPageDeletionService {
           change.deviceId == deviceId;
       if (!alreadyRecovered &&
           !locallyDeleted &&
-          (pageIndex != location.notebook.pageIds.length - 1 ||
-              location.notebook.pageIds.length <= 1 ||
-              !sourceExists)) {
+          (location.notebook.pageIds.length <= 1 || !sourceExists)) {
         return null;
       }
       if (!_matchesRemainingStructure(
@@ -144,10 +158,18 @@ class SyncPageDeletionService {
           recovery: recovery,
           alreadyRecovered: alreadyRecovered,
           locallyDeleted: locallyDeleted,
+          originalPosition: structurePosition,
         ),
       );
     }
     if (plans.length != tombstones.length) return null;
+    if (!_matchesStructuralUpserts(
+      changes: pageUpserts,
+      bootstrap: bootstrap,
+      mappings: mappings,
+    )) {
+      return null;
+    }
 
     final moved = <_PageDeletionPlan>[];
     try {
@@ -163,7 +185,7 @@ class SyncPageDeletionService {
             'formatVersion': 1,
             'notebookId': plan.notebook.id,
             'pageId': plan.pageId,
-            'position': plan.notebook.pageIds.indexOf(plan.pageId),
+            'position': plan.originalPosition,
           }),
           flush: true,
         );
@@ -287,6 +309,41 @@ class SyncPageDeletionService {
     return true;
   }
 
+  bool _matchesStructuralUpserts({
+    required List<CloudSyncChange> changes,
+    required CloudSyncBootstrap bootstrap,
+    required List<SyncResourceMapping> mappings,
+  }) {
+    final changesById = {
+      for (final change in changes) change.resourceId: change,
+    };
+    if (changesById.length != changes.length) return false;
+    for (final page in bootstrap.pages) {
+      SyncResourceMapping? mapping;
+      for (final candidate in mappings) {
+        if (candidate.resourceType == SyncResourceType.page &&
+            candidate.remoteResourceId == page.id) {
+          mapping = candidate;
+          break;
+        }
+      }
+      if (mapping == null) continue;
+      final change = changesById.remove(page.id);
+      if (page.revision == mapping.revision) {
+        if (change != null) return false;
+        continue;
+      }
+      if (change == null ||
+          change.revision != mapping.revision + 1 ||
+          change.contentHash != mapping.contentHash ||
+          page.revision != change.revision ||
+          page.contentHash != change.contentHash) {
+        return false;
+      }
+    }
+    return changesById.isEmpty;
+  }
+
   Future<void> _replaceJson(File file, Object value) async {
     final temporary = File('${file.path}.sync-page-delete.tmp');
     await temporary.writeAsString(
@@ -318,6 +375,7 @@ class _PageDeletionPlan {
     required this.recovery,
     required this.alreadyRecovered,
     required this.locallyDeleted,
+    required this.originalPosition,
   });
 
   final Notebook notebook;
@@ -327,4 +385,5 @@ class _PageDeletionPlan {
   final Directory recovery;
   final bool alreadyRecovered;
   final bool locallyDeleted;
+  final int originalPosition;
 }

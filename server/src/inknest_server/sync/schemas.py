@@ -373,6 +373,7 @@ class SyncTombstoneResponse(SyncApiModel):
     deleted_revision: int | None
     content_hash: str
     content: dict[str, object]
+    structure_metadata: dict[str, object]
     deleted_by_device_id: UUID | None
     deleted_at: datetime
     state: Literal["active", "restored"]

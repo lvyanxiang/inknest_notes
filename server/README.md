@@ -417,6 +417,12 @@ The transaction moves active contained notebooks to `folderId: null`, emits
 their new snapshots, and then emits the folder delete. It does not delete
 notebook content or create a Tombstone/Recently Deleted item.
 
+Deleting a page may target any position as long as the client retains another
+page. The same transaction soft-deletes the selected page, compacts later
+active positions, and emits their structural Revision updates. The page
+Tombstone carries `structureMetadata` with `notebookId` and the original
+`position`; restore shifts later pages and reinserts the page at that position.
+
 The whole batch uses one PostgreSQL transaction. A stale page or notebook with
 different content leaves the original unchanged and returns an operation result
 with `outcome: conflict` plus both recoverable snapshots and a stable conflict
@@ -614,6 +620,8 @@ The migration history currently contains:
   onto the same local file.
 - `20260807_0013`: server-owned Revision and Content Hash fields on folders so
   incremental creation and rename can be ordered and conflict-checked.
+- `20260807_0014`: page Tombstone structure metadata plus an active-page-only
+  position index, enabling middle-page compaction and original-position restore.
 
 Future schema work must add a new revision instead of rewriting an applied
 revision.

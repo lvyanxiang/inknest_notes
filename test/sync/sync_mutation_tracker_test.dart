@@ -488,45 +488,46 @@ void main() {
     expect(operation.toJson(), isNot(contains('content')));
   });
 
-  test(
-    'deleting a middle page stays local until page order can sync',
-    () async {
-      final root = await Directory.systemTemp.createTemp(
-        'inknest-middle-delete-',
-      );
-      addTearDown(() => root.delete(recursive: true));
-      final setupRepository = FileNotebookRepository(rootDirectory: root);
-      var notebook = await setupRepository.createNotebook(title: 'Three pages');
-      notebook = await setupRepository.addPage(notebook);
-      notebook = await setupRepository.addPage(notebook);
-      final middlePageId = notebook.pageIds[1];
-      await FileSyncResourceMapStore(
-        rootDirectory: root,
-        userId: 'user-1',
-        deviceId: 'device-1',
-      ).replaceAll([
-        SyncResourceMapping(
-          localKey: pageSyncLocalKey(notebook.id, middlePageId),
-          resourceType: SyncResourceType.page,
-          remoteResourceId: 'remote-page-2',
-          revision: 4,
-          contentHash: 'a' * 64,
-        ),
-      ]);
-      final tracker = SyncMutationTracker(
-        rootDirectory: root,
-        activeSession: _session,
-      );
-      final repository = FileNotebookRepository(
-        rootDirectory: root,
-        onPageDeleted: tracker.pageDeleted,
-      );
+  test('deleting a mapped middle page queues its remote delete', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'inknest-middle-delete-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final setupRepository = FileNotebookRepository(rootDirectory: root);
+    var notebook = await setupRepository.createNotebook(title: 'Three pages');
+    notebook = await setupRepository.addPage(notebook);
+    notebook = await setupRepository.addPage(notebook);
+    final middlePageId = notebook.pageIds[1];
+    await FileSyncResourceMapStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    ).replaceAll([
+      SyncResourceMapping(
+        localKey: pageSyncLocalKey(notebook.id, middlePageId),
+        resourceType: SyncResourceType.page,
+        remoteResourceId: 'remote-page-2',
+        revision: 4,
+        contentHash: 'a' * 64,
+      ),
+    ]);
+    final tracker = SyncMutationTracker(
+      rootDirectory: root,
+      activeSession: _session,
+    );
+    final repository = FileNotebookRepository(
+      rootDirectory: root,
+      onPageDeleted: tracker.pageDeleted,
+    );
 
-      await repository.deletePage(notebook, middlePageId);
+    await repository.deletePage(notebook, middlePageId);
 
-      expect((await _state(root)).pendingOperations, isEmpty);
-    },
-  );
+    final operation = (await _state(root)).pendingOperations.single;
+    expect(operation.operation, SyncOperationKind.delete);
+    expect(operation.resourceType, SyncResourceType.page);
+    expect(operation.resourceId, 'remote-page-2');
+    expect(operation.baseRevision, 4);
+  });
 }
 
 Future<SyncStateSnapshot> _state(Directory root) => FileSyncStateStore(

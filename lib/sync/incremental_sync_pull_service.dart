@@ -14,6 +14,7 @@ import 'package:inknest_notes/sync/sync_restore_snapshot.dart';
 import 'package:inknest_notes/sync/sync_mutation_tracker.dart';
 import 'package:inknest_notes/sync/sync_notebook_deletion_service.dart';
 import 'package:inknest_notes/sync/sync_page_deletion_service.dart';
+import 'package:inknest_notes/sync/sync_page_structure_service.dart';
 import 'package:inknest_notes/sync/sync_tombstones.dart';
 
 enum IncrementalSyncPullStatus {
@@ -328,6 +329,48 @@ class IncrementalSyncPullService {
         pendingConflicts: pendingConflicts,
         activeTombstones: activeTombstones,
       );
+    }
+    if (tombstoneChanges.isNotEmpty &&
+        changes.every(
+          (change) =>
+              change.resourceType == CloudSyncChangeResourceType.page &&
+              change.operation == CloudSyncChangeOperation.upsert,
+        )) {
+      Future<SyncPageStructureResult?> applyRestoration() =>
+          SyncPageStructureService(
+            repository: repository,
+          ).applyRestorationIfSafe(
+            changes: changes,
+            bootstrap: bootstrap,
+            mappings: mappings,
+            resourceMap: resourceMap,
+            changedTombstones: parsedTombstones.values,
+          );
+      final restored = mutationTracker == null
+          ? await applyRestoration()
+          : await mutationTracker!.runWithoutTracking(applyRestoration);
+      if (restored != null) {
+        await resourceMap.replaceAll(
+          await buildSyncResourceMappings(
+            repository: repository,
+            bootstrap: bootstrap,
+          ),
+          cloudAssetKeys: buildCloudAssetKeys(bootstrap),
+        );
+        if (conflictChanges.isNotEmpty) {
+          pendingConflicts = await conflictStore.applyChanges(conflictChanges);
+        }
+        activeTombstones = await tombstoneStore.applyChanges(tombstoneChanges);
+        await stateStore.markChangesPageApplied(cursor);
+        return IncrementalSyncPullResult(
+          status: IncrementalSyncPullStatus.applied,
+          changeCount: allChanges.length,
+          appliedSharedResourceCount: restored.restoredPageCount,
+          receivedConflictCount: receivedConflictCount,
+          pendingConflicts: pendingConflicts,
+          activeTombstones: activeTombstones,
+        );
+      }
     }
     final local = await readLocalSyncLibraryInventory(repository);
     final assessment = SyncBootstrapAssessment(

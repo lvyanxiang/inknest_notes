@@ -271,8 +271,10 @@ continue-local state without overwriting either side.
   shelf after preserving a local recovery copy and announce that result. A local
   mapped whole-notebook delete now uploads immediately, confirms cross-device
   removal when online, and reports durable automatic retry when offline.
-  Safe trailing-page deletion now queues and applies across devices, with a
-  calm startup confirmation and a preserved recovery copy. Pending conflicts
+  Any page except the notebook's final remaining page now queues and applies
+  deletion across devices, with a calm startup confirmation and a preserved
+  recovery position. Restoring it from Recently Deleted returns it to the
+  original page number. Pending conflicts
   now survive restart and appear through a badged library-header entry. The
   detail flow shows original/copy identity and source metadata, emphasizes
   `两个都保留`, confirms replacement choices, disables duplicate submission,
@@ -281,8 +283,8 @@ continue-local state without overwriting either side.
   trailing-page Tombstones now survive restart and appear through a badged
   Recently Deleted sheet with type, deletion time, source device, and Restore.
   Restore disables duplicate submission and removes the row only after the
-  resource reappears locally; errors retain the row for retry. Middle-page
-  deletion remains local until page-order sync exists; standalone canvas
+  resource reappears locally; errors retain the row for retry. Explicit page
+  reordering remains local until its sync contract exists; standalone canvas
   deletion has no App entry point. The library header now also shows syncing,
   completed, needs-attention, failed, and edit-preserved states. Its sheet
   reports durable failed-operation counts and provides Retry; retry reuses the

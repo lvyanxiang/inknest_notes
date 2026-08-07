@@ -498,8 +498,9 @@ class FileNotebookRepository implements NotebookRepository {
   @override
   Future<Notebook> applySyncedPageAddition(
     Notebook notebook,
-    NotePage page,
-  ) async {
+    NotePage page, {
+    int? position,
+  }) async {
     final preparedPage = preparePageForNormalSave(page);
     return _runStorageWrite(() async {
       final notebooks = await _readIndex();
@@ -531,9 +532,14 @@ class FileNotebookRepository implements NotebookRepository {
       } else {
         await _writeJsonFile(pageFile, preparedPage.toJson());
       }
+      final insertionIndex = (position ?? current.pageIds.length)
+          .clamp(0, current.pageIds.length)
+          .toInt();
+      final updatedPageIds = current.pageIds.toList()
+        ..insert(insertionIndex, preparedPage.id);
       final updated = current.copyWith(
         updatedAt: DateTime.now(),
-        pageIds: [...current.pageIds, preparedPage.id],
+        pageIds: updatedPageIds,
       );
       try {
         await _writeIndex([

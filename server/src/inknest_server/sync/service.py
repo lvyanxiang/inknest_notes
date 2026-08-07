@@ -49,7 +49,7 @@ from inknest_server.sync.schemas import (
     SyncMergePageMetadata,
     SyncTombstoneResponse,
 )
-from inknest_server.sync.tombstones import TombstoneService
+from inknest_server.sync.tombstones import LastPageDeletionError, TombstoneService
 
 
 class SyncDeviceMismatchError(Exception):
@@ -70,6 +70,7 @@ class SyncOperationFailedError(Exception):
             | NotebookMetadataConflictError
             | ResourceDeletedError
             | LibraryResourceNotFoundError
+            | LastPageDeletionError
         ),
     ) -> None:
         self.operation = operation
@@ -408,7 +409,7 @@ class SyncService:
                     resource_id=operation.resource_id,
                     base_revision=operation.base_revision,
                 )
-            except LibraryResourceNotFoundError as error:
+            except (LibraryResourceNotFoundError, LastPageDeletionError) as error:
                 raise SyncOperationFailedError(operation, error) from error
             return SyncCommitOperationResult(
                 operation_id=operation.operation_id,
