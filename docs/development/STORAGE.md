@@ -110,3 +110,17 @@ and does not guess a cloud ID. Successful `/sync/commit` results update the
 mapped Revision and hash before the frozen in-flight batch is cleared.
 Notebook and canvas content that references a page or attachment is queued only
 when that reference resolves through this verified map.
+
+## `sync/<user-id>/<device-id>/deleted/<tombstone-id>/`
+
+When an initialized device safely applies a remote whole-notebook deletion, it
+moves the complete local notebook directory into this recovery area before
+removing the notebook from `notebooks/index.json`. `local-notebook.json` keeps
+the former shelf metadata, `tombstone.json` keeps the validated server
+Tombstone, and `notebook/` contains the untouched local files and assets.
+
+The move and index replacement roll back together on ordinary failures. If the
+process stops after the move but before Cursor persistence, retry recognizes the
+same recovery directory and completes idempotently. Page and infinite-canvas
+deletions are not stored here until the local repository can represent them
+without leaving an invalid notebook.

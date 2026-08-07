@@ -254,7 +254,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                pullResult.appliedSharedResourceCount > 0
+                pullResult.deletedNotebookCount > 0
+                    ? '已同步 ${pullResult.changeCount} 项云端更改，从书架移除 '
+                          '${pullResult.deletedNotebookCount} 本已在其他设备删除的笔记；'
+                          '本地恢复副本已保留。'
+                    : pullResult.appliedSharedResourceCount > 0
                     ? '已上传 ${pushResult.uploadedOperationCount} 项本地更改，'
                           '同步 ${pullResult.changeCount} 项云端更改，更新 '
                           '${pullResult.appliedSharedResourceCount} 项已有内容。'

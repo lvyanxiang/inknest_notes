@@ -68,6 +68,39 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     controller.dispose();
   });
+
+  testWidgets('remote notebook deletion reports preserved recovery copy', (
+    tester,
+  ) async {
+    final controller = AuthController(
+      service: _RestoredAuthService(),
+      deviceName: 'Test iPad',
+      platform: 'ios',
+    );
+    await controller.initialize();
+    final sync = _StartupSyncService(
+      uploadedOperationCount: 0,
+      pullResult: const IncrementalSyncPullResult(
+        status: IncrementalSyncPullStatus.applied,
+        changeCount: 2,
+        deletedNotebookCount: 1,
+      ),
+    );
+
+    await tester.pumpWidget(
+      InkNestApp(
+        notebookRepository: InMemoryNotebookRepository(),
+        authController: controller,
+        firstSignInSyncService: sync,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('本地恢复副本已保留'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    controller.dispose();
+  });
 }
 
 class _StartupSyncService implements FirstSignInSyncService {

@@ -220,8 +220,8 @@ documents/
 
 ## Current Focus
 
-Milestone 8 is active. Continue Phase 5 incremental sync with deletes and
-Tombstones, then connect conflict persistence/presentation. The working content
-path now covers upload and continuous-Revision download for pages, safe notebook
-content, and safe infinite-canvas content; structural fields still need an
+Milestone 8 is active. Continue Phase 5 incremental sync with local delete
+upload and page/canvas Tombstones, then connect conflict persistence/presentation.
+The working path now covers content upload, continuous-Revision content download,
+and recoverable remote whole-notebook deletion; structural fields still need an
 explicit server contract.

@@ -198,10 +198,13 @@ The first slice sets no retention period and performs no physical cleanup.
   through the existing staged bootstrap path, including verified PDF, image,
   and audio assets. All referenced roots must be represented by the downloaded
   change range so a concurrent later bootstrap snapshot is not applied early.
-- Existing-resource updates, deletes, conflicts, Tombstones, and any local
-  pending queue stop before mutation and leave the original Cursor unchanged.
-  They require the next Revision-aware push/reconciliation slice; the App does
-  not use unconditional last-writer-wins replacement.
+- Existing-resource updates require a complete continuous Revision chain and
+  matching local structure. A remote whole-notebook delete is applied only with
+  its matching active Tombstone and unchanged mapped baseline, after the entire
+  local notebook has been preserved in the sync recovery area. Unsupported
+  page/canvas deletes, conflicts, and unsafe batches stop before mutation and
+  leave the original Cursor unchanged; the App never uses unconditional
+  last-writer-wins replacement.
 - On session restore, an initialized device attempts this pull before showing
   first-sign-in Merge again. Successful additive downloads refresh the library;
   offline or blocked reconciliation leaves local notes available.

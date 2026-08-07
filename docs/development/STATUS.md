@@ -4,13 +4,16 @@
 
 - Milestone: Backend Phase 5 incremental-sync App integration is in progress;
   initialized sessions now push saved page, notebook-content, and infinite-
-  canvas edits before applying safe `/sync/changes` content updates.
-- Next task: Connect delete and Tombstone change handling, followed by conflict
-  persistence/presentation. Structural fields still require a future API contract.
-- Last completed: Existing notebook, page, and infinite-canvas content from
-  another device now applies only across a continuous Revision chain, matching
-  local structure, and verified page/asset references. Multi-resource writes
-  roll back on failure; resource mappings and Cursor advance only afterward.
+  canvas edits before applying safe `/sync/changes` content and whole-notebook
+  deletion updates.
+- Next task: Queue local whole-notebook deletes through `/sync/commit`, then
+  connect page/canvas deletion and conflict persistence/presentation. Structural
+  fields still require a future API contract.
+- Last completed: A continuous remote notebook delete plus active Tombstone now
+  removes the notebook from the shelf only after moving its complete local
+  directory into an account/device recovery area. Retried application is
+  idempotent, while unsupported page/canvas deletes leave Cursor unchanged for
+  reconciliation.
 
 ## Decisions
 
@@ -139,9 +142,12 @@
   only when every page/asset reference can be rewritten to verified cloud state.
 - Apply shared pull content from the final typed bootstrap snapshot, but require
   every `/sync/changes` Revision between the mapped local baseline and that
-  snapshot. Reject gaps, structural divergence, unknown attachments, deletes,
-  conflicts, and Tombstones without advancing Cursor. Suppress mutation tracking
-  during remote application so downloaded content is not re-enqueued as upload.
+  snapshot. Reject gaps, structural divergence, unknown attachments, conflicts,
+  and unsupported page/canvas Tombstones without advancing Cursor. A whole-
+  notebook delete is applied only with its matching active Tombstone and an
+  unchanged mapped baseline, after preserving the local directory for recovery.
+  Suppress mutation tracking during remote application so downloaded content is
+  not re-enqueued as upload.
 - Use email/password for the first account flow without mandatory email
   verification during initial development. Use short-lived JWT access tokens
   and rotating opaque refresh tokens; store only refresh-token hashes and bind

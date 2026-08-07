@@ -9,6 +9,7 @@ import 'package:inknest_notes/sync/sync_changes.dart';
 import 'package:inknest_notes/sync/sync_cloud_client.dart';
 import 'package:inknest_notes/sync/sync_resource_map_store.dart';
 import 'package:inknest_notes/sync/sync_mutation_tracker.dart';
+import 'package:inknest_notes/sync/sync_notebook_deletion_service.dart';
 
 enum IncrementalSyncPullStatus {
   notInitialized,
@@ -24,6 +25,7 @@ class IncrementalSyncPullResult {
     this.downloadedNotebookCount = 0,
     this.downloadedAssetCount = 0,
     this.appliedSharedResourceCount = 0,
+    this.deletedNotebookCount = 0,
   });
 
   final IncrementalSyncPullStatus status;
@@ -31,9 +33,12 @@ class IncrementalSyncPullResult {
   final int downloadedNotebookCount;
   final int downloadedAssetCount;
   final int appliedSharedResourceCount;
+  final int deletedNotebookCount;
 
   bool get changedLocalLibrary =>
-      downloadedNotebookCount > 0 || appliedSharedResourceCount > 0;
+      downloadedNotebookCount > 0 ||
+      appliedSharedResourceCount > 0 ||
+      deletedNotebookCount > 0;
 }
 
 /// Pulls all currently available change pages without advancing the local
@@ -111,6 +116,42 @@ class IncrementalSyncPullService {
     }
 
     final bootstrap = await cloudClient.bootstrap();
+    final hasDeletionChanges = changes.any(
+      (change) =>
+          change.operation == CloudSyncChangeOperation.delete ||
+          change.resourceType == CloudSyncChangeResourceType.tombstone,
+    );
+    if (hasDeletionChanges) {
+      final deletionResult =
+          await SyncNotebookDeletionService(
+            rootDirectory: rootDirectory,
+          ).applyIfSafe(
+            changes: changes,
+            bootstrap: bootstrap,
+            mappings: mappings,
+            userId: userId,
+            deviceId: deviceId,
+          );
+      if (deletionResult == null) {
+        return IncrementalSyncPullResult(
+          status: IncrementalSyncPullStatus.requiresReconciliation,
+          changeCount: changes.length,
+        );
+      }
+      await resourceMap.replaceAll(
+        await buildSyncResourceMappings(
+          repository: repository,
+          bootstrap: bootstrap,
+        ),
+        cloudAssetKeys: buildCloudAssetKeys(bootstrap),
+      );
+      await stateStore.markChangesPageApplied(cursor);
+      return IncrementalSyncPullResult(
+        status: IncrementalSyncPullStatus.applied,
+        changeCount: changes.length,
+        deletedNotebookCount: deletionResult.deletedNotebookCount,
+      );
+    }
     final local = await readLocalSyncLibraryInventory(repository);
     final assessment = SyncBootstrapAssessment(
       local: local,
