@@ -128,6 +128,7 @@ void main() {
       'title': 'Mapped notes',
       'isArchived': false,
       'folderId': null,
+      'pageOrder': ['remote-page-1'],
     });
     expect(
       await restartedStore.hasCloudAsset(notebook.id, 'assets/image.png'),

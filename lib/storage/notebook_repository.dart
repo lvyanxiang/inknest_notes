@@ -128,6 +128,11 @@ abstract class NotebookRepository {
     int? position,
   });
 
+  Future<Notebook> applySyncedPageOrder(
+    Notebook notebook,
+    List<String> pageIds,
+  );
+
   Future<Notebook> addPage(Notebook notebook);
 
   Future<Notebook> insertPage(Notebook notebook, int index);

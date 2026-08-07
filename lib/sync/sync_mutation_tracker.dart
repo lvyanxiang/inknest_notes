@@ -168,24 +168,45 @@ class SyncMutationTracker {
   Future<void> _trackNotebookMetadata(Notebook notebook) async {
     final session = activeSession();
     if (session == null) return;
-    final mapping = await _resourceMap(
-      session,
-    ).find(notebookSyncLocalKey(notebook.id));
+    final resourceMap = _resourceMap(session);
+    final resources = await resourceMap.load();
+    final mapping = _findMapping(resources, notebookSyncLocalKey(notebook.id));
     final baseMetadata = mapping?.notebookMetadata;
     if (mapping == null ||
         mapping.resourceType != SyncResourceType.notebook ||
         baseMetadata == null) {
       return;
     }
+    final metadata = <String, Object?>{
+      'title': notebook.title,
+      'isArchived': notebook.isArchived,
+      'folderId': notebook.folderId,
+    };
+    final basePageOrder = baseMetadata['pageOrder'];
+    if (basePageOrder != null) {
+      if (basePageOrder is! List<Object?> ||
+          basePageOrder.any((pageId) => pageId is! String)) {
+        return;
+      }
+      final remotePageOrder = <String>[];
+      for (final pageId in notebook.pageIds) {
+        final pageMapping = _findMapping(
+          resources,
+          pageSyncLocalKey(notebook.id, pageId),
+        );
+        if (pageMapping == null ||
+            pageMapping.resourceType != SyncResourceType.page) {
+          return;
+        }
+        remotePageOrder.add(pageMapping.remoteResourceId);
+      }
+      metadata['pageOrder'] = remotePageOrder;
+    }
     await _stateStore(session).enqueueNotebookMetadata(
       resourceId: mapping.remoteResourceId,
       baseRevision: mapping.revision,
       baseMetadata: baseMetadata,
-      metadata: {
-        'title': notebook.title,
-        'isArchived': notebook.isArchived,
-        'folderId': notebook.folderId,
-      },
+      metadata: metadata,
     );
   }
 

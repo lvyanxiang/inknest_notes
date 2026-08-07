@@ -7,14 +7,13 @@
   canvas edits, explicit notebook title/archive/existing-folder metadata,
   incremental folder creation/rename/deletion,
   mapped whole-notebook deletes, and deletion of any page when another remains
-  before applying safe `/sync/changes` updates.
-- Next task: Connect explicit page reordering across devices, then define the
-  canvas-background contract. Standalone canvas deletion remains blocked on
-  its structural contract.
-- Last completed: Any mapped page may now be deleted while at least one page
-  remains. The server atomically compacts later positions, Tombstones retain
-  the original page position, and restore reinserts the page there across
-  devices through the normal change pull.
+  plus explicit page reordering before applying safe `/sync/changes` updates.
+- Next task: Define and connect the infinite-canvas background contract.
+  Standalone canvas deletion remains blocked on its structural contract.
+- Last completed: Existing Pages-panel move-left/move-right actions now queue
+  the complete mapped page order. The server atomically repositions affected
+  pages and rejects stale concurrent order baselines; other devices apply only
+  a continuous Revision chain matching the final bootstrap.
 
 ## Decisions
 
@@ -152,8 +151,9 @@
   Notebook title, archive state, and an already-synchronized folder ID travel
   in `metadata/baseMetadata`, never inside content. Folder create/rename/delete
   uses its own revisioned operation; deleting a folder moves its notebooks to
-  the root and never creates a Tombstone. Page order and canvas background
-  remain unsupported and must not be claimed as synchronized.
+  the root and never creates a Tombstone. A paged notebook's complete mapped
+  `pageOrder` and its applied baseline travel in the same metadata contract;
+  canvas background remains unsupported and must not be claimed as synchronized.
   Queue notebook/canvas content only when every page/asset
   reference can be rewritten to verified cloud state.
 - Allow deletion of any mapped page while at least one page remains. The server
@@ -788,6 +788,11 @@
   tests. Alembic upgrades the development database and an independent empty
   database to `20260807_0014` with no schema drift. Focused tests cover delete
   queuing, position compaction, recovery metadata, and original-position restore.
+- `flutter test` passes with 261 tests after explicit page-order synchronization;
+  the backend passes 55 unit/API tests and 15 PostgreSQL/MinIO integration
+  tests. Focused coverage proves durable full-order queuing, atomic server
+  repositioning, stale-order rejection, cross-device application, and Cursor
+  gating. Ruff, mypy, Flutter analysis, and diff checks pass.
 
 ## Notes
 

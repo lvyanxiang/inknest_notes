@@ -445,7 +445,10 @@ checksums.sha256
       - [x] 任意页删除与恢复：Tombstone 保存原笔记本和位置；服务端删除后原子压紧后续
         页面并发出连续 Revision，恢复时按原位置插回；Flutter 复用现有 Pages 删除和
         最近删除入口跨设备应用，不新增控件。
-      - [ ] 显式页面重排与画布背景。
+      - [x] 显式页面重排：Flutter 在 notebook metadata/baseMetadata 中提交完整远端
+        `pageOrder` 及已应用基线；服务端锁定活动页、拒绝过期页序并原子更新受影响页面
+        Revision，其他设备校验连续变更和最终 bootstrap 后复用现有页序。
+      - [ ] 画布背景。
   - [x] 应用已有笔记本、页面和无限画布的共享正文更新：要求 Revision 连续、结构一致、
     页面/附件引用可解析，多资源失败时回滚，完整成功后才刷新资源映射和 Cursor。
   - [x] 应用远端整本笔记的 delete + active Tombstone：校验连续 Revision、映射 Hash
@@ -456,8 +459,9 @@ checksums.sha256
     bootstrap 连续匹配，远端应用前保存页面 JSON、原位置和 Tombstone 恢复文件。
   - [x] 为中间页删除实现服务端位置压缩和原位置恢复；活动页面位置使用部分唯一索引，
     结构变更生成连续页面 Revision，Flutter 校验最终 bootstrap 后才推进 Cursor。
-  - [ ] 为显式页面重排和独立画布删除定义结构合同；当前不可安全表示的操作继续保留
-    旧 Cursor，不猜测性丢弃内容。
+  - [x] 为显式页面重排定义完整页序合同并接入现有 Pages 操作。
+  - [ ] 为画布背景和独立画布删除定义结构合同；当前不可安全表示的操作继续保留旧
+    Cursor，不猜测性丢弃内容。
   - [x] 严格解析并持久化纯冲突变更页：按账号/设备保存待处理项，成功落盘后推进
     Cursor，并通过资料库页头角标和只读列表展示；不弹窗打断书写、不自动覆盖任一版本。
   - [x] 接入 `POST /sync/conflicts/{conflictId}/resolve` 的保留原版本、使用冲突版本和

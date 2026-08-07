@@ -247,6 +247,17 @@ class SyncNotebookMetadata(SyncApiModel):
     title: str = Field(min_length=1, max_length=300)
     is_archived: bool
     folder_id: str | None = Field(default=None, min_length=1, max_length=128)
+    page_order: list[str] | None = Field(default=None, min_length=1, max_length=10000)
+
+    @model_validator(mode="after")
+    def validate_page_order(self) -> SyncNotebookMetadata:
+        if self.page_order is None:
+            return self
+        if any(not page_id or len(page_id) > 128 for page_id in self.page_order):
+            raise ValueError("pageOrder entries must be valid resource IDs")
+        if len(self.page_order) != len(set(self.page_order)):
+            raise ValueError("pageOrder entries must be unique")
+        return self
 
 
 class SyncFolderMetadata(SyncApiModel):
@@ -303,6 +314,12 @@ class SyncCommitOperation(SyncApiModel):
                 or not isinstance(self.base_metadata, SyncNotebookMetadata)
             ):
                 raise ValueError("notebook metadata requires notebook baseMetadata")
+            if (self.metadata.page_order is None) != (
+                self.base_metadata.page_order is None
+            ):
+                raise ValueError(
+                    "notebook pageOrder requires a matching baseMetadata pageOrder"
+                )
         elif self.base_metadata is not None:
             raise ValueError("baseMetadata requires metadata")
         return self

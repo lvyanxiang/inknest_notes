@@ -283,8 +283,11 @@ continue-local state without overwriting either side.
   trailing-page Tombstones now survive restart and appear through a badged
   Recently Deleted sheet with type, deletion time, source device, and Restore.
   Restore disables duplicate submission and removes the row only after the
-  resource reappears locally; errors retain the row for retry. Explicit page
-  reordering remains local until its sync contract exists; standalone canvas
+  resource reappears locally; errors retain the row for retry. Existing
+  move-left/move-right actions in Pages now also synchronize their resulting
+  full page order without adding controls or blocking editing. A remote order
+  appears through the normal refreshed Pages panel; a concurrent stale order
+  uses the existing non-blocking sync failure/retry state. Standalone canvas
   deletion has no App entry point. The library header now also shows syncing,
   completed, needs-attention, failed, and edit-preserved states. Its sheet
   reports durable failed-operation counts and provides Retry; retry reuses the

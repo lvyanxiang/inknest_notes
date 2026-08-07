@@ -829,6 +829,29 @@ class FileNotebookRepository implements NotebookRepository {
     );
 
     await _replaceNotebook(updatedNotebook);
+    try {
+      await onNotebookMetadataPersisted?.call(updatedNotebook);
+    } on Object {
+      // Local page order remains saved if cloud queueing fails.
+    }
+    return updatedNotebook;
+  }
+
+  @override
+  Future<Notebook> applySyncedPageOrder(
+    Notebook notebook,
+    List<String> pageIds,
+  ) async {
+    if (pageIds.length != notebook.pageIds.length ||
+        pageIds.toSet().length != pageIds.length ||
+        !pageIds.toSet().containsAll(notebook.pageIds)) {
+      throw ArgumentError('Synchronized page order must be a permutation.');
+    }
+    final updatedNotebook = notebook.copyWith(
+      updatedAt: DateTime.now(),
+      pageIds: pageIds,
+    );
+    await _replaceNotebook(updatedNotebook);
     return updatedNotebook;
   }
 

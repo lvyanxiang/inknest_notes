@@ -272,6 +272,142 @@ void main() {
     expect((await stateStore.loadSnapshot()).lastAppliedCursor, 'cursor-2');
   });
 
+  test(
+    'applies an atomic remote page reorder before advancing cursor',
+    () async {
+      final root = await Directory.systemTemp.createTemp('inknest-pull-order-');
+      addTearDown(() => root.delete(recursive: true));
+      final repository = FileNotebookRepository(rootDirectory: root);
+      var local = await repository.createNotebook(title: 'Ordered');
+      local = await repository.addPage(local);
+      final firstPageId = local.pageIds[0];
+      final secondPageId = local.pageIds[1];
+      final stateStore = FileSyncStateStore(
+        rootDirectory: root,
+        userId: 'user-1',
+        deviceId: 'device-1',
+      );
+      await stateStore.markChangesPageApplied('cursor-1');
+      await FileSyncResourceMapStore(
+        rootDirectory: root,
+        userId: 'user-1',
+        deviceId: 'device-1',
+      ).replaceAll([
+        SyncResourceMapping(
+          localKey: notebookSyncLocalKey(local.id),
+          resourceType: SyncResourceType.notebook,
+          remoteResourceId: local.id,
+          revision: 1,
+          contentHash: 'a' * 64,
+          notebookMetadata: {
+            'title': 'Ordered',
+            'isArchived': false,
+            'folderId': null,
+            'pageOrder': [firstPageId, secondPageId],
+          },
+        ),
+        SyncResourceMapping(
+          localKey: pageSyncLocalKey(local.id, firstPageId),
+          resourceType: SyncResourceType.page,
+          remoteResourceId: firstPageId,
+          revision: 1,
+          contentHash: 'b' * 64,
+        ),
+        SyncResourceMapping(
+          localKey: pageSyncLocalKey(local.id, secondPageId),
+          resourceType: SyncResourceType.page,
+          remoteResourceId: secondPageId,
+          revision: 1,
+          contentHash: 'c' * 64,
+        ),
+      ]);
+      final now = DateTime.utc(2026, 8, 7);
+      final bootstrap = CloudSyncBootstrap(
+        inventory: SyncLibraryInventory(notebookIds: [local.id]),
+        baseCursor: 'bootstrap-cursor',
+        folders: const [],
+        notebooks: [
+          CloudSyncNotebook(
+            id: local.id,
+            folderId: null,
+            title: 'Ordered',
+            layoutMode: 'paged',
+            isArchived: false,
+            revision: 2,
+            contentHash: 'a' * 64,
+            content: const {},
+            conflictOf: null,
+            createdAt: now,
+            updatedAt: now,
+          ),
+        ],
+        pages: [
+          CloudSyncPage(
+            id: secondPageId,
+            notebookId: local.id,
+            position: 0,
+            width: 768,
+            height: 1024,
+            coordinateSpaceVersion: 1,
+            rotationQuarterTurns: 0,
+            template: 'blank',
+            revision: 2,
+            contentHash: 'c' * 64,
+            content: const {'strokes': <Object?>[]},
+            conflictOf: null,
+            createdAt: now,
+            updatedAt: now,
+          ),
+          CloudSyncPage(
+            id: firstPageId,
+            notebookId: local.id,
+            position: 1,
+            width: 768,
+            height: 1024,
+            coordinateSpaceVersion: 1,
+            rotationQuarterTurns: 0,
+            template: 'blank',
+            revision: 2,
+            contentHash: 'b' * 64,
+            content: const {'strokes': <Object?>[]},
+            conflictOf: null,
+            createdAt: now,
+            updatedAt: now,
+          ),
+        ],
+        infiniteCanvases: const [],
+        assets: const [],
+      );
+      final cloud = _PullCloudClient(
+        bootstrapSnapshot: bootstrap,
+        pages: [
+          CloudSyncChangePage(
+            changes: [
+              _change('page', firstPageId, revision: 2, contentHash: 'b' * 64),
+              _change('page', secondPageId, revision: 2, contentHash: 'c' * 64),
+              _change('notebook', local.id, revision: 2, contentHash: 'a' * 64),
+            ],
+            nextCursor: 'cursor-2',
+            hasMore: false,
+          ),
+        ],
+      );
+
+      final result = await IncrementalSyncPullService(
+        repository: repository,
+        cloudClient: cloud,
+        rootDirectory: root,
+      ).pull(userId: 'user-1', deviceId: 'device-1');
+
+      expect(result.status, IncrementalSyncPullStatus.applied);
+      expect((await repository.listNotebooks()).single.pageIds, [
+        secondPageId,
+        firstPageId,
+      ]);
+      expect((await stateStore.loadSnapshot()).lastAppliedCursor, 'cursor-2');
+    },
+  );
+
   test('downloads a new cloud folder without a notebook', () async {
     final root = await Directory.systemTemp.createTemp('inknest-pull-folder-');
     addTearDown(() => root.delete(recursive: true));

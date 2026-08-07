@@ -166,6 +166,71 @@ void main() {
     },
   );
 
+  test('page reorder queues the complete remote page order', () async {
+    final root = await Directory.systemTemp.createTemp('inknest-page-order-');
+    addTearDown(() => root.delete(recursive: true));
+    final setupRepository = FileNotebookRepository(rootDirectory: root);
+    var notebook = await setupRepository.createNotebook(title: 'Ordered');
+    notebook = await setupRepository.addPage(notebook);
+    final firstPageId = notebook.pageIds[0];
+    final secondPageId = notebook.pageIds[1];
+    await FileSyncResourceMapStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    ).replaceAll([
+      SyncResourceMapping(
+        localKey: notebookSyncLocalKey(notebook.id),
+        resourceType: SyncResourceType.notebook,
+        remoteResourceId: notebook.id,
+        revision: 5,
+        contentHash: 'a' * 64,
+        notebookMetadata: const {
+          'title': 'Ordered',
+          'isArchived': false,
+          'folderId': null,
+          'pageOrder': ['remote-page-1', 'remote-page-2'],
+        },
+      ),
+      SyncResourceMapping(
+        localKey: pageSyncLocalKey(notebook.id, firstPageId),
+        resourceType: SyncResourceType.page,
+        remoteResourceId: 'remote-page-1',
+        revision: 2,
+        contentHash: 'b' * 64,
+      ),
+      SyncResourceMapping(
+        localKey: pageSyncLocalKey(notebook.id, secondPageId),
+        resourceType: SyncResourceType.page,
+        remoteResourceId: 'remote-page-2',
+        revision: 3,
+        contentHash: 'c' * 64,
+      ),
+    ]);
+    final tracker = SyncMutationTracker(
+      rootDirectory: root,
+      activeSession: _session,
+    );
+    final repository = FileNotebookRepository(
+      rootDirectory: root,
+      onNotebookMetadataPersisted: tracker.notebookMetadataSaved,
+    );
+
+    await repository.movePage(notebook, secondPageId, 0);
+
+    final operation = (await _state(root)).pendingOperations.single;
+    expect(operation.resourceType, SyncResourceType.notebook);
+    expect(operation.baseRevision, 5);
+    expect(operation.baseMetadata?['pageOrder'], [
+      'remote-page-1',
+      'remote-page-2',
+    ]);
+    expect(operation.metadata?['pageOrder'], [
+      'remote-page-2',
+      'remote-page-1',
+    ]);
+  });
+
   test('folder creation and rename coalesce one metadata upsert', () async {
     final root = await Directory.systemTemp.createTemp('inknest-folder-track-');
     addTearDown(() => root.delete(recursive: true));

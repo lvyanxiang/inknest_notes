@@ -240,8 +240,16 @@ The first slice sets no retention period and performs no physical cleanup.
   metadata operation, and normal change pull. Concurrent renames preserve the
   local frozen operation instead of overwriting either name. Folder deletion
   removes only the organizer and moves every contained notebook to the root on
-  all devices; it is not a recoverable notebook deletion. Page ordering and
-  canvas background remain outside this slice.
+  all devices; it is not a recoverable notebook deletion.
+- Existing page move-left/move-right actions remain immediate local operations.
+  For an initialized mapped notebook, Flutter coalesces the complete remote
+  `pageOrder` with its last applied order in notebook metadata. The server
+  accepts only a permutation of the same active pages, repositions every
+  affected page atomically, and emits a continuous Revision for each one.
+- Concurrent order changes from the same baseline are not merged heuristically.
+  A stale order returns `sync_notebook_metadata_conflict` with `pageOrder`,
+  preserving the local frozen operation for visible retry/reconciliation.
+  Canvas background remains outside this slice.
 
 ## Acceptance Criteria
 

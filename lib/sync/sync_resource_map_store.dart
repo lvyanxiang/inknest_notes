@@ -288,6 +288,12 @@ Future<List<SyncResourceMapping>> buildSyncResourceMappings({
   for (final notebook in notebooks) {
     final cloudNotebook = cloudNotebooks[notebook.id];
     if (cloudNotebook == null) continue;
+    final cloudPages = notebook.layoutMode.name == 'paged'
+        ? (bootstrap.pages
+              .where((page) => page.notebookId == notebook.id)
+              .toList()
+            ..sort((left, right) => left.position.compareTo(right.position)))
+        : const <CloudSyncPage>[];
     mappings.add(
       SyncResourceMapping(
         localKey: notebookSyncLocalKey(notebook.id),
@@ -295,15 +301,13 @@ Future<List<SyncResourceMapping>> buildSyncResourceMappings({
         remoteResourceId: cloudNotebook.id,
         revision: cloudNotebook.revision,
         contentHash: cloudNotebook.contentHash,
-        notebookMetadata: notebookSyncMetadata(cloudNotebook),
+        notebookMetadata: notebookSyncMetadata(
+          cloudNotebook,
+          pageOrder: cloudPages.map((page) => page.id),
+        ),
       ),
     );
     if (notebook.layoutMode.name == 'paged') {
-      final cloudPages =
-          bootstrap.pages
-              .where((page) => page.notebookId == notebook.id)
-              .toList()
-            ..sort((left, right) => left.position.compareTo(right.position));
       for (final (position, localPageId) in notebook.pageIds.indexed) {
         if (position >= cloudPages.length ||
             cloudPages[position].position != position) {
@@ -341,10 +345,14 @@ Future<List<SyncResourceMapping>> buildSyncResourceMappings({
   return mappings;
 }
 
-Map<String, Object?> notebookSyncMetadata(CloudSyncNotebook notebook) => {
+Map<String, Object?> notebookSyncMetadata(
+  CloudSyncNotebook notebook, {
+  Iterable<String>? pageOrder,
+}) => {
   'title': notebook.title,
   'isArchived': notebook.isArchived,
   'folderId': notebook.folderId,
+  if (pageOrder != null) 'pageOrder': pageOrder.toList(),
 };
 
 class _SyncResourceMapDocument {

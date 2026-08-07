@@ -152,7 +152,8 @@ Recently Deleted. Failures keep the active record visible for retry.
 The versioned resource map connects local repository keys to account-global
 cloud IDs. Each entry stores its resource type, remote ID, latest server
 Revision, and Content Hash. Notebook entries also store the last applied
-`notebookMetadata` baseline (`title`, `isArchived`, and nullable `folderId`) so
+`notebookMetadata` baseline (`title`, `isArchived`, nullable `folderId`, and
+the complete mapped `pageOrder` for paged notebooks) so
 later local organization changes can use a safe three-way comparison.
 Folder entries store `folderMetadata.name`; legacy cloud folders may begin at
 Revision 0 with an empty hash and are promoted to a hashed Revision on their
@@ -176,6 +177,13 @@ folders coalesce into the same pending notebook operation. Its API form carries
 authoritative field-merged snapshot and then updates both the Revision and
 metadata baseline. A true same-field concurrent change leaves the frozen
 operation and local shelf state intact for later coordination.
+
+Pages-panel move-left/move-right updates the local notebook immediately and
+coalesces the complete mapped remote `pageOrder` into that same notebook
+metadata operation. The oldest applied order remains in `baseMetadata` until
+the frozen batch is accepted and pulled. A remote reorder is applied only when
+every moved page has a continuous unchanged-content Revision and the final
+bootstrap contains the same page IDs in the requested order.
 
 Folder creation and rename use metadata-only `folder` operations. A newly
 created folder starts without `baseMetadata`; a mapped rename retains the
@@ -226,7 +234,7 @@ same recovery directory and completes idempotently. Page and infinite-canvas
 deletions are not stored here until the local repository can represent them
 without leaving an invalid notebook.
 
-For a safe remote trailing-page deletion, the same Tombstone directory stores
+For a safe remote page deletion, the same Tombstone directory stores
 `page.json`, `location.json`, and `tombstone.json`. The first file is the exact
 local page, the second records notebook ID, page ID, and former position, and
 the third records the validated server Tombstone. The page is removed from the

@@ -388,6 +388,144 @@ async def test_sync_commit_updates_notebook_metadata_and_rejects_concurrent_stru
     )
 
 
+async def test_sync_commit_reorders_pages_atomically_and_rejects_stale_order(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    registered = await register(client, "sync-page-order@example.com")
+    user_id = UUID(registered["user"]["id"])
+    device_id = UUID(registered["device"]["id"])
+    headers = bearer(registered["accessToken"])
+    library = LibraryRepository(db_session)
+    notebook = await library.create_notebook(
+        user_id=user_id,
+        notebook_id="ordered-notebook",
+        title="Ordered",
+        layout_mode="paged",
+    )
+    pages = [
+        await library.create_page(
+            user_id=user_id,
+            notebook_id=notebook.id,
+            page_id=f"ordered-page-{index + 1}",
+            position=index,
+            width=768,
+            height=1024,
+            coordinate_space_version=1,
+        )
+        for index in range(3)
+    ]
+    content = ContentRepository(db_session)
+    await content.save_notebook_content(
+        user_id=user_id,
+        notebook_id=notebook.id,
+        base_revision=0,
+        content={},
+        device_id=device_id,
+    )
+    for page in pages:
+        await content.save_page_content(
+            user_id=user_id,
+            page_id=page.id,
+            base_revision=0,
+            content={"strokes": []},
+            device_id=device_id,
+        )
+    notebook_id = notebook.id
+    page_ids = [page.id for page in pages]
+    await db_session.commit()
+    before = await client.get("/api/v1/sync/changes", headers=headers)
+    base_metadata = {
+        "title": "Ordered",
+        "isArchived": False,
+        "folderId": None,
+        "pageOrder": page_ids,
+    }
+
+    reordered = await client.post(
+        "/api/v1/sync/commit",
+        headers=headers,
+        json={
+            "deviceId": str(device_id),
+            "idempotencyKey": "reorder-pages-1",
+            "baseCursor": before.json()["nextCursor"],
+            "operations": [
+                {
+                    "operationId": "reorder-pages",
+                    "operation": "upsert",
+                    "resourceType": "notebook",
+                    "resourceId": notebook_id,
+                    "baseRevision": 1,
+                    "baseMetadata": base_metadata,
+                    "metadata": {
+                        **base_metadata,
+                        "pageOrder": [page_ids[1], page_ids[0], page_ids[2]],
+                    },
+                }
+            ],
+        },
+    )
+    stale = await client.post(
+        "/api/v1/sync/commit",
+        headers=headers,
+        json={
+            "deviceId": str(device_id),
+            "idempotencyKey": "reorder-pages-stale",
+            "baseCursor": before.json()["nextCursor"],
+            "operations": [
+                {
+                    "operationId": "reorder-pages-stale",
+                    "operation": "upsert",
+                    "resourceType": "notebook",
+                    "resourceId": notebook_id,
+                    "baseRevision": 1,
+                    "baseMetadata": base_metadata,
+                    "metadata": {
+                        **base_metadata,
+                        "pageOrder": [page_ids[0], page_ids[2], page_ids[1]],
+                    },
+                }
+            ],
+        },
+    )
+    emitted = await client.get(
+        "/api/v1/sync/changes",
+        headers=headers,
+        params={"cursor": before.json()["nextCursor"]},
+    )
+    db_session.expire_all()
+    stored_pages = list(
+        await db_session.scalars(
+            select(Page)
+            .where(
+                Page.user_id == user_id,
+                Page.notebook_id == notebook_id,
+                Page.deleted_at.is_(None),
+            )
+            .order_by(Page.position)
+        )
+    )
+
+    assert reordered.status_code == 200
+    assert reordered.json()["results"][0]["revision"] == 2
+    assert stale.status_code == 409
+    assert stale.json()["error"]["code"] == "sync_notebook_metadata_conflict"
+    assert stale.json()["error"]["details"]["fields"] == ["pageOrder"]
+    assert [(page.id, page.position, page.revision) for page in stored_pages] == [
+        (page_ids[1], 0, 2),
+        (page_ids[0], 1, 2),
+        (page_ids[2], 2, 1),
+    ]
+    assert [
+        (item["resourceType"], item["resourceId"], item["revision"])
+        for item in emitted.json()["changes"]
+    ] == [
+        ("page", page_ids[0], 2),
+        ("page", page_ids[1], 2),
+        ("notebook", notebook_id, 2),
+    ]
+
+
 async def test_sync_commit_creates_and_renames_folder_with_conflict_guard(
     client: AsyncClient,
     db_session: AsyncSession,

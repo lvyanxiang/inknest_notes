@@ -147,7 +147,9 @@ Access Token 过期后，App 使用 Refresh Token 换取新的 Access Token。
 对应部分唯一索引 `uq_pages_active_notebook_owner_position`。软删除页面可以保留
 删除前的位置；删除中间页时，后续活动页会在同一事务中向前压紧，恢复时再根据墓碑
 记录的位置插回。这样既能保持活动页序连续，也不会因为软删除历史记录占用旧位置而
-阻止新增或恢复页面。
+阻止新增或恢复页面。显式重排同样会先临时释放活动页位置，再在一个事务中写入完整新
+顺序；每个位置发生变化的页面都会递增 `revision`，但正文未修改时保持原
+`content_hash`。
 
 ### `infinite_canvases`：无限画布
 
@@ -360,6 +362,7 @@ Access Token 过期后，App 使用 Refresh Token 换取新的 Access Token。
 | 创建文件夹 | `folders` |
 | 创建笔记本 | `notebooks` |
 | 画笔、文本、图片引用、图形 | `pages.content` |
+| 左移或右移页面 | `pages.position`，受影响页面同时递增 `revision` |
 | 编辑无限画布 | `infinite_canvases.content` |
 | 上传 PDF、图片、录音 | PostgreSQL `assets` + MinIO 文件 |
 | 保存历史版本 | `revisions` |

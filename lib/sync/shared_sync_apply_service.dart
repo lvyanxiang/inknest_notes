@@ -52,7 +52,14 @@ class SharedSyncApplyService {
     for (final change in changes) {
       changesByResource.putIfAbsent(_remoteKey(change), () => []).add(change);
     }
-    final actions = <_SharedApplyAction>[];
+    final pageOrderPreparation = _preparePageOrderActions(
+      changesByResource: changesByResource,
+      bootstrap: bootstrap,
+      notebooks: notebooks,
+      mappings: mappings,
+    );
+    if (pageOrderPreparation == null) return null;
+    final actions = <_SharedApplyAction>[...pageOrderPreparation.actions];
     for (final entry in changesByResource.entries) {
       final first = entry.value.first;
       final mapping = _findRemoteMapping(mappings, first);
@@ -100,6 +107,8 @@ class SharedSyncApplyService {
         resourceMap: resourceMap,
         folderIds: folderIds,
         folders: folders,
+        expectedPagePositions: pageOrderPreparation.expectedPagePositions,
+        expectedPageOrders: pageOrderPreparation.expectedPageOrders,
       );
       if (action == null) return null;
       actions.add(action);
@@ -124,6 +133,134 @@ class SharedSyncApplyService {
       rethrow;
     }
     return SharedSyncApplyResult(appliedResourceCount: actions.length);
+  }
+
+  _PageOrderPreparation? _preparePageOrderActions({
+    required Map<String, List<CloudSyncChange>> changesByResource,
+    required CloudSyncBootstrap bootstrap,
+    required List<Notebook> notebooks,
+    required List<SyncResourceMapping> mappings,
+  }) {
+    final actions = <_SharedApplyAction>[];
+    final expectedPagePositions = <String, int>{};
+    final expectedPageOrders = <String, List<String>>{};
+    for (final notebook in notebooks) {
+      if (notebook.layoutMode.name != 'paged') continue;
+      final notebookMapping = _findLocalMapping(
+        mappings,
+        notebookSyncLocalKey(notebook.id),
+      );
+      if (notebookMapping == null ||
+          notebookMapping.resourceType != SyncResourceType.notebook) {
+        continue;
+      }
+      final cloudPages =
+          bootstrap.pages
+              .where(
+                (page) => page.notebookId == notebookMapping.remoteResourceId,
+              )
+              .toList()
+            ..sort((left, right) => left.position.compareTo(right.position));
+      final localByRemote = <String, String>{};
+      final currentRemoteOrder = <String>[];
+      var hasCompletePageMappings = true;
+      for (final localPageId in notebook.pageIds) {
+        final mapping = _findLocalMapping(
+          mappings,
+          pageSyncLocalKey(notebook.id, localPageId),
+        );
+        if (mapping == null || mapping.resourceType != SyncResourceType.page) {
+          hasCompletePageMappings = false;
+          break;
+        }
+        currentRemoteOrder.add(mapping.remoteResourceId);
+        localByRemote[mapping.remoteResourceId] = localPageId;
+      }
+      if (!hasCompletePageMappings) continue;
+      final desiredRemoteOrder = cloudPages.map((page) => page.id).toList();
+      if (_sameOrder(currentRemoteOrder, desiredRemoteOrder)) continue;
+      if (currentRemoteOrder.length != desiredRemoteOrder.length ||
+          currentRemoteOrder.toSet().length != currentRemoteOrder.length ||
+          currentRemoteOrder.toSet().containsAll(desiredRemoteOrder) == false) {
+        continue;
+      }
+
+      for (final (position, cloudPage) in cloudPages.indexed) {
+        final localPageId = localByRemote[cloudPage.id];
+        if (localPageId == null) return null;
+        final localKey = pageSyncLocalKey(notebook.id, localPageId);
+        expectedPagePositions[localKey] = position;
+        if (currentRemoteOrder[position] == cloudPage.id) continue;
+        final mapping = _findLocalMapping(mappings, localKey)!;
+        final pageChanges =
+            changesByResource['${CloudSyncChangeResourceType.page.apiValue}\u0000${cloudPage.id}'];
+        if (pageChanges == null ||
+            !_hasContinuousRevisionChain(mapping, pageChanges) ||
+            cloudPage.revision != _finalRevision(mapping, pageChanges) ||
+            cloudPage.contentHash != _finalHash(mapping, pageChanges) ||
+            !pageChanges.any(
+              (change) =>
+                  change.revision == mapping.revision + 1 &&
+                  change.contentHash == mapping.contentHash,
+            )) {
+          return null;
+        }
+      }
+
+      CloudSyncNotebook? cloudNotebook;
+      for (final candidate in bootstrap.notebooks) {
+        if (candidate.id == notebookMapping.remoteResourceId) {
+          cloudNotebook = candidate;
+          break;
+        }
+      }
+      final notebookChanges =
+          changesByResource['${CloudSyncChangeResourceType.notebook.apiValue}\u0000${notebookMapping.remoteResourceId}'];
+      if (cloudNotebook == null ||
+          notebookChanges == null ||
+          !_hasContinuousRevisionChain(notebookMapping, notebookChanges) ||
+          cloudNotebook.revision !=
+              _finalRevision(notebookMapping, notebookChanges) ||
+          cloudNotebook.contentHash !=
+              _finalHash(notebookMapping, notebookChanges)) {
+        return null;
+      }
+
+      final desiredLocalOrder = [
+        for (final remoteId in desiredRemoteOrder) localByRemote[remoteId]!,
+      ];
+      expectedPageOrders[notebook.id] = desiredLocalOrder;
+      Notebook? appliedNotebook;
+      actions.add(
+        _SharedApplyAction(
+          apply: () async {
+            appliedNotebook = await repository.applySyncedPageOrder(
+              notebook,
+              desiredLocalOrder,
+            );
+          },
+          rollback: () async {
+            await repository.applySyncedPageOrder(
+              appliedNotebook ?? notebook,
+              notebook.pageIds,
+            );
+          },
+        ),
+      );
+    }
+    return _PageOrderPreparation(
+      actions: actions,
+      expectedPagePositions: expectedPagePositions,
+      expectedPageOrders: expectedPageOrders,
+    );
+  }
+
+  bool _sameOrder(List<String> left, List<String> right) {
+    if (left.length != right.length) return false;
+    for (final (index, item) in left.indexed) {
+      if (right[index] != item) return false;
+    }
+    return true;
   }
 
   Future<_SharedApplyAction?> _buildNewPageAction({
@@ -290,6 +427,8 @@ class SharedSyncApplyService {
     required FileSyncResourceMapStore resourceMap,
     required Set<String> folderIds,
     required List<NotebookFolder> folders,
+    required Map<String, int> expectedPagePositions,
+    required Map<String, List<String>> expectedPageOrders,
   }) {
     return switch (snapshot) {
       _FolderSharedSnapshot() => _buildFolderAction(
@@ -304,6 +443,7 @@ class SharedSyncApplyService {
         mappings,
         resourceMap,
         folderIds,
+        expectedPageOrders,
       ),
       _PageSharedSnapshot() => _buildPageAction(
         mapping,
@@ -311,6 +451,7 @@ class SharedSyncApplyService {
         notebooks,
         mappings,
         resourceMap,
+        expectedPagePositions,
       ),
       _CanvasSharedSnapshot() => _buildCanvasAction(
         mapping,
@@ -356,6 +497,7 @@ class SharedSyncApplyService {
     List<SyncResourceMapping> mappings,
     FileSyncResourceMapStore resourceMap,
     Set<String> folderIds,
+    Map<String, List<String>> expectedPageOrders,
   ) async {
     final local = _findNotebook(notebooks, cloud.id);
     if (local == null ||
@@ -383,7 +525,7 @@ class SharedSyncApplyService {
       'title': cloud.title,
       'createdAt': local.createdAt.toIso8601String(),
       'updatedAt': cloud.updatedAt.toIso8601String(),
-      'pageIds': local.pageIds,
+      'pageIds': expectedPageOrders[local.id] ?? local.pageIds,
       'isArchived': cloud.isArchived,
       if (cloud.folderId != null) 'folderId': cloud.folderId,
       'layoutMode': local.layoutMode.name,
@@ -408,11 +550,15 @@ class SharedSyncApplyService {
     List<Notebook> notebooks,
     List<SyncResourceMapping> mappings,
     FileSyncResourceMapStore resourceMap,
+    Map<String, int> expectedPagePositions,
   ) async {
     for (final notebook in notebooks) {
       for (final (position, pageId) in notebook.pageIds.indexed) {
         if (mapping.localKey != pageSyncLocalKey(notebook.id, pageId)) continue;
-        if (cloud.notebookId != notebook.id || cloud.position != position) {
+        final expectedPosition =
+            expectedPagePositions[mapping.localKey] ?? position;
+        if (cloud.notebookId != notebook.id ||
+            cloud.position != expectedPosition) {
           return null;
         }
         final local = await repository.loadPage(notebook, pageId);
@@ -672,4 +818,16 @@ class _SharedApplyAction {
 
   final Future<void> Function() apply;
   final Future<void> Function() rollback;
+}
+
+class _PageOrderPreparation {
+  const _PageOrderPreparation({
+    required this.actions,
+    required this.expectedPagePositions,
+    required this.expectedPageOrders,
+  });
+
+  final List<_SharedApplyAction> actions;
+  final Map<String, int> expectedPagePositions;
+  final Map<String, List<String>> expectedPageOrders;
 }

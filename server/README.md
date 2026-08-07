@@ -385,6 +385,38 @@ another device, the batch returns `409 sync_notebook_metadata_conflict` and no
 operation is committed. Folder creation/rename/delete is not part of this
 notebook-metadata operation.
 
+For an explicit page reorder, include the complete stable remote page IDs in
+both metadata snapshots. Only `pageOrder` changes in this example:
+
+```json
+{
+  "operationId": "notebook-page-order-1",
+  "operation": "upsert",
+  "resourceType": "notebook",
+  "resourceId": "notebook-1",
+  "baseRevision": 4,
+  "baseMetadata": {
+    "title": "Notes",
+    "isArchived": false,
+    "folderId": null,
+    "pageOrder": ["page-1", "page-2", "page-3"]
+  },
+  "metadata": {
+    "title": "Notes",
+    "isArchived": false,
+    "folderId": null,
+    "pageOrder": ["page-2", "page-1", "page-3"]
+  }
+}
+```
+
+The desired order must be a permutation of the same active pages. The server
+locks the notebook and pages, temporarily frees their unique positions,
+repositions them in one transaction, and emits unchanged-content Revision
+updates for every moved page plus the notebook operation. If the current order
+matches neither baseline nor desired order, the request returns
+`409 sync_notebook_metadata_conflict` with `fields: ["pageOrder"]`.
+
 Folder creation and rename use a metadata-only `folder` operation. Creation
 omits `baseMetadata`; rename includes the last applied name:
 

@@ -304,6 +304,9 @@ class ContentRepository:
             "folderId": resource.folder_id,
         }
         merged_metadata = dict(current_metadata)
+        page_order: list[str] | None = None
+        current_pages: list[Page] = []
+        structure_changed = False
         if metadata is not None:
             if base_metadata is None:
                 raise ValueError("base_metadata is required with metadata")
@@ -329,6 +332,36 @@ class ContentRepository:
                 )
                 if folder is None:
                     raise LibraryResourceNotFoundError("folder", str(folder_id))
+            desired_page_order = metadata.get("pageOrder")
+            baseline_page_order = base_metadata.get("pageOrder")
+            if desired_page_order is not None:
+                if resource.layout_mode != "paged":
+                    raise NotebookMetadataConflictError(["pageOrder"])
+                page_order = self._validated_page_order(desired_page_order)
+                baseline_order = self._validated_page_order(baseline_page_order)
+                if page_order != baseline_order:
+                    current_pages = list(
+                        await self._session.scalars(
+                            select(Page)
+                            .where(
+                                Page.user_id == user_id,
+                                Page.notebook_id == resource.id,
+                                Page.deleted_at.is_(None),
+                            )
+                            .order_by(Page.position, Page.id)
+                            .with_for_update()
+                        )
+                    )
+                    current_order = [page.id for page in current_pages]
+                    same_members = len(page_order) == len(baseline_order) == len(
+                        current_order
+                    ) and set(page_order) == set(baseline_order) == set(current_order)
+                    if not same_members or current_order not in (
+                        baseline_order,
+                        page_order,
+                    ):
+                        raise NotebookMetadataConflictError(["pageOrder"])
+                    structure_changed = current_order != page_order
 
         normalized_content = (
             normalized_json_object(content) if content is not None else resource.content
@@ -341,11 +374,19 @@ class ContentRepository:
                 expected_revision=base_revision,
                 current_revision=resource.revision,
             )
-        if not content_changed and not metadata_changed:
+        if not content_changed and not metadata_changed and not structure_changed:
             return ContentSaveResult(
                 revision=resource.revision,
                 content_hash=resource.content_hash,
                 created_revision=False,
+            )
+
+        if structure_changed:
+            await self._reorder_pages(
+                pages=current_pages,
+                page_order=page_order or [],
+                user_id=user_id,
+                device_id=device_id,
             )
 
         next_revision = resource.revision + 1
@@ -385,6 +426,65 @@ class ContentRepository:
             content_hash=new_hash,
             created_revision=True,
         )
+
+    @staticmethod
+    def _validated_page_order(value: object) -> list[str]:
+        if not isinstance(value, list) or any(
+            not isinstance(item, str) for item in value
+        ):
+            raise NotebookMetadataConflictError(["pageOrder"])
+        return value
+
+    async def _reorder_pages(
+        self,
+        *,
+        pages: list[Page],
+        page_order: list[str],
+        user_id: UUID,
+        device_id: UUID | None,
+    ) -> None:
+        positions = {page_id: position for position, page_id in enumerate(page_order)}
+        changed = [page for page in pages if page.position != positions[page.id]]
+        if not changed:
+            return
+
+        temporary_base = max(page.position for page in pages) + len(pages) + 1
+        for index, page in enumerate(pages):
+            page.position = temporary_base + index
+        await self._session.flush()
+        for page in pages:
+            page.position = positions[page.id]
+        for page in changed:
+            next_revision = page.revision + 1
+            next_hash = (
+                page.content_hash
+                if page.revision > 0
+                else calculate_content_hash(page.content)
+            )
+            page.revision = next_revision
+            page.content_hash = next_hash
+            self._session.add(
+                ContentRevision(
+                    user_id=user_id,
+                    resource_type="page",
+                    resource_id=page.id,
+                    revision=next_revision,
+                    content_hash=next_hash,
+                    content=page.content,
+                    device_id=device_id,
+                )
+            )
+        await self._session.flush()
+        for page in changed:
+            await self._changes.append_upsert(
+                user_id=user_id,
+                resource_type="page",
+                resource_id=page.id,
+                payload=page_snapshot(page),
+                revision=page.revision,
+                content_hash=page.content_hash,
+                device_id=device_id,
+            )
 
     async def save_page_content(
         self,

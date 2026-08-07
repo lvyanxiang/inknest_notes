@@ -497,6 +497,24 @@ class InMemoryNotebookRepository implements NotebookRepository {
   }
 
   @override
+  Future<Notebook> applySyncedPageOrder(
+    Notebook notebook,
+    List<String> pageIds,
+  ) async {
+    if (pageIds.length != notebook.pageIds.length ||
+        pageIds.toSet().length != pageIds.length ||
+        !pageIds.toSet().containsAll(notebook.pageIds)) {
+      throw ArgumentError('Synchronized page order must be a permutation.');
+    }
+    final updatedNotebook = notebook.copyWith(
+      updatedAt: DateTime.now(),
+      pageIds: pageIds,
+    );
+    _replaceNotebook(updatedNotebook);
+    return updatedNotebook;
+  }
+
+  @override
   Future<NotePage> rotatePageClockwise(Notebook notebook, String pageId) async {
     final page = await loadPage(notebook, pageId);
     final rotatedPage = page.copyWith(
