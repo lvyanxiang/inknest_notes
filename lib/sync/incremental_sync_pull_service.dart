@@ -133,6 +133,7 @@ class IncrementalSyncPullService {
         repository: repository,
         bootstrap: bootstrap,
       ),
+      cloudAssetKeys: buildCloudAssetKeys(bootstrap),
     );
     await stateStore.markChangesPageApplied(cursor);
     return IncrementalSyncPullResult(

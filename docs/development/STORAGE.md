@@ -99,10 +99,14 @@ silently reset.
 
 The versioned resource map connects local repository keys to account-global
 cloud IDs. Each entry stores its resource type, remote ID, latest server
-Revision, and Content Hash. Paged notes use a notebook-qualified local page key
-because legacy local files may reuse `page-1` in different notebooks.
+Revision, and Content Hash. `cloudAssetKeys` records notebook-relative assets
+verified by the latest applied bootstrap. Paged notes use a notebook-qualified
+local page key because legacy local files may reuse `page-1` in different
+notebooks.
 
 The map is rebuilt only from a verified bootstrap/merge result. Normal page
 saves consult it before entering `state.json`; an unmapped save remains local
 and does not guess a cloud ID. Successful `/sync/commit` results update the
 mapped Revision and hash before the frozen in-flight batch is cleared.
+Notebook and canvas content that references a page or attachment is queued only
+when that reference resolves through this verified map.

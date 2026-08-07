@@ -17,12 +17,18 @@ import 'package:inknest_notes/storage/pdf_import_inspector.dart';
 
 typedef PagePersistedCallback =
     Future<void> Function(Notebook notebook, NotePage page);
+typedef NotebookContentPersistedCallback =
+    Future<void> Function(Notebook notebook);
+typedef InfiniteCanvasPersistedCallback =
+    Future<void> Function(Notebook notebook, InfiniteCanvasDocument document);
 
 class FileNotebookRepository implements NotebookRepository {
   FileNotebookRepository({
     required Directory rootDirectory,
     PdfImportInspector? pdfImportInspector,
     this.onPagePersisted,
+    this.onNotebookContentPersisted,
+    this.onInfiniteCanvasPersisted,
   }) : _notebooksDirectory = Directory('${rootDirectory.path}/notebooks'),
        _pdfImportInspector =
            pdfImportInspector ?? const PdfrxPdfImportInspector();
@@ -33,6 +39,8 @@ class FileNotebookRepository implements NotebookRepository {
   final Directory _notebooksDirectory;
   final PdfImportInspector _pdfImportInspector;
   final PagePersistedCallback? onPagePersisted;
+  final NotebookContentPersistedCallback? onNotebookContentPersisted;
+  final InfiniteCanvasPersistedCallback? onInfiniteCanvasPersisted;
   Future<void> _storageWriteQueue = Future.value();
   int _temporaryFileCounter = 0;
 
@@ -183,6 +191,11 @@ class FileNotebookRepository implements NotebookRepository {
             existingNotebook,
       ]);
     });
+    try {
+      await onInfiniteCanvasPersisted?.call(notebook, document);
+    } on Object {
+      // The canvas is already safe on disk; cloud queueing is best-effort.
+    }
   }
 
   @override
@@ -376,8 +389,8 @@ class FileNotebookRepository implements NotebookRepository {
   Future<Notebook> saveAudioRecording(
     Notebook notebook,
     NotebookAudioRecording recording,
-  ) {
-    return _runStorageWrite(() async {
+  ) async {
+    final updatedNotebook = await _runStorageWrite(() async {
       final notebooks = await _readIndex();
       final currentNotebook = notebooks.firstWhere(
         (existingNotebook) => existingNotebook.id == notebook.id,
@@ -404,6 +417,12 @@ class FileNotebookRepository implements NotebookRepository {
       ]);
       return updatedNotebook;
     });
+    try {
+      await onNotebookContentPersisted?.call(updatedNotebook);
+    } on Object {
+      // Local recording metadata remains saved if cloud queueing fails.
+    }
+    return updatedNotebook;
   }
 
   @override
@@ -509,6 +528,11 @@ class FileNotebookRepository implements NotebookRepository {
     );
 
     await _replaceNotebook(updatedNotebook);
+    try {
+      await onNotebookContentPersisted?.call(updatedNotebook);
+    } on Object {
+      // Local bookmark changes remain saved if cloud queueing fails.
+    }
     return updatedNotebook;
   }
 

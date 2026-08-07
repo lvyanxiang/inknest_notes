@@ -3,15 +3,16 @@
 ## Current
 
 - Milestone: Backend Phase 5 incremental-sync App integration is in progress;
-  initialized sessions now push saved page edits through `/sync/commit` before
-  executing the safe additive `/sync/changes` download.
-- Next task: Track notebook metadata and infinite-canvas saves in the same
-  persistent queue, then apply shared-resource pull updates without overwriting
-  newer local edits.
-- Last completed: Successful paged-note saves coalesce into an account/device
-  sidecar queue using persisted local-to-cloud IDs and server Revisions. Startup
-  retries the exact frozen batch after response loss, updates returned Revision
-  metadata, then pulls changes; the App reports the uploaded operation count.
+  initialized sessions now push saved page, notebook-content, and infinite-
+  canvas edits through `/sync/commit` before safe `/sync/changes` download.
+- Next task: Apply shared-resource pull updates without overwriting newer local
+  edits, then connect delete/conflict/Tombstone handling. Title, archive, folder,
+  page structure, and canvas background require a future structural API contract.
+- Last completed: Bookmark and safe existing-recording metadata rewrites local
+  page references to cloud IDs before queueing complete notebook content.
+  Infinite-canvas content also queues when every referenced image is already a
+  verified cloud asset; otherwise the local save succeeds without a partial
+  cloud reference.
 
 ## Decisions
 
@@ -134,6 +135,10 @@
   application. A legacy initialized session with local notes but no mapping
   re-enters the safe first-sign-in Merge path instead of guessing remote page
   IDs. Page saves remain locally successful if queue-sidecar persistence fails.
+- Treat `/sync/commit` as a content-only contract. Do not encode notebook title,
+  archive/folder placement, page order, or canvas background into content and
+  claim those structural changes synchronized. Queue notebook/canvas content
+  only when every page/asset reference can be rewritten to verified cloud state.
 - Use email/password for the first account flow without mandatory email
   verification during initial development. Use short-lived JWT access tokens
   and rotating opaque refresh tokens; store only refresh-token hashes and bind
@@ -688,6 +693,13 @@
 - `flutter test` passes with 200 tests after the paged-note incremental upload
   slice; `flutter analyze` and `git diff --check` pass, and no backend source or
   route changed.
+- Focused tests pass for notebook bookmark page-ID rewriting, exclusion of
+  structural notebook fields, infinite-canvas content queueing, persisted cloud
+  asset knowledge, and blocking a canvas operation that references an unuploaded
+  image.
+- `flutter test` passes with 203 tests after notebook/canvas content tracking;
+  `flutter analyze` and `git diff --check` pass, with no backend source or route
+  change.
 
 ## Notes
 

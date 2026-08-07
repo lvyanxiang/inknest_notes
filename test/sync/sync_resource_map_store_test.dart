@@ -64,6 +64,7 @@ void main() {
         repository: repository,
         bootstrap: bootstrap,
       ),
+      cloudAssetKeys: [cloudAssetSyncKey(notebook.id, 'assets/image.png')],
     );
 
     final restartedStore = FileSyncResourceMapStore(
@@ -77,6 +78,10 @@ void main() {
     expect(page?.resourceType, SyncResourceType.page);
     expect(page?.remoteResourceId, 'remote-page-1');
     expect(page?.revision, 4);
+    expect(
+      await restartedStore.hasCloudAsset(notebook.id, 'assets/image.png'),
+      isTrue,
+    );
 
     await restartedStore.updateRemote(
       resourceType: SyncResourceType.page,
@@ -85,5 +90,9 @@ void main() {
       contentHash: 'c' * 64,
     );
     expect((await restartedStore.find(page!.localKey))?.revision, 5);
+    expect(
+      await restartedStore.hasCloudAsset(notebook.id, 'assets/image.png'),
+      isTrue,
+    );
   });
 }

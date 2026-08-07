@@ -220,6 +220,7 @@ documents/
 
 ## Current Focus
 
-Milestone 8 is active. Continue Phase 5 incremental sync by extending the
-working page-save `/sync/commit` queue to notebook metadata and infinite canvas,
-then reconcile shared pull changes, deletes, conflicts, and Tombstones.
+Milestone 8 is active. Continue Phase 5 incremental sync by reconciling shared
+pull changes, then connect deletes, conflicts, and Tombstones. The working
+`/sync/commit` queue covers pages, safe notebook content, and safe infinite-
+canvas content; structural fields still need an explicit server contract.

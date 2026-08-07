@@ -80,6 +80,8 @@ class _InkNestAppState extends State<InkNestApp> {
     final repository = FileNotebookRepository(
       rootDirectory: documentsDirectory,
       onPagePersisted: mutationTracker.pageSaved,
+      onNotebookContentPersisted: mutationTracker.notebookContentSaved,
+      onInfiniteCanvasPersisted: mutationTracker.infiniteCanvasSaved,
     );
     final apiClient = _ownedApiClient;
     return _AppResources(

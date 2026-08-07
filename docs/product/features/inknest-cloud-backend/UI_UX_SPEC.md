@@ -86,8 +86,9 @@ continue-local state without overwriting either side.
 ### Background incremental synchronization
 
 1. After an existing signed-in session becomes active, InkNest first uploads
-   persisted page edits, then checks the saved Cursor and downloads available
-   change pages without covering the library or editor.
+   persisted page, bookmark/notebook-content, and safe infinite-canvas edits,
+   then checks the saved Cursor and downloads available change pages without
+   covering the library or editor.
 2. A successful upload announces how many local changes were sent. A safe
    additive download refreshes the shelf and includes cloud changes and
    received notebooks in the same calm confirmation.
@@ -97,6 +98,9 @@ continue-local state without overwriting either side.
 4. Network or parsing failure preserves the frozen upload batch and returns
    immediately to local use with a concise retry-later message; it never blocks
    writing.
+5. A local edit containing an attachment not yet verified in cloud remains
+   local and does not claim upload success. Structural changes unsupported by
+   the current content-only contract likewise remain local.
 
 ### Conflict recovery
 

@@ -320,9 +320,11 @@ The first slice sets no retention period and performs no physical cleanup.
   local queue and authenticated startup pushes them through the same typed
   incremental commit contract before pulling changes. Verified first Merge
   seeds page ID/Revision mappings; response-loss retries preserve the exact
-  in-flight request. Notebook metadata, normal infinite-canvas mutation
-  tracking, structural metadata, attachment differences, and divergent canvas
-  recovery remain later slices.
+  in-flight request. Notebook bookmarks/verified existing attachment metadata
+  and infinite-canvas content now use the same queue, with local page references
+  rewritten to cloud IDs and unuploaded attachment references blocked. Title,
+  archive/folder placement, page structure, canvas background, attachment
+  upload, and divergent canvas recovery remain later contract slices.
 - Verification: Backend tests cover authentication, account isolation,
   revisioned content, asset transfer, cursors, atomic/idempotent commits, page
   and notebook conflicts, all resolution choices, soft delete/restore, both

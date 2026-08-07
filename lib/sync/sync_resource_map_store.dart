@@ -73,11 +73,11 @@ class FileSyncResourceMapStore {
 
   Future<List<SyncResourceMapping>> load() async {
     await _writeQueue.catchError((_) {});
-    return _read();
+    return (await _read()).resources;
   }
 
-  Future<List<SyncResourceMapping>> _read() async {
-    if (!await _file.exists()) return const [];
+  Future<_SyncResourceMapDocument> _read() async {
+    if (!await _file.exists()) return const _SyncResourceMapDocument();
     final decoded = jsonDecode(await _file.readAsString());
     if (decoded is! Map<String, Object?> || decoded['formatVersion'] != 1) {
       throw const FormatException('Invalid synchronization resource map.');
@@ -98,7 +98,19 @@ class FileSyncResourceMapStore {
         resources.length) {
       throw const FormatException('Duplicate local synchronization mapping.');
     }
-    return resources;
+    final rawCloudAssetKeys = decoded['cloudAssetKeys'];
+    Set<String> cloudAssetKeys = const {};
+    if (rawCloudAssetKeys != null) {
+      if (rawCloudAssetKeys is! List<Object?> ||
+          rawCloudAssetKeys.any((item) => item is! String)) {
+        throw const FormatException('Invalid synchronization asset map.');
+      }
+      cloudAssetKeys = Set.unmodifiable(rawCloudAssetKeys.cast<String>());
+    }
+    return _SyncResourceMapDocument(
+      resources: resources,
+      cloudAssetKeys: cloudAssetKeys,
+    );
   }
 
   Future<SyncResourceMapping?> find(String localKey) async {
@@ -109,9 +121,24 @@ class FileSyncResourceMapStore {
     return null;
   }
 
-  Future<void> replaceAll(List<SyncResourceMapping> resources) {
+  Future<bool> hasCloudAsset(String notebookId, String relativePath) async {
+    await _writeQueue.catchError((_) {});
+    return (await _read()).cloudAssetKeys.contains(
+      cloudAssetSyncKey(notebookId, relativePath),
+    );
+  }
+
+  Future<void> replaceAll(
+    List<SyncResourceMapping> resources, {
+    Iterable<String> cloudAssetKeys = const [],
+  }) {
     return _enqueueWrite(() async {
-      await _write(resources);
+      await _write(
+        _SyncResourceMapDocument(
+          resources: resources,
+          cloudAssetKeys: Set.unmodifiable(cloudAssetKeys),
+        ),
+      );
     });
   }
 
@@ -122,8 +149,8 @@ class FileSyncResourceMapStore {
     required String contentHash,
   }) {
     return _enqueueWrite(() async {
-      final resources = await _read();
-      final hasResource = resources.any(
+      final document = await _read();
+      final hasResource = document.resources.any(
         (resource) =>
             resource.resourceType == resourceType &&
             resource.remoteResourceId == remoteResourceId,
@@ -134,14 +161,19 @@ class FileSyncResourceMapStore {
         );
       }
       final updated = [
-        for (final resource in resources)
+        for (final resource in document.resources)
           if (resource.resourceType == resourceType &&
               resource.remoteResourceId == remoteResourceId)
             resource.copyWith(revision: revision, contentHash: contentHash)
           else
             resource,
       ];
-      await _write(updated);
+      await _write(
+        _SyncResourceMapDocument(
+          resources: updated,
+          cloudAssetKeys: document.cloudAssetKeys,
+        ),
+      );
     });
   }
 
@@ -152,15 +184,17 @@ class FileSyncResourceMapStore {
     return next;
   }
 
-  Future<void> _write(List<SyncResourceMapping> resources) async {
+  Future<void> _write(_SyncResourceMapDocument document) async {
     await _file.parent.create(recursive: true);
-    final sorted = resources.toList()
+    final sorted = document.resources.toList()
       ..sort((left, right) => left.localKey.compareTo(right.localKey));
+    final sortedAssetKeys = document.cloudAssetKeys.toList()..sort();
     final temporary = File('${_file.path}.tmp-${_temporaryFileCounter++}');
     await temporary.writeAsString(
       const JsonEncoder.withIndent('  ').convert({
         'formatVersion': 1,
         'resources': sorted.map((item) => item.toJson()).toList(),
+        'cloudAssetKeys': sortedAssetKeys,
       }),
       flush: true,
     );
@@ -175,6 +209,14 @@ String pageSyncLocalKey(String notebookId, String pageId) =>
     'page:$notebookId:$pageId';
 
 String canvasSyncLocalKey(String notebookId) => 'infinite_canvas:$notebookId';
+
+String cloudAssetSyncKey(String notebookId, String relativePath) =>
+    '$notebookId\u0000$relativePath';
+
+Set<String> buildCloudAssetKeys(CloudSyncBootstrap bootstrap) => {
+  for (final asset in bootstrap.assets)
+    cloudAssetSyncKey(asset.notebookId, asset.relativePath),
+};
 
 Future<List<SyncResourceMapping>> buildSyncResourceMappings({
   required NotebookRepository repository,
@@ -244,4 +286,14 @@ Future<List<SyncResourceMapping>> buildSyncResourceMappings({
     }
   }
   return mappings;
+}
+
+class _SyncResourceMapDocument {
+  const _SyncResourceMapDocument({
+    this.resources = const [],
+    this.cloudAssetKeys = const {},
+  });
+
+  final List<SyncResourceMapping> resources;
+  final Set<String> cloudAssetKeys;
 }

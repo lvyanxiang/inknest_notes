@@ -314,7 +314,7 @@ class ApiFirstSignInSyncService implements FirstSignInSyncService {
       rootDirectory: rootDirectory,
       userId: userId,
       deviceId: deviceId,
-    ).replaceAll(mappings);
+    ).replaceAll(mappings, cloudAssetKeys: buildCloudAssetKeys(bootstrap));
   }
 
   Future<String> _uploadSnapshot(
