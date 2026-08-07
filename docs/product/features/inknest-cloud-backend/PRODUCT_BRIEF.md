@@ -362,6 +362,12 @@ The first slice sets no retention period and performs no physical cleanup.
   second, and bootstrap Cursor last. A successful restart therefore enters
   normal change polling directly, while incomplete handoff never advertises an
   initialized Cursor.
+  Cloud-only restore, mixed Merge download, and additive incremental download
+  now share a verified pre-restore snapshot of the notebook library and current
+  device sidecars. Any failure through resource-map, metadata, or final Cursor
+  persistence restores the exact prior local state; success removes the
+  transient snapshot. This is an internal recovery boundary, not the future
+  manual backup archive.
 - Verification: Backend tests cover authentication, account isolation,
   revisioned content, asset transfer, cursors, atomic/idempotent commits, page
   and notebook conflicts, all resolution choices, soft delete/restore, both
@@ -384,7 +390,7 @@ The first slice sets no retention period and performs no physical cleanup.
   drift fails in tests. The complete backend run passes 49
   non-integration tests and 15 PostgreSQL/MinIO integration tests, including
   ready-only bootstrap visibility and real PDF/image/audio byte round trips;
-  the complete Flutter suite passes with 195 tests. The mixed-library slice is
+  the complete Flutter suite passes with 245 tests. The mixed-library slice is
   additionally covered by 11 focused backend sync-change tests; staging tests
   cover verified success, corrupt downloads, and mid-apply rollback, and
   static analysis passes.

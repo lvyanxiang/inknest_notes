@@ -14,6 +14,7 @@ import 'package:inknest_notes/sync/sync_bootstrap.dart';
 import 'package:inknest_notes/sync/sync_merge_plan.dart';
 import 'package:inknest_notes/sync/sync_mutation_tracker.dart';
 import 'package:inknest_notes/sync/sync_resource_map_store.dart';
+import 'package:inknest_notes/sync/sync_restore_snapshot.dart';
 import 'package:inknest_notes/sync/sync_tombstone_restore_service.dart';
 import 'package:inknest_notes/sync/sync_upload_models.dart';
 import 'package:inknest_notes/sync/sync_cloud_client.dart';
@@ -220,34 +221,41 @@ class ApiFirstSignInSyncService
         'Only a cloud-only library can use the completed restore path.',
       );
     }
-    final result =
-        await BootstrapRestoreService(
-          rootDirectory: rootDirectory,
-          assetClient: apiClient,
-          syncStateStore: FileSyncStateStore(
-            rootDirectory: rootDirectory,
-            userId: userId,
-            deviceId: deviceId,
-          ),
-        ).downloadAndApplyCloudOnly(
-          bootstrap: preview.bootstrap,
-          assessment: preview.assessment,
-          persistCursor: false,
-        );
-    await _replaceResourceMappings(
-      bootstrap: preview.bootstrap,
-      userId: userId,
-      deviceId: deviceId,
-    );
-    await FileSyncStateStore(
+    return withSyncRestoreSnapshot(
       rootDirectory: rootDirectory,
       userId: userId,
       deviceId: deviceId,
-    ).markChangesPageApplied(preview.bootstrap.baseCursor);
-    return BootstrapRestoreResult(
-      downloadedNotebookCount: result.downloadedNotebookCount,
-      downloadedAssetCount: result.downloadedAssetCount,
-      cursorPersisted: true,
+      action: () async {
+        final result =
+            await BootstrapRestoreService(
+              rootDirectory: rootDirectory,
+              assetClient: apiClient,
+              syncStateStore: FileSyncStateStore(
+                rootDirectory: rootDirectory,
+                userId: userId,
+                deviceId: deviceId,
+              ),
+            ).downloadAndApplyCloudOnly(
+              bootstrap: preview.bootstrap,
+              assessment: preview.assessment,
+              persistCursor: false,
+            );
+        await _replaceResourceMappings(
+          bootstrap: preview.bootstrap,
+          userId: userId,
+          deviceId: deviceId,
+        );
+        await FileSyncStateStore(
+          rootDirectory: rootDirectory,
+          userId: userId,
+          deviceId: deviceId,
+        ).markChangesPageApplied(preview.bootstrap.baseCursor);
+        return BootstrapRestoreResult(
+          downloadedNotebookCount: result.downloadedNotebookCount,
+          downloadedAssetCount: result.downloadedAssetCount,
+          cursorPersisted: true,
+        );
+      },
     );
   }
 
@@ -299,6 +307,20 @@ class ApiFirstSignInSyncService
     if (!preview.canMergeMixed) {
       throw StateError('Only a mixed library can use the mixed Merge path.');
     }
+    return withSyncRestoreSnapshot(
+      rootDirectory: rootDirectory,
+      userId: userId,
+      deviceId: deviceId,
+      action: () =>
+          _mergeMixed(preview: preview, userId: userId, deviceId: deviceId),
+    );
+  }
+
+  Future<MixedLibraryMergeResult> _mergeMixed({
+    required FirstSignInSyncPreview preview,
+    required String userId,
+    required String deviceId,
+  }) async {
     final shared = await _buildLocalSnapshot(
       folderIds: preview.assessment.sharedFolderIds,
       notebookIds: preview.assessment.sharedNotebookIds,

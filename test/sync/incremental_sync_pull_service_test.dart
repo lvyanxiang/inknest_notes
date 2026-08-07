@@ -64,6 +64,54 @@ void main() {
     },
   );
 
+  test('rolls additive download back when final handoff fails', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'inknest-pull-rollback-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final repository = FileNotebookRepository(rootDirectory: root);
+    final stateStore = FileSyncStateStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    );
+    await stateStore.markChangesPageApplied('cursor-1');
+    await Directory(
+      '${root.path}/sync/user-1/device-1/resources.json',
+    ).create(recursive: true);
+    final cloud = _PullCloudClient(
+      bootstrapSnapshot: _cloudNotebookBootstrap(),
+      pages: [
+        CloudSyncChangePage(
+          changes: [
+            _change('notebook', 'cloud-notebook'),
+            _change('page', 'cloud-page'),
+          ],
+          nextCursor: 'cursor-2',
+          hasMore: false,
+        ),
+      ],
+    );
+
+    await expectLater(
+      IncrementalSyncPullService(
+        repository: repository,
+        cloudClient: cloud,
+        rootDirectory: root,
+      ).pull(userId: 'user-1', deviceId: 'device-1'),
+      throwsA(isA<FileSystemException>()),
+    );
+
+    expect(await repository.listNotebooks(), isEmpty);
+    expect((await stateStore.loadSnapshot()).lastAppliedCursor, 'cursor-1');
+    expect(
+      await Directory(
+        '${root.path}/sync/user-1/device-1/resources.json',
+      ).exists(),
+      isTrue,
+    );
+  });
+
   test(
     'applies continuous shared notebook content before advancing cursor',
     () async {

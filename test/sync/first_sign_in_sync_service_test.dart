@@ -95,7 +95,13 @@ void main() {
         throwsA(isA<FileSystemException>()),
       );
 
-      expect((await repository.listNotebooks()).single.id, 'cloud-notebook');
+      expect(await repository.listNotebooks(), isEmpty);
+      expect(
+        await Directory(
+          '${root.path}/sync/user-1/device-1/resources.json',
+        ).exists(),
+        isTrue,
+      );
       expect(
         (await FileSyncStateStore(
           rootDirectory: root,
@@ -291,6 +297,49 @@ void main() {
       expect(cloud.uploadedNotebookIds, isEmpty);
     },
   );
+
+  test('mixed Merge rolls local state back when final handoff fails', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'inknest-mixed-rollback-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final repository = FileNotebookRepository(rootDirectory: root);
+    final shared = await repository.createNotebook(title: 'Shared notes');
+    final localOnly = await repository.createNotebook(title: 'Local notes');
+    final cloud = _MixedFirstSignInCloudClient(
+      sharedNotebook: shared,
+      sharedRemotePageId: _remotePageId(shared.id, shared.pageIds.single),
+    );
+    final service = ApiFirstSignInSyncService(
+      repository: repository,
+      apiClient: cloud,
+      rootDirectory: root,
+    );
+    final preview = await service.inspect();
+    await Directory(
+      '${root.path}/sync/user-1/device-1/resources.json',
+    ).create(recursive: true);
+
+    await expectLater(
+      service.mergeMixed(
+        preview: preview,
+        userId: 'user-1',
+        deviceId: 'device-1',
+      ),
+      throwsA(isA<FileSystemException>()),
+    );
+
+    expect((await repository.listNotebooks()).map((item) => item.id).toSet(), {
+      shared.id,
+      localOnly.id,
+    });
+    expect(
+      await Directory(
+        '${root.path}/sync/user-1/device-1/resources.json',
+      ).exists(),
+      isTrue,
+    );
+  });
 }
 
 String _remotePageId(String notebookId, String localPageId) =>

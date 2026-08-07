@@ -9,6 +9,7 @@ import 'package:inknest_notes/sync/sync_changes.dart';
 import 'package:inknest_notes/sync/sync_cloud_client.dart';
 import 'package:inknest_notes/sync/sync_conflicts.dart';
 import 'package:inknest_notes/sync/sync_resource_map_store.dart';
+import 'package:inknest_notes/sync/sync_restore_snapshot.dart';
 import 'package:inknest_notes/sync/sync_mutation_tracker.dart';
 import 'package:inknest_notes/sync/sync_notebook_deletion_service.dart';
 import 'package:inknest_notes/sync/sync_page_deletion_service.dart';
@@ -367,38 +368,47 @@ class IncrementalSyncPullService {
       );
     }
 
-    final restored =
-        await BootstrapRestoreService(
-          rootDirectory: rootDirectory,
-          assetClient: cloudClient,
-          syncStateStore: stateStore,
-        ).downloadAndApplyCloudOnly(
-          bootstrap: bootstrap,
-          assessment: assessment,
-          persistCursor: false,
+    return withSyncRestoreSnapshot(
+      rootDirectory: rootDirectory,
+      userId: userId,
+      deviceId: deviceId,
+      action: () async {
+        final restored =
+            await BootstrapRestoreService(
+              rootDirectory: rootDirectory,
+              assetClient: cloudClient,
+              syncStateStore: stateStore,
+            ).downloadAndApplyCloudOnly(
+              bootstrap: bootstrap,
+              assessment: assessment,
+              persistCursor: false,
+            );
+        await resourceMap.replaceAll(
+          await buildSyncResourceMappings(
+            repository: repository,
+            bootstrap: bootstrap,
+          ),
+          cloudAssetKeys: buildCloudAssetKeys(bootstrap),
         );
-    await resourceMap.replaceAll(
-      await buildSyncResourceMappings(
-        repository: repository,
-        bootstrap: bootstrap,
-      ),
-      cloudAssetKeys: buildCloudAssetKeys(bootstrap),
-    );
-    if (conflictChanges.isNotEmpty) {
-      pendingConflicts = await conflictStore.applyChanges(conflictChanges);
-    }
-    if (tombstoneChanges.isNotEmpty) {
-      activeTombstones = await tombstoneStore.applyChanges(tombstoneChanges);
-    }
-    await stateStore.markChangesPageApplied(cursor);
-    return IncrementalSyncPullResult(
-      status: IncrementalSyncPullStatus.applied,
-      changeCount: allChanges.length,
-      downloadedNotebookCount: restored.downloadedNotebookCount,
-      downloadedAssetCount: restored.downloadedAssetCount,
-      receivedConflictCount: receivedConflictCount,
-      pendingConflicts: pendingConflicts,
-      activeTombstones: activeTombstones,
+        if (conflictChanges.isNotEmpty) {
+          pendingConflicts = await conflictStore.applyChanges(conflictChanges);
+        }
+        if (tombstoneChanges.isNotEmpty) {
+          activeTombstones = await tombstoneStore.applyChanges(
+            tombstoneChanges,
+          );
+        }
+        await stateStore.markChangesPageApplied(cursor);
+        return IncrementalSyncPullResult(
+          status: IncrementalSyncPullStatus.applied,
+          changeCount: allChanges.length,
+          downloadedNotebookCount: restored.downloadedNotebookCount,
+          downloadedAssetCount: restored.downloadedAssetCount,
+          receivedConflictCount: receivedConflictCount,
+          pendingConflicts: pendingConflicts,
+          activeTombstones: activeTombstones,
+        );
+      },
     );
   }
 

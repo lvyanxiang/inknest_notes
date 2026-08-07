@@ -286,6 +286,10 @@ continue-local state without overwriting either side.
   new-device restore, the next App start goes directly to ordinary background
   sync instead of repeating the first-sign-in Merge dialog; an incomplete
   handoff remains retryable and never claims incremental initialization.
+  The existing restore/Merge failure state now reflects a full local recovery
+  boundary rather than only staged-file cleanup: if final mapping, metadata, or
+  Cursor persistence fails, the shelf and device sync state are restored to
+  their pre-operation contents before Retry or Continue Offline is offered.
 - Intentional deviations: The server reserves the copy ID immediately but only
   materializes a normal notebook/page when the user chooses Keep Both. This
   avoids temporary duplicate library entries while preserving both snapshots.

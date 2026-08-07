@@ -6,14 +6,16 @@
   initialized sessions now push saved page, notebook-content, and infinite-
   canvas edits, mapped whole-notebook deletes, and structurally safe trailing-
   page deletes before applying safe `/sync/changes` updates.
-- Next task: Add a recovery-before-restore snapshot and verified failure
-  rollback boundary. Arbitrary page deletion, page reordering, and standalone
-  canvas deletion remain blocked on a structural synchronization contract.
-- Last completed: New-device cloud restore now treats the bootstrap Cursor as
-  the final handoff marker: restored files and complete resource mappings are
-  durable before Cursor publication. A simulated restart proceeds directly
-  through `/sync/changes`; a mapping failure leaves the Cursor unset and cannot
-  falsely enter incremental synchronization.
+- Next task: Define and implement the first structural synchronization contract
+  for notebook title, archive state, and folder placement. Arbitrary page
+  deletion, page reordering, and standalone canvas deletion remain blocked on
+  their corresponding structural contracts.
+- Last completed: Cloud-only restore, mixed first-sign-in Merge, and additive
+  incremental download now run inside a verified local recovery snapshot. The
+  snapshot covers the complete notebook library plus account/device sync
+  sidecars; mapping, metadata, or Cursor handoff failure restores the exact
+  pre-operation local state before surfacing a retryable error. Successful
+  handoff removes the transient snapshot.
 
 ## Decisions
 
@@ -759,6 +761,11 @@
   direct incremental pull after simulated restart, and no early Cursor on
   mapping failure. `flutter analyze` and `git diff --check` pass; no backend
   source or route changed.
+- `flutter test` passes with 245 tests after the verified recovery boundary;
+  focused coverage proves snapshot cleanup on success and exact notebook,
+  sidecar, resource-map obstacle, and Cursor restoration when cloud-only,
+  mixed-Merge, or additive-download handoff fails. `flutter analyze` and
+  `git diff --check` pass; no backend route changed.
 
 ## Notes
 

@@ -15,6 +15,11 @@ notebooks/
         source-name.pdf
         source-name-2.pdf
 sync/
+  restore-recovery/
+    snapshot-id/
+      manifest.json
+      notebooks/
+      device/
   user-id/
     device-id/
       state.json
@@ -157,6 +162,24 @@ and does not guess a cloud ID. Successful `/sync/commit` results update the
 mapped Revision and hash before the frozen in-flight batch is cleared.
 Notebook and canvas content that references a page or attachment is queued only
 when that reference resolves through this verified map.
+
+## `sync/restore-recovery/<snapshot-id>/`
+
+This is a transient internal rollback boundary for cloud-only restore, mixed
+first-sign-in Merge, and additive incremental download. Before local writes,
+the App copies the complete `notebooks/` directory and the current
+`sync/<user-id>/<device-id>/` sidecars. `manifest.json` records format version,
+creation time, original-directory presence, relative paths, byte sizes, and
+SHA-256 hashes. The copied files and manifest are verified before restore work
+begins and again before rollback.
+
+After a successful content, mapping, metadata, and Cursor handoff, the snapshot
+is deleted. If any step fails, the changed library and device sidecars are
+swapped out and the verified pre-operation directories are restored before the
+error is shown. This directory is not user-exportable and is not the future
+versioned `.inknestbackup` archive format. It also cannot reverse a server-side
+commit already accepted under its idempotency key; retry reconciles that remote
+state through the normal bootstrap and Revision contracts.
 
 ## `sync/<user-id>/<device-id>/deleted/<tombstone-id>/`
 

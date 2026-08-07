@@ -389,7 +389,7 @@ checksums.sha256
   empty/local-only/cloud-only/local-and-cloud）。
 - [x] 实现默认 Merge 决策计划，不以标题推断对象身份（仅生成确定顺序的
   upload-local、download-cloud、reconcile-shared 动作；不包含删除、替换或覆盖）。
-- [ ] 上传本地独有、下载云端独有。
+- [x] 上传本地独有、下载云端独有。
   - [x] 文件夹/笔记本元数据传输基础：bootstrap 返回账号隔离的完整元数据快照，
     `/sync/merge/commit` 原子、幂等创建本地独有元数据并拒绝不同内容占用同一稳定 ID。
   - [x] 页面/无限画布服务端传输：bootstrap 返回有效正文快照，Merge Commit 按父子
@@ -449,7 +449,11 @@ checksums.sha256
   - [x] 按账号/设备持久化 active Tombstone，并在资料库页头提供非阻塞“最近删除”入口；
     接入 `POST /sync/tombstones/{tombstoneId}/restore`，仅在恢复后的笔记本或结构安全末页
     已拉取并应用到本地后移除条目，失败保留记录供重试，不承诺永久删除或保留期限。
-- [ ] 恢复前快照和失败回滚。
+- [x] 恢复前快照和失败回滚：Flutter 在纯云端恢复、混合 Merge 下载和增量新增下载前
+  保存完整 `notebooks/` 与当前账号/设备同步 sidecar，并用文件大小和 SHA-256 清单立即
+  校验；映射、冲突/Tombstone 元数据或最终 Cursor 写入失败时恢复操作前状态，成功后
+  删除瞬时快照。该边界不回退已由服务端幂等接收的提交，重试继续依赖稳定 ID、Revision
+  与 idempotency key 收敛。
 
 完成标准：已有本地笔记的设备登录后不丢数据；新设备能恢复全部支持内容。
 
