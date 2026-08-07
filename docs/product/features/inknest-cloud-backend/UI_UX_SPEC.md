@@ -102,8 +102,10 @@ continue-local state without overwriting either side.
    immediately to local use with a concise retry-later message; it never blocks
    writing.
 5. A local edit containing an attachment not yet verified in cloud remains
-   local and does not claim upload success. Folder lifecycle, page structure,
-   and canvas background remain local until their explicit contracts exist.
+   local and does not claim upload success. Existing folder creation/rename
+   uses the same background status and retry flow without new controls. Folder
+   deletion, page structure, and canvas background remain local until their
+   explicit contracts exist.
 
 ### Conflict recovery
 
@@ -296,6 +298,10 @@ continue-local state without overwriting either side.
   appears through the normal refreshed shelf; a true concurrent same-field
   change uses the existing non-blocking sync failure/retry state while both the
   local shelf value and frozen operation remain intact.
+  Existing New Folder and Rename actions now also queue folder metadata. A new
+  or renamed folder appears on another device through the normal shelf refresh;
+  a concurrent rename uses the same non-blocking failed/retry status and keeps
+  the local operation. Folder deletion remains local-only in this slice.
 - Intentional deviations: The server reserves the copy ID immediately but only
   materializes a normal notebook/page when the user chooses Keep Both. This
   avoids temporary duplicate library entries while preserving both snapshots.

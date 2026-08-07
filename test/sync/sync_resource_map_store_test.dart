@@ -7,6 +7,49 @@ import 'package:inknest_notes/sync/sync_resource_map_store.dart';
 import 'package:inknest_notes/sync/sync_state.dart';
 
 void main() {
+  test('persists folder revision and name baseline', () async {
+    final root = await Directory.systemTemp.createTemp('inknest-folder-map-');
+    addTearDown(() => root.delete(recursive: true));
+    final repository = FileNotebookRepository(rootDirectory: root);
+    final folder = await repository.createFolder('Projects');
+    final now = DateTime.utc(2026, 8, 7);
+    final bootstrap = CloudSyncBootstrap(
+      inventory: SyncLibraryInventory(folderIds: [folder.id]),
+      baseCursor: 'cursor-1',
+      folders: [
+        CloudSyncFolder(
+          id: folder.id,
+          name: folder.name,
+          revision: 2,
+          contentHash: 'f' * 64,
+          createdAt: now,
+          updatedAt: now,
+        ),
+      ],
+      notebooks: const [],
+      pages: const [],
+      infiniteCanvases: const [],
+      assets: const [],
+    );
+    final store = FileSyncResourceMapStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    );
+
+    await store.replaceAll(
+      await buildSyncResourceMappings(
+        repository: repository,
+        bootstrap: bootstrap,
+      ),
+    );
+
+    final mapping = await store.find(folderSyncLocalKey(folder.id));
+    expect(mapping?.resourceType, SyncResourceType.folder);
+    expect(mapping?.revision, 2);
+    expect(mapping?.folderMetadata, {'name': 'Projects'});
+  });
+
   test('builds and persists local-to-cloud page mappings', () async {
     final root = await Directory.systemTemp.createTemp('inknest-map-');
     addTearDown(() => root.delete(recursive: true));

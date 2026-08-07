@@ -75,6 +75,17 @@ class InMemoryNotebookRepository implements NotebookRepository {
   }
 
   @override
+  Future<NotebookFolder> applySyncedFolder(NotebookFolder folder) async {
+    final exists = _folders.any((existing) => existing.id == folder.id);
+    if (exists) {
+      _replaceFolder(folder);
+    } else {
+      _folders.add(folder);
+    }
+    return folder;
+  }
+
+  @override
   Future<void> deleteFolder(NotebookFolder folder) async {
     _folders.removeWhere((existing) => existing.id == folder.id);
     for (final notebook in _notebooks.toList()) {

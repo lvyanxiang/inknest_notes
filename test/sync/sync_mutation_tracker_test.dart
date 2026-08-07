@@ -110,28 +110,113 @@ void main() {
     expect(operation.content, isNot(contains('isArchived')));
   });
 
-  test('rename archive and move coalesce one notebook metadata upsert', () async {
-    final root = await Directory.systemTemp.createTemp('inknest-metadata-');
+  test(
+    'rename archive and move coalesce one notebook metadata upsert',
+    () async {
+      final root = await Directory.systemTemp.createTemp('inknest-metadata-');
+      addTearDown(() => root.delete(recursive: true));
+      final setupRepository = FileNotebookRepository(rootDirectory: root);
+      final notebook = await setupRepository.createNotebook(title: 'Before');
+      final folder = await setupRepository.createFolder('Projects');
+      await FileSyncResourceMapStore(
+        rootDirectory: root,
+        userId: 'user-1',
+        deviceId: 'device-1',
+      ).replaceAll([
+        SyncResourceMapping(
+          localKey: notebookSyncLocalKey(notebook.id),
+          resourceType: SyncResourceType.notebook,
+          remoteResourceId: notebook.id,
+          revision: 4,
+          contentHash: 'a' * 64,
+          notebookMetadata: const {
+            'title': 'Before',
+            'isArchived': false,
+            'folderId': null,
+          },
+        ),
+      ]);
+      final tracker = SyncMutationTracker(
+        rootDirectory: root,
+        activeSession: _session,
+      );
+      final repository = FileNotebookRepository(
+        rootDirectory: root,
+        onNotebookMetadataPersisted: tracker.notebookMetadataSaved,
+      );
+
+      final renamed = await repository.renameNotebook(notebook, 'After');
+      final archived = await repository.setNotebookArchived(renamed, true);
+      await repository.moveNotebookToFolder(archived, folder.id);
+
+      final operation = (await _state(root)).pendingOperations.single;
+      expect(operation.baseRevision, 4);
+      expect(operation.includesContent, isFalse);
+      expect(operation.baseMetadata, {
+        'title': 'Before',
+        'isArchived': false,
+        'folderId': null,
+      });
+      expect(operation.metadata, {
+        'title': 'After',
+        'isArchived': true,
+        'folderId': folder.id,
+      });
+      expect(operation.toJson(), isNot(contains('content')));
+    },
+  );
+
+  test('folder creation and rename coalesce one metadata upsert', () async {
+    final root = await Directory.systemTemp.createTemp('inknest-folder-track-');
+    addTearDown(() => root.delete(recursive: true));
+    await FileSyncStateStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    ).markChangesPageApplied('cursor-1');
+    final tracker = SyncMutationTracker(
+      rootDirectory: root,
+      activeSession: _session,
+    );
+    final repository = FileNotebookRepository(
+      rootDirectory: root,
+      onFolderPersisted: tracker.folderSaved,
+    );
+
+    final folder = await repository.createFolder('Draft');
+    await repository.renameFolder(folder, 'Projects');
+
+    final operation = (await _state(root)).pendingOperations.single;
+    expect(operation.resourceType, SyncResourceType.folder);
+    expect(operation.resourceId, folder.id);
+    expect(operation.baseRevision, 0);
+    expect(operation.baseMetadata, isNull);
+    expect(operation.metadata, {'name': 'Projects'});
+    expect(operation.toJson(), isNot(contains('content')));
+  });
+
+  test('mapped folder rename retains its applied name baseline', () async {
+    final root = await Directory.systemTemp.createTemp('inknest-folder-map-');
     addTearDown(() => root.delete(recursive: true));
     final setupRepository = FileNotebookRepository(rootDirectory: root);
-    final notebook = await setupRepository.createNotebook(title: 'Before');
-    final folder = await setupRepository.createFolder('Projects');
+    final folder = await setupRepository.createFolder('Before');
+    await FileSyncStateStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    ).markChangesPageApplied('cursor-1');
     await FileSyncResourceMapStore(
       rootDirectory: root,
       userId: 'user-1',
       deviceId: 'device-1',
     ).replaceAll([
       SyncResourceMapping(
-        localKey: notebookSyncLocalKey(notebook.id),
-        resourceType: SyncResourceType.notebook,
-        remoteResourceId: notebook.id,
-        revision: 4,
+        localKey: folderSyncLocalKey(folder.id),
+        resourceType: SyncResourceType.folder,
+        remoteResourceId: folder.id,
+        revision: 3,
         contentHash: 'a' * 64,
-        notebookMetadata: const {
-          'title': 'Before',
-          'isArchived': false,
-          'folderId': null,
-        },
+        folderMetadata: const {'name': 'Before'},
       ),
     ]);
     final tracker = SyncMutationTracker(
@@ -140,27 +225,15 @@ void main() {
     );
     final repository = FileNotebookRepository(
       rootDirectory: root,
-      onNotebookMetadataPersisted: tracker.notebookMetadataSaved,
+      onFolderPersisted: tracker.folderSaved,
     );
 
-    final renamed = await repository.renameNotebook(notebook, 'After');
-    final archived = await repository.setNotebookArchived(renamed, true);
-    await repository.moveNotebookToFolder(archived, folder.id);
+    await repository.renameFolder(folder, 'After');
 
     final operation = (await _state(root)).pendingOperations.single;
-    expect(operation.baseRevision, 4);
-    expect(operation.includesContent, isFalse);
-    expect(operation.baseMetadata, {
-      'title': 'Before',
-      'isArchived': false,
-      'folderId': null,
-    });
-    expect(operation.metadata, {
-      'title': 'After',
-      'isArchived': true,
-      'folderId': folder.id,
-    });
-    expect(operation.toJson(), isNot(contains('content')));
+    expect(operation.baseRevision, 3);
+    expect(operation.baseMetadata, {'name': 'Before'});
+    expect(operation.metadata, {'name': 'After'});
   });
 
   test(

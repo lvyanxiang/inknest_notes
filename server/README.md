@@ -382,7 +382,25 @@ The server compares each changed field with its baseline. Unrelated content
 Revisions do not block a safe metadata update. If the same field changed on
 another device, the batch returns `409 sync_notebook_metadata_conflict` and no
 operation is committed. Folder creation/rename/delete is not part of this
-contract yet.
+notebook-metadata operation.
+
+Folder creation and rename use a metadata-only `folder` operation. Creation
+omits `baseMetadata`; rename includes the last applied name:
+
+```json
+{
+  "operationId": "folder-metadata-1",
+  "operation": "upsert",
+  "resourceType": "folder",
+  "resourceId": "folder-1",
+  "baseRevision": 1,
+  "baseMetadata": {"name":"Before"},
+  "metadata": {"name":"After"}
+}
+```
+
+A concurrent rename returns `409 sync_folder_metadata_conflict`. Folder
+deletion remains outside the incremental contract.
 
 The whole batch uses one PostgreSQL transaction. A stale page or notebook with
 different content leaves the original unchanged and returns an operation result
@@ -579,6 +597,8 @@ The migration history currently contains:
 - `20260806_0012`: required notebook-relative paths on ready assets and upload
   sessions, plus per-notebook path uniqueness so restore cannot map two objects
   onto the same local file.
+- `20260807_0013`: server-owned Revision and Content Hash fields on folders so
+  incremental creation and rename can be ordered and conflict-checked.
 
 Future schema work must add a new revision instead of rewriting an applied
 revision.

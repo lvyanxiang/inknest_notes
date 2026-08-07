@@ -26,13 +26,23 @@ from inknest_server.db.base import Base
 
 class Folder(Base):
     __tablename__ = "folders"
-    __table_args__ = (Index("ix_folders_user_id_updated_at", "user_id", "updated_at"),)
+    __table_args__ = (
+        CheckConstraint("revision >= 0", name="ck_folders_revision"),
+        CheckConstraint(
+            "(revision = 0 AND content_hash = '') OR "
+            "(revision > 0 AND length(content_hash) = 64)",
+            name="ck_folders_content_version",
+        ),
+        Index("ix_folders_user_id_updated_at", "user_id", "updated_at"),
+    )
 
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
     user_id: Mapped[UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True
     )
     name: Mapped[str] = mapped_column(String(200))
+    revision: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
+    content_hash: Mapped[str] = mapped_column(String(64), default="", server_default="")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

@@ -237,9 +237,10 @@ The first slice sets no retention period and performs no physical cleanup.
 - A same-field concurrent structure change returns
   `sync_notebook_metadata_conflict`, rolls back the batch, and retains the
   local frozen operation. It never silently chooses the latest request.
-- Folder creation/rename/delete, page ordering, and canvas background remain
-  outside this slice. A folder move is synchronized only when that stable
-  folder ID already exists in the account and on the receiving device.
+- Folder creation and rename use their own Revision, Content Hash, durable
+  metadata operation, and normal change pull. Concurrent renames preserve the
+  local frozen operation instead of overwriting either name. Folder deletion,
+  page ordering, and canvas background remain outside this slice.
 
 ## Acceptance Criteria
 
@@ -360,7 +361,8 @@ The first slice sets no retention period and performs no physical cleanup.
   rewritten to cloud IDs and unuploaded attachment references blocked.
   Notebook title, archive state, and placement among already synchronized
   folders now share the same durable queue and explicit three-way metadata
-  contract. Folder lifecycle, page structure, canvas background, attachment
+  contract. Folder creation/rename now use the same durable incremental flow;
+  folder deletion, page structure, canvas background, attachment
   upload, and divergent canvas recovery remain later contract slices. Existing
   notebook/page/canvas content now also downloads from another device when the
   change feed proves a continuous Revision chain and bootstrap structure still
@@ -408,7 +410,8 @@ The first slice sets no retention period and performs no physical cleanup.
   drift fails in tests. The complete backend run passes 50
   non-integration tests and 15 PostgreSQL/MinIO integration tests, including
   ready-only bootstrap visibility and real PDF/image/audio byte round trips;
-  the complete Flutter suite passes with 248 tests. The mixed-library slice is
+  the complete Flutter suite passes with 254 tests. The backend passes 51
+  non-integration tests and 15 integration tests. The mixed-library slice is
   additionally covered by 11 focused backend sync-change tests; staging tests
   cover verified success, corrupt downloads, and mid-apply rollback, and
   static analysis passes.

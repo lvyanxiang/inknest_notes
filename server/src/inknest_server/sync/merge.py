@@ -59,10 +59,12 @@ class SyncMergeRepository:
         folder_id: str,
         metadata: SyncMergeFolderMetadata,
     ) -> SyncMergeCreateResult:
+        expected_hash = content_hash({"name": metadata.name})
         inserted = await self._insert_folder(
             user_id=user_id,
             folder_id=folder_id,
             name=metadata.name,
+            content_hash=expected_hash,
         )
         folder = await self._session.scalar(
             select(Folder).where(Folder.id == folder_id, Folder.user_id == user_id)
@@ -72,15 +74,25 @@ class SyncMergeRepository:
         if not inserted:
             if folder.name != metadata.name:
                 raise SyncMergeResourceExistsError("folder", folder_id)
-            return SyncMergeCreateResult(outcome="unchanged")
+            return SyncMergeCreateResult(
+                outcome="unchanged",
+                revision=folder.revision,
+                content_hash=folder.content_hash,
+            )
         await self._changes.append_upsert(
             user_id=user_id,
             device_id=device_id,
             resource_type="folder",
             resource_id=folder.id,
             payload=folder_snapshot(folder),
+            revision=folder.revision,
+            content_hash=folder.content_hash,
         )
-        return SyncMergeCreateResult(outcome="applied")
+        return SyncMergeCreateResult(
+            outcome="applied",
+            revision=folder.revision,
+            content_hash=folder.content_hash,
+        )
 
     async def create_notebook(
         self,
@@ -283,8 +295,21 @@ class SyncMergeRepository:
             content_hash=saved.content_hash,
         )
 
-    async def _insert_folder(self, *, user_id: UUID, folder_id: str, name: str) -> bool:
-        values = {"id": folder_id, "user_id": user_id, "name": name}
+    async def _insert_folder(
+        self,
+        *,
+        user_id: UUID,
+        folder_id: str,
+        name: str,
+        content_hash: str,
+    ) -> bool:
+        values = {
+            "id": folder_id,
+            "user_id": user_id,
+            "name": name,
+            "revision": 1,
+            "content_hash": content_hash,
+        }
         bind = self._session.get_bind()
         if bind.dialect.name == "postgresql":
             statement = (

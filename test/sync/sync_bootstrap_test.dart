@@ -195,6 +195,8 @@ Map<String, Object?> _bootstrapJson() {
       {
         'id': 'folder-cloud',
         'name': 'Cloud folder',
+        'revision': 0,
+        'contentHash': '',
         'createdAt': timestamp,
         'updatedAt': timestamp,
       },

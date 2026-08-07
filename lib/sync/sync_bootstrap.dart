@@ -171,19 +171,26 @@ class CloudSyncFolder {
   const CloudSyncFolder({
     required this.id,
     required this.name,
+    required this.revision,
+    required this.contentHash,
     required this.createdAt,
     required this.updatedAt,
   });
 
   final String id;
   final String name;
+  final int revision;
+  final String contentHash;
   final DateTime createdAt;
   final DateTime updatedAt;
 
   factory CloudSyncFolder.fromJson(Map<String, Object?> json) {
+    final revision = requiredNonNegativeInt(json, 'revision');
     return CloudSyncFolder(
       id: requiredString(json, 'id'),
       name: requiredString(json, 'name'),
+      revision: revision,
+      contentHash: _revisionHash(json, revision),
       createdAt: requiredDateTime(json, 'createdAt'),
       updatedAt: requiredDateTime(json, 'updatedAt'),
     );

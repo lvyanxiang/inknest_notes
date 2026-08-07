@@ -10,6 +10,7 @@ from inknest_server.api.dependencies import (
 from inknest_server.errors import ApiError
 from inknest_server.repositories import RevisionConflictError
 from inknest_server.repositories.content import (
+    FolderMetadataConflictError,
     NotebookMetadataConflictError,
     ResourceDeletedError,
 )
@@ -216,6 +217,13 @@ async def commit_sync_changes(
                 message="Notebook organization changed concurrently.",
                 status_code=409,
                 details={**details, "fields": error.cause.fields},
+            ) from error
+        if isinstance(error.cause, FolderMetadataConflictError):
+            raise ApiError(
+                code="sync_folder_metadata_conflict",
+                message="Folder name changed concurrently.",
+                status_code=409,
+                details={**details, "fields": ["name"]},
             ) from error
         if isinstance(error.cause, ResourceDeletedError):
             raise ApiError(

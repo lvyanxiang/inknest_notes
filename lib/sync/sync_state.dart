@@ -1,4 +1,5 @@
 enum SyncResourceType {
+  folder('folder'),
   notebook('notebook'),
   page('page'),
   infiniteCanvas('infinite_canvas');

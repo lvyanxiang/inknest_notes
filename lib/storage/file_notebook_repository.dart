@@ -21,6 +21,7 @@ typedef NotebookContentPersistedCallback =
     Future<void> Function(Notebook notebook);
 typedef NotebookMetadataPersistedCallback =
     Future<void> Function(Notebook notebook);
+typedef FolderPersistedCallback = Future<void> Function(NotebookFolder folder);
 typedef InfiniteCanvasPersistedCallback =
     Future<void> Function(Notebook notebook, InfiniteCanvasDocument document);
 typedef NotebookDeletedCallback = Future<void> Function(Notebook notebook);
@@ -34,6 +35,7 @@ class FileNotebookRepository implements NotebookRepository {
     this.onPagePersisted,
     this.onNotebookContentPersisted,
     this.onNotebookMetadataPersisted,
+    this.onFolderPersisted,
     this.onInfiniteCanvasPersisted,
     this.onNotebookDeleted,
     this.onPageDeleted,
@@ -49,6 +51,7 @@ class FileNotebookRepository implements NotebookRepository {
   final PagePersistedCallback? onPagePersisted;
   final NotebookContentPersistedCallback? onNotebookContentPersisted;
   final NotebookMetadataPersistedCallback? onNotebookMetadataPersisted;
+  final FolderPersistedCallback? onFolderPersisted;
   final InfiniteCanvasPersistedCallback? onInfiniteCanvasPersisted;
   final NotebookDeletedCallback? onNotebookDeleted;
   final PageDeletedCallback? onPageDeleted;
@@ -93,6 +96,11 @@ class FileNotebookRepository implements NotebookRepository {
     );
 
     await _writeFolders([...folders, folder]);
+    try {
+      await onFolderPersisted?.call(folder);
+    } on Object {
+      // Folder changes remain local-first when queue persistence is unavailable.
+    }
     return folder;
   }
 
@@ -110,7 +118,24 @@ class FileNotebookRepository implements NotebookRepository {
       for (final existingFolder in folders)
         if (existingFolder.id == folder.id) updatedFolder else existingFolder,
     ]);
+    try {
+      await onFolderPersisted?.call(updatedFolder);
+    } on Object {
+      // Folder changes remain local-first when queue persistence is unavailable.
+    }
     return updatedFolder;
+  }
+
+  @override
+  Future<NotebookFolder> applySyncedFolder(NotebookFolder folder) async {
+    final folders = await _readFolders();
+    final exists = folders.any((existing) => existing.id == folder.id);
+    await _writeFolders([
+      for (final existing in folders)
+        if (existing.id == folder.id) folder else existing,
+      if (!exists) folder,
+    ]);
+    return folder;
   }
 
   @override

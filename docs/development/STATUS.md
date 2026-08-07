@@ -5,19 +5,19 @@
 - Milestone: Backend Phase 5 incremental-sync App integration is in progress;
   initialized sessions now push saved page, notebook-content, and infinite-
   canvas edits, explicit notebook title/archive/existing-folder metadata,
+  incremental folder creation/rename,
   mapped whole-notebook deletes, and structurally safe trailing-page deletes
   before applying safe `/sync/changes` updates.
-- Next task: Add incremental folder lifecycle synchronization for folder
-  creation and rename before page-order and canvas-background contracts.
+- Next task: Add safe incremental folder deletion, including moving contained
+  notebooks to the root on every device, before page-order and canvas-
+  background contracts.
   Arbitrary middle-page deletion and standalone canvas deletion remain blocked
   on their corresponding structural contracts.
-- Last completed: Existing notebook title, archive state, and placement among
-  already synchronized folders now use an explicit `/sync/commit`
-  `metadata/baseMetadata` contract. Flutter queues the existing shelf actions,
-  applies continuous remote metadata Revisions, and persists their baseline in
-  the resource map. The server field-merges against that baseline, rejects a
-  true same-field race with `sync_notebook_metadata_conflict`, and leaves the
-  local frozen operation available instead of silently overwriting it.
+- Last completed: Existing folder creation and rename actions now use the
+  durable incremental queue. Folders have server-owned Revision/Content Hash;
+  `/sync/commit` creates or renames them atomically, rejects concurrent rename
+  with `sync_folder_metadata_conflict`, and `/sync/changes` applies new or
+  continuously renamed folders without adding new shelf controls.
 
 ## Decisions
 
@@ -153,9 +153,10 @@
   IDs. Page saves remain locally successful if queue-sidecar persistence fails.
 - Treat `/sync/commit` as a content plus explicit notebook-metadata contract.
   Notebook title, archive state, and an already-synchronized folder ID travel
-  in `metadata/baseMetadata`, never inside content. Folder lifecycle, page
-  order, and canvas background remain unsupported and must not be claimed as
-  synchronized. Queue notebook/canvas content only when every page/asset
+  in `metadata/baseMetadata`, never inside content. Folder create/rename uses
+  its own revisioned metadata operation; folder deletion, page order, and
+  canvas background remain unsupported and must not be claimed as synchronized.
+  Queue notebook/canvas content only when every page/asset
   reference can be rewritten to verified cloud state.
 - Limit incremental page deletion to a mapped trailing page while at least one
   page remains. The current server contract does not compact later page
@@ -775,6 +776,10 @@
   tests. Focused coverage includes durable metadata coalescing, cross-device
   title/archive/folder application, idempotent replay, and atomic same-field
   conflict rejection. Ruff, mypy, Flutter analysis, and diff checks pass.
+- `flutter test` passes with 254 tests after folder creation/rename
+  synchronization; the backend passes 51 unit/API tests and 15 PostgreSQL/
+  MinIO integration tests. Alembic upgrades both the development database and
+  an independent empty database to `20260807_0013`, with no schema drift.
 
 ## Notes
 

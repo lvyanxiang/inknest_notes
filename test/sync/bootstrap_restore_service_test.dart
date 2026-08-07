@@ -239,6 +239,8 @@ CloudSyncBootstrap _bootstrap(List<int> expectedBytes) {
       {
         'id': 'folder-cloud',
         'name': 'Cloud folder',
+        'revision': 0,
+        'contentHash': '',
         'createdAt': timestamp,
         'updatedAt': timestamp,
       },

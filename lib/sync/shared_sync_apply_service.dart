@@ -1,5 +1,6 @@
 import 'package:inknest_notes/models/infinite_canvas_document.dart';
 import 'package:inknest_notes/models/notebook.dart';
+import 'package:inknest_notes/models/notebook_folder.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/pdf_outline_entry.dart';
 import 'package:inknest_notes/storage/notebook_repository.dart';
@@ -33,6 +34,7 @@ class SharedSyncApplyService {
       (change) =>
           change.operation != CloudSyncChangeOperation.upsert ||
           !const {
+            CloudSyncChangeResourceType.folder,
             CloudSyncChangeResourceType.notebook,
             CloudSyncChangeResourceType.page,
             CloudSyncChangeResourceType.infiniteCanvas,
@@ -44,9 +46,8 @@ class SharedSyncApplyService {
     }
 
     final notebooks = await _allNotebooks();
-    final folderIds = (await repository.listFolders())
-        .map((folder) => folder.id)
-        .toSet();
+    final folders = await repository.listFolders();
+    final folderIds = folders.map((folder) => folder.id).toSet();
     final changesByResource = <String, List<CloudSyncChange>>{};
     for (final change in changes) {
       changesByResource.putIfAbsent(_remoteKey(change), () => []).add(change);
@@ -60,6 +61,19 @@ class SharedSyncApplyService {
         return null;
       }
       if (mapping == null) {
+        if (first.resourceType == CloudSyncChangeResourceType.folder &&
+            snapshot is _FolderSharedSnapshot) {
+          final local = _findFolder(folders, first.resourceId);
+          if (local == null ||
+              local.name != snapshot.value.name ||
+              !_hasContinuousNewRevisionChain(entry.value) ||
+              snapshot.revision != entry.value.last.revision ||
+              snapshot.contentHash != entry.value.last.contentHash) {
+            return null;
+          }
+          actions.add(_folderAction(local, snapshot.value));
+          continue;
+        }
         final addition = await _buildNewPageAction(
           first: first,
           changes: entry.value,
@@ -85,6 +99,7 @@ class SharedSyncApplyService {
         mappings: mappings,
         resourceMap: resourceMap,
         folderIds: folderIds,
+        folders: folders,
       );
       if (action == null) return null;
       actions.add(action);
@@ -245,6 +260,12 @@ class SharedSyncApplyService {
         (item) => item.id,
         (item) => _SharedSnapshot.canvas(item),
       ),
+      CloudSyncChangeResourceType.folder => _findSnapshot(
+        bootstrap.folders,
+        change.resourceId,
+        (item) => item.id,
+        (item) => _SharedSnapshot.folder(item),
+      ),
       _ => null,
     };
   }
@@ -268,8 +289,14 @@ class SharedSyncApplyService {
     required List<SyncResourceMapping> mappings,
     required FileSyncResourceMapStore resourceMap,
     required Set<String> folderIds,
+    required List<NotebookFolder> folders,
   }) {
     return switch (snapshot) {
+      _FolderSharedSnapshot() => _buildFolderAction(
+        mapping,
+        snapshot.value,
+        folders,
+      ),
       _NotebookSharedSnapshot() => _buildNotebookAction(
         mapping,
         snapshot.value,
@@ -292,6 +319,34 @@ class SharedSyncApplyService {
         resourceMap,
       ),
     };
+  }
+
+  Future<_SharedApplyAction?> _buildFolderAction(
+    SyncResourceMapping mapping,
+    CloudSyncFolder cloud,
+    List<NotebookFolder> folders,
+  ) async {
+    final local = _findFolder(folders, cloud.id);
+    if (local == null || mapping.localKey != folderSyncLocalKey(local.id)) {
+      return null;
+    }
+    return _folderAction(local, cloud);
+  }
+
+  _SharedApplyAction _folderAction(
+    NotebookFolder local,
+    CloudSyncFolder cloud,
+  ) {
+    final updated = NotebookFolder(
+      id: local.id,
+      name: cloud.name,
+      createdAt: cloud.createdAt,
+      updatedAt: cloud.updatedAt,
+    );
+    return _SharedApplyAction(
+      apply: () => repository.applySyncedFolder(updated),
+      rollback: () => repository.applySyncedFolder(local),
+    );
   }
 
   Future<_SharedApplyAction?> _buildNotebookAction(
@@ -436,6 +491,7 @@ class SharedSyncApplyService {
   ) {
     final type = switch (change.resourceType) {
       CloudSyncChangeResourceType.notebook => SyncResourceType.notebook,
+      CloudSyncChangeResourceType.folder => SyncResourceType.folder,
       CloudSyncChangeResourceType.page => SyncResourceType.page,
       CloudSyncChangeResourceType.infiniteCanvas =>
         SyncResourceType.infiniteCanvas,
@@ -477,6 +533,13 @@ class SharedSyncApplyService {
   Notebook? _findNotebook(List<Notebook> notebooks, String id) {
     for (final notebook in notebooks) {
       if (notebook.id == id) return notebook;
+    }
+    return null;
+  }
+
+  NotebookFolder? _findFolder(List<NotebookFolder> folders, String id) {
+    for (final folder in folders) {
+      if (folder.id == id) return folder;
     }
     return null;
   }
@@ -567,12 +630,20 @@ sealed class _SharedSnapshot {
 
   factory _SharedSnapshot.notebook(CloudSyncNotebook value) =
       _NotebookSharedSnapshot;
+  factory _SharedSnapshot.folder(CloudSyncFolder value) = _FolderSharedSnapshot;
   factory _SharedSnapshot.page(CloudSyncPage value) = _PageSharedSnapshot;
   factory _SharedSnapshot.canvas(CloudSyncInfiniteCanvas value) =
       _CanvasSharedSnapshot;
 
   final int revision;
   final String contentHash;
+}
+
+class _FolderSharedSnapshot extends _SharedSnapshot {
+  _FolderSharedSnapshot(this.value)
+    : super(revision: value.revision, contentHash: value.contentHash);
+
+  final CloudSyncFolder value;
 }
 
 class _NotebookSharedSnapshot extends _SharedSnapshot {

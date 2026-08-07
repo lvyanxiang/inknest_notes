@@ -154,6 +154,9 @@ cloud IDs. Each entry stores its resource type, remote ID, latest server
 Revision, and Content Hash. Notebook entries also store the last applied
 `notebookMetadata` baseline (`title`, `isArchived`, and nullable `folderId`) so
 later local organization changes can use a safe three-way comparison.
+Folder entries store `folderMetadata.name`; legacy cloud folders may begin at
+Revision 0 with an empty hash and are promoted to a hashed Revision on their
+first incremental write.
 `cloudAssetKeys` records notebook-relative assets
 verified by the latest applied bootstrap. Paged notes use a notebook-qualified
 local page key because legacy local files may reuse `page-1` in different
@@ -173,6 +176,12 @@ folders coalesce into the same pending notebook operation. Its API form carries
 authoritative field-merged snapshot and then updates both the Revision and
 metadata baseline. A true same-field concurrent change leaves the frozen
 operation and local shelf state intact for later coordination.
+
+Folder creation and rename use metadata-only `folder` operations. A newly
+created folder starts without `baseMetadata`; a mapped rename retains the
+oldest applied `name` baseline while later local renames coalesce. The mapping
+is published only after the normal change pull confirms the authoritative
+folder snapshot. Folder deletion is not queued by this contract yet.
 
 ## `sync/restore-recovery/<snapshot-id>/`
 

@@ -7,6 +7,7 @@ from inknest_server.content.canonical_json import content_hash
 from inknest_server.models import SyncChange
 from inknest_server.repositories.content import (
     ContentRepository,
+    FolderMetadataConflictError,
     NotebookMetadataConflictError,
     ResourceDeletedError,
     RevisionConflictError,
@@ -37,6 +38,7 @@ from inknest_server.sync.schemas import (
     SyncCommitRequest,
     SyncCommitResponse,
     SyncConflictResponse,
+    SyncFolderMetadata,
     SyncMergeCommitRequest,
     SyncMergeCommitResponse,
     SyncMergeCreateOperation,
@@ -64,6 +66,7 @@ class SyncOperationFailedError(Exception):
         operation: SyncCommitOperation,
         cause: (
             RevisionConflictError
+            | FolderMetadataConflictError
             | NotebookMetadataConflictError
             | ResourceDeletedError
             | LibraryResourceNotFoundError
@@ -378,6 +381,8 @@ class SyncService:
         operation: SyncCommitOperation,
     ) -> SyncCommitOperationResult:
         if operation.operation == "delete":
+            if operation.resource_type == "folder":
+                raise RuntimeError("validated folder delete is unsupported")
             try:
                 delete_result = await self._tombstones.delete(
                     user_id=user_id,
@@ -400,7 +405,22 @@ class SyncService:
             )
 
         try:
-            if operation.resource_type == "notebook":
+            if operation.resource_type == "folder":
+                if not isinstance(operation.metadata, SyncFolderMetadata):
+                    raise RuntimeError("validated folder upsert has wrong metadata")
+                content_result = await self._content.save_folder(
+                    user_id=user_id,
+                    folder_id=operation.resource_id,
+                    base_revision=operation.base_revision,
+                    metadata=operation.metadata.model_dump(mode="json", by_alias=True),
+                    base_metadata=(
+                        operation.base_metadata.model_dump(mode="json", by_alias=True)
+                        if operation.base_metadata is not None
+                        else None
+                    ),
+                    device_id=device_id,
+                )
+            elif operation.resource_type == "notebook":
                 content_result = await self._content.save_notebook(
                     user_id=user_id,
                     notebook_id=operation.resource_id,
@@ -439,7 +459,7 @@ class SyncService:
                     device_id=device_id,
                 )
         except ResourceDeletedError as error:
-            if operation.content is None:
+            if operation.resource_type == "folder" or operation.content is None:
                 raise SyncOperationFailedError(operation, error) from error
             tombstone_result = await self._tombstones.preserve_edit_after_delete(
                 user_id=user_id,
@@ -484,6 +504,7 @@ class SyncService:
                 )
             raise SyncOperationFailedError(operation, error) from error
         except (
+            FolderMetadataConflictError,
             NotebookMetadataConflictError,
             LibraryResourceNotFoundError,
         ) as error:

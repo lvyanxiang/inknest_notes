@@ -137,6 +137,8 @@ async def test_bootstrap_inventory_is_read_only_active_and_account_scoped(
     assert body["notebookIds"] == ["first-notebook-a", "first-notebook-b"]
     assert [item["id"] for item in body["folders"]] == ["first-folder"]
     assert body["folders"][0]["name"] == "Shared title"
+    assert body["folders"][0]["revision"] == 0
+    assert body["folders"][0]["contentHash"] == ""
     assert [item["id"] for item in body["notebooks"]] == [
         "first-notebook-a",
         "first-notebook-b",

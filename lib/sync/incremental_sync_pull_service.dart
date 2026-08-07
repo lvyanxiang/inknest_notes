@@ -114,7 +114,7 @@ class IncrementalSyncPullService {
     final mappings = await resourceMap.load();
     if (mappings.isEmpty) {
       final local = await readLocalSyncLibraryInventory(repository);
-      if (local.hasLibrary) {
+      if (local.notebookIds.isNotEmpty) {
         return IncrementalSyncPullResult(
           status: IncrementalSyncPullStatus.notInitialized,
           pendingConflicts: pendingConflicts,

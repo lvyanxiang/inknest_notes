@@ -16,7 +16,12 @@ def _timestamp(value: datetime | None) -> str | None:
 
 
 def folder_snapshot(folder: Folder) -> dict[str, object]:
-    return {"id": folder.id, "name": folder.name}
+    return {
+        "id": folder.id,
+        "name": folder.name,
+        "revision": folder.revision,
+        "contentHash": folder.content_hash,
+    }
 
 
 def notebook_snapshot(notebook: Notebook) -> dict[str, object]:

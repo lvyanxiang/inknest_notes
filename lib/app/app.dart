@@ -82,6 +82,7 @@ class _InkNestAppState extends State<InkNestApp> {
       onPagePersisted: mutationTracker.pageSaved,
       onNotebookContentPersisted: mutationTracker.notebookContentSaved,
       onNotebookMetadataPersisted: mutationTracker.notebookMetadataSaved,
+      onFolderPersisted: mutationTracker.folderSaved,
       onInfiniteCanvasPersisted: mutationTracker.infiniteCanvasSaved,
       onNotebookDeleted: mutationTracker.notebookDeleted,
       onPageDeleted: mutationTracker.pageDeleted,

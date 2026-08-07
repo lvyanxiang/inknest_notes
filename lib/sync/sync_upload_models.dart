@@ -112,7 +112,12 @@ class SyncContentCommitOperationResult {
     final resourceType = requiredString(json, 'resourceType');
     final revision = json['revision'];
     final outcome = requiredString(json, 'outcome');
-    if (!const {'notebook', 'page', 'infinite_canvas'}.contains(resourceType) ||
+    if (!const {
+          'folder',
+          'notebook',
+          'page',
+          'infinite_canvas',
+        }.contains(resourceType) ||
         revision is! int ||
         revision < 0 ||
         !const {

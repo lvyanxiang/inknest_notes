@@ -20,6 +20,7 @@ from inknest_server.models.library import (
 from inknest_server.repositories.library import LibraryResourceNotFoundError
 from inknest_server.repositories.sync import SyncChangeRepository
 from inknest_server.sync.snapshots import (
+    folder_snapshot,
     infinite_canvas_snapshot,
     notebook_snapshot,
     page_snapshot,
@@ -51,6 +52,10 @@ class NotebookMetadataConflictError(Exception):
         super().__init__("notebook metadata changed concurrently")
 
 
+class FolderMetadataConflictError(Exception):
+    pass
+
+
 @dataclass(frozen=True, slots=True)
 class ContentSaveResult:
     revision: int
@@ -64,6 +69,108 @@ class ContentRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
         self._changes = SyncChangeRepository(session)
+
+    async def save_folder(
+        self,
+        *,
+        user_id: UUID,
+        folder_id: str,
+        base_revision: int,
+        metadata: dict[str, object],
+        base_metadata: dict[str, object] | None,
+        device_id: UUID | None = None,
+    ) -> ContentSaveResult:
+        if device_id is not None:
+            await self._ensure_active_device_owned(user_id=user_id, device_id=device_id)
+        desired_name = str(metadata["name"])
+        desired_hash = calculate_content_hash({"name": desired_name})
+        folder = await self._session.scalar(
+            select(Folder)
+            .where(Folder.id == folder_id, Folder.user_id == user_id)
+            .with_for_update()
+        )
+        if folder is None:
+            if base_revision != 0 or base_metadata is not None:
+                raise LibraryResourceNotFoundError("folder", folder_id)
+            folder = Folder(
+                id=folder_id,
+                user_id=user_id,
+                name=desired_name,
+                revision=1,
+                content_hash=desired_hash,
+            )
+            self._session.add(folder)
+            await self._session.flush()
+            await self._changes.append_upsert(
+                user_id=user_id,
+                resource_type="folder",
+                resource_id=folder.id,
+                payload=folder_snapshot(folder),
+                revision=folder.revision,
+                content_hash=folder.content_hash,
+                device_id=device_id,
+            )
+            return ContentSaveResult(
+                revision=folder.revision,
+                content_hash=folder.content_hash,
+                created_revision=True,
+            )
+
+        if base_metadata is None:
+            if folder.name != desired_name:
+                raise FolderMetadataConflictError
+            if folder.revision == 0:
+                folder.revision = 1
+                folder.content_hash = desired_hash
+                await self._session.flush()
+                await self._changes.append_upsert(
+                    user_id=user_id,
+                    resource_type="folder",
+                    resource_id=folder.id,
+                    payload=folder_snapshot(folder),
+                    revision=folder.revision,
+                    content_hash=folder.content_hash,
+                    device_id=device_id,
+                )
+                return ContentSaveResult(
+                    revision=folder.revision,
+                    content_hash=folder.content_hash,
+                    created_revision=True,
+                )
+            return ContentSaveResult(
+                revision=folder.revision,
+                content_hash=folder.content_hash,
+                created_revision=False,
+            )
+
+        baseline_name = str(base_metadata["name"])
+        if desired_name == baseline_name or folder.name == desired_name:
+            return ContentSaveResult(
+                revision=folder.revision,
+                content_hash=folder.content_hash,
+                created_revision=False,
+            )
+        if folder.name != baseline_name or folder.revision != base_revision:
+            raise FolderMetadataConflictError
+
+        folder.name = desired_name
+        folder.revision += 1
+        folder.content_hash = desired_hash
+        await self._session.flush()
+        await self._changes.append_upsert(
+            user_id=user_id,
+            resource_type="folder",
+            resource_id=folder.id,
+            payload=folder_snapshot(folder),
+            revision=folder.revision,
+            content_hash=folder.content_hash,
+            device_id=device_id,
+        )
+        return ContentSaveResult(
+            revision=folder.revision,
+            content_hash=folder.content_hash,
+            created_revision=True,
+        )
 
     async def save_notebook_content(
         self,

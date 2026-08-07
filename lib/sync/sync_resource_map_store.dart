@@ -12,6 +12,7 @@ class SyncResourceMapping {
     required this.remoteResourceId,
     required this.revision,
     required this.contentHash,
+    this.folderMetadata,
     this.notebookMetadata,
   });
 
@@ -20,11 +21,13 @@ class SyncResourceMapping {
   final String remoteResourceId;
   final int revision;
   final String contentHash;
+  final Map<String, Object?>? folderMetadata;
   final Map<String, Object?>? notebookMetadata;
 
   SyncResourceMapping copyWith({
     int? revision,
     String? contentHash,
+    Map<String, Object?>? folderMetadata,
     Map<String, Object?>? notebookMetadata,
   }) => SyncResourceMapping(
     localKey: localKey,
@@ -32,26 +35,37 @@ class SyncResourceMapping {
     remoteResourceId: remoteResourceId,
     revision: revision ?? this.revision,
     contentHash: contentHash ?? this.contentHash,
+    folderMetadata: folderMetadata ?? this.folderMetadata,
     notebookMetadata: notebookMetadata ?? this.notebookMetadata,
   );
 
   factory SyncResourceMapping.fromJson(Map<String, Object?> json) {
     final revision = json['revision'];
     final contentHash = json['contentHash'];
-    if (revision is! int ||
-        revision < 0 ||
-        contentHash is! String ||
-        !RegExp(r'^[0-9a-f]{64}$').hasMatch(contentHash)) {
+    final resourceType = SyncResourceType.fromApiValue(
+      json['resourceType']! as String,
+    );
+    final validHash =
+        contentHash is String &&
+        (RegExp(r'^[0-9a-f]{64}$').hasMatch(contentHash) ||
+            (resourceType == SyncResourceType.folder &&
+                revision == 0 &&
+                contentHash.isEmpty));
+    if (revision is! int || revision < 0 || !validHash) {
       throw const FormatException('Invalid synchronization resource mapping.');
     }
     return SyncResourceMapping(
       localKey: json['localKey']! as String,
-      resourceType: SyncResourceType.fromApiValue(
-        json['resourceType']! as String,
-      ),
+      resourceType: resourceType,
       remoteResourceId: json['remoteResourceId']! as String,
       revision: revision,
       contentHash: contentHash,
+      folderMetadata: json['folderMetadata'] == null
+          ? null
+          : Map.unmodifiable(
+              (json['folderMetadata']! as Map<Object?, Object?>)
+                  .cast<String, Object?>(),
+            ),
       notebookMetadata: json['notebookMetadata'] == null
           ? null
           : Map.unmodifiable(
@@ -67,6 +81,7 @@ class SyncResourceMapping {
     'remoteResourceId': remoteResourceId,
     'revision': revision,
     'contentHash': contentHash,
+    if (folderMetadata != null) 'folderMetadata': folderMetadata,
     if (notebookMetadata != null) 'notebookMetadata': notebookMetadata,
   };
 }
@@ -223,6 +238,8 @@ class FileSyncResourceMapStore {
 
 String notebookSyncLocalKey(String notebookId) => 'notebook:$notebookId';
 
+String folderSyncLocalKey(String folderId) => 'folder:$folderId';
+
 String pageSyncLocalKey(String notebookId, String pageId) =>
     'page:$notebookId:$pageId';
 
@@ -251,6 +268,23 @@ Future<List<SyncResourceMapping>> buildSyncResourceMappings({
     for (final notebook in bootstrap.notebooks) notebook.id: notebook,
   };
   final mappings = <SyncResourceMapping>[];
+  final cloudFolders = {
+    for (final folder in bootstrap.folders) folder.id: folder,
+  };
+  for (final folder in folders) {
+    final cloudFolder = cloudFolders[folder.id];
+    if (cloudFolder == null) continue;
+    mappings.add(
+      SyncResourceMapping(
+        localKey: folderSyncLocalKey(folder.id),
+        resourceType: SyncResourceType.folder,
+        remoteResourceId: cloudFolder.id,
+        revision: cloudFolder.revision,
+        contentHash: cloudFolder.contentHash,
+        folderMetadata: {'name': cloudFolder.name},
+      ),
+    );
+  }
   for (final notebook in notebooks) {
     final cloudNotebook = cloudNotebooks[notebook.id];
     if (cloudNotebook == null) continue;

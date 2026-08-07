@@ -61,6 +61,8 @@ abstract class NotebookRepository {
 
   Future<NotebookFolder> renameFolder(NotebookFolder folder, String name);
 
+  Future<NotebookFolder> applySyncedFolder(NotebookFolder folder);
+
   Future<void> deleteFolder(NotebookFolder folder);
 
   Future<Notebook> createNotebook({

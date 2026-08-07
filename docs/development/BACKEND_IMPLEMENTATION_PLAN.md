@@ -434,8 +434,11 @@ checksums.sha256
       显式携带 `metadata` 与 `baseMetadata`，服务端按字段三方比较并与正文共用原子、幂等
       Revision；Flutter 将现有书架操作持久化排队并应用连续远端更新。同一字段并发修改
       返回 `sync_notebook_metadata_conflict`，不清空本地队列或静默覆盖。
-    - [ ] 文件夹创建/改名/删除、页面结构和画布背景；客户端继续不得把这些字段伪装进
-      content 或声明已经同步。
+    - [x] 文件夹创建与改名：文件夹补充 Revision/Content Hash；初始化后的本地创建和
+      改名进入持久队列，`/sync/commit` 原子创建或按名称基线拒绝并发覆盖，另一设备从
+      `/sync/changes` 新增或更新现有文件夹。
+    - [ ] 文件夹删除、页面结构和画布背景；客户端继续不得把这些字段伪装进 content
+      或声明已经同步。
   - [x] 应用已有笔记本、页面和无限画布的共享正文更新：要求 Revision 连续、结构一致、
     页面/附件引用可解析，多资源失败时回滚，完整成功后才刷新资源映射和 Cursor。
   - [x] 应用远端整本笔记的 delete + active Tombstone：校验连续 Revision、映射 Hash

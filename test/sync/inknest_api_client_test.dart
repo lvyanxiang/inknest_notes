@@ -828,6 +828,8 @@ Map<String, Object?> _bootstrapJson() {
       {
         'id': 'folder-1',
         'name': 'Study',
+        'revision': 0,
+        'contentHash': '',
         'createdAt': timestamp,
         'updatedAt': timestamp,
       },

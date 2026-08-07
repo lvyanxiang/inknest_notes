@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:inknest_notes/models/infinite_canvas_document.dart';
 import 'package:inknest_notes/models/notebook.dart';
+import 'package:inknest_notes/models/notebook_folder.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/pdf_outline_entry.dart';
 import 'package:inknest_notes/sync/file_sync_state_store.dart';
@@ -44,6 +45,11 @@ class SyncMutationTracker {
   Future<void> notebookMetadataSaved(Notebook notebook) {
     if (_suppressionDepth > 0) return Future.value();
     return _enqueue(() => _trackNotebookMetadata(notebook));
+  }
+
+  Future<void> folderSaved(NotebookFolder folder) {
+    if (_suppressionDepth > 0) return Future.value();
+    return _enqueue(() => _trackFolder(folder));
   }
 
   Future<void> infiniteCanvasSaved(
@@ -175,6 +181,27 @@ class SyncMutationTracker {
         'isArchived': notebook.isArchived,
         'folderId': notebook.folderId,
       },
+    );
+  }
+
+  Future<void> _trackFolder(NotebookFolder folder) async {
+    final session = activeSession();
+    if (session == null) return;
+    final stateStore = _stateStore(session);
+    if ((await stateStore.loadSnapshot()).lastAppliedCursor == null) return;
+    final mapping = await _resourceMap(
+      session,
+    ).find(folderSyncLocalKey(folder.id));
+    if (mapping != null &&
+        (mapping.resourceType != SyncResourceType.folder ||
+            mapping.folderMetadata == null)) {
+      return;
+    }
+    await stateStore.enqueueFolderMetadata(
+      resourceId: mapping?.remoteResourceId ?? folder.id,
+      baseRevision: mapping?.revision ?? 0,
+      baseMetadata: mapping?.folderMetadata,
+      metadata: {'name': folder.name},
     );
   }
 

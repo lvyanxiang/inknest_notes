@@ -221,6 +221,8 @@ void main() {
         CloudSyncFolder(
           id: folder.id,
           name: folder.name,
+          revision: 0,
+          contentHash: '',
           createdAt: folder.createdAt,
           updatedAt: folder.updatedAt,
         ),
@@ -249,12 +251,7 @@ void main() {
       pages: [
         CloudSyncChangePage(
           changes: [
-            _change(
-              'notebook',
-              local.id,
-              revision: 2,
-              contentHash: 'a' * 64,
-            ),
+            _change('notebook', local.id, revision: 2, contentHash: 'a' * 64),
           ],
           nextCursor: 'cursor-2',
           hasMore: false,
@@ -273,6 +270,191 @@ void main() {
     expect(updated.title, 'After');
     expect(updated.folderId, folder.id);
     expect((await stateStore.loadSnapshot()).lastAppliedCursor, 'cursor-2');
+  });
+
+  test('downloads a new cloud folder without a notebook', () async {
+    final root = await Directory.systemTemp.createTemp('inknest-pull-folder-');
+    addTearDown(() => root.delete(recursive: true));
+    final repository = FileNotebookRepository(rootDirectory: root);
+    final stateStore = FileSyncStateStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    );
+    await stateStore.markChangesPageApplied('cursor-1');
+    final now = DateTime.utc(2026, 8, 7);
+    final bootstrap = CloudSyncBootstrap(
+      inventory: SyncLibraryInventory(folderIds: const ['cloud-folder']),
+      baseCursor: 'bootstrap-cursor',
+      folders: [
+        CloudSyncFolder(
+          id: 'cloud-folder',
+          name: 'Projects',
+          revision: 1,
+          contentHash: 'a' * 64,
+          createdAt: now,
+          updatedAt: now,
+        ),
+      ],
+      notebooks: const [],
+      pages: const [],
+      infiniteCanvases: const [],
+      assets: const [],
+    );
+    final cloud = _PullCloudClient(
+      bootstrapSnapshot: bootstrap,
+      pages: [
+        CloudSyncChangePage(
+          changes: [_change('folder', 'cloud-folder')],
+          nextCursor: 'cursor-2',
+          hasMore: false,
+        ),
+      ],
+    );
+
+    final result = await IncrementalSyncPullService(
+      repository: repository,
+      cloudClient: cloud,
+      rootDirectory: root,
+    ).pull(userId: 'user-1', deviceId: 'device-1');
+
+    expect(result.status, IncrementalSyncPullStatus.applied);
+    expect((await repository.listFolders()).single.name, 'Projects');
+    expect((await stateStore.loadSnapshot()).lastAppliedCursor, 'cursor-2');
+    expect(
+      (await FileSyncResourceMapStore(
+        rootDirectory: root,
+        userId: 'user-1',
+        deviceId: 'device-1',
+      ).find(folderSyncLocalKey('cloud-folder')))?.revision,
+      1,
+    );
+  });
+
+  test('applies a continuous shared folder rename', () async {
+    final root = await Directory.systemTemp.createTemp('inknest-pull-rename-');
+    addTearDown(() => root.delete(recursive: true));
+    final repository = FileNotebookRepository(rootDirectory: root);
+    final folder = await repository.createFolder('Before');
+    final stateStore = FileSyncStateStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    );
+    await stateStore.markChangesPageApplied('cursor-1');
+    await FileSyncResourceMapStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    ).replaceAll([
+      SyncResourceMapping(
+        localKey: folderSyncLocalKey(folder.id),
+        resourceType: SyncResourceType.folder,
+        remoteResourceId: folder.id,
+        revision: 1,
+        contentHash: 'a' * 64,
+        folderMetadata: const {'name': 'Before'},
+      ),
+    ]);
+    final now = DateTime.utc(2026, 8, 7);
+    final cloud = _PullCloudClient(
+      bootstrapSnapshot: CloudSyncBootstrap(
+        inventory: SyncLibraryInventory(folderIds: [folder.id]),
+        baseCursor: 'bootstrap-cursor',
+        folders: [
+          CloudSyncFolder(
+            id: folder.id,
+            name: 'After',
+            revision: 2,
+            contentHash: 'b' * 64,
+            createdAt: folder.createdAt,
+            updatedAt: now,
+          ),
+        ],
+        notebooks: const [],
+        pages: const [],
+        infiniteCanvases: const [],
+        assets: const [],
+      ),
+      pages: [
+        CloudSyncChangePage(
+          changes: [
+            _change('folder', folder.id, revision: 2, contentHash: 'b' * 64),
+          ],
+          nextCursor: 'cursor-2',
+          hasMore: false,
+        ),
+      ],
+    );
+
+    final result = await IncrementalSyncPullService(
+      repository: repository,
+      cloudClient: cloud,
+      rootDirectory: root,
+    ).pull(userId: 'user-1', deviceId: 'device-1');
+
+    expect(result.status, IncrementalSyncPullStatus.applied);
+    expect(result.appliedSharedResourceCount, 1);
+    expect((await repository.listFolders()).single.name, 'After');
+    expect((await stateStore.loadSnapshot()).lastAppliedCursor, 'cursor-2');
+  });
+
+  test('confirms a locally created folder and publishes its mapping', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'inknest-pull-own-folder-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final repository = FileNotebookRepository(rootDirectory: root);
+    final folder = await repository.createFolder('Projects');
+    final stateStore = FileSyncStateStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    );
+    await stateStore.markChangesPageApplied('cursor-1');
+    final now = DateTime.utc(2026, 8, 7);
+    final cloud = _PullCloudClient(
+      bootstrapSnapshot: CloudSyncBootstrap(
+        inventory: SyncLibraryInventory(folderIds: [folder.id]),
+        baseCursor: 'bootstrap-cursor',
+        folders: [
+          CloudSyncFolder(
+            id: folder.id,
+            name: folder.name,
+            revision: 1,
+            contentHash: 'a' * 64,
+            createdAt: folder.createdAt,
+            updatedAt: now,
+          ),
+        ],
+        notebooks: const [],
+        pages: const [],
+        infiniteCanvases: const [],
+        assets: const [],
+      ),
+      pages: [
+        CloudSyncChangePage(
+          changes: [_change('folder', folder.id, deviceId: 'device-1')],
+          nextCursor: 'cursor-2',
+          hasMore: false,
+        ),
+      ],
+    );
+
+    final result = await IncrementalSyncPullService(
+      repository: repository,
+      cloudClient: cloud,
+      rootDirectory: root,
+    ).pull(userId: 'user-1', deviceId: 'device-1');
+
+    expect(result.status, IncrementalSyncPullStatus.applied);
+    final mapping = await FileSyncResourceMapStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    ).find(folderSyncLocalKey(folder.id));
+    expect(mapping?.revision, 1);
+    expect(mapping?.folderMetadata, {'name': 'Projects'});
   });
 
   test('applies a continuous shared page content update', () async {
@@ -897,6 +1079,7 @@ CloudSyncChange _change(
   String resourceId, {
   int revision = 1,
   String? contentHash,
+  String deviceId = 'device-2',
 }) {
   return CloudSyncChange(
     changeId: 'change-$resourceId',
@@ -906,7 +1089,7 @@ CloudSyncChange _change(
     revision: revision,
     contentHash: contentHash ?? 'a' * 64,
     payload: const {},
-    deviceId: 'device-2',
+    deviceId: deviceId,
     createdAt: DateTime.utc(2026, 8, 7),
   );
 }

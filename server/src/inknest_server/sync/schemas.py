@@ -53,6 +53,8 @@ class SyncBootstrapCounts(SyncApiModel):
 class SyncBootstrapFolder(SyncApiModel):
     id: str
     name: str
+    revision: int
+    content_hash: str
     created_at: datetime
     updated_at: datetime
 
@@ -247,15 +249,25 @@ class SyncNotebookMetadata(SyncApiModel):
     folder_id: str | None = Field(default=None, min_length=1, max_length=128)
 
 
+class SyncFolderMetadata(SyncApiModel):
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        extra="forbid",
+        populate_by_name=True,
+    )
+
+    name: str = Field(min_length=1, max_length=200)
+
+
 class SyncCommitOperation(SyncApiModel):
     operation_id: str = Field(min_length=1, max_length=128)
     operation: Literal["upsert", "delete"]
-    resource_type: Literal["notebook", "page", "infinite_canvas"]
+    resource_type: Literal["folder", "notebook", "page", "infinite_canvas"]
     resource_id: str = Field(min_length=1, max_length=128)
     base_revision: int = Field(ge=0)
     content: dict[str, object] | None = None
-    metadata: SyncNotebookMetadata | None = None
-    base_metadata: SyncNotebookMetadata | None = None
+    metadata: SyncFolderMetadata | SyncNotebookMetadata | None = None
+    base_metadata: SyncFolderMetadata | SyncNotebookMetadata | None = None
 
     @model_validator(mode="after")
     def validate_operation_content(self) -> SyncCommitOperation:
@@ -273,8 +285,21 @@ class SyncCommitOperation(SyncApiModel):
             raise ValueError(
                 "content and metadata must be omitted for a delete operation"
             )
-        if self.metadata is not None:
-            if self.resource_type != "notebook" or self.base_metadata is None:
+        if self.resource_type == "folder":
+            if self.operation != "upsert" or self.content is not None:
+                raise ValueError("folder synchronization supports metadata upsert only")
+            if not isinstance(self.metadata, SyncFolderMetadata):
+                raise ValueError("folder upsert requires folder metadata")
+            if self.base_metadata is not None and not isinstance(
+                self.base_metadata, SyncFolderMetadata
+            ):
+                raise ValueError("folder baseMetadata must match folder metadata")
+        elif self.metadata is not None:
+            if (
+                self.resource_type != "notebook"
+                or not isinstance(self.metadata, SyncNotebookMetadata)
+                or not isinstance(self.base_metadata, SyncNotebookMetadata)
+            ):
                 raise ValueError("notebook metadata requires notebook baseMetadata")
         elif self.base_metadata is not None:
             raise ValueError("baseMetadata requires metadata")
@@ -300,7 +325,7 @@ class SyncCommitRequest(SyncApiModel):
 
 class SyncCommitOperationResult(SyncApiModel):
     operation_id: str
-    resource_type: Literal["notebook", "page", "infinite_canvas"]
+    resource_type: Literal["folder", "notebook", "page", "infinite_canvas"]
     resource_id: str
     revision: int
     content_hash: str

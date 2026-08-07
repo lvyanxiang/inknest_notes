@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from inknest_server.config import Settings
 from inknest_server.models import (
     Conflict,
+    Folder,
     Notebook,
     Page,
     SyncChange,
@@ -385,6 +386,85 @@ async def test_sync_commit_updates_notebook_metadata_and_rejects_concurrent_stru
         True,
         "metadata-folder",
     )
+
+
+async def test_sync_commit_creates_and_renames_folder_with_conflict_guard(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    registered = await register(client, "sync-folder-metadata@example.com")
+    headers = bearer(registered["accessToken"])
+    changes = await client.get("/api/v1/sync/changes", headers=headers)
+    base_cursor = changes.json()["nextCursor"]
+    create_payload = {
+        "deviceId": registered["device"]["id"],
+        "idempotencyKey": "folder-create-1",
+        "baseCursor": base_cursor,
+        "operations": [
+            {
+                "operationId": "folder-operation-1",
+                "operation": "upsert",
+                "resourceType": "folder",
+                "resourceId": "incremental-folder",
+                "baseRevision": 0,
+                "metadata": {"name": "Original"},
+            }
+        ],
+    }
+    created = await client.post(
+        "/api/v1/sync/commit", json=create_payload, headers=headers
+    )
+    replayed = await client.post(
+        "/api/v1/sync/commit", json=create_payload, headers=headers
+    )
+    renamed = await client.post(
+        "/api/v1/sync/commit",
+        headers=headers,
+        json={
+            **create_payload,
+            "idempotencyKey": "folder-rename-1",
+            "operations": [
+                {
+                    **create_payload["operations"][0],
+                    "operationId": "folder-operation-2",
+                    "baseRevision": 1,
+                    "baseMetadata": {"name": "Original"},
+                    "metadata": {"name": "Renamed"},
+                }
+            ],
+        },
+    )
+    conflict = await client.post(
+        "/api/v1/sync/commit",
+        headers=headers,
+        json={
+            **create_payload,
+            "idempotencyKey": "folder-rename-2",
+            "operations": [
+                {
+                    **create_payload["operations"][0],
+                    "operationId": "folder-operation-3",
+                    "baseRevision": 1,
+                    "baseMetadata": {"name": "Original"},
+                    "metadata": {"name": "Other"},
+                }
+            ],
+        },
+    )
+    db_session.expire_all()
+    stored = await db_session.scalar(
+        select(Folder).where(Folder.id == "incremental-folder")
+    )
+
+    assert created.status_code == 200
+    assert created.json()["results"][0]["revision"] == 1
+    assert replayed.json() == {**created.json(), "replayed": True}
+    assert renamed.status_code == 200
+    assert renamed.json()["results"][0]["revision"] == 2
+    assert conflict.status_code == 409
+    assert conflict.json()["error"]["code"] == "sync_folder_metadata_conflict"
+    assert stored is not None
+    assert (stored.name, stored.revision) == ("Renamed", 2)
 
 
 async def test_failed_sync_batch_rolls_back_prior_operations_and_retry_reservation(
