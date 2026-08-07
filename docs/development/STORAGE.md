@@ -18,6 +18,7 @@ sync/
   user-id/
     device-id/
       state.json
+      conflicts.json
 ```
 
 ## `notebooks/index.json`
@@ -102,6 +103,21 @@ change in that page has been safely applied.
 Writes use a temporary JSON file followed by replacement. Invalid or unknown
 state formats raise an error and are preserved for diagnosis rather than being
 silently reset.
+
+## `sync/<user-id>/<device-id>/conflicts.json`
+
+The versioned conflict sidecar stores the complete typed snapshots received in
+`conflict` upsert change events, including the original and reserved-copy IDs,
+display label, base/current Revisions, both content snapshots and hashes,
+source device, status, resolution metadata, and creation time. The App derives
+its pending list from records whose status is `pending`; resolved records remain
+durable history but no longer appear in that list.
+
+A conflict-only change range is written atomically before the pull Cursor is
+advanced. On restart, the list is loaded before requesting newer changes, so a
+pending badge cannot disappear merely because the App closed. Mixed conflict
+and content ranges are not partially persisted or acknowledged until the whole
+range has a safe application path.
 
 ## `sync/<user-id>/<device-id>/resources.json`
 

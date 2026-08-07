@@ -233,8 +233,8 @@ continue-local state without overwriting either side.
 - [x] An initialized session downloads additive cloud-only notebooks in the
   background, refreshes the shelf, and keeps local use available on failure.
 
-- [ ] A background conflict never blocks or overwrites ongoing local writing.
-- [ ] Pending conflicts survive restart and appear consistently on other
+- [x] A background conflict never blocks or overwrites ongoing local writing.
+- [x] Pending conflicts survive restart and appear consistently on other
   devices after sync.
 - [ ] The detail flow supports Keep Original, Use Conflict Version, Keep Both,
   cancellation, offline retry and stale-resolution recovery.
@@ -267,9 +267,12 @@ continue-local state without overwriting either side.
   mapped whole-notebook delete now uploads immediately, confirms cross-device
   removal when online, and reports durable automatic retry when offline.
   Safe trailing-page deletion now queues and applies across devices, with a
-  calm startup confirmation and a preserved recovery copy. Middle-page deletion
-  remains local until page-order sync exists; standalone canvas deletion has no
-  App entry point. Recently Deleted and conflict list/detail UI are not started.
+  calm startup confirmation and a preserved recovery copy. Pending conflicts
+  now survive restart and appear through a badged library-header entry; its
+  user-opened sheet shows the accepted server copy label and time while clearly
+  stating that neither version is overwritten. Resolution detail/actions and
+  Recently Deleted are not started. Middle-page deletion remains local until
+  page-order sync exists; standalone canvas deletion has no App entry point.
 - Intentional deviations: The server reserves the copy ID immediately but only
   materializes a normal notebook/page when the user chooses Keep Both. This
   avoids temporary duplicate library entries while preserving both snapshots.

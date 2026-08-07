@@ -6,13 +6,15 @@
   initialized sessions now push saved page, notebook-content, and infinite-
   canvas edits, mapped whole-notebook deletes, and structurally safe trailing-
   page deletes before applying safe `/sync/changes` updates.
-- Next task: Connect conflict persistence/presentation. Arbitrary page deletion,
-  page reordering, and standalone canvas deletion remain blocked on a structural
-  synchronization contract.
-- Last completed: A mapped non-final trailing page can now enqueue a content-
-  free delete; another device applies it only when the remaining page positions
-  still match, after preserving page JSON, location, and Tombstone recovery
-  files. Middle-page and only-page cases remain local/reconciliation-safe.
+- Next task: Connect the three conflict-resolution actions to
+  `POST /sync/conflicts/{conflictId}/resolve`, then reconcile the selected
+  result locally. Arbitrary page deletion, page reordering, and standalone
+  canvas deletion remain blocked on a structural synchronization contract.
+- Last completed: Conflict-only `/sync/changes` pages are now strictly parsed
+  and persisted per account/device before advancing the Cursor. Pending page or
+  notebook conflicts survive restart and appear from a badged library-header
+  entry in a read-only list without blocking writing or overwriting either
+  version.
 
 ## Decisions
 
@@ -98,6 +100,11 @@
   materializes the reserved ID with `conflictOf` ancestry. Repeated commit and
   resolution requests must not duplicate conflicts, resources, Revisions, or
   change events.
+- Persist received conflict events in a separate account/device sidecar. A
+  conflict-only change range is applied atomically before its Cursor advances;
+  a mixed range remains at the prior Cursor until all included resource changes
+  can be applied together. Conflict arrival uses a persistent header badge and
+  user-opened list rather than interrupting the editor with a modal.
 - Store Flutter sync state under an account/device sidecar, not inside notebook
   JSON. Coalesce unsent edits per resource while preserving the oldest
   `baseRevision`; freeze an in-flight request until exact retry succeeds; keep

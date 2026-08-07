@@ -7,6 +7,7 @@ import 'package:inknest_notes/sync/shared_sync_apply_service.dart';
 import 'package:inknest_notes/sync/sync_bootstrap.dart';
 import 'package:inknest_notes/sync/sync_changes.dart';
 import 'package:inknest_notes/sync/sync_cloud_client.dart';
+import 'package:inknest_notes/sync/sync_conflicts.dart';
 import 'package:inknest_notes/sync/sync_resource_map_store.dart';
 import 'package:inknest_notes/sync/sync_mutation_tracker.dart';
 import 'package:inknest_notes/sync/sync_notebook_deletion_service.dart';
@@ -30,6 +31,8 @@ class IncrementalSyncPullResult {
     this.confirmedLocalDeletionCount = 0,
     this.deletedPageCount = 0,
     this.confirmedLocalPageDeletionCount = 0,
+    this.receivedConflictCount = 0,
+    this.pendingConflicts = const [],
   });
 
   final IncrementalSyncPullStatus status;
@@ -41,6 +44,8 @@ class IncrementalSyncPullResult {
   final int confirmedLocalDeletionCount;
   final int deletedPageCount;
   final int confirmedLocalPageDeletionCount;
+  final int receivedConflictCount;
+  final List<CloudSyncConflict> pendingConflicts;
 
   bool get changedLocalLibrary =>
       downloadedNotebookCount > 0 ||
@@ -75,11 +80,18 @@ class IncrementalSyncPullService {
       userId: userId,
       deviceId: deviceId,
     );
+    final conflictStore = FileSyncConflictStore(
+      rootDirectory: rootDirectory,
+      userId: userId,
+      deviceId: deviceId,
+    );
+    var pendingConflicts = await conflictStore.loadPending();
     final state = await stateStore.loadSnapshot();
     final initialCursor = state.lastAppliedCursor;
     if (initialCursor == null) {
-      return const IncrementalSyncPullResult(
+      return IncrementalSyncPullResult(
         status: IncrementalSyncPullStatus.notInitialized,
+        pendingConflicts: pendingConflicts,
       );
     }
     final resourceMap = FileSyncResourceMapStore(
@@ -91,14 +103,16 @@ class IncrementalSyncPullService {
     if (mappings.isEmpty) {
       final local = await readLocalSyncLibraryInventory(repository);
       if (local.hasLibrary) {
-        return const IncrementalSyncPullResult(
+        return IncrementalSyncPullResult(
           status: IncrementalSyncPullStatus.notInitialized,
+          pendingConflicts: pendingConflicts,
         );
       }
     }
     if (state.hasPendingWork) {
-      return const IncrementalSyncPullResult(
+      return IncrementalSyncPullResult(
         status: IncrementalSyncPullStatus.requiresReconciliation,
+        pendingConflicts: pendingConflicts,
       );
     }
 
@@ -118,8 +132,27 @@ class IncrementalSyncPullService {
       if (cursor != initialCursor) {
         await stateStore.markChangesPageApplied(cursor);
       }
-      return const IncrementalSyncPullResult(
+      return IncrementalSyncPullResult(
         status: IncrementalSyncPullStatus.upToDate,
+        pendingConflicts: pendingConflicts,
+      );
+    }
+
+    final conflictOnly = changes.every(
+      (change) =>
+          change.resourceType == CloudSyncChangeResourceType.conflict &&
+          change.operation == CloudSyncChangeOperation.upsert,
+    );
+    if (conflictOnly) {
+      pendingConflicts = await conflictStore.applyChanges(changes);
+      await stateStore.markChangesPageApplied(cursor);
+      return IncrementalSyncPullResult(
+        status: IncrementalSyncPullStatus.applied,
+        changeCount: changes.length,
+        receivedConflictCount: changes
+            .where((change) => change.payload?['status'] == 'pending')
+            .length,
+        pendingConflicts: pendingConflicts,
       );
     }
 
@@ -167,6 +200,7 @@ class IncrementalSyncPullService {
         return IncrementalSyncPullResult(
           status: IncrementalSyncPullStatus.requiresReconciliation,
           changeCount: changes.length,
+          pendingConflicts: pendingConflicts,
         );
       }
       await resourceMap.replaceAll(
@@ -186,6 +220,7 @@ class IncrementalSyncPullService {
         deletedPageCount: pageDeletion?.deletedPageCount ?? 0,
         confirmedLocalPageDeletionCount:
             pageDeletion?.confirmedLocalPageDeletionCount ?? 0,
+        pendingConflicts: pendingConflicts,
       );
     }
     final local = await readLocalSyncLibraryInventory(repository);
@@ -211,6 +246,7 @@ class IncrementalSyncPullService {
         return IncrementalSyncPullResult(
           status: IncrementalSyncPullStatus.requiresReconciliation,
           changeCount: changes.length,
+          pendingConflicts: pendingConflicts,
         );
       }
       await resourceMap.replaceAll(
@@ -225,6 +261,7 @@ class IncrementalSyncPullService {
         status: IncrementalSyncPullStatus.applied,
         changeCount: changes.length,
         appliedSharedResourceCount: sharedResult.appliedResourceCount,
+        pendingConflicts: pendingConflicts,
       );
     }
     if (!_canApplyAdditively(
@@ -236,6 +273,7 @@ class IncrementalSyncPullService {
       return IncrementalSyncPullResult(
         status: IncrementalSyncPullStatus.requiresReconciliation,
         changeCount: changes.length,
+        pendingConflicts: pendingConflicts,
       );
     }
 
@@ -257,6 +295,7 @@ class IncrementalSyncPullService {
       changeCount: changes.length,
       downloadedNotebookCount: restored.downloadedNotebookCount,
       downloadedAssetCount: restored.downloadedAssetCount,
+      pendingConflicts: pendingConflicts,
     );
   }
 

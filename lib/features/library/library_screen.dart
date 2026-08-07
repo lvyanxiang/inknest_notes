@@ -15,6 +15,7 @@ import 'package:inknest_notes/models/notebook_layout_mode.dart';
 import 'package:inknest_notes/storage/notebook_repository.dart';
 import 'package:inknest_notes/sync/first_sign_in_sync_service.dart';
 import 'package:inknest_notes/sync/incremental_sync_pull_service.dart';
+import 'package:inknest_notes/sync/sync_conflicts.dart';
 
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({
@@ -180,6 +181,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   NotebookFolder? _currentFolder;
   String? _checkedSessionKey;
   bool _syncCheckScheduled = false;
+  List<CloudSyncConflict> _pendingConflicts = const [];
 
   @override
   void initState() {
@@ -202,6 +204,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final session = widget.authController.session;
     if (session == null) {
       _checkedSessionKey = null;
+      if (_pendingConflicts.isNotEmpty) {
+        setState(() => _pendingConflicts = const []);
+      }
       return;
     }
     if (widget.firstSignInSyncService == null || _syncCheckScheduled) return;
@@ -232,6 +237,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         deviceId: session.device.id,
       );
       if (!mounted) return;
+      setState(() => _pendingConflicts = pullResult.pendingConflicts);
       switch (pullResult.status) {
         case IncrementalSyncPullStatus.notInitialized:
           break;
@@ -254,7 +260,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                pullResult.deletedNotebookCount > 0
+                pullResult.receivedConflictCount > 0
+                    ? '${pullResult.receivedConflictCount} 个同步冲突待处理；两个版本都已保留。'
+                    : pullResult.deletedNotebookCount > 0
                     ? '已同步 ${pullResult.changeCount} 项云端更改，从书架移除 '
                           '${pullResult.deletedNotebookCount} 本已在其他设备删除的笔记；'
                           '本地恢复副本已保留。'
@@ -320,6 +328,58 @@ class _LibraryScreenState extends State<LibraryScreen> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _openSyncConflicts() async {
+    if (_pendingConflicts.isEmpty) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 560),
+          child: Column(
+            children: [
+              ListTile(
+                title: const Text('同步冲突'),
+                subtitle: Text('${_pendingConflicts.length} 项待处理；两个版本都已安全保留。'),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: ListView.separated(
+                  itemCount: _pendingConflicts.length,
+                  separatorBuilder: (_, _) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final conflict = _pendingConflicts[index];
+                    final resourceLabel = conflict.resourceType == 'page'
+                        ? '页面冲突'
+                        : '笔记冲突';
+                    final createdAt = conflict.createdAt.toLocal();
+                    final time =
+                        '${createdAt.year.toString().padLeft(4, '0')}-'
+                        '${createdAt.month.toString().padLeft(2, '0')}-'
+                        '${createdAt.day.toString().padLeft(2, '0')} '
+                        '${createdAt.hour.toString().padLeft(2, '0')}:'
+                        '${createdAt.minute.toString().padLeft(2, '0')}';
+                    return ListTile(
+                      leading: const Icon(Icons.call_split_outlined),
+                      title: Text(conflict.copyDisplayName),
+                      subtitle: Text('$resourceLabel · $time'),
+                      trailing: const Icon(Icons.lock_outline),
+                    );
+                  },
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.fromLTRB(24, 12, 24, 20),
+                child: Text('当前为只读展示，不会自动覆盖任何版本。'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _loadNotebooks() async {
@@ -800,6 +860,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
               onCreateNotebook: _createNotebook,
               authController: widget.authController,
               onOpenAccount: _openAccount,
+              pendingConflictCount: _pendingConflicts.length,
+              onOpenConflicts: _openSyncConflicts,
             ),
             Expanded(
               child: _isLoading
@@ -865,6 +927,8 @@ class _LibraryHeader extends StatelessWidget {
     required this.onCreateNotebook,
     required this.authController,
     required this.onOpenAccount,
+    required this.pendingConflictCount,
+    required this.onOpenConflicts,
   });
 
   final String title;
@@ -884,6 +948,8 @@ class _LibraryHeader extends StatelessWidget {
   final VoidCallback onCreateNotebook;
   final AuthController authController;
   final VoidCallback onOpenAccount;
+  final int pendingConflictCount;
+  final VoidCallback onOpenConflicts;
 
   @override
   Widget build(BuildContext context) {
@@ -981,6 +1047,18 @@ class _LibraryHeader extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 8),
+                      if (pendingConflictCount > 0) ...[
+                        Badge.count(
+                          count: pendingConflictCount,
+                          child: IconButton(
+                            key: const ValueKey('library-sync-conflicts'),
+                            onPressed: onOpenConflicts,
+                            tooltip: '$pendingConflictCount sync conflicts',
+                            icon: const Icon(Icons.sync_problem_outlined),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
                       _LibraryAccountButton(
                         controller: authController,
                         onPressed: onOpenAccount,

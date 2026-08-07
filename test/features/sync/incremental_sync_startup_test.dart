@@ -9,6 +9,7 @@ import 'package:inknest_notes/sync/first_sign_in_sync_service.dart';
 import 'package:inknest_notes/sync/incremental_sync_pull_service.dart';
 import 'package:inknest_notes/sync/incremental_sync_push_service.dart';
 import 'package:inknest_notes/sync/inknest_api_models.dart';
+import 'package:inknest_notes/sync/sync_conflicts.dart';
 
 void main() {
   testWidgets('signed-in startup pushes before pull and reports upload count', (
@@ -130,6 +131,70 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('可恢复的本地页面副本已保留'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    controller.dispose();
+  });
+
+  testWidgets('pending conflict survives sync and opens from the library', (
+    tester,
+  ) async {
+    final controller = AuthController(
+      service: _RestoredAuthService(),
+      deviceName: 'Test iPad',
+      platform: 'ios',
+    );
+    await controller.initialize();
+    final conflict = CloudSyncConflict(
+      id: 'conflict-1',
+      resourceType: 'page',
+      originalResourceId: 'page-1',
+      copyResourceId: 'page-copy-1',
+      copyDisplayName: '第 1 页（冲突副本）',
+      baseRevision: 1,
+      currentRevision: 2,
+      submittedContentHash: 'a' * 64,
+      submittedContent: const {'strokes': <Object?>[]},
+      currentContentHash: 'b' * 64,
+      currentContent: const {'strokes': <Object?>[]},
+      sourceDeviceId: 'device-2',
+      status: 'pending',
+      resolution: null,
+      resolvedByDeviceId: null,
+      resolvedAt: null,
+      createdAt: DateTime.utc(2026, 8, 7),
+    );
+    final sync = _StartupSyncService(
+      uploadedOperationCount: 0,
+      pullResult: IncrementalSyncPullResult(
+        status: IncrementalSyncPullStatus.applied,
+        changeCount: 1,
+        receivedConflictCount: 1,
+        pendingConflicts: [conflict],
+      ),
+    );
+
+    await tester.pumpWidget(
+      InkNestApp(
+        notebookRepository: InMemoryNotebookRepository(),
+        authController: controller,
+        firstSignInSyncService: sync,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('1 个同步冲突待处理'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('library-sync-conflicts')),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('library-sync-conflicts')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('同步冲突'), findsOneWidget);
+    expect(find.text('第 1 页（冲突副本）'), findsOneWidget);
+    expect(find.text('1 项待处理；两个版本都已安全保留。'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
     controller.dispose();

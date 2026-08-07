@@ -450,6 +450,102 @@ void main() {
       isFalse,
     );
   });
+
+  test(
+    'persists a conflict-only change page before advancing Cursor',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'inknest-pull-conflict-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      final repository = FileNotebookRepository(rootDirectory: root);
+      final stateStore = FileSyncStateStore(
+        rootDirectory: root,
+        userId: 'user-1',
+        deviceId: 'device-1',
+      );
+      await stateStore.markChangesPageApplied('cursor-1');
+      final conflictPayload = {
+        'id': 'conflict-1',
+        'resourceType': 'page',
+        'conflictOf': 'page-1',
+        'copyResourceId': 'page-copy-1',
+        'copyDisplayName': '第 1 页（冲突副本）',
+        'baseRevision': 1,
+        'currentRevision': 2,
+        'submittedContentHash': 'a' * 64,
+        'submittedContent': const {'strokes': <Object?>[]},
+        'currentContentHash': 'b' * 64,
+        'currentContent': const {'strokes': <Object?>[]},
+        'sourceDeviceId': 'device-2',
+        'status': 'pending',
+        'createdAt': '2026-08-07T00:00:00Z',
+      };
+      final cloud = _PullCloudClient(
+        bootstrapSnapshot: CloudSyncBootstrap(
+          inventory: SyncLibraryInventory(),
+          baseCursor: 'unused-bootstrap',
+          folders: const [],
+          notebooks: const [],
+          pages: const [],
+          infiniteCanvases: const [],
+          assets: const [],
+        ),
+        pages: [
+          CloudSyncChangePage(
+            changes: [
+              CloudSyncChange(
+                changeId: 'change-conflict-1',
+                resourceType: CloudSyncChangeResourceType.conflict,
+                resourceId: 'conflict-1',
+                operation: CloudSyncChangeOperation.upsert,
+                revision: null,
+                contentHash: null,
+                payload: conflictPayload,
+                deviceId: 'device-2',
+                createdAt: DateTime.utc(2026, 8, 7),
+              ),
+            ],
+            nextCursor: 'cursor-2',
+            hasMore: false,
+          ),
+        ],
+      );
+
+      final result = await IncrementalSyncPullService(
+        repository: repository,
+        cloudClient: cloud,
+        rootDirectory: root,
+      ).pull(userId: 'user-1', deviceId: 'device-1');
+
+      expect(result.status, IncrementalSyncPullStatus.applied);
+      expect(result.receivedConflictCount, 1);
+      expect(result.pendingConflicts.single.id, 'conflict-1');
+      expect((await stateStore.loadSnapshot()).lastAppliedCursor, 'cursor-2');
+      expect(
+        await File('${root.path}/sync/user-1/device-1/conflicts.json').exists(),
+        isTrue,
+      );
+
+      final reloaded = await IncrementalSyncPullService(
+        repository: repository,
+        cloudClient: _PullCloudClient(
+          bootstrapSnapshot: cloud.bootstrapSnapshot,
+          pages: [
+            CloudSyncChangePage(
+              changes: [],
+              nextCursor: 'cursor-2',
+              hasMore: false,
+            ),
+          ],
+        ),
+        rootDirectory: root,
+      ).pull(userId: 'user-1', deviceId: 'device-1');
+
+      expect(reloaded.status, IncrementalSyncPullStatus.upToDate);
+      expect(reloaded.pendingConflicts.single.id, 'conflict-1');
+    },
+  );
 }
 
 CloudSyncChange _change(

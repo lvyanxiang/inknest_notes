@@ -220,8 +220,8 @@ documents/
 
 ## Current Focus
 
-Milestone 8 is active. Continue Phase 5 incremental sync with conflict
-persistence/presentation. The working path now covers content upload,
-continuous-Revision content download, recoverable whole-notebook deletion, and
-safe trailing-page deletion. Arbitrary page order and standalone canvas deletion
-still need an explicit structural contract.
+Milestone 8 is active. Continue Phase 5 incremental sync by connecting the
+three conflict-resolution actions. The working path now covers content upload,
+continuous-Revision content download, recoverable whole-notebook deletion, safe
+trailing-page deletion, and persistent conflict presentation. Arbitrary page
+order and standalone canvas deletion still need an explicit structural contract.
