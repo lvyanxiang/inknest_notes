@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:inknest_notes/auth/auth_service.dart';
 import 'package:inknest_notes/auth/auth_session_store.dart';
-import 'package:inknest_notes/sync/inknest_api_config.dart';
+import 'package:inknest_notes/config/app_config.dart';
 import 'package:inknest_notes/sync/inknest_api_models.dart';
 import 'package:inknest_notes/sync/sync_bootstrap.dart';
 import 'package:inknest_notes/sync/sync_cloud_client.dart';
@@ -38,12 +38,12 @@ class InkNestApiClient
         SyncConflictCloudClient,
         SyncTombstoneCloudClient {
   InkNestApiClient({
-    InkNestApiConfig? config,
+    AppConfig? config,
     Dio? dio,
     Dio? refreshDio,
     AuthSessionStore? sessionStore,
     DateTime Function()? clock,
-  }) : _config = config ?? InkNestApiConfig.fromEnvironment(),
+  }) : _config = config ?? AppConfig.fromEnvironment(),
        _dio = dio ?? Dio(),
        _refreshDio = refreshDio ?? Dio(),
        _sessionStore = sessionStore ?? SecureAuthSessionStore(),
@@ -61,7 +61,7 @@ class InkNestApiClient
   static const _retriedAfterRefresh = 'inknest.retriedAfterRefresh';
   static const _refreshLeeway = Duration(seconds: 30);
 
-  final InkNestApiConfig _config;
+  final AppConfig _config;
   final Dio _dio;
   final Dio _refreshDio;
   final AuthSessionStore _sessionStore;
@@ -355,7 +355,7 @@ class InkNestApiClient
 
   void _configure(Dio dio) {
     dio.options
-      ..baseUrl = _config.baseUri.resolve('api/v1/').toString()
+      ..baseUrl = _config.apiBaseUri.resolve('api/v1/').toString()
       ..connectTimeout = const Duration(seconds: 15)
       ..sendTimeout = const Duration(seconds: 30)
       ..receiveTimeout = const Duration(seconds: 30)

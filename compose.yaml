@@ -53,47 +53,47 @@ services:
         mc mb --ignore-existing "local/${MINIO_BUCKET:-inknest-private}" &&
         mc anonymous set none "local/${MINIO_BUCKET:-inknest-private}"
 
-  api:
-    build:
-      context: ./server
-    env_file:
-      - path: ./server/.env.compose
-        required: false
-    environment:
-      INKNEST_DATABASE_URL: >-
-        postgresql+psycopg://${POSTGRES_USER:-inknest}:${POSTGRES_PASSWORD:-inknest-postgres-dev}@postgres:5432/${POSTGRES_DB:-inknest}
-      INKNEST_MINIO_ENDPOINT: minio:9000
-      INKNEST_MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-localhost:9000}
-      INKNEST_MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-inknest-minio}
-      INKNEST_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-inknest-minio-dev}
-      INKNEST_MINIO_SECURE: "false"
-      INKNEST_MINIO_PUBLIC_SECURE: ${MINIO_PUBLIC_SECURE:-false}
-      INKNEST_MINIO_REGION: ${MINIO_REGION:-us-east-1}
-      INKNEST_MINIO_BUCKET: ${MINIO_BUCKET:-inknest-private}
-      INKNEST_JWT_SECRET: >-
-        ${INKNEST_JWT_SECRET:-development-only-replace-this-jwt-secret-before-production}
-    command:
-      - /bin/sh
-      - -c
-      - alembic upgrade head && uvicorn inknest_server.main:app --host 0.0.0.0 --port 8000
-    ports:
-      - "${API_PORT:-8000}:8000"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
-    healthcheck:
-      test:
-        - CMD
-        - python
-        - -c
-        - >-
-          import urllib.request;
-          urllib.request.urlopen('http://localhost:8000/api/v1/health/ready', timeout=2)
-      interval: 5s
-      timeout: 3s
-      retries: 20
+  # api:
+  #   build:
+  #     context: ./server
+  #   env_file:
+  #     - path: ./server/.env.compose
+  #       required: false
+  #   environment:
+  #     INKNEST_DATABASE_URL: >-
+  #       postgresql+psycopg://${POSTGRES_USER:-inknest}:${POSTGRES_PASSWORD:-inknest-postgres-dev}@postgres:5432/${POSTGRES_DB:-inknest}
+  #     INKNEST_MINIO_ENDPOINT: minio:9000
+  #     INKNEST_MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-localhost:9000}
+  #     INKNEST_MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-inknest-minio}
+  #     INKNEST_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-inknest-minio-dev}
+  #     INKNEST_MINIO_SECURE: "false"
+  #     INKNEST_MINIO_PUBLIC_SECURE: ${MINIO_PUBLIC_SECURE:-false}
+  #     INKNEST_MINIO_REGION: ${MINIO_REGION:-us-east-1}
+  #     INKNEST_MINIO_BUCKET: ${MINIO_BUCKET:-inknest-private}
+  #     INKNEST_JWT_SECRET: >-
+  #       ${INKNEST_JWT_SECRET:-development-only-replace-this-jwt-secret-before-production}
+  #   command:
+  #     - /bin/sh
+  #     - -c
+  #     - alembic upgrade head && uvicorn inknest_server.main:app --host 0.0.0.0 --port 8000
+  #   ports:
+  #     - "${API_PORT:-8000}:8000"
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     minio-init:
+  #       condition: service_completed_successfully
+  #   healthcheck:
+  #     test:
+  #       - CMD
+  #       - python
+  #       - -c
+  #       - >-
+  #         import urllib.request;
+  #         urllib.request.urlopen('http://localhost:8000/api/v1/health/ready', timeout=2)
+  #     interval: 5s
+  #     timeout: 3s
+  #     retries: 20
 
 volumes:
   postgres_data:

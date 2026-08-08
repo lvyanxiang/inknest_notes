@@ -70,6 +70,13 @@ cd server
 uv sync
 uv run alembic upgrade head
 uv run uvicorn inknest_server.main:app --reload --host 127.0.0.1 --port 8000
+
+uv run uvicorn inknest_server.main:app \
+  --reload \
+  --host 0.0.0.0 \
+  --port 8000
+
+
 ```
 
 后续日常启动一般只需要：

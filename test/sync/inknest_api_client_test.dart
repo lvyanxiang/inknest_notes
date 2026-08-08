@@ -6,8 +6,8 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:inknest_notes/auth/auth_session_store.dart';
+import 'package:inknest_notes/config/app_config.dart';
 import 'package:inknest_notes/sync/inknest_api_client.dart';
-import 'package:inknest_notes/sync/inknest_api_config.dart';
 import 'package:inknest_notes/sync/inknest_api_models.dart';
 import 'package:inknest_notes/sync/sync_changes.dart';
 import 'package:inknest_notes/sync/sync_conflicts.dart';
@@ -21,8 +21,8 @@ void main() {
       final dio = Dio();
       final store = MemoryAuthSessionStore();
       final client = InkNestApiClient(
-        config: InkNestApiConfig.fromEnvironment(
-          overrideBaseUrl: 'http://127.0.0.1:8000',
+        config: AppConfig.fromEnvironment(
+          overrideApiBaseUrl: 'http://127.0.0.1:8000',
         ),
         dio: dio,
         refreshDio: Dio(),
@@ -70,8 +70,8 @@ void main() {
         ),
       );
       final client = InkNestApiClient(
-        config: InkNestApiConfig.fromEnvironment(
-          overrideBaseUrl: 'https://api.example.com',
+        config: AppConfig.fromEnvironment(
+          overrideApiBaseUrl: 'https://api.example.com',
         ),
         dio: dio,
         refreshDio: Dio(),
@@ -112,8 +112,8 @@ void main() {
       ),
     );
     final client = InkNestApiClient(
-      config: InkNestApiConfig.fromEnvironment(
-        overrideBaseUrl: 'https://api.example.com',
+      config: AppConfig.fromEnvironment(
+        overrideApiBaseUrl: 'https://api.example.com',
       ),
       dio: dio,
       refreshDio: Dio(),
@@ -174,8 +174,8 @@ void main() {
         ),
       );
       final client = InkNestApiClient(
-        config: InkNestApiConfig.fromEnvironment(
-          overrideBaseUrl: 'https://api.example.com',
+        config: AppConfig.fromEnvironment(
+          overrideApiBaseUrl: 'https://api.example.com',
         ),
         dio: dio,
         refreshDio: Dio(),
@@ -217,8 +217,8 @@ void main() {
         ),
       );
       final client = InkNestApiClient(
-        config: InkNestApiConfig.fromEnvironment(
-          overrideBaseUrl: 'https://api.example.com',
+        config: AppConfig.fromEnvironment(
+          overrideApiBaseUrl: 'https://api.example.com',
         ),
         dio: dio,
         refreshDio: Dio(),
@@ -257,8 +257,8 @@ void main() {
       ),
     );
     final client = InkNestApiClient(
-      config: InkNestApiConfig.fromEnvironment(
-        overrideBaseUrl: 'https://api.example.com',
+      config: AppConfig.fromEnvironment(
+        overrideApiBaseUrl: 'https://api.example.com',
       ),
       dio: dio,
       refreshDio: Dio(),
@@ -334,8 +334,8 @@ void main() {
         ),
       );
       final client = InkNestApiClient(
-        config: InkNestApiConfig.fromEnvironment(
-          overrideBaseUrl: 'https://api.example.com',
+        config: AppConfig.fromEnvironment(
+          overrideApiBaseUrl: 'https://api.example.com',
         ),
         dio: dio,
         refreshDio: transferDio,
@@ -398,8 +398,8 @@ void main() {
       ),
     );
     final client = InkNestApiClient(
-      config: InkNestApiConfig.fromEnvironment(
-        overrideBaseUrl: 'https://api.example.com',
+      config: AppConfig.fromEnvironment(
+        overrideApiBaseUrl: 'https://api.example.com',
       ),
       dio: dio,
       refreshDio: transferDio,
@@ -686,14 +686,13 @@ void main() {
 
   test('API base URL rejects paths, queries, and non-HTTP schemes', () {
     expect(
-      () => InkNestApiConfig.fromEnvironment(
-        overrideBaseUrl: 'http://localhost:8000/api/v1',
+      () => AppConfig.fromEnvironment(
+        overrideApiBaseUrl: 'http://localhost:8000/api/v1',
       ),
       throwsFormatException,
     );
     expect(
-      () =>
-          InkNestApiConfig.fromEnvironment(overrideBaseUrl: 'file:///tmp/api'),
+      () => AppConfig.fromEnvironment(overrideApiBaseUrl: 'file:///tmp/api'),
       throwsFormatException,
     );
   });
