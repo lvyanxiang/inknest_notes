@@ -69,6 +69,7 @@ INKNEST_JWT_SECRET=你的随机密钥
 cd server
 uv sync
 uv run alembic upgrade head
+
 uv run uvicorn inknest_server.main:app --reload --host 127.0.0.1 --port 8000
 
 uv run uvicorn inknest_server.main:app \
@@ -552,6 +553,13 @@ cd server
 uv run alembic upgrade head
 uv run alembic current
 ```
+
+也可以在 `server/` 目录执行 `make check-schema`，同时查看数据库当前 Revision、代码
+Head，并检查 SQLAlchemy Model 是否还有未生成的表结构操作。FastAPI 启动前会只读比较
+数据库 Revision 与代码 Head；数据库未迁移、比当前代码更新，或代码出现多个 Head 时会
+直接拒绝启动并打印当前值和期望值。API 本身不会自动迁移数据库，生产部署应先通过单实例
+发布步骤执行并审核 `uv run alembic upgrade head`，再启动或滚动更新 API 实例。不要手工
+修改 `alembic_version` 表来绕过检查。
 
 修改 SQLAlchemy Model 后生成新迁移：
 

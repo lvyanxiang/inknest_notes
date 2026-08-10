@@ -12,8 +12,9 @@
 - Next task: Define standalone infinite-canvas deletion only if an App action
   is introduced; otherwise continue to the next unchecked Phase 5 integration
   boundary without inventing a hidden delete operation.
-- Last completed: Added `make run` / `scripts/run_app.sh` to start Flutter
-  with `--dart-define-from-file=.env.flutter`.
+- Last completed: Added explicit backend migration/start commands and a
+  read-only Alembic Head guard that refuses to start FastAPI against a missing,
+  older, newer, or branched database schema.
 
 ## Decisions
 
@@ -23,6 +24,10 @@
 - Use project skill `.codex/skills/inknest-project` to recover context without rereading the whole repo.
 - Use project skill `.codex/skills/inknest-backend` to start, continue, verify,
   and record Python/PostgreSQL/MinIO backend delivery from the accepted plan.
+- Apply Alembic migrations as an explicit development/deployment step, then
+  make each API process perform a read-only database-Head versus code-Head
+  check before serving requests. Never let every API replica race to migrate
+  the database during application startup.
 - Use `$inknest-project` as the single entry for new or changed requirements: always run `$inknest-product-manager`, and also run `$inknest-ui-ux` when visible or interactive behavior changes.
 - Keep small requirement analysis in the task response; create `PRODUCT_BRIEF.md` and `UI_UX_SPEC.md` under `docs/product/features/<feature-slug>/` for medium or large work, and record only accepted durable decisions in the global product/design logs.
 - Treat `/sync/bootstrap`'s current `baseCursor` as a bootstrap hand-off point,
@@ -278,6 +283,13 @@
 - Keep unresolved legacy content viewable, navigable, zoomable, searchable, and exportable without allowing normal save, rotate, copy, or duplicate paths to overwrite its source JSON.
 
 ## Verification
+
+- Python formatting, Ruff, and mypy pass. All 65 non-integration tests and 16
+  PostgreSQL/MinIO integration tests pass, including a real PostgreSQL startup-
+  guard check. The development database and repository both report
+  `20260807_0014 (head)`, `alembic check` reports no pending operations, Compose
+  configuration is valid, and `git diff --check` passes. No migration or table
+  change was required for this operational safety slice.
 
 - Flutter formatting, the full 230-test suite, `flutter analyze`, and
   `git diff --check` pass after conflict resolution integration. Focused tests

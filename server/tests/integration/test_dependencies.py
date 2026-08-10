@@ -11,7 +11,7 @@ from sqlalchemy import delete, func, select
 from inknest_server.assets import AssetUploadService
 from inknest_server.assets.cleanup import AssetCleanupService
 from inknest_server.config import Settings
-from inknest_server.db import Database
+from inknest_server.db import AlembicSchemaVersionChecker, Database
 from inknest_server.models import (
     Asset,
     AssetGarbageCollectionCandidate,
@@ -51,6 +51,17 @@ pytestmark = [
         reason="set INKNEST_RUN_INTEGRATION=1 with PostgreSQL and MinIO running",
     ),
 ]
+
+
+@pytest.mark.asyncio
+async def test_database_schema_matches_the_checked_out_migration_head() -> None:
+    settings = Settings()
+    database = Database(settings.database_url)
+
+    try:
+        await AlembicSchemaVersionChecker(database).check()
+    finally:
+        await database.close()
 
 
 @pytest.mark.asyncio

@@ -336,6 +336,7 @@ checksums.sha256
 - [x] 配置 MinIO Storage Adapter。
 - [x] 创建根级 `compose.yaml`，启动 API、PostgreSQL、MinIO。
 - [x] 添加 `/health/live`、`/health/ready`。
+- [x] 增加显式迁移/启动命令，并在 API Lifespan 中只读校验数据库与代码的 Alembic Head。
 - [x] 建立 pytest 单元和集成测试入口。
 
 完成标准：新环境通过一条编排命令启动，健康检查验证数据库和 MinIO 可用。

@@ -1,8 +1,10 @@
 from typing import Any
 
+import pytest
 from httpx import ASGITransport, AsyncClient
 
 from inknest_server.config import Settings
+from inknest_server.db import SchemaVersionMismatchError
 from inknest_server.errors import DependenciesUnavailableError
 from inknest_server.main import create_app
 from inknest_server.services.readiness import ReadinessChecks
@@ -18,6 +20,22 @@ class UnhealthyReadinessChecker:
                     "reason": "ConnectionError",
                 },
             }
+        )
+
+
+class RecordingSchemaVersionChecker:
+    def __init__(self) -> None:
+        self.call_count = 0
+
+    async def check(self) -> None:
+        self.call_count += 1
+
+
+class FailingSchemaVersionChecker:
+    async def check(self) -> None:
+        raise SchemaVersionMismatchError(
+            current_heads=("old-revision",),
+            expected_head="current-revision",
         )
 
 
@@ -70,6 +88,29 @@ async def test_readiness_uses_structured_error_response() -> None:
         "status": "error",
         "reason": "ConnectionError",
     }
+
+
+async def test_lifespan_checks_schema_version_before_serving_requests() -> None:
+    checker = RecordingSchemaVersionChecker()
+    app = create_app(
+        settings=Settings(environment="test"),
+        readiness_checker=UnhealthyReadinessChecker(),
+        schema_version_checker=checker,
+    )
+
+    async with app.router.lifespan_context(app):
+        assert checker.call_count == 1
+
+
+async def test_lifespan_refuses_to_start_with_a_schema_mismatch() -> None:
+    app = create_app(
+        settings=Settings(environment="test"),
+        schema_version_checker=FailingSchemaVersionChecker(),
+    )
+
+    with pytest.raises(SchemaVersionMismatchError, match="old-revision"):
+        async with app.router.lifespan_context(app):
+            pytest.fail("a mismatched database must not serve requests")
 
 
 async def test_http_errors_use_structured_error_response(

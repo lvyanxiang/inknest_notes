@@ -66,21 +66,28 @@ openssl rand -hex 32
 Store the generated value only in the ignored `.env` files or a production
 secrets manager.
 
-Install dependencies, apply migrations, and start the API:
+Install dependencies, apply migrations, and start the API from the repository
+root:
+
+```bash
+make server-run
+```
+
+The equivalent command from `server/` is:
 
 ```bash
 cd server
-uv sync
-uv run alembic upgrade head
-uv run uvicorn inknest_server.main:app --reload --host 127.0.0.1 --port 8000
+make run
 ```
 
-After the first setup, the usual API startup command is:
-
-```bash
-cd server
-uv run uvicorn inknest_server.main:app --reload
-```
+Both entry points install locked dependencies, explicitly apply pending
+migrations, and then start Uvicorn. FastAPI also performs a read-only Alembic
+Head comparison before it begins serving requests. If the database is missing
+a migration, is newer than the checked-out code, or the code contains multiple
+Heads, startup fails with the current and expected revisions. The API never
+applies migrations by itself; production deployments should run migration as
+a separate, single-instance release step before starting or rolling API
+instances.
 
 Stop the host API with `Ctrl+C`.
 
@@ -683,6 +690,12 @@ revision.
 uv run alembic upgrade head
 uv run alembic current
 ```
+
+Use `make check-schema` from `server/` to display the database revision and
+repository Head and to verify that model metadata has no ungenerated schema
+operations. A revision mismatch is fixed by reviewing the checked-out migration
+files and running `uv run alembic upgrade head`; do not edit `alembic_version`
+by hand.
 
 To create a migration after changing SQLAlchemy models:
 

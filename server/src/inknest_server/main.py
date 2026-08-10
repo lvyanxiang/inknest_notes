@@ -6,7 +6,11 @@ from fastapi import FastAPI
 from inknest_server.api.v1.router import router as api_v1_router
 from inknest_server.auth import LoginRateLimiter, PasswordManager, TokenManager
 from inknest_server.config import Settings, get_settings
-from inknest_server.db import Database
+from inknest_server.db import (
+    AlembicSchemaVersionChecker,
+    Database,
+    SchemaVersionChecker,
+)
 from inknest_server.errors import register_error_handlers
 from inknest_server.logging_config import configure_logging
 from inknest_server.middleware.request_id import RequestIdMiddleware
@@ -20,6 +24,7 @@ def create_app(
     readiness_checker: ReadinessChecker | None = None,
     database: Database | None = None,
     object_storage: ObjectStorage | None = None,
+    schema_version_checker: SchemaVersionChecker | None = None,
 ) -> FastAPI:
     resolved_settings = settings or get_settings()
     configure_logging(resolved_settings.log_level)
@@ -38,11 +43,21 @@ def create_app(
     resolved_readiness = readiness_checker or ReadinessService(
         resolved_database, storage
     )
+    resolved_schema_version_checker = schema_version_checker
+    if (
+        resolved_schema_version_checker is None
+        and resolved_settings.environment != "test"
+    ):
+        resolved_schema_version_checker = AlembicSchemaVersionChecker(resolved_database)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-        yield
-        await resolved_database.close()
+        try:
+            if resolved_schema_version_checker is not None:
+                await resolved_schema_version_checker.check()
+            yield
+        finally:
+            await resolved_database.close()
 
     app = FastAPI(
         title=resolved_settings.app_name,
