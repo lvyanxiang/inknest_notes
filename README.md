@@ -56,6 +56,16 @@ passed through the script, for example:
 ./scripts/run_app.sh -d <device-id>
 ```
 
+If a previous debug session left behind dead `iproxy` tunnels or a hung
+CoreDevice helper (`Error connecting to the service protocol`), clear them and
+relaunch from the repository root:
+
+```sh
+make restart
+```
+
+Use `make stop` when you only need to clear those helpers.
+
 In Cursor or VS Code, choose the `inknest_notes (.env.flutter)` launch
 configuration. Without `.env.flutter`, the committed default is
 `http://127.0.0.1:8000`.

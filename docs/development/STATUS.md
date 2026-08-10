@@ -6,10 +6,8 @@
   integration is complete; Phase 6 has not started.
 - Next task: Define the versioned single-notebook/full-library backup contract,
   then implement the first Phase 6 server-generated backup slice.
-- Last completed: Audited the Phase 5 implementation, confirmed that one
-  infinite-canvas notebook owns exactly one Canvas and already deletes through
-  the Notebook Tombstone flow, and added verified incremental upload for PDF,
-  image, and audio attachments created after initialization.
+- Last completed: Added root `make restart` / `make stop` to clear stale
+  Flutter iOS debug helpers and relaunch the App.
 
 ## Decisions
 
@@ -284,6 +282,11 @@
 - Keep unresolved legacy content viewable, navigable, zoomable, searchable, and exportable without allowing normal save, rotate, copy, or duplicate paths to overwrite its source JSON.
 
 ## Verification
+
+- `bash -n scripts/stop_dev_app.sh` and root `make -n restart` pass. Root
+  `make restart` only clears stale Flutter/iOS debug helpers then relaunches
+  the App. Not executed live because a host API was already running in the
+  user's terminal.
 
 - Flutter's full 264-test suite and `flutter analyze` pass after the Phase 5
   implementation audit. Focused coverage proves that a new initialized-device
