@@ -12,10 +12,8 @@
 - Next task: Define standalone infinite-canvas deletion only if an App action
   is introduced; otherwise continue to the next unchecked Phase 5 integration
   boundary without inventing a hidden delete operation.
-- Last completed: The existing infinite-canvas background picker now queues
-  `background` with its applied baseline. The server rejects concurrent
-  background divergence, and other devices apply the accepted background only
-  through a continuous Revision chain matching the final bootstrap.
+- Last completed: Added `make run` / `scripts/run_app.sh` to start Flutter
+  with `--dart-define-from-file=.env.flutter`.
 
 ## Decisions
 
@@ -30,9 +28,11 @@
 - Treat `/sync/bootstrap`'s current `baseCursor` as a bootstrap hand-off point,
   not an applied pull Cursor; save it only after a later full-bootstrap flow
   has downloaded, verified, and atomically applied the matching cloud state.
-- Configure the Flutter service origin at build/run time with
-  `--dart-define=INKNEST_API_BASE_URL=<origin>`; keep versioned `/api/v1` paths
-  inside the API client instead of duplicating them at call sites.
+- Configure the Flutter service origin from a gitignored `.env.flutter` via
+  `--dart-define-from-file=.env.flutter`, or a one-off
+  `--dart-define=INKNEST_API_BASE_URL=<origin>`. The committed default remains
+  `http://127.0.0.1:8000`; keep versioned `/api/v1` paths inside the API client
+  instead of duplicating them at call sites.
 - Keep Dio, token attachment, one-time 401 retry, refresh rotation, and safe API
   error mapping behind `InkNestApiClient`; widgets and repositories never
   receive or log raw tokens.

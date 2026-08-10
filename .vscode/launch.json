@@ -1,0 +1,18 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "inknest_notes",
+      "request": "launch",
+      "type": "dart"
+    },
+    {
+      "name": "inknest_notes (.env.flutter)",
+      "request": "launch",
+      "type": "dart",
+      "toolArgs": [
+        "--dart-define-from-file=.env.flutter"
+      ]
+    }
+  ]
+}

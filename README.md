@@ -34,21 +34,41 @@ Then run the app:
 flutter run
 ```
 
-To point the Flutter API client at the local FastAPI service, pass the service
-origin at run time. For the iOS Simulator and macOS desktop:
+To point the Flutter API client at the local FastAPI service, copy the example
+env file and set your own origin. `.env.flutter` is gitignored, so each
+developer keeps a private address:
 
 ```sh
-flutter run --dart-define=INKNEST_API_BASE_URL=http://127.0.0.1:8000
+cp .env.flutter.example .env.flutter
 ```
 
-For an Android emulator, use its host-machine alias instead:
+Then run:
 
 ```sh
-flutter run --dart-define=INKNEST_API_BASE_URL=http://10.0.2.2:8000
+make run
 ```
+
+That calls `scripts/run_app.sh`, which is equivalent to
+`flutter run --dart-define-from-file=.env.flutter`. Extra Flutter flags can be
+passed through the script, for example:
+
+```sh
+./scripts/run_app.sh -d <device-id>
+```
+
+In Cursor or VS Code, choose the `inknest_notes (.env.flutter)` launch
+configuration. Without `.env.flutter`, the committed default is
+`http://127.0.0.1:8000`.
+
+Typical values:
+
+- iOS Simulator / macOS desktop: `http://127.0.0.1:8000`
+- Android emulator: `http://10.0.2.2:8000`
+- Physical device: `http://<your-lan-ip>:8000`
 
 The value is only the origin; do not append `/api/v1`. The API client owns the
-versioned route prefix.
+versioned route prefix. You can still pass a one-off override with
+`--dart-define=INKNEST_API_BASE_URL=<origin>`.
 
 With the FastAPI service running, open the Account button in the library header
 to create an account or sign in. The App stores the session in platform secure

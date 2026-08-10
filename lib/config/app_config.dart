@@ -1,7 +1,7 @@
 class AppConfig {
   AppConfig._(this.apiBaseUri);
 
-  static const String defaultApiBaseUrl = 'http://192.168.5.8:8000';
+  static const String defaultApiBaseUrl = 'http://127.0.0.1:8000';
   static const String environmentApiBaseUrl = String.fromEnvironment(
     'INKNEST_API_BASE_URL',
     defaultValue: defaultApiBaseUrl,
