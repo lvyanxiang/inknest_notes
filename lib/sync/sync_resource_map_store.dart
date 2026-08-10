@@ -169,6 +169,11 @@ class FileSyncResourceMapStore {
     );
   }
 
+  Future<Set<String>> loadCloudAssetKeys() async {
+    await _writeQueue.catchError((_) {});
+    return (await _read()).cloudAssetKeys;
+  }
+
   Future<void> replaceAll(
     List<SyncResourceMapping> resources, {
     Iterable<String> cloudAssetKeys = const [],
@@ -220,6 +225,21 @@ class FileSyncResourceMapStore {
         _SyncResourceMapDocument(
           resources: updated,
           cloudAssetKeys: document.cloudAssetKeys,
+        ),
+      );
+    });
+  }
+
+  Future<void> addCloudAssetKeys(Iterable<String> keys) {
+    return _enqueueWrite(() async {
+      final document = await _read();
+      await _write(
+        _SyncResourceMapDocument(
+          resources: document.resources,
+          cloudAssetKeys: Set.unmodifiable({
+            ...document.cloudAssetKeys,
+            ...keys,
+          }),
         ),
       );
     });

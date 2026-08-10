@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Size: Large
-- Updated: 2026-08-07
+- Updated: 2026-08-10
 - Roadmap link: `docs/development/ROADMAP.md#milestone-8-sync-and-backup-paused`
 
 ## Problem
@@ -266,12 +266,12 @@ The first slice sets no retention period and performs no physical cleanup.
 - [x] Authenticated Flutter requests attach the access token centrally and
   retry once after one shared refresh; a rejected refresh returns to signed-out
   state without logging token or response-body secrets.
-- [ ] A device can upload and download notebook metadata, pages, infinite
+- [x] A device can upload and download notebook metadata, pages, infinite
   canvases, and referenced assets without requiring a full-library transfer on
   every sync.
 - [x] Retrying the same synchronization commit does not duplicate pages,
   assets, conflicts, or change events.
-- [ ] Signing in on a device with local notebooks defaults to merge and does
+- [x] Signing in on a device with local notebooks defaults to merge and does
   not delete local-only content.
 - [x] A signed-in device can detect empty/local-only/cloud-only/both library
   presence from stable folder/notebook IDs without transferring or modifying
@@ -280,9 +280,9 @@ The first slice sets no retention period and performs no physical cleanup.
   notebook-level conflict copy; neither edit is silently discarded.
 - [x] Delete-versus-edit conflicts preserve the edited content and retain a
   tombstone for explicit recovery.
-- [ ] Interrupted asset uploads can be retried, and completed objects are
+- [x] Interrupted asset uploads can be retried, and completed objects are
   verified by size and SHA-256 before becoming available.
-- [ ] A new device can restore notebook structure and all referenced PDF,
+- [x] A new device can restore notebook structure and all referenced PDF,
   image, and audio assets.
 - [x] Existing local notebooks remain readable and editable when the service
   is offline or unavailable.
@@ -372,14 +372,16 @@ The first slice sets no retention period and performs no physical cleanup.
   seeds page ID/Revision mappings; response-loss retries preserve the exact
   in-flight request. Notebook bookmarks/verified existing attachment metadata
   and infinite-canvas content now use the same queue, with local page references
-  rewritten to cloud IDs and unuploaded attachment references blocked.
+  rewritten to cloud IDs; operations with unuploaded attachment references are
+  persisted but cannot be submitted until verified upload succeeds.
   Notebook title, archive state, and placement among already synchronized
   folders now share the same durable queue and explicit three-way metadata
   contract. Folder creation/rename/delete now use the same durable incremental
   flow; deleting a folder keeps its notebooks at the library root. Page
   structure and canvas background now use explicit baseline-guarded metadata
-  contracts. Attachment upload and divergent canvas-content recovery remain
-  later contract slices. Existing
+  contracts. New attachments added after initialization are now uploaded and
+  bootstrap-verified before their queued page/notebook/canvas content commits;
+  divergent canvas-content recovery remains a later contract slice. Existing
   notebook/page/canvas content now also downloads from another device when the
   change feed proves a continuous Revision chain and bootstrap structure still
   matches local state; failed multi-resource application rolls back before the

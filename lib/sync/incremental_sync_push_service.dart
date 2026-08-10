@@ -1,6 +1,9 @@
 import 'dart:io';
 
+import 'package:inknest_notes/storage/notebook_repository.dart';
 import 'package:inknest_notes/sync/file_sync_state_store.dart';
+import 'package:inknest_notes/sync/inknest_api_client.dart';
+import 'package:inknest_notes/sync/local_sync_asset_inventory.dart';
 import 'package:inknest_notes/sync/sync_cloud_client.dart';
 import 'package:inknest_notes/sync/sync_resource_map_store.dart';
 import 'package:inknest_notes/sync/sync_state.dart';
@@ -27,10 +30,12 @@ class IncrementalSyncPushException implements Exception {
 class IncrementalSyncPushService {
   const IncrementalSyncPushService({
     required this.cloudClient,
+    required this.repository,
     required this.rootDirectory,
   });
 
   final FirstSignInCloudClient cloudClient;
+  final NotebookRepository repository;
   final Directory rootDirectory;
 
   Future<IncrementalSyncPushResult> push({
@@ -60,6 +65,13 @@ class IncrementalSyncPushService {
     }
 
     try {
+      await _uploadMissingAssets(
+        resourceMap,
+        operations: [
+          ...initialState.pendingOperations,
+          ...?initialState.inFlightBatch?.operations,
+        ],
+      );
       while (true) {
         final batch = await stateStore.prepareNextCommit();
         if (batch == null) break;
@@ -136,6 +148,94 @@ class IncrementalSyncPushService {
       preservedConflictCount: conflicts,
       preservedDeleteEditCount: deleteEditConflicts,
     );
+  }
+
+  Future<void> _uploadMissingAssets(
+    FileSyncResourceMapStore resourceMap, {
+    required List<PendingSyncOperation> operations,
+  }) async {
+    final mappings = await resourceMap.load();
+    final mappedNotebookIds = _notebookIdsForContentOperations(
+      mappings,
+      operations,
+    );
+    final localAssets = await collectLocalSyncAssets(
+      repository,
+      notebookIds: mappedNotebookIds,
+      knownCloudAssetKeys: await resourceMap.loadCloudAssetKeys(),
+    );
+    if (localAssets.isEmpty) return;
+
+    for (final asset in localAssets) {
+      try {
+        final session = await cloudClient.createAssetUploadSession(asset);
+        await cloudClient.uploadAssetFile(session, asset);
+        await cloudClient.completeAssetUpload(session.uploadId);
+      } on InkNestApiException catch (error) {
+        if (error.code != 'asset_already_exists') rethrow;
+      }
+    }
+
+    final bootstrap = await cloudClient.bootstrap();
+    final cloudAssets = {for (final asset in bootstrap.assets) asset.id: asset};
+    for (final local in localAssets) {
+      final cloud = cloudAssets[local.id];
+      if (cloud == null ||
+          cloud.notebookId != local.notebookId ||
+          cloud.kind != local.kind ||
+          cloud.originalFilename != local.filename ||
+          cloud.relativePath != local.relativePath ||
+          cloud.contentType != local.contentType ||
+          cloud.byteSize != local.byteSize ||
+          cloud.sha256 != local.sha256) {
+        throw StateError('Cloud attachment verification failed.');
+      }
+    }
+    await resourceMap.addCloudAssetKeys(
+      localAssets.map(
+        (asset) => cloudAssetSyncKey(asset.notebookId, asset.relativePath),
+      ),
+    );
+  }
+
+  Set<String> _notebookIdsForContentOperations(
+    List<SyncResourceMapping> mappings,
+    List<PendingSyncOperation> operations,
+  ) {
+    final mappedByRemoteKey = {
+      for (final mapping in mappings)
+        '${mapping.resourceType.apiValue}:${mapping.remoteResourceId}': mapping,
+    };
+    final notebookIds = <String>{};
+    for (final operation in operations) {
+      if (operation.operation != SyncOperationKind.upsert ||
+          !operation.includesContent) {
+        continue;
+      }
+      final mapping = mappedByRemoteKey[operation.resourceKey];
+      if (mapping == null) continue;
+      final localKey = mapping.localKey;
+      switch (mapping.resourceType) {
+        case SyncResourceType.notebook:
+          if (localKey.startsWith('notebook:')) {
+            notebookIds.add(localKey.substring('notebook:'.length));
+          }
+        case SyncResourceType.page:
+          if (localKey.startsWith('page:')) {
+            final separator = localKey.lastIndexOf(':');
+            if (separator > 'page:'.length) {
+              notebookIds.add(localKey.substring('page:'.length, separator));
+            }
+          }
+        case SyncResourceType.infiniteCanvas:
+          if (localKey.startsWith('infinite_canvas:')) {
+            notebookIds.add(localKey.substring('infinite_canvas:'.length));
+          }
+        case SyncResourceType.folder:
+          break;
+      }
+    }
+    return notebookIds;
   }
 
   void _validateResponse(

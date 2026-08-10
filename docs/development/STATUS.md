@@ -2,19 +2,14 @@
 
 ## Current
 
-- Milestone: Backend Phase 5 incremental-sync App integration is in progress;
-  initialized sessions now push saved page, notebook-content, and infinite-
-  canvas edits, explicit notebook title/archive/existing-folder metadata,
-  incremental folder creation/rename/deletion,
-  mapped whole-notebook deletes, and deletion of any page when another remains
-  plus explicit page reordering and infinite-canvas background metadata before
-  applying safe `/sync/changes` updates.
-- Next task: Define standalone infinite-canvas deletion only if an App action
-  is introduced; otherwise continue to the next unchecked Phase 5 integration
-  boundary without inventing a hidden delete operation.
-- Last completed: Added explicit backend migration/start commands and a
-  read-only Alembic Head guard that refuses to start FastAPI against a missing,
-  older, newer, or branched database schema.
+- Milestone: Backend Phase 5 first-sign-in, recovery, and incremental-sync App
+  integration is complete; Phase 6 has not started.
+- Next task: Define the versioned single-notebook/full-library backup contract,
+  then implement the first Phase 6 server-generated backup slice.
+- Last completed: Audited the Phase 5 implementation, confirmed that one
+  infinite-canvas notebook owns exactly one Canvas and already deletes through
+  the Notebook Tombstone flow, and added verified incremental upload for PDF,
+  image, and audio attachments created after initialization.
 
 ## Decisions
 
@@ -162,8 +157,14 @@
   `pageOrder` and its applied baseline travel in the same metadata contract.
   Infinite-canvas `background` and its applied baseline use the canvas
   metadata contract; both remain outside JSON content.
-  Queue notebook/canvas content only when every page/asset
-  reference can be rewritten to verified cloud state.
+  Submit notebook/canvas content only when every page/asset reference can be
+  rewritten to verified cloud state; persist the local operation before that
+  preflight so a later Retry cannot lose the user's sync intent.
+- Before an initialized device submits content that references a new local
+  attachment, upload it through the existing retryable session, verify its
+  bootstrap metadata, byte size, and SHA-256, persist the cloud asset key, and
+  only then submit the frozen content batch. Upload failure keeps the content
+  operation queued for the existing non-blocking Retry flow.
 - Allow deletion of any mapped page while at least one page remains. The server
   stores the original notebook/position in the Tombstone, compacts active page
   positions transactionally, and restores the page at that position while
@@ -283,6 +284,15 @@
 - Keep unresolved legacy content viewable, navigable, zoomable, searchable, and exportable without allowing normal save, rotate, copy, or duplicate paths to overwrite its source JSON.
 
 ## Verification
+
+- Flutter's full 264-test suite and `flutter analyze` pass after the Phase 5
+  implementation audit. Focused coverage proves that a new initialized-device
+  attachment is retried, bootstrap-verified, and marked cloud-ready before its
+  queued content commit; a failed first upload preserves the operation and
+  asset state. Canvas-notebook shelf deletion is also verified to queue a
+  Notebook delete and preserve `canvas.json` in the recovery copy. No backend
+  route, database model, or Alembic migration changed; `git diff --check`
+  passes.
 
 - Python formatting, Ruff, and mypy pass. All 65 non-integration tests and 16
   PostgreSQL/MinIO integration tests pass, including a real PostgreSQL startup-
@@ -747,8 +757,8 @@
   route changed.
 - Focused tests pass for notebook bookmark page-ID rewriting, exclusion of
   structural notebook fields, infinite-canvas content queueing, persisted cloud
-  asset knowledge, and blocking a canvas operation that references an unuploaded
-  image.
+  asset knowledge, and durable deferral of a canvas operation that references
+  an unuploaded image.
 - `flutter test` passes with 203 tests after notebook/canvas content tracking;
   `flutter analyze` and `git diff --check` pass, with no backend source or route
   change.

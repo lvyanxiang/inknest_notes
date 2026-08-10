@@ -9,6 +9,7 @@ import 'package:inknest_notes/sync/sync_cloud_client.dart';
 import 'package:inknest_notes/sync/sync_resource_map_store.dart';
 import 'package:inknest_notes/sync/sync_state.dart';
 import 'package:inknest_notes/sync/sync_upload_models.dart';
+import 'package:inknest_notes/storage/file_notebook_repository.dart';
 
 void main() {
   test('parses a deleted commit outcome from the server contract', () {
@@ -138,6 +139,102 @@ void main() {
     expect(mapping?.revision, 1);
     expect(mapping?.notebookMetadata?['title'], 'Before');
   });
+
+  test('retries a new attachment before committing its queued page', () async {
+    final root = await Directory.systemTemp.createTemp('inknest-asset-push-');
+    addTearDown(() => root.delete(recursive: true));
+    final repository = FileNotebookRepository(rootDirectory: root);
+    final notebook = await repository.createNotebook(title: 'With image');
+    final source = File('${root.path}/source.png');
+    await source.writeAsBytes([1, 2, 3, 4], flush: true);
+    final image = await repository.importImage(
+      notebook,
+      source,
+      position: Offset.zero,
+      width: 100,
+      height: 100,
+    );
+    final page = await repository.loadPage(notebook, notebook.pageIds.single);
+    await repository.savePage(notebook, page.copyWith(images: [image]));
+    final stateStore = FileSyncStateStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+      idFactory: (prefix) => '$prefix-1',
+    );
+    await stateStore.markChangesPageApplied('cursor-1');
+    await stateStore.enqueueUpsert(
+      resourceType: SyncResourceType.page,
+      resourceId: 'remote-page-1',
+      baseRevision: 1,
+      content: page.copyWith(images: [image]).toJson(),
+    );
+    final resourceMap = FileSyncResourceMapStore(
+      rootDirectory: root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    );
+    await resourceMap.replaceAll([
+      SyncResourceMapping(
+        localKey: notebookSyncLocalKey(notebook.id),
+        resourceType: SyncResourceType.notebook,
+        remoteResourceId: notebook.id,
+        revision: 1,
+        contentHash: 'a' * 64,
+      ),
+      SyncResourceMapping(
+        localKey: pageSyncLocalKey(notebook.id, notebook.pageIds.single),
+        resourceType: SyncResourceType.page,
+        remoteResourceId: 'remote-page-1',
+        revision: 1,
+        contentHash: 'a' * 64,
+      ),
+    ]);
+    final cloud = _PushCloudClient(
+      failuresRemaining: 0,
+      assetFailuresRemaining: 1,
+    );
+
+    await expectLater(
+      IncrementalSyncPushService(
+        cloudClient: cloud,
+        repository: repository,
+        rootDirectory: root,
+      ).push(userId: 'user-1', deviceId: 'device-1'),
+      throwsA(
+        isA<IncrementalSyncPushException>().having(
+          (error) => error.pendingOperationCount,
+          'pendingOperationCount',
+          1,
+        ),
+      ),
+    );
+    expect((await stateStore.loadSnapshot()).pendingOperations, hasLength(1));
+    expect(
+      await resourceMap.hasCloudAsset(notebook.id, image.assetPath),
+      isFalse,
+    );
+
+    await IncrementalSyncPushService(
+      cloudClient: cloud,
+      repository: repository,
+      rootDirectory: root,
+    ).push(userId: 'user-1', deviceId: 'device-1');
+
+    expect(cloud.events, [
+      'create-asset',
+      'upload-asset',
+      'create-asset',
+      'upload-asset',
+      'complete-asset',
+      'bootstrap',
+      'commit',
+    ]);
+    expect(
+      await resourceMap.hasCloudAsset(notebook.id, image.assetPath),
+      isTrue,
+    );
+  });
 }
 
 class _PushFixture {
@@ -146,15 +243,20 @@ class _PushFixture {
     required this.stateStore,
     required this.resourceMap,
     required this.cloud,
+    required this.repository,
   });
 
   final Directory root;
   final FileSyncStateStore stateStore;
   final FileSyncResourceMapStore resourceMap;
   final _PushCloudClient cloud;
+  final FileNotebookRepository repository;
 
-  IncrementalSyncPushService get service =>
-      IncrementalSyncPushService(cloudClient: cloud, rootDirectory: root);
+  IncrementalSyncPushService get service => IncrementalSyncPushService(
+    cloudClient: cloud,
+    repository: repository,
+    rootDirectory: root,
+  );
 
   static Future<_PushFixture> create({
     int failuresRemaining = 0,
@@ -169,6 +271,7 @@ class _PushFixture {
       deviceId: 'device-1',
       idFactory: (prefix) => '$prefix-1',
     );
+    final repository = FileNotebookRepository(rootDirectory: root);
     await stateStore.markChangesPageApplied('cursor-1');
     if (delete) {
       await stateStore.enqueueDelete(
@@ -228,6 +331,7 @@ class _PushFixture {
         failuresRemaining: failuresRemaining,
         outcome: outcome,
       ),
+      repository: repository,
     );
   }
 
@@ -249,11 +353,18 @@ class _PushRequest {
 }
 
 class _PushCloudClient implements FirstSignInCloudClient {
-  _PushCloudClient({required this.failuresRemaining, this.outcome});
+  _PushCloudClient({
+    required this.failuresRemaining,
+    this.assetFailuresRemaining = 0,
+    this.outcome,
+  });
 
   int failuresRemaining;
+  int assetFailuresRemaining;
   final String? outcome;
   final List<_PushRequest> requests = [];
+  final List<String> events = [];
+  LocalSyncAsset? uploadedAsset;
 
   @override
   Future<SyncContentCommitResult> commitSharedContent({
@@ -262,6 +373,7 @@ class _PushCloudClient implements FirstSignInCloudClient {
     required String baseCursor,
     required List<Map<String, Object?>> operations,
   }) async {
+    events.add('commit');
     final operation = operations.single;
     requests.add(
       _PushRequest(
@@ -294,7 +406,36 @@ class _PushCloudClient implements FirstSignInCloudClient {
   }
 
   @override
-  Future<CloudSyncBootstrap> bootstrap() => throw UnimplementedError();
+  Future<CloudSyncBootstrap> bootstrap() async {
+    events.add('bootstrap');
+    final asset = uploadedAsset;
+    return CloudSyncBootstrap(
+      inventory: SyncLibraryInventory(
+        notebookIds: asset == null ? const [] : [asset.notebookId],
+      ),
+      baseCursor: 'cursor-1',
+      folders: const [],
+      notebooks: const [],
+      pages: const [],
+      infiniteCanvases: const [],
+      assets: asset == null
+          ? const []
+          : [
+              CloudSyncAsset(
+                id: asset.id,
+                notebookId: asset.notebookId,
+                kind: asset.kind,
+                originalFilename: asset.filename,
+                relativePath: asset.relativePath,
+                contentType: asset.contentType,
+                byteSize: asset.byteSize,
+                sha256: asset.sha256,
+                createdAt: DateTime.utc(2026, 8, 10),
+                updatedAt: DateTime.utc(2026, 8, 10),
+              ),
+            ],
+    );
+  }
 
   @override
   Future<CloudSyncChangePage> listChanges({String? cursor, int limit = 100}) =>
@@ -321,15 +462,31 @@ class _PushCloudClient implements FirstSignInCloudClient {
   @override
   Future<CloudAssetUploadSession> createAssetUploadSession(
     LocalSyncAsset asset,
-  ) => throw UnimplementedError();
+  ) async {
+    events.add('create-asset');
+    uploadedAsset = asset;
+    return CloudAssetUploadSession(
+      uploadId: 'upload-1',
+      assetId: asset.id,
+      uploadUrl: Uri.parse('https://objects.test/upload'),
+      requiredHeaders: const {},
+    );
+  }
 
   @override
   Future<void> uploadAssetFile(
     CloudAssetUploadSession session,
     LocalSyncAsset asset,
-  ) => throw UnimplementedError();
+  ) async {
+    events.add('upload-asset');
+    if (assetFailuresRemaining > 0) {
+      assetFailuresRemaining--;
+      throw StateError('simulated asset upload failure');
+    }
+  }
 
   @override
-  Future<void> completeAssetUpload(String uploadId) =>
-      throw UnimplementedError();
+  Future<void> completeAssetUpload(String uploadId) async {
+    events.add('complete-asset');
+  }
 }

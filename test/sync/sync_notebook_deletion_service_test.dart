@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:inknest_notes/models/notebook_layout_mode.dart';
 import 'package:inknest_notes/storage/file_notebook_repository.dart';
 import 'package:inknest_notes/sync/sync_bootstrap.dart';
 import 'package:inknest_notes/sync/sync_changes.dart';
@@ -9,11 +10,14 @@ import 'package:inknest_notes/sync/sync_resource_map_store.dart';
 import 'package:inknest_notes/sync/sync_state.dart';
 
 void main() {
-  test('retries an already recovered notebook deletion idempotently', () async {
+  test('retries a recovered canvas-notebook deletion idempotently', () async {
     final root = await Directory.systemTemp.createTemp('inknest-delete-retry-');
     addTearDown(() => root.delete(recursive: true));
     final repository = FileNotebookRepository(rootDirectory: root);
-    final notebook = await repository.createNotebook(title: 'Retry delete');
+    final notebook = await repository.createNotebook(
+      title: 'Retry canvas delete',
+      layoutMode: NotebookLayoutMode.infiniteCanvas,
+    );
     final deletedAt = DateTime.utc(2026, 8, 7);
     final changes = [
       CloudSyncChange(
@@ -92,6 +96,13 @@ void main() {
     expect(
       await Directory(
         '${root.path}/sync/user-1/device-1/deleted/tombstone-1/notebook',
+      ).exists(),
+      isTrue,
+    );
+    expect(
+      await File(
+        '${root.path}/sync/user-1/device-1/deleted/tombstone-1/'
+        'notebook/canvas.json',
       ).exists(),
       isTrue,
     );

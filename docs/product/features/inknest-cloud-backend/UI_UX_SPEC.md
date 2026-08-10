@@ -1,7 +1,7 @@
 # InkNest Cloud Sync And Recovery UI/UX Specification
 
 - Status: Accepted
-- Updated: 2026-08-07
+- Updated: 2026-08-10
 - Product brief: `PRODUCT_BRIEF.md`
 - Affected surfaces: Sync status panel, conflict detail sheet, Recently
   Deleted list, notebook shelf and Pages panel
@@ -101,8 +101,10 @@ continue-local state without overwriting either side.
 4. Network or parsing failure preserves the frozen upload batch and returns
    immediately to local use with a concise retry-later message; it never blocks
    writing.
-5. A local edit containing an attachment not yet verified in cloud remains
-   local and does not claim upload success. Existing folder creation/rename
+5. A local edit containing a new attachment remains durably queued while
+   InkNest uploads and verifies the attachment before submitting its content.
+   Failure uses the existing non-blocking Retry state and never claims that an
+   incomplete attachment is synchronized. Existing folder creation/rename
    and deletion use the same background status and retry flow without new
    controls. Deleting a folder retains its existing confirmation, moves its
    notebooks to the library root, and never appears in Recently Deleted. Page
@@ -290,8 +292,10 @@ continue-local state without overwriting either side.
   uses the existing non-blocking sync failure/retry state. The existing canvas
   background picker now synchronizes blank, dotted, and grid choices; accepted
   remote backgrounds appear when the canvas refreshes, while a concurrent
-  background change uses the same non-blocking failed/retry state. Standalone
-  canvas deletion has no App entry point. The library header now also shows syncing,
+  background change uses the same non-blocking failed/retry state. Each infinite-
+  canvas notebook owns one Canvas, so deleting it uses the existing shelf
+  notebook deletion and Notebook Tombstone flow; no standalone child-Canvas
+  entry point is added. The library header now also shows syncing,
   completed, needs-attention, failed, and edit-preserved states. Its sheet
   reports durable failed-operation counts and provides Retry; retry reuses the
   frozen idempotent batch. A `delete_conflict` is presented as a calm successful

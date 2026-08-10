@@ -424,7 +424,7 @@ void main() {
   });
 
   test(
-    'canvas with an unuploaded image stays out of the commit queue',
+    'canvas with an unuploaded image stays in the durable commit queue',
     () async {
       final root = await Directory.systemTemp.createTemp(
         'inknest-canvas-asset-',
@@ -446,6 +446,7 @@ void main() {
           remoteResourceId: 'remote-canvas-1',
           revision: 1,
           contentHash: 'd' * 64,
+          infiniteCanvasMetadata: const {'background': 'blank'},
         ),
       ]);
       final tracker = SyncMutationTracker(
@@ -472,47 +473,57 @@ void main() {
         ),
       );
 
-      expect((await _state(root)).pendingOperations, isEmpty);
+      final operation = (await _state(root)).pendingOperations.single;
+      expect(operation.resourceType, SyncResourceType.infiniteCanvas);
+      expect(operation.content['images'], hasLength(1));
     },
   );
 
-  test('deleting a mapped notebook queues its remote delete', () async {
-    final root = await Directory.systemTemp.createTemp('inknest-delete-track-');
-    addTearDown(() => root.delete(recursive: true));
-    final setupRepository = FileNotebookRepository(rootDirectory: root);
-    final notebook = await setupRepository.createNotebook(title: 'Tracked');
-    await FileSyncResourceMapStore(
-      rootDirectory: root,
-      userId: 'user-1',
-      deviceId: 'device-1',
-    ).replaceAll([
-      SyncResourceMapping(
-        localKey: notebookSyncLocalKey(notebook.id),
-        resourceType: SyncResourceType.notebook,
-        remoteResourceId: notebook.id,
-        revision: 5,
-        contentHash: 'a' * 64,
-      ),
-    ]);
-    final tracker = SyncMutationTracker(
-      rootDirectory: root,
-      activeSession: _session,
-    );
-    final repository = FileNotebookRepository(
-      rootDirectory: root,
-      onNotebookDeleted: tracker.notebookDeleted,
-    );
+  test(
+    'deleting a mapped canvas notebook queues its notebook delete',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'inknest-delete-track-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      final setupRepository = FileNotebookRepository(rootDirectory: root);
+      final notebook = await setupRepository.createNotebook(
+        title: 'Tracked canvas',
+        layoutMode: NotebookLayoutMode.infiniteCanvas,
+      );
+      await FileSyncResourceMapStore(
+        rootDirectory: root,
+        userId: 'user-1',
+        deviceId: 'device-1',
+      ).replaceAll([
+        SyncResourceMapping(
+          localKey: notebookSyncLocalKey(notebook.id),
+          resourceType: SyncResourceType.notebook,
+          remoteResourceId: notebook.id,
+          revision: 5,
+          contentHash: 'a' * 64,
+        ),
+      ]);
+      final tracker = SyncMutationTracker(
+        rootDirectory: root,
+        activeSession: _session,
+      );
+      final repository = FileNotebookRepository(
+        rootDirectory: root,
+        onNotebookDeleted: tracker.notebookDeleted,
+      );
 
-    await repository.deleteNotebook(notebook);
+      await repository.deleteNotebook(notebook);
 
-    final operation = (await _state(root)).pendingOperations.single;
-    expect(operation.operation, SyncOperationKind.delete);
-    expect(operation.resourceType, SyncResourceType.notebook);
-    expect(operation.resourceId, notebook.id);
-    expect(operation.baseRevision, 5);
-    expect(operation.toJson(), isNot(contains('content')));
-    expect(await repository.listNotebooks(), isEmpty);
-  });
+      final operation = (await _state(root)).pendingOperations.single;
+      expect(operation.operation, SyncOperationKind.delete);
+      expect(operation.resourceType, SyncResourceType.notebook);
+      expect(operation.resourceId, notebook.id);
+      expect(operation.baseRevision, 5);
+      expect(operation.toJson(), isNot(contains('content')));
+      expect(await repository.listNotebooks(), isEmpty);
+    },
+  );
 
   test('deleting a mapped trailing page queues its remote delete', () async {
     final root = await Directory.systemTemp.createTemp('inknest-page-delete-');

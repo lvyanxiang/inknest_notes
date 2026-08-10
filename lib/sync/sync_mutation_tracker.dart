@@ -136,12 +136,6 @@ class SyncMutationTracker {
     ).any((pageId) => !remotePageIds.containsKey(pageId))) {
       return;
     }
-    for (final recording in notebook.audioRecordings) {
-      if (!await resourceMap.hasCloudAsset(notebook.id, recording.assetPath)) {
-        return;
-      }
-    }
-
     final content = Map<String, Object?>.from(
       _rewritePageReferences(notebook.toJson(), remotePageIds)! as Map,
     );
@@ -241,11 +235,6 @@ class SyncMutationTracker {
     final mapping = await resourceMap.find(canvasSyncLocalKey(notebook.id));
     final baseMetadata = mapping?.infiniteCanvasMetadata;
     if (mapping == null || baseMetadata == null) return;
-    for (final image in document.images) {
-      if (!await resourceMap.hasCloudAsset(notebook.id, image.assetPath)) {
-        return;
-      }
-    }
     final content = Map<String, Object?>.from(document.toJson())
       ..remove('background');
     await _stateStore(session).enqueueInfiniteCanvas(

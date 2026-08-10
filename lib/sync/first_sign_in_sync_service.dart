@@ -10,6 +10,7 @@ import 'package:inknest_notes/sync/file_sync_state_store.dart';
 import 'package:inknest_notes/sync/inknest_api_client.dart';
 import 'package:inknest_notes/sync/incremental_sync_pull_service.dart';
 import 'package:inknest_notes/sync/incremental_sync_push_service.dart';
+import 'package:inknest_notes/sync/local_sync_asset_inventory.dart';
 import 'package:inknest_notes/sync/sync_bootstrap.dart';
 import 'package:inknest_notes/sync/sync_merge_plan.dart';
 import 'package:inknest_notes/sync/sync_mutation_tracker.dart';
@@ -122,6 +123,7 @@ class ApiFirstSignInSyncService
   }) {
     return IncrementalSyncPushService(
       cloudClient: apiClient,
+      repository: repository,
       rootDirectory: rootDirectory,
     ).push(userId: userId, deviceId: deviceId);
   }
@@ -795,28 +797,13 @@ class ApiFirstSignInSyncService
     File file,
     String kind,
   ) async {
-    validateNotebookAssetPath(relativePath, kind: kind);
     final key = '${notebook.id}:$relativePath';
     if (assets.containsKey(key)) return;
-    if (!await file.exists()) {
-      throw StateError('A referenced local attachment is missing.');
-    }
-    final byteSize = await file.length();
-    if (byteSize <= 0) {
-      throw StateError('A referenced local attachment is empty.');
-    }
-    final digest = await sha256.bind(file.openRead()).first;
-    final filename = relativePath.split('/').last;
-    assets[key] = LocalSyncAsset(
-      id: _assetId(notebook.id, relativePath),
-      notebookId: notebook.id,
-      kind: kind,
-      filename: filename,
+    assets[key] = await createLocalSyncAsset(
+      notebook: notebook,
       relativePath: relativePath,
-      contentType: _contentType(filename, kind),
-      byteSize: byteSize,
-      sha256: digest.toString(),
       file: file,
+      kind: kind,
     );
   }
 
@@ -842,9 +829,6 @@ class ApiFirstSignInSyncService
       }
     }
   }
-
-  String _assetId(String notebookId, String path) =>
-      'asset-${sha256.convert(utf8.encode('$notebookId\u0000$path')).toString().substring(0, 40)}';
 
   String _remotePageId(String notebookId, String localPageId) =>
       'page-${sha256.convert(utf8.encode('$notebookId\u0000$localPageId')).toString().substring(0, 40)}';
@@ -882,26 +866,6 @@ class ApiFirstSignInSyncService
       ];
     }
     return value;
-  }
-
-  String _contentType(String filename, String kind) {
-    final extension = filename.toLowerCase().split('.').last;
-    return switch ((kind, extension)) {
-      ('pdf', _) => 'application/pdf',
-      ('image', 'png') => 'image/png',
-      ('image', 'jpg') || ('image', 'jpeg') => 'image/jpeg',
-      ('image', 'webp') => 'image/webp',
-      ('image', 'heic') => 'image/heic',
-      ('image', 'heif') => 'image/heif',
-      ('audio', 'm4a') => 'audio/mp4',
-      ('audio', 'mp4') => 'audio/mp4',
-      ('audio', 'mp3') => 'audio/mpeg',
-      ('audio', 'aac') => 'audio/aac',
-      ('audio', 'ogg') => 'audio/ogg',
-      ('audio', 'webm') => 'audio/webm',
-      ('audio', 'wav') => 'audio/wav',
-      _ => throw StateError('Unsupported local attachment type.'),
-    };
   }
 }
 

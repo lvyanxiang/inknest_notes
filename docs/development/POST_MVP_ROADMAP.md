@@ -262,7 +262,7 @@ document workflows are stable.
 - [x] Define sync metadata.
 - [ ] Add notebook archive format.
 - [ ] Implement backup and restore.
-- [ ] Add conflict detection and explicit recovery behavior.
+- [x] Add conflict detection and explicit recovery behavior.
 
 ### Post-MVP 7: Mobile Companion
 

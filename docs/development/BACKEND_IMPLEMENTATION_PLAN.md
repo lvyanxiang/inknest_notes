@@ -1,7 +1,7 @@
 # InkNest Notes 服务端实施计划
 
-- 状态：Phase 4 已完成，Phase 5 实施中
-- 更新时间：2026-08-07
+- 状态：Phase 5 已完成，Phase 6 尚未开始
+- 更新时间：2026-08-10
 - 产品 Brief：`docs/product/features/inknest-cloud-backend/PRODUCT_BRIEF.md`
 - 对应路线图：Milestone 8 / Post-MVP 6 Sync And Backup
 
@@ -462,8 +462,12 @@ checksums.sha256
   - [x] 为中间页删除实现服务端位置压缩和原位置恢复；活动页面位置使用部分唯一索引，
     结构变更生成连续页面 Revision，Flutter 校验最终 bootstrap 后才推进 Cursor。
   - [x] 为显式页面重排定义完整页序合同并接入现有 Pages 操作。
-  - [ ] 为独立画布删除定义结构合同；当前 App 没有独立删除画布的入口，不猜测性
-    丢弃内容。
+  - [x] 核实独立画布删除不适用于当前一对一模型：一本无限画布笔记只有一个 Canvas，
+    书架删除沿用已接入的整本笔记队列和 Notebook Tombstone，不创建“删除 Canvas 后保留
+    空壳笔记”的隐藏操作。
+  - [x] 初始化后的新附件增量上传：提交正文前扫描已映射笔记中新引用的 PDF、图片和
+    录音，复用幂等上传会话并通过 bootstrap 元数据、大小和 SHA-256 复核；失败时正文
+    操作继续保留在持久队列，画布和录音不会因附件尚未上传而丢失同步意图。
   - [x] 严格解析并持久化纯冲突变更页：按账号/设备保存待处理项，成功落盘后推进
     Cursor，并通过资料库页头角标和只读列表展示；不弹窗打断书写、不自动覆盖任一版本。
   - [x] 接入 `POST /sync/conflicts/{conflictId}/resolve` 的保留原版本、使用冲突版本和
