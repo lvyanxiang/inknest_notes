@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:inknest_notes/auth/auth_service.dart';
+import 'package:inknest_notes/auth/device_installation_id_store.dart';
 import 'package:inknest_notes/sync/inknest_api_client.dart';
 import 'package:inknest_notes/sync/inknest_api_models.dart';
 
@@ -12,7 +13,9 @@ class AuthController extends ChangeNotifier {
     required this._service,
     required this.deviceName,
     required this.platform,
-  }) {
+    DeviceInstallationIdStore? deviceInstallationIdStore,
+  }) : _deviceInstallationIdStore =
+           deviceInstallationIdStore ?? MemoryDeviceInstallationIdStore() {
     final service = _service;
     if (service case AuthSessionInvalidationSource source) {
       _invalidationSubscription = source.sessionInvalidations.listen((_) {
@@ -25,6 +28,7 @@ class AuthController extends ChangeNotifier {
   }
 
   final AuthService _service;
+  final DeviceInstallationIdStore _deviceInstallationIdStore;
   final String deviceName;
   final String platform;
 
@@ -51,24 +55,31 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> login({required String email, required String password}) {
+  Future<bool> login({required String email, required String password}) async {
+    final clientInstanceId = await _deviceInstallationIdStore.getOrCreate();
     return _authenticate(
       () => _service.login(
         email: email.trim(),
         password: password,
         deviceName: deviceName,
         platform: platform,
+        clientInstanceId: clientInstanceId,
       ),
     );
   }
 
-  Future<bool> register({required String email, required String password}) {
+  Future<bool> register({
+    required String email,
+    required String password,
+  }) async {
+    final clientInstanceId = await _deviceInstallationIdStore.getOrCreate();
     return _authenticate(
       () => _service.register(
         email: email.trim(),
         password: password,
         deviceName: deviceName,
         platform: platform,
+        clientInstanceId: clientInstanceId,
       ),
     );
   }

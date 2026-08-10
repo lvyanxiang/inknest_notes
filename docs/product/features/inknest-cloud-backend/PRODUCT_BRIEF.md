@@ -52,6 +52,10 @@ The first slice sets no retention period and performs no physical cleanup.
 
 - In scope:
   - InkNest accounts, sessions, and registered devices.
+  - One privacy-scoped random installation ID stored separately from the
+    session. Sign-out retains it so repeated login reuses the same account
+    device; reinstall, device reset, or lost secure storage may create a new
+    device without preventing synchronization.
   - Email/password as the first sign-in method, initially without mandatory
     email verification; short-lived JWT access tokens and rotated,
     server-revocable refresh tokens.
@@ -151,6 +155,9 @@ The first slice sets no retention period and performs no physical cleanup.
   unknown base Revision so the server can return unchanged by Content Hash or
   preserve a notebook/page conflict. Unsupported structural, attachment, or
   canvas-content conflicts stop safely instead of guessing an overwrite.
+- A new server device has no prior local sync sidecar. If its local library was
+  restored from the current bootstrap, page IDs already equal the cloud IDs;
+  shared reconciliation preserves those IDs instead of deriving them again.
 
 ### Library structure and JSON content transfer foundation
 
@@ -260,6 +267,9 @@ The first slice sets no retention period and performs no physical cleanup.
 
 - [x] A user can register, sign in, refresh a session, sign out, and revoke a
   device without exposing another user's data.
+- [x] Repeated login from one installation reuses its server device; a changed
+  installation ID creates a new device and still reconciles a previously
+  restored cloud library without a false `missingCloudPage` failure.
 - [x] A Flutter user can register/sign in from the library Account entry,
   restart the App with the session restored from secure storage, and sign out
   without changing the local library.

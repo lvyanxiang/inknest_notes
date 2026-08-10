@@ -264,16 +264,20 @@ void main() {
     expect((await repository.loadInfiniteCanvas(notebook)).strokes, isEmpty);
   });
 
-  testWidgets('keeps the infinite canvas single top bar responsive', (
+  testWidgets('keeps the infinite canvas header responsive', (
     WidgetTester tester,
   ) async {
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
     for (final size in const [
+      Size(320, 568),
+      Size(390, 844),
       Size(600, 800),
       Size(834, 1194),
       Size(1194, 834),
     ]) {
-      await tester.binding.setSurfaceSize(size);
+      tester.view.physicalSize = size;
       final repository = InMemoryNotebookRepository();
       final notebook = await repository.createNotebook(
         title: 'Spatial notes',
@@ -301,6 +305,16 @@ void main() {
         tester.getBottomLeft(toolbar).dy,
         lessThanOrEqualTo(tester.getTopLeft(viewport).dy),
       );
+      expect(
+        find.byKey(const ValueKey('infinite-canvas-compact-toolbar-row')),
+        size.width < 600 ? findsOneWidget : findsNothing,
+      );
+      if (size.width < 600) {
+        expect(
+          find.byKey(const ValueKey('infinite-canvas-document-context')),
+          findsOneWidget,
+        );
+      }
       expect(find.byTooltip('Pen'), findsOneWidget);
       expect(find.byTooltip('Highlighter'), findsOneWidget);
       expect(find.byTooltip('Eraser'), findsOneWidget);

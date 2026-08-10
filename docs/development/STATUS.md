@@ -6,8 +6,10 @@
   integration is complete; Phase 6 has not started.
 - Next task: Define the versioned single-notebook/full-library backup contract,
   then implement the first Phase 6 server-generated backup slice.
-- Last completed: Added root `make restart` / `make stop` to clear stale
-  Flutter iOS debug helpers and relaunch the App.
+- Last completed: Stabilized account device identity with a random secure-store
+  installation ID that survives sign-out, server-side device reuse, and a safe
+  new-device fallback. Fixed restored cloud page IDs being hashed a second time,
+  which caused the false pre-request `missingCloudPage` Merge failure.
 
 ## Decisions
 
@@ -37,6 +39,10 @@
 - Store account sessions with `flutter_secure_storage` (Keychain on Apple
   platforms and encrypted platform storage elsewhere). Authentication remains
   optional, and local sign-out never deletes the notebook repository.
+- Store a separate random installation ID in platform secure storage. Sign-out
+  clears only the account session; repeated login reuses the matching server
+  device. A reset identifier is a valid new device and must rebuild sync
+  mappings without changing already-restored cloud resource IDs.
 - Parse bootstrap payloads strictly and preserve unknown structured
   `coordinateSpaceVersion` values without rewriting them. A malformed or
   internally inconsistent snapshot fails before local writes begin.
@@ -282,6 +288,18 @@
 - Keep unresolved legacy content viewable, navigable, zoomable, searchable, and exportable without allowing normal save, rotate, copy, or duplicate paths to overwrite its source JSON.
 
 ## Verification
+
+- Focused first-sign-in dialog and Merge-service tests pass, including a failed
+  mixed Merge followed by a successful Retry. `flutter analyze` reports no
+  issues, and `git diff --check` passes.
+
+- Focused editor coverage passes at 320×568 and 390×844 for infinite canvas and
+  at 390×844 for paged notes. Both compact headers keep their document context
+  separate from navigation/tools without a RenderFlex exception; regular iPad
+  layouts remain unchanged, actions keep their target size, and extremely
+  narrow canvas tools scroll instead of shrinking. The complete Flutter suite
+  passes all 265 tests, `flutter analyze` reports no issues, and
+  `git diff --check` passes.
 
 - `bash -n scripts/stop_dev_app.sh` and root `make -n restart` pass. Root
   `make restart` only clears stale Flutter/iOS debug helpers then relaunches
@@ -827,6 +845,11 @@
   mapping, upload queueing, legacy mapping repair, cross-device application,
   and stale-baseline rejection. Ruff, mypy, Flutter analysis, and diff checks
   pass.
+- Full `flutter test` and `flutter analyze` pass after stable installation
+  identity and new-device Merge repair. The backend passes 66 non-integration
+  and 16 PostgreSQL/MinIO integration tests; Ruff, mypy, and diff checks pass.
+  Alembic upgrades both the development database and an independent empty
+  database to `20260810_0015` with no schema drift.
 
 ## Notes
 

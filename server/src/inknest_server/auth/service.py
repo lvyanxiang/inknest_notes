@@ -49,6 +49,7 @@ class AuthService:
         password: str,
         device_name: str,
         platform: str,
+        client_instance_id: str | None,
     ) -> AuthResult:
         normalized_email = email.strip().lower()
         if await self._find_user_by_email(normalized_email) is not None:
@@ -66,6 +67,7 @@ class AuthService:
             user=user,
             name=device_name.strip(),
             platform=platform.strip().lower(),
+            client_instance_id=client_instance_id,
         )
         self._session.add_all([user, device])
         await self._session.flush()
@@ -88,6 +90,7 @@ class AuthService:
         password: str,
         device_name: str,
         platform: str,
+        client_instance_id: str | None,
         client_id: str,
     ) -> AuthResult:
         normalized_email = email.strip().lower()
@@ -107,16 +110,52 @@ class AuthService:
             raise self._invalid_credentials()
         await self._login_rate_limiter.mark_succeeded(attempt)
 
-        device = Device(
-            user=user,
-            name=device_name.strip(),
-            platform=platform.strip().lower(),
+        device = await self._find_device_by_client_instance_id(
+            user_id=user.id,
+            client_instance_id=client_instance_id,
         )
-        self._session.add(device)
-        await self._session.flush()
+        if device is None:
+            try:
+                async with self._session.begin_nested():
+                    device = Device(
+                        user_id=user.id,
+                        name=device_name.strip(),
+                        platform=platform.strip().lower(),
+                        client_instance_id=client_instance_id,
+                    )
+                    self._session.add(device)
+                    await self._session.flush()
+            except IntegrityError:
+                device = await self._find_device_by_client_instance_id(
+                    user_id=user.id,
+                    client_instance_id=client_instance_id,
+                )
+                if device is None:
+                    raise
+        else:
+            device.name = device_name.strip()
+            device.platform = platform.strip().lower()
+            device.last_seen_at = datetime.now(UTC)
+            device.revoked_at = None
         result = self._issue_session(user=user, device=device, family_id=uuid4())
         await self._session.commit()
         return result
+
+    async def _find_device_by_client_instance_id(
+        self,
+        *,
+        user_id: UUID,
+        client_instance_id: str | None,
+    ) -> Device | None:
+        if client_instance_id is None:
+            return None
+        device: Device | None = await self._session.scalar(
+            select(Device).where(
+                Device.user_id == user_id,
+                Device.client_instance_id == client_instance_id,
+            )
+        )
+        return device
 
     async def _acquire_login_attempt(
         self,

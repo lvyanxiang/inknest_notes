@@ -7,12 +7,17 @@ def registration_payload(
     email: str = "writer@example.com",
     *,
     device_name: str = "My iPad",
+    client_instance_id: str | None = None,
 ) -> dict[str, str]:
+    instance_id = (
+        client_instance_id or f"install-{device_name.lower().replace(' ', '-')}"
+    )
     return {
         "email": email,
         "password": "correct-horse-battery-staple",
         "deviceName": device_name,
         "platform": "ios",
+        "clientInstanceId": instance_id,
     }
 
 
@@ -83,6 +88,28 @@ async def test_login_creates_a_separate_device_session(client: AsyncClient) -> N
         "My iPad",
         "My Phone",
     }
+
+
+async def test_login_reuses_the_same_installation_device(client: AsyncClient) -> None:
+    registered = await register(client)
+    original_device_id = registered.json()["device"]["id"]
+    same_installation = await client.post(
+        "/api/v1/auth/login",
+        json=registration_payload(
+            device_name="My iPad renamed",
+            client_instance_id="install-my-ipad",
+        ),
+    )
+    assert same_installation.status_code == 200
+    assert same_installation.json()["device"]["id"] == original_device_id
+
+    devices = await client.get(
+        "/api/v1/devices",
+        headers=bearer(same_installation.json()["accessToken"]),
+    )
+    assert devices.status_code == 200
+    assert len(devices.json()) == 1
+    assert devices.json()[0]["name"] == "My iPad renamed"
 
 
 async def test_failed_logins_are_rate_limited(client: AsyncClient) -> None:

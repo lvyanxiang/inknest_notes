@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:inknest_notes/app/theme.dart';
 import 'package:inknest_notes/auth/auth_controller.dart';
+import 'package:inknest_notes/auth/device_installation_id_store.dart';
 import 'package:inknest_notes/features/library/library_screen.dart';
 import 'package:inknest_notes/storage/file_notebook_repository.dart';
 import 'package:inknest_notes/storage/notebook_repository.dart';
@@ -48,6 +49,7 @@ class _InkNestAppState extends State<InkNestApp> {
         service: client,
         deviceName: identity.name,
         platform: identity.platform,
+        deviceInstallationIdStore: SecureDeviceInstallationIdStore(),
       );
     }
     _resources = _createResources();

@@ -8,6 +8,7 @@ abstract interface class AuthService {
     required String password,
     required String deviceName,
     required String platform,
+    required String clientInstanceId,
   });
 
   Future<InkNestAuthSession> login({
@@ -15,6 +16,7 @@ abstract interface class AuthService {
     required String password,
     required String deviceName,
     required String platform,
+    required String clientInstanceId,
   });
 
   Future<void> logout();

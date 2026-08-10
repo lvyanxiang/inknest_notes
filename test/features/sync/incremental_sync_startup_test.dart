@@ -544,6 +544,7 @@ class _RestoredAuthService implements AuthService {
     required String password,
     required String deviceName,
     required String platform,
+    required String clientInstanceId,
   }) => throw UnimplementedError();
 
   @override
@@ -552,6 +553,7 @@ class _RestoredAuthService implements AuthService {
     required String password,
     required String deviceName,
     required String platform,
+    required String clientInstanceId,
   }) => throw UnimplementedError();
 
   @override

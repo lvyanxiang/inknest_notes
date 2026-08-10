@@ -114,6 +114,54 @@ void main() {
   );
 
   test(
+    'a new server device reconciles restored cloud page IDs without rehashing',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'inknest-new-device-merge-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      final repository = FileNotebookRepository(rootDirectory: root);
+      final cloud = _CloudRestoreHandoffClient();
+      final service = ApiFirstSignInSyncService(
+        repository: repository,
+        apiClient: cloud,
+        rootDirectory: root,
+      );
+
+      final cloudOnly = await service.inspect();
+      await service.restoreCloudOnly(
+        preview: cloudOnly,
+        userId: 'user-1',
+        deviceId: 'device-1',
+      );
+
+      final newDevicePreview = await service.inspect();
+      final result = await service.mergeMixed(
+        preview: newDevicePreview,
+        userId: 'user-1',
+        deviceId: 'device-2',
+      );
+
+      expect(result.uploadedNotebookCount, 0);
+      expect(result.downloadedNotebookCount, 0);
+      expect(
+        cloud.reconciledOperations
+            .where((operation) => operation['resourceType'] == 'page')
+            .single['resourceId'],
+        'cloud-page',
+      );
+      expect(
+        (await FileSyncStateStore(
+          rootDirectory: root,
+          userId: 'user-1',
+          deviceId: 'device-2',
+        ).loadSnapshot()).lastAppliedCursor,
+        'bootstrap-cursor',
+      );
+    },
+  );
+
+  test(
     'local-only merge uploads structure, page content, and image bytes',
     () async {
       final root = await Directory.systemTemp.createTemp(
@@ -347,6 +395,7 @@ String _remotePageId(String notebookId, String localPageId) =>
 
 class _CloudRestoreHandoffClient implements FirstSignInCloudClient {
   final List<String?> requestedChangeCursors = [];
+  final List<Map<String, Object?>> reconciledOperations = [];
 
   @override
   Future<CloudSyncBootstrap> bootstrap() async {
@@ -412,7 +461,24 @@ class _CloudRestoreHandoffClient implements FirstSignInCloudClient {
     required String idempotencyKey,
     required String baseCursor,
     required List<Map<String, Object?>> operations,
-  }) => throw UnimplementedError();
+  }) async {
+    reconciledOperations.addAll(operations);
+    return SyncContentCommitResult(
+      idempotencyKey: idempotencyKey,
+      nextCursor: baseCursor,
+      results: [
+        for (final operation in operations)
+          SyncContentCommitOperationResult(
+            operationId: operation['operationId']! as String,
+            resourceType: operation['resourceType']! as String,
+            resourceId: operation['resourceId']! as String,
+            revision: 1,
+            contentHash: 'a' * 64,
+            outcome: 'unchanged',
+          ),
+      ],
+    );
+  }
 
   @override
   Future<SyncMergeCommitResult> commitInitialMerge({

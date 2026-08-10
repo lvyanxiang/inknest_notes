@@ -446,58 +446,31 @@ class _InfiniteCanvasScreenState extends State<InfiniteCanvasScreen> {
   @override
   Widget build(BuildContext context) {
     final document = _document;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final useCompactHeader = screenWidth < 600;
     return Scaffold(
       appBar: AppBar(
         toolbarHeight: 60,
         titleSpacing: 0,
-        title: LayoutBuilder(
-          builder: (context, constraints) {
-            final showIdentity = constraints.maxWidth >= 500;
-            return Row(
-              children: [
-                if (showIdentity) ...[
-                  SizedBox(
-                    width: constraints.maxWidth >= 760 ? 220 : 180,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.notebook.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+        title: useCompactHeader
+            ? _buildDocumentIdentity()
+            : LayoutBuilder(
+                builder: (context, constraints) {
+                  final showIdentity = constraints.maxWidth >= 500;
+                  return Row(
+                    children: [
+                      if (showIdentity) ...[
+                        SizedBox(
+                          width: constraints.maxWidth >= 760 ? 220 : 180,
+                          child: _buildDocumentIdentity(),
                         ),
-                        Text(
-                          'Infinite canvas',
-                          style: Theme.of(context).textTheme.labelSmall,
-                        ),
+                        const SizedBox(width: 8),
                       ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                ],
-                Expanded(
-                  child: Center(
-                    child: EditorToolbar(
-                      key: const ValueKey('infinite-canvas-top-toolbar'),
-                      tool: _tool,
-                      fingerPanEnabled: _fingerPanEnabled,
-                      fingerWritingAssistEnabled: _fingerWritingAssistEnabled,
-                      onToolChanged: _setTool,
-                      onFingerPanChanged: _setFingerPanEnabled,
-                      onFingerWritingAssistChanged: (enabled) =>
-                          setState(() => _fingerWritingAssistEnabled = enabled),
-                      onInsertImage: () => unawaited(_insertImage()),
-                      showLasso: true,
-                      showInsert: true,
-                      embedded: true,
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
+                      Expanded(child: Center(child: _buildCanvasToolbar())),
+                    ],
+                  );
+                },
+              ),
         actions: [
           IconButton(
             key: const ValueKey('infinite-canvas-undo'),
@@ -548,6 +521,25 @@ class _InfiniteCanvasScreenState extends State<InfiniteCanvasScreen> {
           ),
           const SizedBox(width: 4),
         ],
+        bottom: useCompactHeader
+            ? PreferredSize(
+                preferredSize: const Size.fromHeight(52),
+                child: SizedBox(
+                  key: const ValueKey('infinite-canvas-compact-toolbar-row'),
+                  height: 52,
+                  width: double.infinity,
+                  child: screenWidth < 360
+                      ? SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: SizedBox(
+                            width: 360,
+                            child: _buildCanvasToolbar(),
+                          ),
+                        )
+                      : _buildCanvasToolbar(),
+                ),
+              )
+            : null,
       ),
       body: document == null
           ? const Center(child: CircularProgressIndicator())
@@ -598,6 +590,45 @@ class _InfiniteCanvasScreenState extends State<InfiniteCanvasScreen> {
                   ),
               ],
             ),
+    );
+  }
+
+  Widget _buildDocumentIdentity() {
+    return Column(
+      key: const ValueKey('infinite-canvas-document-context'),
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          widget.notebook.title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        Text(
+          'Infinite canvas',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.labelSmall,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCanvasToolbar() {
+    return EditorToolbar(
+      key: const ValueKey('infinite-canvas-top-toolbar'),
+      tool: _tool,
+      fingerPanEnabled: _fingerPanEnabled,
+      fingerWritingAssistEnabled: _fingerWritingAssistEnabled,
+      onToolChanged: _setTool,
+      onFingerPanChanged: _setFingerPanEnabled,
+      onFingerWritingAssistChanged: (enabled) =>
+          setState(() => _fingerWritingAssistEnabled = enabled),
+      onInsertImage: () => unawaited(_insertImage()),
+      showLasso: true,
+      showInsert: true,
+      embedded: true,
     );
   }
 }

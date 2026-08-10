@@ -39,6 +39,7 @@ void main() {
         password: 'password-123',
         deviceName: 'Test iPad',
         platform: 'ios',
+        clientInstanceId: 'install-123',
       );
 
       expect(captured.method, 'POST');
@@ -51,6 +52,7 @@ void main() {
         'password': 'password-123',
         'deviceName': 'Test iPad',
         'platform': 'ios',
+        'clientInstanceId': 'install-123',
       });
       expect(session.accessToken, 'access-token-value');
       expect((await store.read())?.session.user.id, 'user-1');
@@ -670,6 +672,7 @@ void main() {
         password: 'wrong-password',
         deviceName: 'Test iPad',
         platform: 'ios',
+        clientInstanceId: 'install-123',
       ),
       throwsA(
         isA<InkNestApiException>()

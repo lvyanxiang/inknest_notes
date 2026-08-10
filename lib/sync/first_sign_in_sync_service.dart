@@ -326,6 +326,7 @@ class ApiFirstSignInSyncService
     final shared = await _buildLocalSnapshot(
       folderIds: preview.assessment.sharedFolderIds,
       notebookIds: preview.assessment.sharedNotebookIds,
+      identityBootstrap: preview.bootstrap,
     );
     final localOnly = await _buildLocalSnapshot(
       folderIds: preview.assessment.localOnlyFolderIds,
@@ -449,6 +450,7 @@ class ApiFirstSignInSyncService
   Future<_LocalUploadSnapshot> _buildLocalSnapshot({
     required Set<String> folderIds,
     required Set<String> notebookIds,
+    CloudSyncBootstrap? identityBootstrap,
   }) async {
     final allFolders = await repository.listFolders();
     final allNotebooks = <Notebook>[
@@ -467,6 +469,12 @@ class ApiFirstSignInSyncService
           ..sort((left, right) => left.id.compareTo(right.id));
     final operations = <Map<String, Object?>>[];
     final assetsByPath = <String, LocalSyncAsset>{};
+    final cloudPageIdsByNotebook = <String, Set<String>>{};
+    for (final page in identityBootstrap?.pages ?? const <CloudSyncPage>[]) {
+      cloudPageIdsByNotebook
+          .putIfAbsent(page.notebookId, () => <String>{})
+          .add(page.id);
+    }
 
     for (final folder in folders) {
       operations.add(_operation('folder', folder.id, {'name': folder.name}));
@@ -474,7 +482,9 @@ class ApiFirstSignInSyncService
     for (final notebook in notebooks) {
       final remotePageIds = {
         for (final pageId in notebook.pageIds)
-          pageId: _remotePageId(notebook.id, pageId),
+          pageId: cloudPageIdsByNotebook[notebook.id]?.contains(pageId) ?? false
+              ? pageId
+              : _remotePageId(notebook.id, pageId),
       };
       final notebookJson = Map<String, Object?>.from(
         _rewritePageReferences(notebook.toJson(), remotePageIds) as Map,
@@ -628,19 +638,30 @@ class ApiFirstSignInSyncService
         case 'page':
           localPages.add(id);
           final remote = cloudPages[id];
-          if (remote == null ||
-              remote.notebookId != metadata['notebookId'] ||
-              remote.position != metadata['position'] ||
-              remote.width != metadata['width'] ||
-              remote.height != metadata['height'] ||
-              !_jsonEquals(
-                remote.coordinateSpaceVersion,
-                metadata['coordinateSpaceVersion'],
-              ) ||
-              remote.rotationQuarterTurns != metadata['rotationQuarterTurns'] ||
-              remote.template != metadata['template']) {
+          final mismatchedFields = <String>[
+            if (remote == null) 'missingCloudPage',
+            if (remote != null && remote.notebookId != metadata['notebookId'])
+              'notebookId',
+            if (remote != null && remote.position != metadata['position'])
+              'position',
+            if (remote != null && remote.width != metadata['width']) 'width',
+            if (remote != null && remote.height != metadata['height']) 'height',
+            if (remote != null &&
+                !_jsonEquals(
+                  remote.coordinateSpaceVersion,
+                  metadata['coordinateSpaceVersion'],
+                ))
+              'coordinateSpaceVersion',
+            if (remote != null &&
+                remote.rotationQuarterTurns != metadata['rotationQuarterTurns'])
+              'rotationQuarterTurns',
+            if (remote != null && remote.template != metadata['template'])
+              'template',
+          ];
+          if (mismatchedFields.isNotEmpty) {
             throw StateError(
-              'A shared page has incompatible structural metadata.',
+              'A shared page has incompatible structural metadata: '
+              '${mismatchedFields.join(', ')}.',
             );
           }
           break;

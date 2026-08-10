@@ -87,6 +87,7 @@ class InkNestApiClient
     required String password,
     required String deviceName,
     required String platform,
+    required String clientInstanceId,
   }) async {
     final session = InkNestAuthSession.fromJson(
       await _postObject(
@@ -96,6 +97,7 @@ class InkNestApiClient
           'password': password,
           'deviceName': deviceName,
           'platform': platform,
+          'clientInstanceId': clientInstanceId,
         },
         expectedStatus: 201,
         skipAuth: true,
@@ -111,6 +113,7 @@ class InkNestApiClient
     required String password,
     required String deviceName,
     required String platform,
+    required String clientInstanceId,
   }) async {
     final session = InkNestAuthSession.fromJson(
       await _postObject(
@@ -120,6 +123,7 @@ class InkNestApiClient
           'password': password,
           'deviceName': deviceName,
           'platform': platform,
+          'clientInstanceId': clientInstanceId,
         },
         expectedStatus: 200,
         skipAuth: true,

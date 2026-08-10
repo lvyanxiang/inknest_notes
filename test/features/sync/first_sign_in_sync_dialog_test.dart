@@ -139,6 +139,45 @@ void main() {
     expect(find.text('重试'), findsOneWidget);
     expect(find.text('离线继续'), findsOneWidget);
   });
+
+  testWidgets('failed mixed Merge retries the service from the error state', (
+    tester,
+  ) async {
+    final service = _FakeFirstSignInSyncService(
+      preview: _preview(
+        local: SyncLibraryInventory(notebookIds: const ['shared-notebook']),
+        cloud: SyncLibraryInventory(notebookIds: const ['shared-notebook']),
+      ),
+      mergeFailures: 1,
+    );
+    await tester.pumpWidget(
+      _TestHost(
+        onOpen: (context) => showFirstSignInSyncDialog(
+          context: context,
+          service: service,
+          session: _session(),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open'));
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.text('合并（推荐）'));
+    await tester.pump();
+
+    expect(service.restoreCalls, 1);
+    expect(find.text('重试'), findsOneWidget);
+
+    await tester.tap(find.text('重试'));
+    await tester.pump();
+
+    expect(service.restoreCalls, 2);
+    expect(
+      find.byKey(const ValueKey('first-sign-in-sync-dialog')),
+      findsNothing,
+    );
+  });
 }
 
 class _TestHost extends StatelessWidget {
@@ -162,10 +201,15 @@ class _TestHost extends StatelessWidget {
 }
 
 class _FakeFirstSignInSyncService implements FirstSignInSyncService {
-  _FakeFirstSignInSyncService({required this.preview, this.inspectionError});
+  _FakeFirstSignInSyncService({
+    required this.preview,
+    this.inspectionError,
+    this.mergeFailures = 0,
+  });
 
   final FirstSignInSyncPreview preview;
   final Object? inspectionError;
+  int mergeFailures;
   int restoreCalls = 0;
 
   @override
@@ -225,6 +269,10 @@ class _FakeFirstSignInSyncService implements FirstSignInSyncService {
     required String deviceId,
   }) async {
     restoreCalls++;
+    if (mergeFailures > 0) {
+      mergeFailures--;
+      throw StateError('local preflight failed');
+    }
     return const MixedLibraryMergeResult(
       uploadedNotebookCount: 1,
       downloadedNotebookCount: 1,

@@ -34,6 +34,7 @@ async def register(
         password=payload.password,
         device_name=payload.device_name,
         platform=payload.platform,
+        client_instance_id=payload.client_instance_id,
     )
     return _token_response(result, service)
 
@@ -49,6 +50,7 @@ async def login(
         password=payload.password,
         device_name=payload.device_name,
         platform=payload.platform,
+        client_instance_id=payload.client_instance_id,
         client_id=request.client.host if request.client is not None else "unknown",
     )
     return _token_response(result, service)

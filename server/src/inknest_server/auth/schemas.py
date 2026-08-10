@@ -18,10 +18,13 @@ class RegisterRequest(ApiModel):
     password: str = Field(min_length=8, max_length=128)
     device_name: str = Field(min_length=1, max_length=120)
     platform: str = Field(min_length=1, max_length=40)
+    client_instance_id: str | None = Field(default=None, min_length=1, max_length=128)
 
-    @field_validator("device_name", "platform")
+    @field_validator("device_name", "platform", "client_instance_id")
     @classmethod
-    def strip_non_empty_device_fields(cls, value: str) -> str:
+    def strip_non_empty_device_fields(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
         stripped = value.strip()
         if not stripped:
             raise ValueError("must not be empty")

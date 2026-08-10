@@ -1978,6 +1978,7 @@ class _EditorScreenState extends State<EditorScreen> {
             (recording) => recording.id == playbackRecording.id,
           );
     final screenWidth = MediaQuery.sizeOf(context).width;
+    final useCompactDocumentBar = screenWidth < 600;
     final showRecordAction = screenWidth >= 720;
     final showExportAction = screenWidth >= 1000;
     final currentPageIndex = _notebook.pageIds.indexOf(_currentPageId);
@@ -2016,57 +2017,17 @@ class _EditorScreenState extends State<EditorScreen> {
                 ],
               ),
             ),
-            const SizedBox(width: 4),
-            _EditorPagePager(
-              currentPageNumber: currentPageNumber,
-              pageCount: _notebook.pageIds.length,
-              onPrevious: currentPageIndex > 0
-                  ? () => unawaited(
-                      _selectPageManually(
-                        _notebook.pageIds[currentPageIndex - 1],
-                      ),
-                    )
-                  : null,
-              onOpenPages: () => _showPagesForWidth(screenWidth),
-              onNext:
-                  currentPageIndex >= 0 &&
-                      currentPageIndex < _notebook.pageIds.length - 1
-                  ? () => unawaited(
-                      _selectPageManually(
-                        _notebook.pageIds[currentPageIndex + 1],
-                      ),
-                    )
-                  : null,
-              onAddPage: page == null
-                  ? null
-                  : () => unawaited(_chooseTemplateAndInsertPageAfterCurrent()),
-            ),
-            IconButton(
-              key: const ValueKey('editor-outline-button'),
-              onPressed: () =>
-                  _showNavigationSheet(_EditorNavigationPanel.outline),
-              tooltip: 'PDF outline',
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints.tightFor(width: 44, height: 44),
-              icon: const Icon(Icons.format_list_bulleted, size: 20),
-            ),
-            IconButton(
-              key: const ValueKey('editor-bookmarks-button'),
-              onPressed: () =>
-                  _showNavigationSheet(_EditorNavigationPanel.bookmarks),
-              tooltip: 'Bookmarks',
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints.tightFor(width: 44, height: 44),
-              icon: Icon(
-                _notebook.bookmarkedPageIds.contains(_currentPageId)
-                    ? Icons.bookmark
-                    : Icons.bookmark_border,
-                size: 20,
-                color: _notebook.bookmarkedPageIds.contains(_currentPageId)
-                    ? EditorWorkspaceTokens.primary
-                    : null,
+            if (!useCompactDocumentBar) ...[
+              const SizedBox(width: 4),
+              _buildHeaderPager(
+                page: page,
+                screenWidth: screenWidth,
+                currentPageIndex: currentPageIndex,
+                currentPageNumber: currentPageNumber,
               ),
-            ),
+              _buildOutlineButton(),
+              _buildBookmarksButton(),
+            ],
           ],
         ),
         actions: [
@@ -2139,22 +2100,46 @@ class _EditorScreenState extends State<EditorScreen> {
           const SizedBox(width: 6),
         ],
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(52),
-          child: IgnorePointer(
-            ignoring: _isCurrentPageWriteProtected,
-            child: AnimatedOpacity(
-              opacity: _isCurrentPageWriteProtected ? 0.52 : 1,
-              duration: const Duration(milliseconds: 160),
-              child: EditorToolbar(
-                tool: _tool,
-                fingerPanEnabled: _fingerPanEnabled,
-                fingerWritingAssistEnabled: _fingerWritingAssistEnabled,
-                onToolChanged: _setTool,
-                onFingerPanChanged: _setFingerPanEnabled,
-                onFingerWritingAssistChanged: _setFingerWritingAssistEnabled,
-                onInsertImage: () => unawaited(_insertImage()),
+          preferredSize: Size.fromHeight(useCompactDocumentBar ? 104 : 52),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (useCompactDocumentBar)
+                SizedBox(
+                  key: const ValueKey('editor-compact-navigation-row'),
+                  height: 52,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _buildHeaderPager(
+                        page: page,
+                        screenWidth: screenWidth,
+                        currentPageIndex: currentPageIndex,
+                        currentPageNumber: currentPageNumber,
+                      ),
+                      _buildOutlineButton(),
+                      _buildBookmarksButton(),
+                    ],
+                  ),
+                ),
+              IgnorePointer(
+                ignoring: _isCurrentPageWriteProtected,
+                child: AnimatedOpacity(
+                  opacity: _isCurrentPageWriteProtected ? 0.52 : 1,
+                  duration: const Duration(milliseconds: 160),
+                  child: EditorToolbar(
+                    tool: _tool,
+                    fingerPanEnabled: _fingerPanEnabled,
+                    fingerWritingAssistEnabled: _fingerWritingAssistEnabled,
+                    onToolChanged: _setTool,
+                    onFingerPanChanged: _setFingerPanEnabled,
+                    onFingerWritingAssistChanged:
+                        _setFingerWritingAssistEnabled,
+                    onInsertImage: () => unawaited(_insertImage()),
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
         ),
       ),
@@ -2204,6 +2189,64 @@ class _EditorScreenState extends State<EditorScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildHeaderPager({
+    required NotePage? page,
+    required double screenWidth,
+    required int currentPageIndex,
+    required int currentPageNumber,
+  }) {
+    return _EditorPagePager(
+      currentPageNumber: currentPageNumber,
+      pageCount: _notebook.pageIds.length,
+      onPrevious: currentPageIndex > 0
+          ? () => unawaited(
+              _selectPageManually(_notebook.pageIds[currentPageIndex - 1]),
+            )
+          : null,
+      onOpenPages: () => _showPagesForWidth(screenWidth),
+      onNext:
+          currentPageIndex >= 0 &&
+              currentPageIndex < _notebook.pageIds.length - 1
+          ? () => unawaited(
+              _selectPageManually(_notebook.pageIds[currentPageIndex + 1]),
+            )
+          : null,
+      onAddPage: page == null
+          ? null
+          : () => unawaited(_chooseTemplateAndInsertPageAfterCurrent()),
+    );
+  }
+
+  Widget _buildOutlineButton() {
+    return IconButton(
+      key: const ValueKey('editor-outline-button'),
+      onPressed: () => _showNavigationSheet(_EditorNavigationPanel.outline),
+      tooltip: 'PDF outline',
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+      icon: const Icon(Icons.format_list_bulleted, size: 20),
+    );
+  }
+
+  Widget _buildBookmarksButton() {
+    return IconButton(
+      key: const ValueKey('editor-bookmarks-button'),
+      onPressed: () => _showNavigationSheet(_EditorNavigationPanel.bookmarks),
+      tooltip: 'Bookmarks',
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+      icon: Icon(
+        _notebook.bookmarkedPageIds.contains(_currentPageId)
+            ? Icons.bookmark
+            : Icons.bookmark_border,
+        size: 20,
+        color: _notebook.bookmarkedPageIds.contains(_currentPageId)
+            ? EditorWorkspaceTokens.primary
+            : null,
       ),
     );
   }

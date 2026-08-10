@@ -220,6 +220,7 @@ class _FakeAuthService implements AuthService {
   int registerCount = 0;
   int logoutCount = 0;
   String? lastDeviceName;
+  String? lastClientInstanceId;
 
   @override
   Future<InkNestAuthSession?> restoreSession() async => restoredSession;
@@ -230,9 +231,11 @@ class _FakeAuthService implements AuthService {
     required String password,
     required String deviceName,
     required String platform,
+    required String clientInstanceId,
   }) async {
     loginCount++;
     lastDeviceName = deviceName;
+    lastClientInstanceId = clientInstanceId;
     if (loginError case final error?) {
       throw error;
     }
@@ -245,6 +248,7 @@ class _FakeAuthService implements AuthService {
     required String password,
     required String deviceName,
     required String platform,
+    required String clientInstanceId,
   }) async {
     registerCount++;
     return _session(email: email);

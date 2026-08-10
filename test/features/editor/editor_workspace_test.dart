@@ -136,6 +136,36 @@ void main() {
       },
     );
 
+    testWidgets('uses a second navigation row without overflow on phones', (
+      tester,
+    ) async {
+      await _createFixture(tester, const Size(390, 844));
+
+      final documentContext = find.byKey(
+        const ValueKey('editor-document-context'),
+      );
+      final compactNavigation = find.byKey(
+        const ValueKey('editor-compact-navigation-row'),
+      );
+
+      expect(documentContext, findsOneWidget);
+      expect(compactNavigation, findsOneWidget);
+      expect(
+        tester.getRect(compactNavigation).top,
+        greaterThanOrEqualTo(tester.getRect(documentContext).bottom),
+      );
+      expect(find.byKey(const ValueKey('editor-pages-button')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('editor-outline-button')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('editor-bookmarks-button')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('uses the header pager for adjacent navigation and quick add', (
       tester,
     ) async {
