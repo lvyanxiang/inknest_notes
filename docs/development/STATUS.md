@@ -6,10 +6,10 @@
   integration is complete; Phase 6 has not started.
 - Next task: Define the versioned single-notebook/full-library backup contract,
   then implement the first Phase 6 server-generated backup slice.
-- Last completed: Stabilized account device identity with a random secure-store
-  installation ID that survives sign-out, server-side device reuse, and a safe
-  new-device fallback. Fixed restored cloud page IDs being hashed a second time,
-  which caused the false pre-request `missingCloudPage` Merge failure.
+- Last completed: Initialized devices now discover and upload local-only
+  notebooks through the existing idempotent Merge creation contract, rebuild
+  mappings, and queue the latest content. Creation/import/duplication/editor
+  return trigger sync, while login repairs a missed trigger.
 
 ## Decisions
 
@@ -43,6 +43,10 @@
   clears only the account session; repeated login reuses the matching server
   device. A reset identifier is a valid new device and must rebuild sync
   mappings without changing already-restored cloud resource IDs.
+- Treat initialized-device local-only roots as pending cloud creation even when
+  no ordinary mapped mutation exists. Upload them before incremental pull,
+  rebuild mappings, and requeue current content to cover edits made during the
+  creation request; login must repair missed local triggers.
 - Parse bootstrap payloads strictly and preserve unknown structured
   `coordinateSpaceVersion` values without rewriting them. A malformed or
   internally inconsistent snapshot fails before local writes begin.
@@ -850,6 +854,10 @@
   and 16 PostgreSQL/MinIO integration tests; Ruff, mypy, and diff checks pass.
   Alembic upgrades both the development database and an independent empty
   database to `20260810_0015` with no schema drift.
+- Focused first-sign-in service and signed-in startup tests pass after local
+  notebook creation repair, including initialized inventory discovery and an
+  additional sync scheduled by notebook creation. `flutter analyze` and diff
+  checks pass; no backend route or schema changed.
 
 ## Notes
 

@@ -120,12 +120,127 @@ class ApiFirstSignInSyncService
   Future<IncrementalSyncPushResult> pushIncremental({
     required String userId,
     required String deviceId,
-  }) {
-    return IncrementalSyncPushService(
+  }) async {
+    final pushService = IncrementalSyncPushService(
       cloudClient: apiClient,
       repository: repository,
       rootDirectory: rootDirectory,
-    ).push(userId: userId, deviceId: deviceId);
+    );
+    final initial = await pushService.push(userId: userId, deviceId: deviceId);
+    final state = await FileSyncStateStore(
+      rootDirectory: rootDirectory,
+      userId: userId,
+      deviceId: deviceId,
+    ).loadSnapshot();
+    if (state.lastAppliedCursor == null) {
+      return initial;
+    }
+
+    final created = await _syncLocalOnlyRoots(
+      userId: userId,
+      deviceId: deviceId,
+    );
+    if (created.uploadedRootCount == 0) {
+      return initial;
+    }
+
+    await _queueLatestCreatedContent(
+      notebookIds: created.notebookIds,
+      folderIds: created.folderIds,
+    );
+    final followUp = await pushService.push(userId: userId, deviceId: deviceId);
+    return IncrementalSyncPushResult(
+      uploadedOperationCount:
+          initial.uploadedOperationCount +
+          created.uploadedRootCount +
+          followUp.uploadedOperationCount,
+      preservedConflictCount:
+          initial.preservedConflictCount +
+          created.preservedConflictCount +
+          followUp.preservedConflictCount,
+      preservedDeleteEditCount:
+          initial.preservedDeleteEditCount + followUp.preservedDeleteEditCount,
+    );
+  }
+
+  Future<_LocalRootSyncResult> _syncLocalOnlyRoots({
+    required String userId,
+    required String deviceId,
+  }) async {
+    final preview = await inspect();
+    final assessment = preview.assessment;
+    final folderIds = assessment.localOnlyFolderIds;
+    final notebookIds = assessment.localOnlyNotebookIds;
+    if (folderIds.isEmpty && notebookIds.isEmpty) {
+      return const _LocalRootSyncResult();
+    }
+
+    var preservedConflictCount = 0;
+    if (preview.canUploadLocalOnly) {
+      await uploadLocalOnly(
+        preview: preview,
+        userId: userId,
+        deviceId: deviceId,
+      );
+    } else if (preview.canMergeMixed) {
+      final result = await mergeMixed(
+        preview: preview,
+        userId: userId,
+        deviceId: deviceId,
+      );
+      preservedConflictCount = result.preservedConflictCount;
+    } else {
+      return const _LocalRootSyncResult();
+    }
+    return _LocalRootSyncResult(
+      folderIds: folderIds,
+      notebookIds: notebookIds,
+      preservedConflictCount: preservedConflictCount,
+    );
+  }
+
+  Future<void> _queueLatestCreatedContent({
+    required Set<String> notebookIds,
+    required Set<String> folderIds,
+  }) async {
+    final tracker = mutationTracker;
+    if (tracker == null) return;
+    final folders = await repository.listFolders();
+    for (final folder in folders) {
+      if (folderIds.contains(folder.id)) {
+        await tracker.folderSaved(folder);
+      }
+    }
+    final notebooks = <String, Notebook>{
+      for (final notebook in await repository.listNotebooks())
+        notebook.id: notebook,
+      for (final folder in folders)
+        for (final notebook in await repository.listNotebooks(
+          folderId: folder.id,
+        ))
+          notebook.id: notebook,
+      for (final notebook in await repository.listNotebooks(archived: true))
+        notebook.id: notebook,
+    };
+    for (final notebookId in notebookIds) {
+      final notebook = notebooks[notebookId];
+      if (notebook == null) continue;
+      await tracker.notebookMetadataSaved(notebook);
+      await tracker.notebookContentSaved(notebook);
+      if (notebook.layoutMode == NotebookLayoutMode.paged) {
+        for (final pageId in notebook.pageIds) {
+          await tracker.pageSaved(
+            notebook,
+            await repository.loadPage(notebook, pageId),
+          );
+        }
+      } else {
+        await tracker.infiniteCanvasSaved(
+          notebook,
+          await repository.loadInfiniteCanvas(notebook),
+        );
+      }
+    }
   }
 
   @override
@@ -888,6 +1003,19 @@ class ApiFirstSignInSyncService
     }
     return value;
   }
+}
+
+class _LocalRootSyncResult {
+  const _LocalRootSyncResult({
+    this.folderIds = const <String>{},
+    this.notebookIds = const <String>{},
+    this.preservedConflictCount = 0,
+  });
+
+  final Set<String> folderIds;
+  final Set<String> notebookIds;
+  final int preservedConflictCount;
+  int get uploadedRootCount => folderIds.length + notebookIds.length;
 }
 
 class _LocalUploadSnapshot {

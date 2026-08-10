@@ -44,6 +44,38 @@ void main() {
     controller.dispose();
   });
 
+  testWidgets('creating a notebook schedules another signed-in sync', (
+    tester,
+  ) async {
+    final controller = AuthController(
+      service: _RestoredAuthService(),
+      deviceName: 'Test iPad',
+      platform: 'ios',
+    );
+    await controller.initialize();
+    final sync = _StartupSyncService(uploadedOperationCount: 0);
+
+    await tester.pumpWidget(
+      InkNestApp(
+        notebookRepository: InMemoryNotebookRepository(),
+        authController: controller,
+        firstSignInSyncService: sync,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(sync.calls, ['push', 'pull']);
+
+    await tester.tap(find.text('New notebook').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('create-paged-notebook')));
+    await tester.pumpAndSettle();
+
+    expect(sync.calls, ['push', 'pull', 'push', 'pull']);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    controller.dispose();
+  });
+
   testWidgets('shared pull reports updated existing content', (tester) async {
     final controller = AuthController(
       service: _RestoredAuthService(),

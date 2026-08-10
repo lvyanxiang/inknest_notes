@@ -1008,6 +1008,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       return;
     }
 
+    unawaited(_checkCloudAfterSignIn(force: true));
     await _openNotebook(notebook);
   }
 
@@ -1037,6 +1038,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       return;
     }
 
+    unawaited(_checkCloudAfterSignIn(force: true));
     await _openNotebook(importedNotebook);
   }
 
@@ -1061,6 +1063,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     }
 
     await _loadNotebooks();
+    unawaited(_checkCloudAfterSignIn(force: true));
   }
 
   void _toggleArchivedView() {
@@ -1252,6 +1255,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       });
     }
     await _loadNotebooks();
+    unawaited(_checkCloudAfterSignIn(force: true));
   }
 
   Future<void> _setNotebookArchived(Notebook notebook, bool isArchived) async {

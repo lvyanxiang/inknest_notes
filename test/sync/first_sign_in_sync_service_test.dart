@@ -256,6 +256,48 @@ void main() {
   );
 
   test(
+    'initialized incremental push discovers and uploads a new local notebook',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'inknest-incremental-create-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      final repository = FileNotebookRepository(rootDirectory: root);
+      final notebook = await repository.createNotebook(title: 'New local note');
+      final cloud = _FakeFirstSignInCloudClient();
+      final service = ApiFirstSignInSyncService(
+        repository: repository,
+        apiClient: cloud,
+        rootDirectory: root,
+      );
+      await FileSyncStateStore(
+        rootDirectory: root,
+        userId: 'user-1',
+        deviceId: 'device-1',
+      ).markChangesPageApplied('cursor-empty');
+
+      final result = await service.pushIncremental(
+        userId: 'user-1',
+        deviceId: 'device-1',
+      );
+
+      expect(result.uploadedOperationCount, 1);
+      expect(
+        cloud.operations
+            .where((operation) => operation['resourceType'] == 'notebook')
+            .single['resourceId'],
+        notebook.id,
+      );
+      expect(
+        cloud.operations.where(
+          (operation) => operation['resourceType'] == 'page',
+        ),
+        hasLength(1),
+      );
+    },
+  );
+
+  test(
     'mixed Merge reconciles shared content before upload and restore',
     () async {
       final root = await Directory.systemTemp.createTemp(
@@ -728,6 +770,7 @@ class _FakeFirstSignInCloudClient implements FirstSignInCloudClient {
     required List<Map<String, Object?>> operations,
   }) async {
     this.operations.addAll(operations);
+    _completed = true;
     _notebookIds.addAll(
       operations
           .where((item) => item['resourceType'] == 'notebook')

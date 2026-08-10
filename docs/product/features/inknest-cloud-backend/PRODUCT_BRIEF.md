@@ -230,6 +230,13 @@ The first slice sets no retention period and performs no physical cleanup.
 - On session restore, an initialized device attempts this pull before showing
   first-sign-in Merge again. Successful additive downloads refresh the library;
   offline or blocked reconciliation leaves local notes available.
+- Before that initialized-device pull, Flutter also compares the current local
+  inventory with bootstrap. Local-only folders/notebooks are created through
+  the existing atomic/idempotent Merge endpoint, resource mappings are rebuilt,
+  and the latest local page/canvas/notebook state is queued once more so edits
+  made while creation was in flight are not missed. New notebook, PDF import,
+  duplication, and editor return schedule this flow without blocking local use;
+  the next login repairs a missed trigger.
 
 ### Notebook metadata synchronization contract
 
@@ -279,6 +286,9 @@ The first slice sets no retention period and performs no physical cleanup.
 - [x] A device can upload and download notebook metadata, pages, infinite
   canvases, and referenced assets without requiring a full-library transfer on
   every sync.
+- [x] A notebook created after device initialization uploads without requiring
+  another first-sign-in dialog; logout/login discovers and repairs any
+  still-local-only notebook instead of reporting a false up-to-date state.
 - [x] Retrying the same synchronization commit does not duplicate pages,
   assets, conflicts, or change events.
 - [x] Signing in on a device with local notebooks defaults to merge and does
