@@ -26,3 +26,12 @@ graduation materials do not crowd the same folder.
 When a roadmap or project-scope decision changes, update both the relevant
 development document and the academic documents if the graduation scope is
 affected.
+
+## Licensing
+
+Original documentation in `development/`, `product/`, `design/`, and
+`learning/` is licensed under CC BY-SA 4.0 unless a file says otherwise. Source
+code excerpts retain their software license. Material under `academic/` is
+excluded and remains All Rights Reserved. See the repository root
+`LICENSING.md` and `LICENSES/CC-BY-SA-4.0.txt` for the complete boundary and
+terms.

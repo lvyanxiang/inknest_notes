@@ -6,16 +6,58 @@
   integration is complete; Phase 6 has not started.
 - Next task: Define the versioned single-notebook/full-library backup contract,
   then implement the first Phase 6 server-generated backup slice.
-- Last completed: Initialized devices now discover and upload local-only
-  notebooks through the existing idempotent Merge creation contract, rebuild
-  mappings, and queue the latest content. Creation/import/duplication/editor
-  return trigger sync, while login repairs a missed trigger.
+- Last completed: Repository governance now licenses Flutter and Python
+  software under `AGPL-3.0-only`, keeps separate commercial licensing
+  available, requires a dual-licensing CLA, publishes ordinary project docs
+  under CC BY-SA 4.0, and reserves branding and academic material.
+
+### Licensing follow-up before public release or commercial use
+
+- [ ] Replace the provisional copyright-holder name `Lv` in `LICENSING.md`,
+  `CLA.md`, `TRADEMARKS.md`, `COMMERCIAL-LICENSE.md`, and
+  `docs/academic/README.md` with the chosen legal identity: full personal legal
+  name or the company that actually owns the copyright. Keep one spelling in
+  Chinese and English records and confirm that employment/school agreements do
+  not assign the work elsewhere.
+- [ ] Confirm the permanent licensing contact address. Replace
+  `2256334253@qq.com` if a dedicated domain mailbox will be used, and keep that
+  address consistent in commercial and trademark notices.
+- [ ] Complete a name and trademark clearance search for `InkNest` and
+  `InkNest Notes` in intended App Store, domain, package, and target-market
+  trademark classes; rename before release if clearance is unfavorable.
+- [ ] Confirm ownership and provenance of the final logo, application icon,
+  screenshots, illustrations, fonts, and store assets. Keep third-party items
+  under their own notices and decide whether to register the cleared word/logo
+  marks.
+- [ ] Decide how individual and organizational contributors accept the CLA.
+  Configure a durable CLA check/record for pull requests and require a
+  separately signed organizational CLA for substantial company-owned work if
+  counsel recommends it. Do not accept substantive external contributions
+  until this process is operational.
+- [ ] Before operating a modified public InkNest server, add a prominent,
+  version-matched source-code link for network users and retain the exact
+  corresponding source for every deployed version as required by AGPL section
+  13.
+- [ ] Before an App Store, Play Store, commercial, or customer release, have
+  counsel review AGPL/store compatibility, the CLA, trademark policy, and the
+  commercial-license agreement for the relevant jurisdiction. Regenerate the
+  dependency and asset license inventory for that exact release.
 
 ## Decisions
 
 - Use `docs/development/ROADMAP.md` as the main checklist for project execution.
 - Use this file as the short resume point for future sessions.
 - Keep the first product direction iPadOS/iOS-first, handwriting-first, and paged-notebook based.
+- Clip every infinite-canvas visual layer as one viewport while preserving the
+  complete world-coordinate document and native route transition.
+- Use `AGPL-3.0-only` for InkNest software, accept contributions only under the
+  repository CLA so separate commercial licensing remains possible, apply
+  CC BY-SA 4.0 only to ordinary project documentation, and keep InkNest
+  branding plus `docs/academic/` outside those grants.
+- Treat the current `Lv` copyright identity and `2256334253@qq.com` contact as
+  provisional release metadata, not a final legal-identity decision. Complete
+  the licensing follow-up checklist before public binary/commercial release or
+  accepting substantive external contributions.
 - Use project skill `.codex/skills/inknest-project` to recover context without rereading the whole repo.
 - Use project skill `.codex/skills/inknest-backend` to start, continue, verify,
   and record Python/PostgreSQL/MinIO backend delivery from the accepted plan.
@@ -292,6 +334,16 @@
 - Keep unresolved legacy content viewable, navigable, zoomable, searchable, and exportable without allowing normal save, rotate, copy, or duplicate paths to overwrite its source JSON.
 
 ## Verification
+
+- The repository contains the official AGPLv3 and CC BY-SA 4.0 texts, explicit
+  scope/commercial/trademark/contribution policies, retained OFL notices, and
+  `AGPL-3.0-only` Python package metadata. Resolved Flutter and direct Python
+  dependency licenses were inventoried with no obvious blocking
+  incompatibility. The server sdist/wheel build succeeds, includes the complete
+  AGPL text, and all new local Markdown links plus `git diff --check` pass.
+
+- The focused infinite-canvas widget test, all 270 Flutter tests, and
+  `flutter analyze` pass after adding the viewport output clip.
 
 - Focused first-sign-in dialog and Merge-service tests pass, including a failed
   mixed Merge followed by a successful Retry. `flutter analyze` reports no

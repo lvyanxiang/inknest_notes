@@ -215,6 +215,14 @@ void main() {
     );
 
     final viewport = find.byKey(const ValueKey('infinite-canvas-viewport'));
+    final viewportClip = find.byKey(
+      const ValueKey('infinite-canvas-viewport-clip'),
+    );
+    expect(viewportClip, findsOneWidget);
+    expect(
+      find.descendant(of: viewportClip, matching: find.byType(CustomPaint)),
+      findsWidgets,
+    );
     expect(
       tester.getBottomLeft(topToolbar).dy,
       lessThanOrEqualTo(tester.getTopLeft(viewport).dy),

@@ -1,5 +1,12 @@
 # Academic Docs
 
+Copyright (C) 2026 Lv. All Rights Reserved.
+
+The files under this directory are excluded from the repository's AGPL and
+CC BY-SA grants. They may contain personal, institutional, or third-party
+material and may not be copied or redistributed without the applicable
+rightsholder's permission.
+
 Graduation-related materials live here.
 
 - `GRADUATION_TASK_BOOK.md`: task book maintenance draft.

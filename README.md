@@ -2,9 +2,15 @@
 
 InkNest Notes is a Flutter note-taking app inspired by GoodNotes and Notability.
 
+The Flutter client and Python server are open source under
+**AGPL-3.0-only**. InkNest names, logos, and application icons are not included
+in that grant. See [Licensing](#licensing) before distributing a build or
+operating a modified server.
+
 ## Roadmap
 
-Development is tracked in [docs/ROADMAP.md](docs/ROADMAP.md).
+Development is tracked in
+[docs/development/ROADMAP.md](docs/development/ROADMAP.md).
 
 The current focus is building a strong handwriting-first MVP:
 
@@ -104,3 +110,22 @@ Run the test suite with:
 ```sh
 flutter test
 ```
+
+## Contributing
+
+Contributions are welcome under [CONTRIBUTING.md](CONTRIBUTING.md). Accepted
+contributions require agreement to the [Contributor License Agreement](CLA.md)
+so the public AGPL edition and separately licensed official editions can share
+one maintained codebase.
+
+## Licensing
+
+- Software: [GNU AGPL version 3 only](LICENSE)
+- Commercial licensing: [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md)
+- Documentation and asset boundaries: [LICENSING.md](LICENSING.md)
+- InkNest branding: [TRADEMARKS.md](TRADEMARKS.md)
+- Third-party components: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
+
+Commercial use is allowed when it complies with the AGPL. Organizations that
+need proprietary distribution or hosted modifications without AGPL obligations
+must obtain a separate written commercial license from the copyright holder.

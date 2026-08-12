@@ -12,6 +12,13 @@ Python/FastAPI 后端。目前已经包含服务骨架、PostgreSQL、MinIO、�
 并支持三种处理方式。已有笔记本、页面和无限画布也已支持可逆软删除、Tombstone 事件、
 删除与编辑冲突时保留编辑，以及显式恢复。通过同步常规新建资源尚未实现。
 
+## 许可证与源码提供
+
+InkNest 服务端采用 `AGPL-3.0-only`，完整条款和适用范围见仓库根目录的
+`LICENSE` 与 `LICENSING.md`。如果修改服务端并允许用户通过网络与其交互，必须按照
+AGPL 第 13 条向这些用户显著提供完整对应源码。无法遵守 AGPL 的组织可以根据
+`COMMERCIAL-LICENSE.md` 另行申请商业授权。
+
 ## 环境要求
 
 - Docker Desktop 和 Docker Compose，用于运行 PostgreSQL 与 MinIO。

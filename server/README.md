@@ -16,6 +16,14 @@ reversible soft deletion, Tombstone events, delete-versus-edit preservation,
 and explicit recovery. General resource creation through sync is not yet
 implemented.
 
+## License and source availability
+
+InkNest Server is licensed under `AGPL-3.0-only`; see the repository root
+`LICENSE` and `LICENSING.md`. If you modify this server and let users interact
+with it over a network, you must prominently offer those users the complete
+corresponding source as required by AGPL section 13. A separate commercial
+license may be requested under `COMMERCIAL-LICENSE.md`.
+
 ## Requirements
 
 - Docker Desktop with Docker Compose for PostgreSQL and MinIO.

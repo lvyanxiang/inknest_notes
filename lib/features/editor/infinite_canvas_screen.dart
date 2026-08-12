@@ -1096,95 +1096,99 @@ class _InfiniteCanvasViewportState extends State<_InfiniteCanvasViewport> {
           onPointerMove: _onPointerMove,
           onPointerUp: _onPointerEnd,
           onPointerCancel: _onPointerEnd,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              CustomPaint(
-                painter: _InfiniteCanvasPainter(
-                  strokes: const [],
-                  background: widget.document.background,
-                  focus: _focus,
-                  scale: _scale,
-                  gridColor: Theme.of(context).colorScheme.outlineVariant,
-                ),
-                child: const SizedBox.expand(),
-              ),
-              ImageLayer(
-                page: screenPage,
-                activeImageId: widget.activeImageId,
-                showControls: false,
-                onImageChanged: (_) {},
-                onImageDeleted: (_) {},
-              ),
-              Listener(
-                behavior: HitTestBehavior.opaque,
-                onPointerDown: _onDrawingPointerDown,
-                onPointerMove: _onDrawingPointerMove,
-                onPointerUp: _onDrawingPointerEnd,
-                onPointerCancel: _onDrawingPointerEnd,
-                child: CustomPaint(
+          child: ClipRect(
+            key: const ValueKey('infinite-canvas-viewport-clip'),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                CustomPaint(
                   painter: _InfiniteCanvasPainter(
-                    strokes: [...widget.document.strokes, ?_activeStroke],
+                    strokes: const [],
                     background: widget.document.background,
                     focus: _focus,
                     scale: _scale,
                     gridColor: Theme.of(context).colorScheme.outlineVariant,
-                    drawSurface: false,
                   ),
                   child: const SizedBox.expand(),
                 ),
-              ),
-              ShapeLayer(
-                page: screenPage,
-                tool: widget.tool.copyWith(width: widget.tool.width * _scale),
-                fingerPanEnabled: widget.fingerPanEnabled,
-                onShapeComplete: widget.tool.type == ToolType.shape
-                    ? (shape) =>
-                          widget.onShapeComplete(_shapeToWorld(shape, size))
-                    : null,
-              ),
-              ImageLayer(
-                page: screenPage,
-                activeImageId: widget.activeImageId,
-                showImage: false,
-                onImageChanged: (noteImage) =>
-                    widget.onImageChanged(_imageToWorld(noteImage, size)),
-                onImageDeleted: widget.onImageDeleted,
-              ),
-              TextBoxLayer(
-                page: screenPage,
-                activeTextBoxId: widget.activeTextBoxId,
-                onCreateTextBox: widget.tool.type == ToolType.text
-                    ? (position) =>
-                          widget.onTextBoxCreate(_screenToWorld(position, size))
-                    : null,
-                onTextBoxChanged: (textBox) =>
-                    widget.onTextBoxChanged(_textBoxToWorld(textBox, size)),
-                onTextBoxDeleted: widget.onTextBoxDeleted,
-              ),
-              if (widget.tool.type == ToolType.lasso)
-                LassoSelectionLayer(
-                  key: const ValueKey('infinite-canvas-lasso-layer'),
-                  pageStrokes: screenStrokes,
-                  selectedStrokes: selectedScreenStrokes,
-                  onSelectionComplete: (polygon) =>
-                      widget.onLassoSelectionComplete([
-                        for (final point in polygon)
-                          _screenToWorld(point, size),
-                      ]),
-                  onStrokesPreviewChanged: (strokes) =>
-                      widget.onSelectedStrokesPreviewChanged([
-                        for (final stroke in strokes)
-                          _strokeToWorld(stroke, size),
-                      ]),
-                  onStrokesChanged: (strokes) =>
-                      widget.onSelectedStrokesChanged([
-                        for (final stroke in strokes)
-                          _strokeToWorld(stroke, size),
-                      ]),
-                  onClearSelection: widget.onClearLassoSelection,
+                ImageLayer(
+                  page: screenPage,
+                  activeImageId: widget.activeImageId,
+                  showControls: false,
+                  onImageChanged: (_) {},
+                  onImageDeleted: (_) {},
                 ),
-            ],
+                Listener(
+                  behavior: HitTestBehavior.opaque,
+                  onPointerDown: _onDrawingPointerDown,
+                  onPointerMove: _onDrawingPointerMove,
+                  onPointerUp: _onDrawingPointerEnd,
+                  onPointerCancel: _onDrawingPointerEnd,
+                  child: CustomPaint(
+                    painter: _InfiniteCanvasPainter(
+                      strokes: [...widget.document.strokes, ?_activeStroke],
+                      background: widget.document.background,
+                      focus: _focus,
+                      scale: _scale,
+                      gridColor: Theme.of(context).colorScheme.outlineVariant,
+                      drawSurface: false,
+                    ),
+                    child: const SizedBox.expand(),
+                  ),
+                ),
+                ShapeLayer(
+                  page: screenPage,
+                  tool: widget.tool.copyWith(width: widget.tool.width * _scale),
+                  fingerPanEnabled: widget.fingerPanEnabled,
+                  onShapeComplete: widget.tool.type == ToolType.shape
+                      ? (shape) =>
+                            widget.onShapeComplete(_shapeToWorld(shape, size))
+                      : null,
+                ),
+                ImageLayer(
+                  page: screenPage,
+                  activeImageId: widget.activeImageId,
+                  showImage: false,
+                  onImageChanged: (noteImage) =>
+                      widget.onImageChanged(_imageToWorld(noteImage, size)),
+                  onImageDeleted: widget.onImageDeleted,
+                ),
+                TextBoxLayer(
+                  page: screenPage,
+                  activeTextBoxId: widget.activeTextBoxId,
+                  onCreateTextBox: widget.tool.type == ToolType.text
+                      ? (position) => widget.onTextBoxCreate(
+                          _screenToWorld(position, size),
+                        )
+                      : null,
+                  onTextBoxChanged: (textBox) =>
+                      widget.onTextBoxChanged(_textBoxToWorld(textBox, size)),
+                  onTextBoxDeleted: widget.onTextBoxDeleted,
+                ),
+                if (widget.tool.type == ToolType.lasso)
+                  LassoSelectionLayer(
+                    key: const ValueKey('infinite-canvas-lasso-layer'),
+                    pageStrokes: screenStrokes,
+                    selectedStrokes: selectedScreenStrokes,
+                    onSelectionComplete: (polygon) =>
+                        widget.onLassoSelectionComplete([
+                          for (final point in polygon)
+                            _screenToWorld(point, size),
+                        ]),
+                    onStrokesPreviewChanged: (strokes) =>
+                        widget.onSelectedStrokesPreviewChanged([
+                          for (final stroke in strokes)
+                            _strokeToWorld(stroke, size),
+                        ]),
+                    onStrokesChanged: (strokes) =>
+                        widget.onSelectedStrokesChanged([
+                          for (final stroke in strokes)
+                            _strokeToWorld(stroke, size),
+                        ]),
+                    onClearSelection: widget.onClearLassoSelection,
+                  ),
+              ],
+            ),
           ),
         );
       },
