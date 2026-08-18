@@ -7,10 +7,10 @@
 - Next task: Revalidate representative Chinese/English handwriting, scanned PDFs,
   and inserted images on physical iOS and Android devices, including first-use
   model download, rotation, memory, accuracy, and latency.
-- Last completed: Smart Ink redraw now treats the original painted/lasso bounds
-  as a fixed container. It measures padded raster glyph ink, preserves explicit
-  lines without auto-wrap, uniformly contains every generated stroke, and no
-  longer inflates the source selection.
+- Last completed: Editor stroke undo/redo now uses bounded per-page snapshots.
+  One Smart Ink replacement is undone or redone atomically, and one complete
+  eraser gesture can restore or reapply every deleted or split beautified
+  stroke without disturbing another page's history.
 
 ### Licensing follow-up before public release or commercial use
 
@@ -352,6 +352,11 @@
 - Keep unresolved legacy content viewable, navigable, zoomable, searchable, and exportable without allowing normal save, rotate, copy, or duplicate paths to overwrite its source JSON.
 
 ## Verification
+
+- Widget coverage now proves atomic Smart Ink undo/redo and restoration after
+  partially erasing beautified ink, alongside ordinary erase undo/redo. The
+  complete 281-test Flutter suite, `flutter analyze`, and `git diff --check`
+  pass.
 
 - Fixed-layout Smart Ink tests cover all bundled fonts, long single-line text,
   explicit multi-line text, painted stroke bounds, and recomputed lasso bounds.

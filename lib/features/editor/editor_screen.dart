@@ -73,7 +73,8 @@ class _EditorScreenState extends State<EditorScreen> {
       NotebookTextSearchService();
   final GlobalKey<_ZoomablePageViewportState> _viewportKey =
       GlobalKey<_ZoomablePageViewportState>();
-  final List<Stroke> _redoStack = [];
+  final Map<String, List<List<Stroke>>> _strokeUndoHistoryByPageId = {};
+  final Map<String, List<List<Stroke>>> _strokeRedoHistoryByPageId = {};
   final Set<String> _selectedStrokeIds = {};
   final Map<String, NotePage> _pagesById = {};
   final Map<String, PageViewportSessionState> _viewportStatesByPageId = {};
@@ -106,6 +107,19 @@ class _EditorScreenState extends State<EditorScreen> {
   String _notebookSearchQuery = '';
   NotebookTextSearchResult? _activeNotebookSearchResult;
   NotePage? _page;
+  List<Stroke>? _eraseGestureBaseline;
+  bool _eraseGestureChanged = false;
+  List<Stroke>? _pendingLassoStrokeBaseline;
+
+  List<List<Stroke>> get _undoStack => _strokeUndoHistoryByPageId.putIfAbsent(
+    _currentPageId,
+    () => <List<Stroke>>[],
+  );
+
+  List<List<Stroke>> get _redoStack => _strokeRedoHistoryByPageId.putIfAbsent(
+    _currentPageId,
+    () => <List<Stroke>>[],
+  );
 
   bool get _isCurrentPageWriteProtected =>
       _page?.isCoordinateSpaceWriteProtected ?? false;
@@ -189,7 +203,6 @@ class _EditorScreenState extends State<EditorScreen> {
     setState(() {
       _page = page;
       _pagesById[page.id] = page;
-      _redoStack.clear();
       _activeTextBoxId = null;
       _activeImageId = null;
       _selectedStrokeIds.clear();
@@ -243,11 +256,11 @@ class _EditorScreenState extends State<EditorScreen> {
         ? stroke
         : stroke.copyWith(audioRecordingId: recording.id);
     final updatedPage = page.copyWith(strokes: [...page.strokes, linkedStroke]);
+    _recordStrokeMutation(page);
 
     setState(() {
       _page = updatedPage;
       _pagesById[updatedPage.id] = updatedPage;
-      _redoStack.clear();
     });
 
     unawaited(_savePage(updatedPage));
@@ -467,7 +480,12 @@ class _EditorScreenState extends State<EditorScreen> {
           '${importedPageIds.length} pages',
         );
       }
-    } catch (_) {
+    } catch (error, stackTrace) {
+      debugPrint('[SmartInk] glyph generation failed: $error');
+      debugPrintStack(
+        label: '[SmartInk] glyph generation stack',
+        stackTrace: stackTrace,
+      );
       if (mounted) {
         _showSnackBar('Unable to import the selected PDFs');
       }
@@ -1023,18 +1041,21 @@ class _EditorScreenState extends State<EditorScreen> {
 
   void _undo() {
     final page = _page;
-    if (page == null || page.strokes.isEmpty) {
+    if (page == null || _undoStack.isEmpty) {
       return;
     }
 
-    final updatedStrokes = page.strokes.toList();
-    _redoStack.add(updatedStrokes.removeLast());
-    final updatedPage = page.copyWith(strokes: updatedStrokes);
+    final previousStrokes = _undoStack.removeLast();
+    _redoStack.add(List<Stroke>.unmodifiable(page.strokes));
+    final updatedPage = page.copyWith(strokes: previousStrokes);
 
     setState(() {
       _page = updatedPage;
       _pagesById[updatedPage.id] = updatedPage;
       _selectedStrokeIds.clear();
+      _eraseGestureBaseline = null;
+      _eraseGestureChanged = false;
+      _pendingLassoStrokeBaseline = null;
     });
 
     unawaited(_savePage(updatedPage));
@@ -1046,13 +1067,17 @@ class _EditorScreenState extends State<EditorScreen> {
       return;
     }
 
-    final stroke = _redoStack.removeLast();
-    final updatedPage = page.copyWith(strokes: [...page.strokes, stroke]);
+    final nextStrokes = _redoStack.removeLast();
+    _undoStack.add(List<Stroke>.unmodifiable(page.strokes));
+    final updatedPage = page.copyWith(strokes: nextStrokes);
 
     setState(() {
       _page = updatedPage;
       _pagesById[updatedPage.id] = updatedPage;
       _selectedStrokeIds.clear();
+      _eraseGestureBaseline = null;
+      _eraseGestureChanged = false;
+      _pendingLassoStrokeBaseline = null;
     });
 
     unawaited(_savePage(updatedPage));
@@ -1114,13 +1139,52 @@ class _EditorScreenState extends State<EditorScreen> {
 
     final updatedPage = page.copyWith(strokes: remainingStrokes);
 
+    if (_eraseGestureBaseline == null) {
+      _recordStrokeMutation(page);
+    } else {
+      _eraseGestureChanged = true;
+      _redoStack.clear();
+    }
+
     setState(() {
       _page = updatedPage;
       _pagesById[updatedPage.id] = updatedPage;
-      _redoStack.clear();
     });
 
     unawaited(_savePage(updatedPage));
+  }
+
+  void _beginEraseGesture() {
+    final page = _page;
+    if (page == null || _eraseGestureBaseline != null) return;
+    _eraseGestureBaseline = List<Stroke>.unmodifiable(page.strokes);
+    _eraseGestureChanged = false;
+  }
+
+  void _endEraseGesture() {
+    final page = _page;
+    final baseline = _eraseGestureBaseline;
+    final changed = _eraseGestureChanged;
+    _eraseGestureBaseline = null;
+    _eraseGestureChanged = false;
+    if (page == null || baseline == null || !changed) return;
+    _recordStrokeMutation(page, before: baseline);
+    if (mounted) setState(() {});
+  }
+
+  void _recordStrokeMutation(NotePage page, {List<Stroke>? before}) {
+    final history = _strokeUndoHistoryByPageId.putIfAbsent(
+      page.id,
+      () => <List<Stroke>>[],
+    );
+    history.add(List<Stroke>.unmodifiable(before ?? page.strokes));
+    const maximumHistoryLength = 100;
+    if (history.length > maximumHistoryLength) {
+      history.removeAt(0);
+    }
+    _strokeRedoHistoryByPageId
+        .putIfAbsent(page.id, () => <List<Stroke>>[])
+        .clear();
   }
 
   void _selectStrokesWithLasso(List<Offset> polygon) {
@@ -1133,6 +1197,7 @@ class _EditorScreenState extends State<EditorScreen> {
       page.strokes,
       polygon,
     );
+    _pendingLassoStrokeBaseline = null;
     setState(() {
       _selectedStrokeIds
         ..clear()
@@ -1146,14 +1211,24 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   void _previewSelectedStrokes(List<Stroke> strokes) {
+    final page = _page;
+    if (page != null && _pendingLassoStrokeBaseline == null) {
+      _pendingLassoStrokeBaseline = List<Stroke>.unmodifiable(page.strokes);
+    }
     _replaceSelectedStrokes(strokes, persist: false);
   }
 
   void _commitSelectedStrokes(List<Stroke> strokes) {
-    _replaceSelectedStrokes(strokes, persist: true);
+    final baseline = _pendingLassoStrokeBaseline;
+    _pendingLassoStrokeBaseline = null;
+    _replaceSelectedStrokes(strokes, persist: true, undoSnapshot: baseline);
   }
 
-  void _replaceSelectedStrokes(List<Stroke> strokes, {required bool persist}) {
+  void _replaceSelectedStrokes(
+    List<Stroke> strokes, {
+    required bool persist,
+    List<Stroke>? undoSnapshot,
+  }) {
     final page = _page;
     if (page == null || strokes.isEmpty) {
       return;
@@ -1165,12 +1240,12 @@ class _EditorScreenState extends State<EditorScreen> {
         for (final stroke in page.strokes) strokesById[stroke.id] ?? stroke,
       ],
     );
+    if (persist) {
+      _recordStrokeMutation(page, before: undoSnapshot);
+    }
     setState(() {
       _page = updatedPage;
       _pagesById[updatedPage.id] = updatedPage;
-      if (persist) {
-        _redoStack.clear();
-      }
     });
     if (persist) {
       unawaited(_savePage(updatedPage));
@@ -1202,11 +1277,12 @@ class _EditorScreenState extends State<EditorScreen> {
           if (!_selectedStrokeIds.contains(stroke.id)) stroke,
       ],
     );
+    _recordStrokeMutation(page);
     setState(() {
       _page = updatedPage;
       _pagesById[updatedPage.id] = updatedPage;
       _selectedStrokeIds.clear();
-      _redoStack.clear();
+      _pendingLassoStrokeBaseline = null;
     });
     unawaited(_savePage(updatedPage));
   }
@@ -1215,6 +1291,7 @@ class _EditorScreenState extends State<EditorScreen> {
     if (_selectedStrokeIds.isEmpty) {
       return;
     }
+    _pendingLassoStrokeBaseline = null;
     setState(_selectedStrokeIds.clear);
   }
 
@@ -1264,6 +1341,10 @@ class _EditorScreenState extends State<EditorScreen> {
       ).showSnackBar(const SnackBar(content: Text('Beautify text is empty')));
       return;
     }
+    debugPrint(
+      '[SmartInk] glyph request started textLength=${text.length} '
+      'font=${result.font.id} replace=${result.replaceSelectedInk}',
+    );
 
     final selectedStrokeIds = selectedStrokes
         .map((stroke) => stroke.id)
@@ -1299,6 +1380,9 @@ class _EditorScreenState extends State<EditorScreen> {
         targetBounds: selectedBounds,
         color: selectedStrokes.first.color,
         strokeWidth: averageWidth,
+      );
+      debugPrint(
+        '[SmartInk] glyph request finished strokes=${beautifiedStrokes.length}',
       );
     } catch (_) {
       if (mounted) {
@@ -1336,6 +1420,7 @@ class _EditorScreenState extends State<EditorScreen> {
     final updatedPage = page.copyWith(
       strokes: [...remainingStrokes, ...beautifiedStrokes],
     );
+    _recordStrokeMutation(page);
 
     setState(() {
       _page = updatedPage;
@@ -1343,7 +1428,7 @@ class _EditorScreenState extends State<EditorScreen> {
       _selectedStrokeIds
         ..clear()
         ..addAll(beautifiedStrokes.map((stroke) => stroke.id));
-      _redoStack.clear();
+      _pendingLassoStrokeBaseline = null;
     });
 
     unawaited(_savePage(updatedPage));
@@ -1958,8 +2043,10 @@ class _EditorScreenState extends State<EditorScreen> {
     setState(() {
       _currentPageId = pageId;
       _page = null;
-      _redoStack.clear();
       _selectedStrokeIds.clear();
+      _eraseGestureBaseline = null;
+      _eraseGestureChanged = false;
+      _pendingLassoStrokeBaseline = null;
     });
 
     await _loadPage();
@@ -2048,14 +2135,14 @@ class _EditorScreenState extends State<EditorScreen> {
         actions: [
           IconButton(
             key: const ValueKey('editor-undo-button'),
-            onPressed: page != null && page.strokes.isNotEmpty ? _undo : null,
-            tooltip: 'Undo ink stroke',
+            onPressed: page != null && _undoStack.isNotEmpty ? _undo : null,
+            tooltip: 'Undo ink edit',
             icon: const Icon(Icons.undo),
           ),
           IconButton(
             key: const ValueKey('editor-redo-button'),
             onPressed: _redoStack.isNotEmpty ? _redo : null,
-            tooltip: 'Redo ink stroke',
+            tooltip: 'Redo ink edit',
             icon: const Icon(Icons.redo),
           ),
           if (showRecordAction)
@@ -2406,6 +2493,8 @@ class _EditorScreenState extends State<EditorScreen> {
                 fingerWritingAssistEnabled: _fingerWritingAssistEnabled,
                 onStrokeComplete: _addStroke,
                 onErase: _eraseAt,
+                onEraseStart: _beginEraseGesture,
+                onEraseEnd: _endEraseGesture,
                 replayRecordingId: _audioPlaybackRecording?.id,
                 replayStartedAt: _audioPlaybackRecording?.createdAt,
                 replayPosition: _audioPlaybackRecording == null

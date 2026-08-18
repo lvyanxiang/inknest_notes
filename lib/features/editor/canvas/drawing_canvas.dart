@@ -17,6 +17,8 @@ class DrawingCanvas extends StatefulWidget {
     required this.fingerWritingAssistEnabled,
     required this.onStrokeComplete,
     required this.onErase,
+    this.onEraseStart,
+    this.onEraseEnd,
     this.replayRecordingId,
     this.replayStartedAt,
     this.replayPosition,
@@ -28,6 +30,8 @@ class DrawingCanvas extends StatefulWidget {
   final bool fingerWritingAssistEnabled;
   final ValueChanged<Stroke> onStrokeComplete;
   final ValueChanged<List<StrokePoint>> onErase;
+  final VoidCallback? onEraseStart;
+  final VoidCallback? onEraseEnd;
   final String? replayRecordingId;
   final DateTime? replayStartedAt;
   final Duration? replayPosition;
@@ -63,6 +67,7 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
     _drawingPointerKind = event.kind;
 
     if (widget.tool.type == ToolType.eraser) {
+      widget.onEraseStart?.call();
       widget.onErase([point]);
       return;
     }
@@ -132,6 +137,10 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
     final pointerKind = _drawingPointerKind;
     _drawingPointer = null;
     _drawingPointerKind = null;
+    if (widget.tool.type == ToolType.eraser) {
+      widget.onEraseEnd?.call();
+      return;
+    }
     if (activeStroke == null) {
       return;
     }
@@ -162,6 +171,9 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
   }
 
   void _cancelActiveStroke() {
+    if (widget.tool.type == ToolType.eraser && _drawingPointer != null) {
+      widget.onEraseEnd?.call();
+    }
     _drawingPointer = null;
     _drawingPointerKind = null;
     _isMultitouch = true;

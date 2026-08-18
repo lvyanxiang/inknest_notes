@@ -983,18 +983,27 @@ void main() {
   ) async {
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    const recordChannel = MethodChannel('com.llfbandit.record/messages');
+    messenger.setMockMethodCallHandler(recordChannel, (call) async => null);
     messenger.setMockMethodCallHandler(
       digitalInkChannel,
       (call) => throw PlatformException(code: 'recognition_unavailable'),
     );
-    addTearDown(
-      () => messenger.setMockMethodCallHandler(digitalInkChannel, null),
-    );
-    await pumpInkNestApp(tester);
+    addTearDown(() async {
+      messenger.setMockMethodCallHandler(digitalInkChannel, null);
+      messenger.setMockMethodCallHandler(recordChannel, null);
+    });
+    final repository = InMemoryNotebookRepository();
+    await tester.pumpWidget(InkNestApp(notebookRepository: repository));
+    await tester.pumpAndSettle();
 
     await createPagedNotebook(tester);
 
     await drawVisibleStroke(tester);
+    final originalPage = tester
+        .widget<DrawingCanvas>(find.byType(DrawingCanvas))
+        .page;
+    expect(originalPage.strokes, hasLength(1));
     await selectVisibleStrokeWithLasso(tester);
     await tester.tap(find.byKey(const ValueKey('lasso-smart-ink')));
     await tester.pumpAndSettle();
@@ -1021,17 +1030,27 @@ void main() {
       findsOneWidget,
     );
 
-    await tester.enterText(find.byType(TextField), '美');
+    // Use a glyph available in Flutter's test font. The production app loads
+    // the bundled Chinese handwriting fonts declared in pubspec.yaml.
+    await tester.enterText(find.byType(TextField), 'A');
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('beautify-font-long_cang')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('beautify-confirm')));
     await tester.pump();
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 100)),
+    );
     // Glyph thinning can take multiple frames; avoid pumpAndSettle hanging on
     // transient overlays.
     for (var i = 0; i < 80; i += 1) {
       await tester.pump(const Duration(milliseconds: 50));
-      if (find.text('Redrawing as ink...').evaluate().isEmpty &&
+      final canvasPage = tester
+          .widget<DrawingCanvas>(find.byType(DrawingCanvas))
+          .page;
+      if (canvasPage.strokes.any(
+            (stroke) => stroke.id.startsWith('beautify-'),
+          ) &&
           find.byType(AlertDialog).evaluate().isEmpty) {
         break;
       }
@@ -1039,11 +1058,76 @@ void main() {
     await tester.pump();
 
     expect(find.byType(AlertDialog), findsNothing);
-    expect(find.text('美'), findsNothing);
     expect(find.byTooltip('Plain text'), findsNothing);
     expect(
       find.byKey(const ValueKey('lasso-selection-toolbar')),
       findsOneWidget,
+    );
+
+    final beautifiedPage = tester
+        .widget<DrawingCanvas>(find.byType(DrawingCanvas))
+        .page;
+    expect(beautifiedPage.strokes, isNotEmpty);
+    expect(
+      beautifiedPage.strokes.every(
+        (stroke) => stroke.id.startsWith('beautify-'),
+      ),
+      isTrue,
+    );
+    expect(
+      beautifiedPage.strokes.map((stroke) => stroke.toJson()).toList(),
+      isNot(originalPage.strokes.map((stroke) => stroke.toJson()).toList()),
+    );
+
+    final undoButton = find.byKey(const ValueKey('editor-undo-button'));
+    final redoButton = find.byKey(const ValueKey('editor-redo-button'));
+    await tester.tap(undoButton);
+    await tester.pump();
+    final restoredRoughPage = tester
+        .widget<DrawingCanvas>(find.byType(DrawingCanvas))
+        .page;
+    expect(
+      restoredRoughPage.strokes.map((stroke) => stroke.toJson()).toList(),
+      originalPage.strokes.map((stroke) => stroke.toJson()).toList(),
+    );
+
+    await tester.tap(redoButton);
+    await tester.pump();
+    final restoredBeautifiedPage = tester
+        .widget<DrawingCanvas>(find.byType(DrawingCanvas))
+        .page;
+    expect(
+      restoredBeautifiedPage.strokes.map((stroke) => stroke.toJson()).toList(),
+      beautifiedPage.strokes.map((stroke) => stroke.toJson()).toList(),
+    );
+
+    await tester.tap(find.byTooltip('Eraser'));
+    await tester.pump();
+    final eraseStart = visibleCanvasPoint(tester);
+    final eraserGesture = await tester.startGesture(eraseStart);
+    await eraserGesture.moveBy(const Offset(28, 12));
+    await eraserGesture.up();
+    await tester.pump();
+    final partiallyErasedPage = tester
+        .widget<DrawingCanvas>(find.byType(DrawingCanvas))
+        .page;
+    expect(
+      partiallyErasedPage.strokes.map((stroke) => stroke.toJson()).toList(),
+      isNot(
+        restoredBeautifiedPage.strokes
+            .map((stroke) => stroke.toJson())
+            .toList(),
+      ),
+    );
+
+    await tester.tap(undoButton);
+    await tester.pump();
+    final restoredAfterErase = tester
+        .widget<DrawingCanvas>(find.byType(DrawingCanvas))
+        .page;
+    expect(
+      restoredAfterErase.strokes.map((stroke) => stroke.toJson()).toList(),
+      restoredBeautifiedPage.strokes.map((stroke) => stroke.toJson()).toList(),
     );
   });
 
@@ -1694,7 +1778,9 @@ void main() {
   testWidgets('switches editor tools and erases a stroke', (
     WidgetTester tester,
   ) async {
-    await pumpInkNestApp(tester);
+    final repository = InMemoryNotebookRepository();
+    await tester.pumpWidget(InkNestApp(notebookRepository: repository));
+    await tester.pumpAndSettle();
 
     await createPagedNotebook(tester);
 
@@ -1740,7 +1826,26 @@ void main() {
     await eraserGesture.up();
     await tester.pump();
 
-    expect(tester.widget<IconButton>(undoButton).onPressed, isNull);
+    expect(tester.widget<IconButton>(undoButton).onPressed, isNotNull);
+    expect(
+      tester.widget<DrawingCanvas>(find.byType(DrawingCanvas)).page.strokes,
+      isEmpty,
+    );
+
+    await tester.tap(undoButton);
+    await tester.pump();
+    expect(
+      tester.widget<DrawingCanvas>(find.byType(DrawingCanvas)).page.strokes,
+      hasLength(1),
+    );
+
+    final redoButton = find.widgetWithIcon(IconButton, Icons.redo);
+    await tester.tap(redoButton);
+    await tester.pump();
+    expect(
+      tester.widget<DrawingCanvas>(find.byType(DrawingCanvas)).page.strokes,
+      isEmpty,
+    );
   });
 
   testWidgets('finger pan mode ignores touch drawing but accepts stylus', (
