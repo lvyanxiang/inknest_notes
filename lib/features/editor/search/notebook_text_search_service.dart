@@ -1,11 +1,13 @@
 import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
+import 'package:inknest_notes/features/editor/search/image_text_search_service.dart';
+import 'package:inknest_notes/features/editor/search/pdf_ocr_text_extractor.dart';
 import 'package:inknest_notes/features/editor/search/pdf_text_search_service.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/note_text_box.dart';
 
-enum NotebookTextSearchSource { pdf, textBox }
+enum NotebookTextSearchSource { pdf, image, textBox }
 
 @immutable
 class NotebookTextSearchResult {
@@ -16,6 +18,8 @@ class NotebookTextSearchResult {
     required this.snippet,
     required this.matchText,
     this.sourcePageNumber,
+    this.pdfTextSource,
+    this.imageId,
     this.textBoxId,
     this.textBoxStyle,
     this.highlightRects = const [],
@@ -27,6 +31,19 @@ class NotebookTextSearchResult {
       pageId: result.pageId,
       notebookPageNumber: result.notebookPageNumber,
       sourcePageNumber: result.sourcePageNumber,
+      pdfTextSource: result.source,
+      snippet: result.snippet,
+      matchText: result.matchText,
+      highlightRects: result.highlightRects,
+    );
+  }
+
+  factory NotebookTextSearchResult.fromImage(ImageTextSearchResult result) {
+    return NotebookTextSearchResult(
+      source: NotebookTextSearchSource.image,
+      pageId: result.pageId,
+      notebookPageNumber: result.notebookPageNumber,
+      imageId: result.imageId,
       snippet: result.snippet,
       matchText: result.matchText,
       highlightRects: result.highlightRects,
@@ -37,6 +54,8 @@ class NotebookTextSearchResult {
   final String pageId;
   final int notebookPageNumber;
   final int? sourcePageNumber;
+  final PdfSearchTextSource? pdfTextSource;
+  final String? imageId;
   final String? textBoxId;
   final NoteTextBoxStyle? textBoxStyle;
   final String snippet;
@@ -51,6 +70,9 @@ class NotebookTextSearchResponse {
     required this.pdfPageCount,
     required this.pdfTextPageCount,
     required this.unavailablePdfPageCount,
+    required this.imageCount,
+    required this.imageTextCount,
+    required this.unavailableImageCount,
     required this.searchableTextBoxCount,
     required this.isTruncated,
   });
@@ -59,21 +81,30 @@ class NotebookTextSearchResponse {
   final int pdfPageCount;
   final int pdfTextPageCount;
   final int unavailablePdfPageCount;
+  final int imageCount;
+  final int imageTextCount;
+  final int unavailableImageCount;
   final int searchableTextBoxCount;
   final bool isTruncated;
 
   bool get hasSearchableText =>
-      pdfTextPageCount > 0 || searchableTextBoxCount > 0;
+      pdfTextPageCount > 0 || imageTextCount > 0 || searchableTextBoxCount > 0;
 }
 
 class NotebookTextSearchService {
   NotebookTextSearchService({
     PdfTextSearchService? pdfTextSearchService,
+    ImageTextSearchService? imageTextSearchService,
     this.maxResults = 250,
   }) : assert(maxResults > 0),
-       _pdfTextSearchService = pdfTextSearchService ?? PdfTextSearchService();
+       _pdfTextSearchService =
+           pdfTextSearchService ??
+           PdfTextSearchService(extractor: LayeredPdfPageTextExtractor()),
+       _imageTextSearchService =
+           imageTextSearchService ?? ImageTextSearchService();
 
   final PdfTextSearchService _pdfTextSearchService;
+  final ImageTextSearchService _imageTextSearchService;
   final int maxResults;
 
   Future<NotebookTextSearchResponse> search({
@@ -81,10 +112,32 @@ class NotebookTextSearchService {
     required String query,
     PdfSearchProgressCallback? onProgress,
   }) async {
+    final pdfSourceCount = {
+      for (final page in pages)
+        if (page.pdfBackground case final background?)
+          PdfSourcePageRef(
+            filePath: background.filePath,
+            pageNumber: background.pageNumber,
+          ),
+    }.length;
+    final imageSourceCount = {
+      for (final page in pages)
+        for (final image in page.images) image.filePath,
+    }.length;
+    final totalRecognitionSources = pdfSourceCount + imageSourceCount;
     final pdfResponse = await _pdfTextSearchService.search(
       pages: pages,
       query: query,
-      onProgress: onProgress,
+      onProgress: (completed, _) {
+        onProgress?.call(completed, totalRecognitionSources);
+      },
+    );
+    final imageResponse = await _imageTextSearchService.search(
+      pages: pages,
+      query: query,
+      onProgress: (completed, _) {
+        onProgress?.call(pdfSourceCount + completed, totalRecognitionSources);
+      },
     );
     final searchableTextBoxCount = pages.fold<int>(
       0,
@@ -99,9 +152,13 @@ class NotebookTextSearchService {
     for (final result in pdfResponse.results) {
       pdfResultsByPage.putIfAbsent(result.pageId, () => []).add(result);
     }
+    final imageResultsByPage = <String, List<ImageTextSearchResult>>{};
+    for (final result in imageResponse.results) {
+      imageResultsByPage.putIfAbsent(result.pageId, () => []).add(result);
+    }
 
     final results = <NotebookTextSearchResult>[];
-    var isTruncated = pdfResponse.isTruncated;
+    var isTruncated = pdfResponse.isTruncated || imageResponse.isTruncated;
 
     bool addResult(NotebookTextSearchResult result) {
       if (results.length >= maxResults) {
@@ -117,6 +174,11 @@ class NotebookTextSearchService {
       final page = pages[pageIndex];
       for (final pdfResult in pdfResultsByPage[page.id] ?? const []) {
         if (!addResult(NotebookTextSearchResult.fromPdf(pdfResult))) {
+          break searchPages;
+        }
+      }
+      for (final imageResult in imageResultsByPage[page.id] ?? const []) {
+        if (!addResult(NotebookTextSearchResult.fromImage(imageResult))) {
           break searchPages;
         }
       }
@@ -152,6 +214,9 @@ class NotebookTextSearchService {
       pdfPageCount: pdfResponse.pdfPageCount,
       pdfTextPageCount: pdfResponse.textPageCount,
       unavailablePdfPageCount: pdfResponse.unavailablePageCount,
+      imageCount: imageResponse.imageCount,
+      imageTextCount: imageResponse.textImageCount,
+      unavailableImageCount: imageResponse.unavailableImageCount,
       searchableTextBoxCount: searchableTextBoxCount,
       isTruncated: isTruncated,
     );

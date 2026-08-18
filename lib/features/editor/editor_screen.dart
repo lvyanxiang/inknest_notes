@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'dart:ui' show PointerDeviceKind;
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as image;
 import 'package:inknest_notes/export/notebook_pdf_exporter.dart';
@@ -14,10 +15,9 @@ import 'package:inknest_notes/features/editor/canvas/pdf_page_background.dart';
 import 'package:inknest_notes/features/editor/images/image_layer.dart';
 import 'package:inknest_notes/features/editor/lasso/lasso_geometry.dart';
 import 'package:inknest_notes/features/editor/lasso/lasso_selection_layer.dart';
+import 'package:inknest_notes/features/editor/recognition/digital_ink_text_recognizer.dart';
 import 'package:inknest_notes/features/editor/recognition/font_glyph_stroke_generator.dart';
 import 'package:inknest_notes/features/editor/recognition/ink_beautify_fonts.dart';
-import 'package:inknest_notes/features/editor/recognition/ink_recognition_image_renderer.dart';
-import 'package:inknest_notes/features/editor/recognition/text_recognition_provider.dart';
 import 'package:inknest_notes/features/editor/search/notebook_text_search_service.dart';
 import 'package:inknest_notes/features/editor/search/notebook_text_search_sheet.dart';
 import 'package:inknest_notes/features/editor/search/pdf_search_highlight_layer.dart';
@@ -50,13 +50,13 @@ class EditorScreen extends StatefulWidget {
     super.key,
     required this.notebook,
     required this.notebookRepository,
-    this.textRecognitionProvider = const AppleVisionTextRecognitionProvider(),
+    this.digitalInkTextRecognizer,
     this.pdfFilePicker,
   });
 
   final Notebook notebook;
   final NotebookRepository notebookRepository;
-  final TextRecognitionProvider textRecognitionProvider;
+  final DigitalInkTextRecognizer? digitalInkTextRecognizer;
   final Future<List<File>> Function()? pdfFilePicker;
 
   @override
@@ -65,8 +65,8 @@ class EditorScreen extends StatefulWidget {
 
 class _EditorScreenState extends State<EditorScreen> {
   final AudioRecorder _audioRecorder = AudioRecorder();
-  final InkRecognitionImageRenderer _inkRecognitionImageRenderer =
-      const InkRecognitionImageRenderer();
+  late final DigitalInkTextRecognizer _digitalInkTextRecognizer =
+      widget.digitalInkTextRecognizer ?? MlKitDigitalInkTextRecognizer();
   final FontGlyphStrokeGenerator _fontGlyphStrokeGenerator =
       const FontGlyphStrokeGenerator();
   final NotebookTextSearchService _notebookTextSearchService =
@@ -1268,7 +1268,7 @@ class _EditorScreenState extends State<EditorScreen> {
     final selectedStrokeIds = selectedStrokes
         .map((stroke) => stroke.id)
         .toSet();
-    final selectedBounds = _boundsForStrokes(selectedStrokes).inflate(8);
+    final selectedBounds = _boundsForStrokes(selectedStrokes);
     final averageWidth =
         selectedStrokes
             .map((stroke) => stroke.width)
@@ -1349,15 +1349,30 @@ class _EditorScreenState extends State<EditorScreen> {
     unawaited(_savePage(updatedPage));
   }
 
-  Future<TextRecognitionResult> _recognizeSelectedInk(
+  Future<DigitalInkRecognitionResult> _recognizeSelectedInk(
     List<Stroke> selectedStrokes,
   ) async {
-    final pngBytes = await _inkRecognitionImageRenderer.render(selectedStrokes);
-    return widget.textRecognitionProvider.recognize(
-      TextRecognitionRequest(
-        pngBytes: pngBytes,
-        recognitionLanguages: const ['zh-Hans', 'en-US'],
-      ),
+    final page = _page;
+    if (page == null) {
+      throw const DigitalInkRecognitionException('The page is unavailable.');
+    }
+    final deviceLocale = View.of(context).platformDispatcher.locale;
+    final languageTags = digitalInkLanguageTagsForLocale(deviceLocale);
+    if (kDebugMode) {
+      final pointCount = selectedStrokes.fold<int>(
+        0,
+        (count, stroke) => count + stroke.points.length,
+      );
+      debugPrint(
+        '[SmartInk] editor request deviceLocale=${deviceLocale.toLanguageTag()} '
+        'languages=$languageTags selectedStrokes=${selectedStrokes.length} '
+        'selectedPoints=$pointCount page=${page.width}x${page.height}',
+      );
+    }
+    return _digitalInkTextRecognizer.recognize(
+      strokes: selectedStrokes,
+      writingArea: Size(page.width, page.height),
+      languageTags: languageTags,
     );
   }
 
@@ -2377,6 +2392,13 @@ class _EditorScreenState extends State<EditorScreen> {
                 onImageChanged: _updateImage,
                 onImageDeleted: _deleteImage,
               ),
+              if (_activeNotebookSearchResult case final result?
+                  when result.pageId == page.id &&
+                      result.source == NotebookTextSearchSource.image)
+                PdfSearchHighlightLayer(
+                  rects: result.highlightRects,
+                  referencePageSize: Size(page.width, page.height),
+                ),
               DrawingCanvas(
                 page: page,
                 tool: _tool,
@@ -3053,7 +3075,7 @@ class _SmartInkConfirmationDialog extends StatefulWidget {
   });
 
   final int selectedStrokeCount;
-  final Future<TextRecognitionResult> recognition;
+  final Future<DigitalInkRecognitionResult> recognition;
 
   @override
   State<_SmartInkConfirmationDialog> createState() =>
@@ -3087,11 +3109,11 @@ class _SmartInkConfirmationDialogState
       } else if (!_userEditedText && _controller.text.trim().isEmpty) {
         _controller.text = recognizedText;
       }
-    } on TextRecognitionUnavailableException {
+    } on DigitalInkRecognitionUnavailableException {
       message =
           'On-device recognition is unavailable. Enter the text to redraw.';
       showEditor = true;
-    } on TextRecognitionException {
+    } on DigitalInkRecognitionException {
       message = 'Recognition failed. Enter the text to redraw.';
       showEditor = true;
     } catch (_) {
@@ -3141,7 +3163,7 @@ class _SmartInkConfirmationDialogState
                       child: CircularProgressIndicator(strokeWidth: 2),
                     ),
                     SizedBox(width: 8),
-                    Text('Recognizing on device...'),
+                    Text('Preparing handwriting recognition...'),
                   ],
                 )
               else if (_recognitionMessage case final message?)

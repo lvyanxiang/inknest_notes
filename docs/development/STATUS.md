@@ -2,14 +2,15 @@
 
 ## Current
 
-- Milestone: Backend Phase 5 first-sign-in, recovery, and incremental-sync App
-  integration is complete; Phase 6 has not started.
-- Next task: Define the versioned single-notebook/full-library backup contract,
-  then implement the first Phase 6 server-generated backup slice.
-- Last completed: Repository governance now licenses Flutter and Python
-  software under `AGPL-3.0-only`, keeps separate commercial licensing
-  available, requires a dual-licensing CLA, publishes ordinary project docs
-  under CC BY-SA 4.0, and reserves branding and academic material.
+- Milestone: Local content recognition now uses ML Kit across iOS and Android
+  for PDF/image OCR and selected-stroke Smart Ink recognition.
+- Next task: Revalidate representative Chinese/English handwriting, scanned PDFs,
+  and inserted images on physical iOS and Android devices, including first-use
+  model download, rotation, memory, accuracy, and latency.
+- Last completed: Smart Ink redraw now treats the original painted/lasso bounds
+  as a fixed container. It measures padded raster glyph ink, preserves explicit
+  lines without auto-wrap, uniformly contains every generated stroke, and no
+  longer inflates the source selection.
 
 ### Licensing follow-up before public release or commercial use
 
@@ -125,6 +126,12 @@
 - Store notebook metadata and page strokes as readable JSON under the app documents directory.
 - Store page order on `Notebook.pageIds`; each page is saved as `pages/<page-id>.json`.
 - Use `file_picker` for PDF selection and `pdfrx` for iOS/iPadOS PDF rendering.
+- Use `pdfrx` selectable text first and ML Kit Text Recognition only as a
+  scanned-page fallback on both iOS and Android. Keep OCR output in a versioned,
+  fingerprinted `derived/recognition` sidecar outside notebook JSON and sync.
+- Keep iOS at deployment target 15.5 for ML Kit. Keep Android on AGP 8.13 while
+  required plugins still apply the legacy Kotlin Gradle plugin; reassess AGP 9
+  Built-in Kotlin after those plugins migrate.
 - Use the `pdf` package for PDF export, `image` for rendered PDF background encoding, and `file_picker.saveFile` for the first save/share action.
 - Exported annotated PDFs rasterize imported PDF backgrounds and overlay editable strokes as vector paths in the generated output.
 - Pause sync and backup until the editor, PDF, and library workflows are more polished.
@@ -322,18 +329,56 @@
 - Extract embedded PDF text with `pdfrx`, cache it by file path and source page number, and reuse the index for duplicated notebook pages and later searches.
 - Map PDF search character bounds through the same contain-and-center layout as the page background; selecting a result jumps to the notebook page and highlights the match.
 - Keep PDF highlight bounds in document coordinates so the shared viewport transform preserves alignment through resize, zoom, and page rotation.
-- Treat scanned PDFs without an embedded text layer as not searchable until the OCR exploration task is implemented.
+- Search scanned PDF pages through the shared ML Kit Text Recognition raster
+  pipeline when no usable embedded text layer is available.
 - Use one editor search entry point for embedded PDF text and `NotePage.textBoxes`; confirmed Smart Ink content is searchable because it is stored as handwriting-style editable text.
-- Keep unconverted handwriting strokes and scanned PDF pages out of the unified index until the planned PencilKit/Vision recognition follow-up is implemented.
+- Keep raw handwriting strokes out of automatic notebook search until the user
+  confirms a Digital Ink candidate; confirmed Smart Ink remains searchable as
+  editable text, while scanned PDF pages and inserted images are indexed by
+  ML Kit Text Recognition.
 - Keep PDF coordinate highlights for embedded-text results and highlight the matched editable text box after cross-page navigation.
-- Use a shared recognition request/result contract for Smart Ink and future scanned-PDF/image OCR, including confidence, normalized regions, language priority, and an engine identifier.
-- Render selected strokes as bounded black-on-white PNG input and use on-device Apple Vision accurate text recognition on iOS, while keeping manual confirmation as the safe fallback.
-- Prefer PencilKit `PKStrokeRecognizer` for vector handwriting recognition and handwriting search on iPadOS 27+, after the build environment adopts an SDK that contains it; keep Vision for raster OCR and older-system fallback.
-- Keep the iOS 13 deployment target for now and do not make the new iPadOS 27 handwriting API a baseline requirement.
+- Keep raster PDF/image OCR and vector handwriting recognition behind separate
+  Flutter contracts: ML Kit Text Recognition receives bounded RGBA images,
+  while ML Kit Digital Ink receives original stroke coordinates and timestamps.
+- Lazily download a real-device-locale-priority `zh-Hani-CN`, `zh-Hani-TW`,
+  `zh-Hani-HK`, or `en-US` Digital Ink model, fall back to the other language
+  when no candidate is returned, and keep manual Smart Ink confirmation as the
+  safe recovery path.
+- Use ML Kit Digital Ink for vector handwriting recognition on both iOS and
+  Android; do not keep an Apple Vision or PencilKit recognition branch.
+- Keep native minimum-version requirements aligned with the selected ML Kit
+  Flutter plugins; Digital Ink currently requires iOS 15.5 or newer.
 - Persist `NotePage.coordinateSpaceVersion`: new pages use canonical v1, missing values read as legacy v0, empty v0 pages upgrade losslessly, and non-empty legacy or unsupported pages remain repository-enforced read-only.
 - Keep unresolved legacy content viewable, navigable, zoomable, searchable, and exportable without allowing normal save, rotate, copy, or duplicate paths to overwrite its source JSON.
 
 ## Verification
+
+- Fixed-layout Smart Ink tests cover all bundled fonts, long single-line text,
+  explicit multi-line text, painted stroke bounds, and recomputed lasso bounds.
+  The complete 281-test Flutter suite and `flutter analyze` pass.
+
+- The supplied physical-device log proves both `zh-Hani-CN` and `en-US` models
+  were downloaded and native recognition returned before the plugin crashed on
+  an integer score. A new channel regression test now covers integer `0` scores;
+  all 279 Flutter tests and `flutter analyze` pass.
+
+- Focused Digital Ink and editor widget tests pass with the new diagnostic
+  events, and `flutter analyze` reports no issues. Test logs verify both the
+  model-unavailable and successful-candidate paths without printing candidate
+  text.
+
+- Smart Ink model/geometry regression coverage, the complete 278-test Flutter
+  suite, and `flutter analyze` pass. An iOS simulator debug build succeeds with
+  the supported Chinese model identifiers and device-locale selection. ML Kit
+  still requires physical-device accuracy and initial model-download checks.
+
+- The unified ML Kit recognition implementation passes all 277 Flutter tests,
+  `flutter analyze`, and `git diff --check`. Debug native builds succeed for the
+  iOS simulator and Android APK. Focused coverage verifies Digital Ink stroke
+  conversion, model/language fallback, inserted-image OCR caching and coordinate
+  highlights, scanned-PDF OCR fallback, and unified PDF/image/typed/Smart Ink
+  search results. Physical-device accuracy and first-model-download behavior
+  remain to be validated.
 
 - The repository contains the official AGPLv3 and CC BY-SA 4.0 texts, explicit
   scope/commercial/trademark/contribution policies, retained OFL notices, and
@@ -968,7 +1013,9 @@
 - Saved recordings can be played, paused, scrubbed, and closed from the editor; all ink stays visible while the current recorded segment receives a temporary spotlight.
 - Audio playback follows linked pages by default; manually selecting a page suspends following, and the playback bar can resume it.
 - Editor app bar includes unified notebook search across cached PDF text, typed text boxes, and confirmed Smart Ink text, with cross-page navigation and source-specific highlighting.
-- Smart Ink now renders selected strokes for local Apple Vision OCR, asynchronously prefills the confirmation field on iOS, and preserves manual entry on unsupported platforms or recognition failure.
+- Smart Ink now sends selected vector strokes to ML Kit Digital Ink on iOS and
+  Android, asynchronously prefills the confirmation field, and preserves manual
+  entry when model download, recognition, or the plugin is unavailable.
 - Smart Ink planning lives in `docs/development/SMART_INK_PLAN.md`.
 - Handwriting recognition, scanned-page OCR, caching, and iPadOS 27 PencilKit follow-up decisions live in `docs/development/RECOGNITION_OCR_SPIKE.md`.
 - Post-MVP feature gaps and optimization areas are documented in `docs/development/POST_MVP_ROADMAP.md`.

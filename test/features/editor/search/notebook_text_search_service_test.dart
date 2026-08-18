@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:inknest_notes/features/editor/search/image_text_search_service.dart';
 import 'package:inknest_notes/features/editor/search/notebook_text_search_service.dart';
 import 'package:inknest_notes/features/editor/search/pdf_text_search_service.dart';
+import 'package:inknest_notes/models/note_image.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/note_text_box.dart';
 import 'package:inknest_notes/models/pdf_background.dart';
@@ -27,6 +29,17 @@ void main() {
       });
       final service = NotebookTextSearchService(
         pdfTextSearchService: PdfTextSearchService(extractor: extractor),
+        imageTextSearchService: ImageTextSearchService(
+          extractor: _FakeImageTextExtractor({
+            const ImageSourceRef(filePath: '/tmp/photo.png'): ImageSearchData(
+              fullText: 'Image alpha',
+              normalizedCharacterRects: [
+                for (var index = 0; index < 11; index += 1)
+                  Rect.fromLTWH(index * 0.05, 0, 0.05, 0.1),
+              ],
+            ),
+          }),
+        ),
       );
       final pages = [
         NotePage(
@@ -43,6 +56,16 @@ void main() {
               id: 'typed-1',
               position: Offset.zero,
               text: 'Typed Alpha note',
+            ),
+          ],
+          images: const [
+            NoteImage(
+              id: 'image-1',
+              position: Offset(20, 30),
+              width: 60,
+              height: 40,
+              assetPath: 'assets/images/photo.png',
+              resolvedFilePath: '/tmp/photo.png',
             ),
           ],
         ),
@@ -63,24 +86,32 @@ void main() {
 
       final response = await service.search(pages: pages, query: 'ALPHA');
 
-      expect(response.results, hasLength(3));
+      expect(response.results, hasLength(4));
       expect(response.results.map((result) => result.source), [
         NotebookTextSearchSource.pdf,
+        NotebookTextSearchSource.image,
         NotebookTextSearchSource.textBox,
         NotebookTextSearchSource.textBox,
       ]);
       expect(response.results.map((result) => result.notebookPageNumber), [
         1,
         1,
+        1,
         2,
       ]);
-      expect(response.results[1].textBoxId, 'typed-1');
-      expect(response.results[1].textBoxStyle, NoteTextBoxStyle.regular);
-      expect(response.results[2].textBoxId, 'smart-1');
-      expect(response.results[2].textBoxStyle, NoteTextBoxStyle.handwriting);
+      expect(response.results[1].imageId, 'image-1');
+      expect(response.results[2].textBoxId, 'typed-1');
+      expect(
+        response.results.first.pdfTextSource,
+        PdfSearchTextSource.embedded,
+      );
+      expect(response.results[2].textBoxStyle, NoteTextBoxStyle.regular);
+      expect(response.results[3].textBoxId, 'smart-1');
+      expect(response.results[3].textBoxStyle, NoteTextBoxStyle.handwriting);
       expect(response.pdfPageCount, 1);
       expect(response.pdfTextPageCount, 1);
       expect(response.searchableTextBoxCount, 2);
+      expect(response.imageTextCount, 1);
       expect(response.hasSearchableText, isTrue);
     },
   );
@@ -141,5 +172,26 @@ class _FakePdfPageTextExtractor implements PdfPageTextExtractor {
       onProgress?.call(index + 1, requested.length);
     }
     return result;
+  }
+}
+
+class _FakeImageTextExtractor implements ImageTextExtractor {
+  _FakeImageTextExtractor(this.images);
+
+  final Map<ImageSourceRef, ImageSearchData?> images;
+
+  @override
+  Future<Map<ImageSourceRef, ImageSearchData?>> extract(
+    Iterable<ImageSourceRef> images, {
+    PdfSearchProgressCallback? onProgress,
+  }) async {
+    final requested = images.toList(growable: false);
+    return {
+      for (var index = 0; index < requested.length; index += 1)
+        requested[index]: (() {
+          onProgress?.call(index + 1, requested.length);
+          return this.images[requested[index]];
+        })(),
+    };
   }
 }

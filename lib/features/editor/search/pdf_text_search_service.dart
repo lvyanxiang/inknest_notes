@@ -28,12 +28,16 @@ class PdfSearchPageData {
     required this.fullText,
     required this.characterRects,
     required this.pageSize,
+    this.source = PdfSearchTextSource.embedded,
   });
 
   final String fullText;
   final List<Rect> characterRects;
   final Size pageSize;
+  final PdfSearchTextSource source;
 }
+
+enum PdfSearchTextSource { embedded, ocr }
 
 @immutable
 class PdfTextSearchResult {
@@ -44,6 +48,7 @@ class PdfTextSearchResult {
     required this.snippet,
     required this.matchText,
     required this.highlightRects,
+    this.source = PdfSearchTextSource.embedded,
   });
 
   final String pageId;
@@ -52,6 +57,7 @@ class PdfTextSearchResult {
   final String snippet;
   final String matchText;
   final List<Rect> highlightRects;
+  final PdfSearchTextSource source;
 }
 
 @immutable
@@ -246,6 +252,7 @@ class PdfTextSearchService {
               start: matchStart,
               end: matchEnd,
             ),
+            source: pageData.source,
           ),
         );
         matchStart = searchableText.indexOf(normalizedQuery, matchEnd);

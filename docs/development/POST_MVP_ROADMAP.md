@@ -251,6 +251,11 @@ notebooks before broader OCR indexing is added.
 
 - [x] Unify editor search across embedded PDF text, typed text boxes, and
   confirmed Smart Ink text.
+- [x] Add text-layer-first scanned PDF OCR with `pdfrx`, ML Kit Text
+  Recognition on iOS and Android, local derived caching, and page highlights.
+- [x] Add inserted-image OCR through the shared raster recognition provider.
+- [x] Replace Apple-only Smart Ink OCR with ML Kit Digital Ink recognition for
+  vector handwriting on iOS and Android.
 
 ### Post-MVP 6: Sync And Backup
 

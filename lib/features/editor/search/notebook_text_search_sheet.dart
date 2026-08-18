@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:inknest_notes/features/editor/search/notebook_text_search_service.dart';
+import 'package:inknest_notes/features/editor/search/pdf_text_search_service.dart';
 import 'package:inknest_notes/features/editor/theme/editor_chrome.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/note_text_box.dart';
@@ -177,7 +178,7 @@ class _NotebookTextSearchSheetState extends State<NotebookTextSearchSheet> {
               }
             },
             decoration: InputDecoration(
-              hintText: 'Search PDF and editable text',
+              hintText: 'Search PDF, images, scanned pages, and editable text',
               prefixIcon: const Icon(Icons.search),
               suffixIcon: _queryController.text.isEmpty
                   ? null
@@ -209,13 +210,13 @@ class _NotebookTextSearchSheetState extends State<NotebookTextSearchSheet> {
       return const _SearchMessage(
         icon: Icons.manage_search,
         message:
-            'Search PDF text and editable text boxes, including Smart Ink results.',
+            'Search PDF text, images, scanned pages, and editable text boxes, including Smart Ink results.',
       );
     }
     if (_isSearching && _response == null) {
       final progressLabel = _totalPages == 0
           ? 'Searching notebook...'
-          : 'Reading PDF page $_completedPages of $_totalPages...';
+          : 'Indexing notebook content $_completedPages of $_totalPages...';
       return _SearchMessage(
         icon: Icons.find_in_page_outlined,
         message: progressLabel,
@@ -227,8 +228,8 @@ class _NotebookTextSearchSheetState extends State<NotebookTextSearchSheet> {
       return const SizedBox.shrink();
     }
     if (!response.hasSearchableText) {
-      final message = response.pdfPageCount > 0
-          ? 'No searchable text found. Scanned PDF pages still need OCR.'
+      final message = response.pdfPageCount > 0 || response.imageCount > 0
+          ? 'No searchable text found. Some PDF pages or images could not be indexed.'
           : 'No searchable text found in this notebook.';
       return _SearchMessage(
         icon: Icons.text_snippet_outlined,
@@ -266,6 +267,16 @@ class _NotebookTextSearchSheetState extends State<NotebookTextSearchSheet> {
               ).textTheme.bodySmall?.copyWith(color: colorScheme.error),
             ),
           ),
+        if (response.unavailableImageCount > 0)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
+            child: Text(
+              '${response.unavailableImageCount} images could not be read.',
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: colorScheme.error),
+            ),
+          ),
         Expanded(
           child: ListView.separated(
             itemCount: response.results.length,
@@ -273,15 +284,28 @@ class _NotebookTextSearchSheetState extends State<NotebookTextSearchSheet> {
             itemBuilder: (context, index) {
               final result = response.results[index];
               final isPdf = result.source == NotebookTextSearchSource.pdf;
-              final sourceLabel = switch (result.textBoxStyle) {
-                NoteTextBoxStyle.handwriting => 'Handwriting text',
-                NoteTextBoxStyle.regular => 'Text box',
-                null => 'PDF page ${result.sourcePageNumber}',
+              final isImage = result.source == NotebookTextSearchSource.image;
+              final sourceLabel = switch (result.source) {
+                NotebookTextSearchSource.image => 'Image text',
+                NotebookTextSearchSource.textBox =>
+                  switch (result.textBoxStyle) {
+                    NoteTextBoxStyle.handwriting => 'Handwriting text',
+                    _ => 'Text box',
+                  },
+                NotebookTextSearchSource.pdf
+                    when result.pdfTextSource == PdfSearchTextSource.ocr =>
+                  'Scanned PDF page ${result.sourcePageNumber}',
+                NotebookTextSearchSource.pdf =>
+                  'PDF page ${result.sourcePageNumber}',
               };
               return ListTile(
                 key: ValueKey('notebook-search-result-$index'),
                 leading: Icon(
-                  isPdf ? Icons.picture_as_pdf_outlined : Icons.text_fields,
+                  isPdf
+                      ? Icons.picture_as_pdf_outlined
+                      : isImage
+                      ? Icons.image_search_outlined
+                      : Icons.text_fields,
                 ),
                 title: Text(
                   result.snippet,

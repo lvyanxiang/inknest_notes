@@ -2,6 +2,12 @@
 
 Date: 2026-07-18
 
+> Historical spike, superseded on 2026-08-18 by
+> `docs/product/features/local-content-recognition/PRODUCT_BRIEF.md`. The
+> current implementation uses ML Kit Text Recognition for PDF/images and ML
+> Kit Digital Ink for Smart Ink on iOS and Android; the Apple Vision bridge and
+> rasterized-stroke recognizer described below have been removed.
+
 ## Outcome
 
 Use two local-first Apple recognition paths behind one Flutter-facing result

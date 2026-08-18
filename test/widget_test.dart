@@ -10,7 +10,6 @@ import 'package:inknest_notes/app/app.dart';
 import 'package:inknest_notes/features/editor/canvas/drawing_canvas.dart';
 import 'package:inknest_notes/features/editor/editor_screen.dart';
 import 'package:inknest_notes/features/editor/infinite_canvas_screen.dart';
-import 'package:inknest_notes/features/editor/recognition/text_recognition_provider.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/note_page_template.dart';
 import 'package:inknest_notes/models/note_text_box.dart';
@@ -23,6 +22,10 @@ import 'package:inknest_notes/models/tool.dart';
 import 'package:inknest_notes/storage/in_memory_notebook_repository.dart';
 
 void main() {
+  const digitalInkChannel = MethodChannel(
+    'google_mlkit_digital_ink_recognizer',
+  );
+
   Future<void> pumpInkNestApp(WidgetTester tester) async {
     await tester.pumpWidget(
       InkNestApp(notebookRepository: InMemoryNotebookRepository()),
@@ -552,7 +555,7 @@ void main() {
     expect(find.text('Search notebook'), findsOneWidget);
     expect(
       find.text(
-        'Search PDF text and editable text boxes, including Smart Ink results.',
+        'Search PDF text, images, scanned pages, and editable text boxes, including Smart Ink results.',
       ),
       findsOneWidget,
     );
@@ -981,14 +984,11 @@ void main() {
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     messenger.setMockMethodCallHandler(
-      AppleVisionTextRecognitionProvider.channel,
+      digitalInkChannel,
       (call) => throw PlatformException(code: 'recognition_unavailable'),
     );
     addTearDown(
-      () => messenger.setMockMethodCallHandler(
-        AppleVisionTextRecognitionProvider.channel,
-        null,
-      ),
+      () => messenger.setMockMethodCallHandler(digitalInkChannel, null),
     );
     await pumpInkNestApp(tester);
 
@@ -1053,19 +1053,18 @@ void main() {
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     messenger.setMockMethodCallHandler(
-      AppleVisionTextRecognitionProvider.channel,
-      (call) async => <String, Object?>{
-        'text': 'Recognized note',
-        'confidence': 0.9,
-        'engineIdentifier': 'apple-vision-text-test',
-        'regions': <Object?>[],
+      digitalInkChannel,
+      (call) async => switch (call.method) {
+        'vision#manageInkModels' => true,
+        'vision#startDigitalInkRecognizer' => <Object?>[
+          <String, Object?>{'text': 'Recognized note', 'score': -0.9},
+        ],
+        'vision#closeDigitalInkRecognizer' => null,
+        _ => throw PlatformException(code: 'unexpected_method'),
       },
     );
     addTearDown(
-      () => messenger.setMockMethodCallHandler(
-        AppleVisionTextRecognitionProvider.channel,
-        null,
-      ),
+      () => messenger.setMockMethodCallHandler(digitalInkChannel, null),
     );
     await pumpInkNestApp(tester);
 
