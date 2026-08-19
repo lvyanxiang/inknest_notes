@@ -6,6 +6,10 @@
   `docs/product/features/editor-workspace-v2/PRODUCT_BRIEF.md`
 - Affected surfaces: Editor document bar and contextual tool dock
 
+> The Search control and flows described below were superseded on 2026-08-18
+> when editor-internal content search was removed. Other document-bar and tool-
+> dock decisions remain active.
+
 ## Recommendation
 
 Keep the fixed paper viewport and two-row shell, but give the rows different,

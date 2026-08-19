@@ -210,7 +210,8 @@ Always disclose when handwriting content leaves the device.
 
 ### Smart Ink 5: Search And Knowledge
 
-- Index recognized text for notebook search.
+- Editor notebook-content search was removed on 2026-08-18; do not index Smart
+  Ink results in the current app.
 - Include Smart Ink text in exports.
 - Feed recognized text into future Web knowledge-base and AI features.
 

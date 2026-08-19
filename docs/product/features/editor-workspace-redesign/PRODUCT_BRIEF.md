@@ -5,6 +5,9 @@
 - Updated: 2026-07-27
 - Roadmap link: `docs/development/POST_MVP_ROADMAP.md` — Editor UI
 
+> The Search portions of this historical workspace specification were
+> superseded on 2026-08-18 by removal of editor-internal content search.
+
 ## Problem
 
 InkNest's iPad editor exposes a broad feature set, but its current structure

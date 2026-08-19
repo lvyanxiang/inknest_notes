@@ -18,9 +18,6 @@ import 'package:inknest_notes/features/editor/lasso/lasso_selection_layer.dart';
 import 'package:inknest_notes/features/editor/recognition/digital_ink_text_recognizer.dart';
 import 'package:inknest_notes/features/editor/recognition/font_glyph_stroke_generator.dart';
 import 'package:inknest_notes/features/editor/recognition/ink_beautify_fonts.dart';
-import 'package:inknest_notes/features/editor/search/notebook_text_search_service.dart';
-import 'package:inknest_notes/features/editor/search/notebook_text_search_sheet.dart';
-import 'package:inknest_notes/features/editor/search/pdf_search_highlight_layer.dart';
 import 'package:inknest_notes/features/editor/shapes/shape_layer.dart';
 import 'package:inknest_notes/features/editor/templates/page_template_layer.dart';
 import 'package:inknest_notes/features/editor/templates/page_template_sheet.dart';
@@ -69,8 +66,6 @@ class _EditorScreenState extends State<EditorScreen> {
       widget.digitalInkTextRecognizer ?? MlKitDigitalInkTextRecognizer();
   final FontGlyphStrokeGenerator _fontGlyphStrokeGenerator =
       const FontGlyphStrokeGenerator();
-  final NotebookTextSearchService _notebookTextSearchService =
-      NotebookTextSearchService();
   final GlobalKey<_ZoomablePageViewportState> _viewportKey =
       GlobalKey<_ZoomablePageViewportState>();
   final Map<String, List<List<Stroke>>> _strokeUndoHistoryByPageId = {};
@@ -104,8 +99,6 @@ class _EditorScreenState extends State<EditorScreen> {
   bool _isAudioPlaying = false;
   bool _followAudioPlayback = true;
   int _audioPlaybackGeneration = 0;
-  String _notebookSearchQuery = '';
-  NotebookTextSearchResult? _activeNotebookSearchResult;
   NotePage? _page;
   List<Stroke>? _eraseGestureBaseline;
   bool _eraseGestureChanged = false;
@@ -1993,48 +1986,6 @@ class _EditorScreenState extends State<EditorScreen> {
     return '$baseName${selection.fileNameSuffix}.pdf';
   }
 
-  Future<void> _showNotebookSearch() async {
-    await _loadPageThumbnails();
-    if (!mounted) {
-      return;
-    }
-
-    final pages = _notebook.pageIds
-        .map((pageId) => _pagesById[pageId])
-        .whereType<NotePage>()
-        .toList(growable: false);
-    final result = await showNotebookTextSearchSheet(
-      context: context,
-      searchService: _notebookTextSearchService,
-      pages: pages,
-      initialQuery: _notebookSearchQuery,
-      onQueryChanged: _handleNotebookSearchQueryChanged,
-    );
-    if (!mounted || result == null) {
-      return;
-    }
-
-    setState(() {
-      _activeNotebookSearchResult = result;
-      if (_audioPlaybackRecording != null &&
-          _followAudioPlayback &&
-          result.pageId != _currentPageId) {
-        _followAudioPlayback = false;
-      }
-    });
-    await _selectPage(result.pageId);
-  }
-
-  void _handleNotebookSearchQueryChanged(String query) {
-    final queryChanged = query != _notebookSearchQuery;
-    _notebookSearchQuery = query;
-    if (queryChanged && _activeNotebookSearchResult != null && mounted) {
-      setState(() {
-        _activeNotebookSearchResult = null;
-      });
-    }
-  }
-
   Future<void> _selectPage(String pageId) async {
     if (pageId == _currentPageId) {
       return;
@@ -2057,12 +2008,9 @@ class _EditorScreenState extends State<EditorScreen> {
         _audioPlaybackRecording != null &&
         _followAudioPlayback &&
         pageId != _currentPageId;
-    if (shouldStopFollowingAudio || _activeNotebookSearchResult != null) {
+    if (shouldStopFollowingAudio) {
       setState(() {
-        if (shouldStopFollowingAudio) {
-          _followAudioPlayback = false;
-        }
-        _activeNotebookSearchResult = null;
+        _followAudioPlayback = false;
       });
     }
 
@@ -2166,16 +2114,6 @@ class _EditorScreenState extends State<EditorScreen> {
                           : null,
                     ),
             ),
-          IconButton(
-            onPressed: () => unawaited(_showNotebookSearch()),
-            tooltip: 'Search notebook',
-            icon: Icon(
-              Icons.search,
-              color: _activeNotebookSearchResult == null
-                  ? null
-                  : Theme.of(context).colorScheme.primary,
-            ),
-          ),
           if (showExportAction)
             IconButton(
               key: const ValueKey('editor-export-button'),
@@ -2465,13 +2403,6 @@ class _EditorScreenState extends State<EditorScreen> {
                   ),
                   background: background,
                 ),
-              if (_activeNotebookSearchResult case final result?
-                  when result.pageId == page.id &&
-                      result.source == NotebookTextSearchSource.pdf)
-                PdfSearchHighlightLayer(
-                  rects: result.highlightRects,
-                  referencePageSize: Size(page.width, page.height),
-                ),
               ImageLayer(
                 page: page,
                 activeImageId: _activeImageId,
@@ -2479,13 +2410,6 @@ class _EditorScreenState extends State<EditorScreen> {
                 onImageChanged: _updateImage,
                 onImageDeleted: _deleteImage,
               ),
-              if (_activeNotebookSearchResult case final result?
-                  when result.pageId == page.id &&
-                      result.source == NotebookTextSearchSource.image)
-                PdfSearchHighlightLayer(
-                  rects: result.highlightRects,
-                  referencePageSize: Size(page.width, page.height),
-                ),
               DrawingCanvas(
                 page: page,
                 tool: _tool,
@@ -2519,7 +2443,6 @@ class _EditorScreenState extends State<EditorScreen> {
               TextBoxLayer(
                 page: page,
                 activeTextBoxId: _activeTextBoxId,
-                highlightedTextBoxId: _searchHighlightedTextBoxId(page),
                 onCreateTextBox: _tool.type == ToolType.text
                     ? _addTextBoxAt
                     : null,
@@ -2541,16 +2464,6 @@ class _EditorScreenState extends State<EditorScreen> {
         ),
       ),
     );
-  }
-
-  String? _searchHighlightedTextBoxId(NotePage page) {
-    final result = _activeNotebookSearchResult;
-    if (result == null ||
-        result.pageId != page.id ||
-        result.source != NotebookTextSearchSource.textBox) {
-      return null;
-    }
-    return result.textBoxId;
   }
 }
 

@@ -12,7 +12,6 @@ import 'package:inknest_notes/features/editor/editor_screen.dart';
 import 'package:inknest_notes/features/editor/infinite_canvas_screen.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/note_page_template.dart';
-import 'package:inknest_notes/models/note_text_box.dart';
 import 'package:inknest_notes/models/notebook_audio_recording.dart';
 import 'package:inknest_notes/models/infinite_canvas_document.dart';
 import 'package:inknest_notes/models/notebook_layout_mode.dart';
@@ -147,7 +146,7 @@ void main() {
 
     expect(find.text('Notebook 1'), findsOneWidget);
     expect(find.byTooltip('Start audio recording'), findsOneWidget);
-    expect(find.byTooltip('Search notebook'), findsOneWidget);
+    expect(find.byTooltip('Search notebook'), findsNothing);
     expect(find.byKey(const ValueKey('editor-more-actions')), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('editor-more-actions')));
     await tester.pumpAndSettle();
@@ -543,25 +542,6 @@ void main() {
     expect((await repository.loadInfiniteCanvas(notebook)).images, isEmpty);
   });
 
-  testWidgets('opens notebook search from the editor app bar', (
-    WidgetTester tester,
-  ) async {
-    await pumpInkNestApp(tester);
-    await createPagedNotebook(tester);
-
-    await tester.tap(find.byTooltip('Search notebook'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Search notebook'), findsOneWidget);
-    expect(
-      find.text(
-        'Search PDF text, images, scanned pages, and editable text boxes, including Smart Ink results.',
-      ),
-      findsOneWidget,
-    );
-    expect(find.byTooltip('Close notebook search'), findsOneWidget);
-  });
-
   testWidgets('imports multiple PDFs into the open notebook', (
     WidgetTester tester,
   ) async {
@@ -790,51 +770,6 @@ void main() {
       'outside-stroke',
     ]);
     expect(find.byKey(const ValueKey('lasso-selection-toolbar')), findsNothing);
-  });
-
-  testWidgets('searches Smart Ink text and highlights it after a page jump', (
-    WidgetTester tester,
-  ) async {
-    final repository = InMemoryNotebookRepository();
-    var notebook = await repository.createNotebook(title: 'Search notes');
-    notebook = await repository.addPage(notebook);
-    await repository.savePage(
-      notebook,
-      const NotePage(
-        id: 'page-2',
-        width: 768,
-        height: 1024,
-        textBoxes: [
-          NoteTextBox(
-            id: 'smart-search-result',
-            position: Offset(40, 48),
-            text: 'Photosynthesis summary',
-            style: NoteTextBoxStyle.handwriting,
-          ),
-        ],
-      ),
-    );
-
-    await tester.pumpWidget(InkNestApp(notebookRepository: repository));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Search notes'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Search notebook'));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), 'photosynthesis');
-    await tester.pump(const Duration(milliseconds: 400));
-    await tester.pumpAndSettle();
-
-    expect(find.textContaining('Handwriting text'), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('notebook-search-result-0')));
-    await tester.pumpAndSettle();
-
-    expect(
-      find.byKey(
-        const ValueKey('text-box-search-highlight-smart-search-result'),
-      ),
-      findsOneWidget,
-    );
   });
 
   testWidgets('lists saved audio recordings with playback controls', (

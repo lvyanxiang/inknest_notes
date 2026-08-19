@@ -72,7 +72,8 @@ The detailed plan lives in `docs/development/SMART_INK_PLAN.md`.
 - [x] Import multiple PDFs into an existing notebook.
 - [x] Insert blank pages before, after, or between PDF pages.
 - [x] PDF page thumbnails, outlines, and bookmarks.
-- [x] PDF search when the source PDF has selectable text.
+- PDF text search was delivered and later removed with editor content search on
+  2026-08-18.
 - [x] Export non-contiguous selected pages.
 - [x] Refine flattened PDF export quality and file-size tradeoffs.
 - [x] Preserve original PDF page size where possible instead of forcing every PDF
@@ -234,26 +235,20 @@ Goal: support mixed handwritten and typed notes.
 - [x] Add shape tool.
 - [x] Add favorites toolbar.
 
-### Post-MVP 5: Audio And Search
+### Post-MVP 5: Audio
 
 Goal: add Notability-style study features.
 
 - [x] Add audio recording.
 - [x] Link playback timeline with strokes.
-- [x] Add PDF text search.
-- [x] Explore handwriting recognition and OCR for search and Smart Ink. See
+- [x] Explore handwriting recognition for Smart Ink. See
   `docs/development/RECOGNITION_OCR_SPIKE.md`.
 
-### Post-MVP 5A: Notebook Search Polish
+### Post-MVP 5A: Editor Content Search (Removed)
 
-Goal: make the editor search entry point useful for mixed PDF and rich-note
-notebooks before broader OCR indexing is added.
+The editor-internal content search, PDF/image OCR indexing, result navigation,
+and highlights were removed on 2026-08-18. Library title/folder search remains.
 
-- [x] Unify editor search across embedded PDF text, typed text boxes, and
-  confirmed Smart Ink text.
-- [x] Add text-layer-first scanned PDF OCR with `pdfrx`, ML Kit Text
-  Recognition on iOS and Android, local derived caching, and page highlights.
-- [x] Add inserted-image OCR through the shared raster recognition provider.
 - [x] Replace Apple-only Smart Ink OCR with ML Kit Digital Ink recognition for
   vector handwriting on iOS and Android.
 

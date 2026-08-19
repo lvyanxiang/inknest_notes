@@ -2,15 +2,15 @@
 
 ## Current
 
-- Milestone: Local content recognition now uses ML Kit across iOS and Android
-  for PDF/image OCR and selected-stroke Smart Ink recognition.
-- Next task: Revalidate representative Chinese/English handwriting, scanned PDFs,
-  and inserted images on physical iOS and Android devices, including first-use
-  model download, rotation, memory, accuracy, and latency.
-- Last completed: Editor stroke undo/redo now uses bounded per-page snapshots.
-  One Smart Ink replacement is undone or redone atomically, and one complete
-  eraser gesture can restore or reapply every deleted or split beautified
-  stroke without disturbing another page's history.
+- Milestone: Selected-stroke Smart Ink uses ML Kit Digital Ink across iOS and
+  Android; editor-internal content search and raster OCR have been removed.
+- Next task: Revalidate representative Chinese/English handwriting on physical
+  iOS and Android devices, including first-use model download, accuracy, and
+  latency.
+- Last completed: Removed the paged-editor Search action, sheet, query/result
+  state, cross-page highlights, PDF/image/text-box search services, raster OCR
+  caches, ML Kit Text Recognition dependencies, and their dedicated tests.
+  Library title/folder search and Smart Ink remain.
 
 ### Licensing follow-up before public release or commercial use
 
@@ -126,9 +126,8 @@
 - Store notebook metadata and page strokes as readable JSON under the app documents directory.
 - Store page order on `Notebook.pageIds`; each page is saved as `pages/<page-id>.json`.
 - Use `file_picker` for PDF selection and `pdfrx` for iOS/iPadOS PDF rendering.
-- Use `pdfrx` selectable text first and ML Kit Text Recognition only as a
-  scanned-page fallback on both iOS and Android. Keep OCR output in a versioned,
-  fingerprinted `derived/recognition` sidecar outside notebook JSON and sync.
+- Keep `pdfrx` for PDF import, rendering, metadata inspection, and export. The
+  removed editor search no longer extracts PDF text or creates OCR sidecars.
 - Keep iOS at deployment target 15.5 for ML Kit. Keep Android on AGP 8.13 while
   required plugins still apply the legacy Kotlin Gradle plugin; reassess AGP 9
   Built-in Kotlin after those plugins migrate.
@@ -310,8 +309,9 @@
 - Text boxes first support add, edit, move, delete, persistence, page duplication, thumbnails, and PDF export.
 - Store text rendering style on `NoteTextBox.style`; support regular and handwriting-style text boxes.
 - Text-box PDF export rasterizes Flutter-rendered text into PNGs before embedding them, preserving Unicode/CJK text and handwriting-style rendering without relying on `pdf` package default fonts.
-- Smart Ink uses the existing Lasso selection context: select rough strokes, invoke Smart Ink from the upright selection toolbar, confirm recognized text, then insert a handwriting-style text box and optionally replace the ink.
-- Automatic handwriting recognition is still future work; the current Smart Ink flow establishes the explicit selection and confirmation UX without sending handwriting off-device.
+- Smart Ink uses the existing Lasso selection context: select rough strokes,
+  invoke Smart Ink from the upright selection toolbar, confirm ML Kit Digital
+  Ink text, then replace the selection with generated font-shaped strokes.
 - Store inserted images on `NotePage.images`; file-backed notebooks copy image files into notebook-relative `assets/images/` paths and resolve them at load time.
 - Render images below handwriting strokes, with move/delete/resize controls above the drawing canvas so users can write over inserted images.
 - PDF export embeds inserted page images as PNG-backed PDF image widgets before vector handwriting strokes and text boxes.
@@ -326,20 +326,11 @@
 - Tag strokes completed during recording with `audioRecordingId`; playback keeps all ink visible and uses existing stroke-point timestamps to spotlight the current segment.
 - Follow linked pages during audio playback by default; a manual page change pauses following until the user enables it again from the playback bar.
 - Page saves merge the latest notebook index metadata before updating `updatedAt`, preventing delayed drawing saves from removing newly added audio recordings.
-- Extract embedded PDF text with `pdfrx`, cache it by file path and source page number, and reuse the index for duplicated notebook pages and later searches.
-- Map PDF search character bounds through the same contain-and-center layout as the page background; selecting a result jumps to the notebook page and highlights the match.
-- Keep PDF highlight bounds in document coordinates so the shared viewport transform preserves alignment through resize, zoom, and page rotation.
-- Search scanned PDF pages through the shared ML Kit Text Recognition raster
-  pipeline when no usable embedded text layer is available.
-- Use one editor search entry point for embedded PDF text and `NotePage.textBoxes`; confirmed Smart Ink content is searchable because it is stored as handwriting-style editable text.
-- Keep raw handwriting strokes out of automatic notebook search until the user
-  confirms a Digital Ink candidate; confirmed Smart Ink remains searchable as
-  editable text, while scanned PDF pages and inserted images are indexed by
-  ML Kit Text Recognition.
-- Keep PDF coordinate highlights for embedded-text results and highlight the matched editable text box after cross-page navigation.
-- Keep raster PDF/image OCR and vector handwriting recognition behind separate
-  Flutter contracts: ML Kit Text Recognition receives bounded RGBA images,
-  while ML Kit Digital Ink receives original stroke coordinates and timestamps.
+- Do not expose content search inside the editor. Keep library search limited
+  to notebook titles and visible root-folder names.
+- Keep Smart Ink recognition independent from search: ML Kit Digital Ink
+  receives selected vector stroke coordinates and timestamps, then the user
+  confirms or corrects the candidate before redraw.
 - Lazily download a real-device-locale-priority `zh-Hani-CN`, `zh-Hani-TW`,
   `zh-Hani-HK`, or `en-US` Digital Ink model, fall back to the other language
   when no candidate is returned, and keep manual Smart Ink confirmation as the
@@ -349,9 +340,16 @@
 - Keep native minimum-version requirements aligned with the selected ML Kit
   Flutter plugins; Digital Ink currently requires iOS 15.5 or newer.
 - Persist `NotePage.coordinateSpaceVersion`: new pages use canonical v1, missing values read as legacy v0, empty v0 pages upgrade losslessly, and non-empty legacy or unsupported pages remain repository-enforced read-only.
-- Keep unresolved legacy content viewable, navigable, zoomable, searchable, and exportable without allowing normal save, rotate, copy, or duplicate paths to overwrite its source JSON.
+- Keep unresolved legacy content viewable, navigable, zoomable, and exportable
+  without allowing normal save, rotate, copy, or duplicate paths to overwrite
+  its source JSON.
 
 ## Verification
+
+- Editor-search removal coverage verifies that no editor Search action remains,
+  while existing library filtering and Smart Ink tests continue to pass. Raster
+  search/OCR tests and dependencies were removed with their implementation.
+  All 264 remaining Flutter tests and `flutter analyze` pass.
 
 - Widget coverage now proves atomic Smart Ink undo/redo and restoration after
   partially erasing beautified ink, alongside ordinary erase undo/redo. The
@@ -377,13 +375,11 @@
   the supported Chinese model identifiers and device-locale selection. ML Kit
   still requires physical-device accuracy and initial model-download checks.
 
-- The unified ML Kit recognition implementation passes all 277 Flutter tests,
-  `flutter analyze`, and `git diff --check`. Debug native builds succeed for the
-  iOS simulator and Android APK. Focused coverage verifies Digital Ink stroke
-  conversion, model/language fallback, inserted-image OCR caching and coordinate
-  highlights, scanned-PDF OCR fallback, and unified PDF/image/typed/Smart Ink
-  search results. Physical-device accuracy and first-model-download behavior
-  remain to be validated.
+- Historical verification before editor-search removal: the unified raster OCR
+  and Digital Ink implementation passed 277 Flutter tests and both native debug
+  builds. Raster OCR and its search coverage were removed on 2026-08-18;
+  Digital Ink physical-device accuracy and first-model-download behavior remain
+  to be validated.
 
 - The repository contains the official AGPLv3 and CC BY-SA 4.0 texts, explicit
   scope/commercial/trademark/contribution policies, retained OFL notices, and
@@ -1017,12 +1013,16 @@
 - Editor tool dock includes complete black/teal/red pen and yellow highlighter presets without covering the paper.
 - Saved recordings can be played, paused, scrubbed, and closed from the editor; all ink stays visible while the current recorded segment receives a temporary spotlight.
 - Audio playback follows linked pages by default; manually selecting a page suspends following, and the playback bar can resume it.
-- Editor app bar includes unified notebook search across cached PDF text, typed text boxes, and confirmed Smart Ink text, with cross-page navigation and source-specific highlighting.
+- Editor content search, PDF/image OCR indexing, and search highlights were
+  removed on 2026-08-18; the library `Search notebooks` field still filters
+  notebook titles and visible root-folder names.
 - Smart Ink now sends selected vector strokes to ML Kit Digital Ink on iOS and
   Android, asynchronously prefills the confirmation field, and preserves manual
   entry when model download, recognition, or the plugin is unavailable.
 - Smart Ink planning lives in `docs/development/SMART_INK_PLAN.md`.
-- Handwriting recognition, scanned-page OCR, caching, and iPadOS 27 PencilKit follow-up decisions live in `docs/development/RECOGNITION_OCR_SPIKE.md`.
+- Historical handwriting/OCR exploration lives in
+  `docs/development/RECOGNITION_OCR_SPIKE.md`; only the ML Kit Digital Ink
+  Smart Ink portion remains active.
 - Post-MVP feature gaps and optimization areas are documented in `docs/development/POST_MVP_ROADMAP.md`.
 - Subscription packaging, platform behavior, and local/cloud merge rules are documented in `docs/development/SUBSCRIPTION_PLAN.md`.
 - The accepted custom Python/PostgreSQL/MinIO backend scope is recorded under

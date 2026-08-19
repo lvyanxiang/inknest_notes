@@ -8,6 +8,9 @@
   zoom/pan behavior, page navigation, audio status, tool context actions, and
   responsive iPad layouts
 
+> The Search control, result, and highlight behavior described below was
+> superseded on 2026-08-18 by removal of editor-internal content search.
+
 ## Recommendation
 
 Use a quiet, writing-first workspace built from three visually distinct layers:

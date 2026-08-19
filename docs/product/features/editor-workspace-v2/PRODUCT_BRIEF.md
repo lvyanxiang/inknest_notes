@@ -5,6 +5,10 @@
 - Updated: 2026-08-03
 - Roadmap link: `docs/development/POST_MVP_ROADMAP.md` — Editor UI
 
+> The Search portions of this delivered layout were superseded on 2026-08-18:
+> editor-internal content search was removed and its document-bar space was
+> reclaimed. Library search and Smart Ink remain.
+
 ## Problem
 
 The current editor preserves page coordinates and keeps every feature reachable,
