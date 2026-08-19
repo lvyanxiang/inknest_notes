@@ -2,15 +2,16 @@
 
 ## Current
 
-- Milestone: Typed text boxes use explicit real-font selection and direct width
-  resizing in paged and infinite-canvas editors; ML Kit Smart Ink is retained.
+- Milestone: Typed text boxes now behave as first-class canvas objects with
+  idle, selected, and editing states in paged and infinite-canvas editors; ML
+  Kit Smart Ink is retained.
 - Next task: Revalidate representative Chinese/English handwriting on physical
   iOS and Android devices, including first-use model download, accuracy, and
   latency.
-- Last completed: Replaced the text-box simulated handwriting toggle with
-  Default/刘建毛草/龙藏/芝麻行 selection, added persistent horizontal resizing
-  for user-controlled wrapping, migrated legacy styles, and shared one bundled
-  font catalog with Smart Ink.
+- Last completed: Delivered text-box interaction V2 with clean idle rendering,
+  first-tap selection and second-tap editing, an external formatting toolbar,
+  empty-box cancellation, direct move/width resize, alignment persistence, and
+  atomic undo/redo transactions across both editor layouts.
 
 ### Licensing follow-up before public release or commercial use
 
@@ -307,7 +308,9 @@
 - Editor PDF background views reuse document references by file path and isolate background repainting with `RepaintBoundary`.
 - Store typed note content on `NotePage.textBoxes` as `NoteTextBox` objects with page coordinates, color, width, and font size.
 - Text boxes first support add, edit, move, delete, persistence, page duplication, thumbnails, and PDF export.
-- Store text rendering style on `NoteTextBox.style`; support regular and handwriting-style text boxes.
+- Store typed-text font and alignment on `NoteTextBox.font` and
+  `NoteTextBox.alignment`; migrate legacy simulated-handwriting styles to the
+  bundled 刘建毛草 font.
 - Text-box PDF export rasterizes Flutter-rendered text into PNGs before embedding them, preserving Unicode/CJK text and handwriting-style rendering without relying on `pdf` package default fonts.
 - Smart Ink uses the existing Lasso selection context: select rough strokes,
   invoke Smart Ink from the upright selection toolbar, confirm ML Kit Digital
@@ -345,6 +348,12 @@
   its source JSON.
 
 ## Verification
+
+- Text-box interaction V2 coverage verifies clean idle rendering, empty-box
+  cancellation, explicit font/size/color/alignment controls, persistence,
+  export alignment, and atomic paged/infinite-canvas undo. All 269 Flutter
+  tests, `flutter analyze`, and `git diff --check` pass; Smart Ink regressions
+  remain green.
 
 - Text-box model, persistence, PDF export, paged editor, and infinite-canvas
   coverage verifies explicit font selection, legacy style migration, and width
@@ -1012,10 +1021,11 @@
 - Editor export can save the full notebook, current page, or an ordered page/range expression such as `1,3,5-7`, with filenames suffixed by exported scope.
 - Editor export offers Compact, Balanced, and Best quality presets; Balanced is the default, Compact prioritizes sharing size, and Best preserves lossless PDF background detail.
 - PDF export now avoids rerendering duplicate backgrounds in the same export and renders imported PDF backgrounds at a higher default pixel density.
-- Editor toolbar includes a Text tool that can add typed text boxes to the
-  current page; text boxes can be edited, moved, width-resized, assigned the
-  default or one of three bundled handwriting fonts, deleted, persisted, shown
-  in thumbnails, and exported to PDF.
+- Editor toolbar includes a Text tool that creates empty focused boxes. Idle
+  text stays chrome-free; first tap selects, second tap edits, and the external
+  toolbar exposes move, width resize, font, size, color, alignment, delete, and
+  Done. These actions persist, render in thumbnails/PDF, and use transaction
+  undo/redo in both editor layouts.
 - Text boxes use real bundled fonts without system handwriting fallbacks,
   forced italics, or synthetic font weights; legacy simulated handwriting
   migrates to 刘建毛草.

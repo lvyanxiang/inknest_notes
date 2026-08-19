@@ -15,6 +15,14 @@ String? noteTextBoxFontFamily(NoteTextBoxFont font) {
   return noteTextBoxHandwritingFont(font)?.fontFamily;
 }
 
+TextAlign noteTextBoxTextAlign(NoteTextBoxAlignment alignment) {
+  return switch (alignment) {
+    NoteTextBoxAlignment.left => TextAlign.left,
+    NoteTextBoxAlignment.center => TextAlign.center,
+    NoteTextBoxAlignment.right => TextAlign.right,
+  };
+}
+
 HandwritingFontPreset? noteTextBoxHandwritingFont(NoteTextBoxFont font) {
   return switch (font) {
     NoteTextBoxFont.system => null,

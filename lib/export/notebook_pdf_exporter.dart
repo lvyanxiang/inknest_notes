@@ -350,6 +350,7 @@ class NotebookPdfExporter {
         style: noteTextBoxTextStyle(textBox),
       ),
       textDirection: ui.TextDirection.ltr,
+      textAlign: noteTextBoxTextAlign(textBox.alignment),
     )..layout(maxWidth: textBox.width);
     final width = math.max(1.0, textBox.width);
     final height = math.max(1.0, textPainter.height);

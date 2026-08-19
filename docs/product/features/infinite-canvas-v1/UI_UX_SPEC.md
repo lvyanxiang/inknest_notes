@@ -92,9 +92,12 @@ the existing writing workspace without showing page-only controls.
 - Show Lasso and Insert in the same middle tool group as paged notebooks.
 - Insert exposes Text, Image, and Shape with the existing labels and property
   surfaces; inserting content keeps the current viewport stable.
-- Text mode taps create an editable text box in world coordinates. Existing
-  text boxes expose edit, move, explicit font selection, width resize, and
-  delete controls.
+- Text mode taps create an empty text box in editing state at world
+  coordinates. Existing text is chrome-free when idle, uses first-tap
+  selection and second-tap editing, and exposes an external toolbar for move,
+  font, size, color, alignment, width resize, and deletion. Completed edit,
+  move, resize, format, creation, and deletion actions enter history as atomic
+  undo/redo transactions without changing the canvas transform.
 - Inserted images appear at the viewport focus and expose move, resize, and
   delete handles without adding finite canvas boundaries.
 - Shape mode draws directly in world coordinates and retains two-finger

@@ -68,8 +68,8 @@ class _EditorScreenState extends State<EditorScreen> {
       const FontGlyphStrokeGenerator();
   final GlobalKey<_ZoomablePageViewportState> _viewportKey =
       GlobalKey<_ZoomablePageViewportState>();
-  final Map<String, List<List<Stroke>>> _strokeUndoHistoryByPageId = {};
-  final Map<String, List<List<Stroke>>> _strokeRedoHistoryByPageId = {};
+  final Map<String, List<NotePage>> _pageUndoHistoryByPageId = {};
+  final Map<String, List<NotePage>> _pageRedoHistoryByPageId = {};
   final Set<String> _selectedStrokeIds = {};
   final Map<String, NotePage> _pagesById = {};
   final Map<String, PageViewportSessionState> _viewportStatesByPageId = {};
@@ -82,7 +82,11 @@ class _EditorScreenState extends State<EditorScreen> {
   bool _fingerPanEnabled = false;
   bool? _fingerPanBeforeLasso;
   bool _fingerWritingAssistEnabled = true;
-  String? _activeTextBoxId;
+  String? _selectedTextBoxId;
+  String? _editingTextBoxId;
+  String? _newTextBoxId;
+  NotePage? _textBoxMutationBaseline;
+  bool _textBoxMutationChanged = false;
   String? _activeImageId;
   bool _isAudioBusy = false;
   NotebookAudioRecording? _activeAudioRecording;
@@ -104,15 +108,11 @@ class _EditorScreenState extends State<EditorScreen> {
   bool _eraseGestureChanged = false;
   List<Stroke>? _pendingLassoStrokeBaseline;
 
-  List<List<Stroke>> get _undoStack => _strokeUndoHistoryByPageId.putIfAbsent(
-    _currentPageId,
-    () => <List<Stroke>>[],
-  );
+  List<NotePage> get _undoStack =>
+      _pageUndoHistoryByPageId.putIfAbsent(_currentPageId, () => <NotePage>[]);
 
-  List<List<Stroke>> get _redoStack => _strokeRedoHistoryByPageId.putIfAbsent(
-    _currentPageId,
-    () => <List<Stroke>>[],
-  );
+  List<NotePage> get _redoStack =>
+      _pageRedoHistoryByPageId.putIfAbsent(_currentPageId, () => <NotePage>[]);
 
   bool get _isCurrentPageWriteProtected =>
       _page?.isCoordinateSpaceWriteProtected ?? false;
@@ -184,6 +184,9 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   Future<void> _loadPage() async {
+    if (_selectedTextBoxId != null || _editingTextBoxId != null) {
+      _dismissTextBoxInteraction();
+    }
     final page = await widget.notebookRepository.loadPage(
       _notebook,
       _currentPageId,
@@ -196,7 +199,11 @@ class _EditorScreenState extends State<EditorScreen> {
     setState(() {
       _page = page;
       _pagesById[page.id] = page;
-      _activeTextBoxId = null;
+      _selectedTextBoxId = null;
+      _editingTextBoxId = null;
+      _newTextBoxId = null;
+      _textBoxMutationBaseline = null;
+      _textBoxMutationChanged = false;
       _activeImageId = null;
       _selectedStrokeIds.clear();
     });
@@ -283,6 +290,7 @@ class _EditorScreenState extends State<EditorScreen> {
     }
 
     final width = math.min(240.0, math.max(120.0, page.width - 32));
+    _beginTextBoxMutation();
     final textBox = NoteTextBox(
       id: 'text-${DateTime.now().microsecondsSinceEpoch}',
       position: _clampTextBoxPosition(
@@ -298,11 +306,12 @@ class _EditorScreenState extends State<EditorScreen> {
     setState(() {
       _page = updatedPage;
       _pagesById[updatedPage.id] = updatedPage;
-      _activeTextBoxId = textBox.id;
+      _selectedTextBoxId = textBox.id;
+      _editingTextBoxId = textBox.id;
+      _newTextBoxId = textBox.id;
+      _textBoxMutationChanged = true;
       _redoStack.clear();
     });
-
-    unawaited(_savePage(updatedPage));
   }
 
   void _updateTextBox(NoteTextBox textBox) {
@@ -320,7 +329,9 @@ class _EditorScreenState extends State<EditorScreen> {
     setState(() {
       _page = updatedPage;
       _pagesById[updatedPage.id] = updatedPage;
-      _activeTextBoxId = textBox.id;
+      if (_textBoxMutationBaseline != null) {
+        _textBoxMutationChanged = true;
+      }
       _redoStack.clear();
     });
 
@@ -342,17 +353,111 @@ class _EditorScreenState extends State<EditorScreen> {
     }
 
     final updatedPage = page.copyWith(textBoxes: updatedTextBoxes);
+    if (textBoxId == _newTextBoxId) {
+      _cancelTextBoxMutation();
+      setState(() {
+        _page = updatedPage;
+        _pagesById[updatedPage.id] = updatedPage;
+        _selectedTextBoxId = null;
+        _editingTextBoxId = null;
+        _newTextBoxId = null;
+      });
+      unawaited(_savePage(updatedPage));
+      return;
+    }
+    _endTextBoxMutation();
+    _recordPageMutation(before: page);
 
     setState(() {
       _page = updatedPage;
       _pagesById[updatedPage.id] = updatedPage;
-      if (_activeTextBoxId == textBoxId) {
-        _activeTextBoxId = null;
-      }
+      _selectedTextBoxId = null;
+      _editingTextBoxId = null;
+      _newTextBoxId = null;
       _redoStack.clear();
     });
 
     unawaited(_savePage(updatedPage));
+  }
+
+  void _selectTextBox(String textBoxId) {
+    setState(() {
+      _selectedTextBoxId = textBoxId;
+      _editingTextBoxId = null;
+    });
+  }
+
+  void _startEditingTextBox(String textBoxId) {
+    _beginTextBoxMutation();
+    setState(() {
+      _selectedTextBoxId = textBoxId;
+      _editingTextBoxId = textBoxId;
+    });
+  }
+
+  void _dismissTextBoxInteraction() {
+    final page = _page;
+    final editingId = _editingTextBoxId;
+    if (page == null) {
+      return;
+    }
+    if (editingId != null && editingId == _newTextBoxId) {
+      NoteTextBox? textBox;
+      for (final candidate in page.textBoxes) {
+        if (candidate.id == editingId) {
+          textBox = candidate;
+          break;
+        }
+      }
+      if (textBox == null || textBox.text.trim().isEmpty) {
+        final updatedPage = page.copyWith(
+          textBoxes: [
+            for (final existing in page.textBoxes)
+              if (existing.id != editingId) existing,
+          ],
+        );
+        setState(() {
+          _page = updatedPage;
+          _pagesById[updatedPage.id] = updatedPage;
+          _selectedTextBoxId = null;
+          _editingTextBoxId = null;
+          _newTextBoxId = null;
+        });
+        _cancelTextBoxMutation();
+        unawaited(_savePage(updatedPage));
+        return;
+      }
+    }
+
+    _endTextBoxMutation();
+    setState(() {
+      _selectedTextBoxId = null;
+      _editingTextBoxId = null;
+      _newTextBoxId = null;
+    });
+  }
+
+  void _beginTextBoxMutation() {
+    final page = _page;
+    if (page == null || _textBoxMutationBaseline != null) {
+      return;
+    }
+    _textBoxMutationBaseline = page;
+    _textBoxMutationChanged = false;
+  }
+
+  void _endTextBoxMutation() {
+    final baseline = _textBoxMutationBaseline;
+    if (baseline != null && _textBoxMutationChanged) {
+      _recordPageMutation(before: baseline);
+    }
+    _textBoxMutationBaseline = null;
+    _textBoxMutationChanged = false;
+  }
+
+  void _cancelTextBoxMutation() {
+    _textBoxMutationBaseline = null;
+    _textBoxMutationChanged = false;
   }
 
   Future<void> _insertImage() async {
@@ -460,7 +565,8 @@ class _EditorScreenState extends State<EditorScreen> {
         _notebook = updatedNotebook;
         _currentPageId = importedPageIds.first;
         _page = null;
-        _activeTextBoxId = null;
+        _selectedTextBoxId = null;
+        _editingTextBoxId = null;
         _activeImageId = null;
         _selectedStrokeIds.clear();
         _redoStack.clear();
@@ -646,7 +752,8 @@ class _EditorScreenState extends State<EditorScreen> {
         _currentPageId = playbackPageId;
         _page = playbackPage;
         _redoStack.clear();
-        _activeTextBoxId = null;
+        _selectedTextBoxId = null;
+        _editingTextBoxId = null;
         _activeImageId = null;
       }
     });
@@ -1038,14 +1145,20 @@ class _EditorScreenState extends State<EditorScreen> {
       return;
     }
 
-    final previousStrokes = _undoStack.removeLast();
-    _redoStack.add(List<Stroke>.unmodifiable(page.strokes));
-    final updatedPage = page.copyWith(strokes: previousStrokes);
+    _dismissTextBoxInteraction();
+    final currentPage = _page;
+    if (currentPage == null || _undoStack.isEmpty) {
+      return;
+    }
+    final updatedPage = _undoStack.removeLast();
+    _redoStack.add(currentPage);
 
     setState(() {
       _page = updatedPage;
       _pagesById[updatedPage.id] = updatedPage;
       _selectedStrokeIds.clear();
+      _selectedTextBoxId = null;
+      _editingTextBoxId = null;
       _eraseGestureBaseline = null;
       _eraseGestureChanged = false;
       _pendingLassoStrokeBaseline = null;
@@ -1060,14 +1173,20 @@ class _EditorScreenState extends State<EditorScreen> {
       return;
     }
 
-    final nextStrokes = _redoStack.removeLast();
-    _undoStack.add(List<Stroke>.unmodifiable(page.strokes));
-    final updatedPage = page.copyWith(strokes: nextStrokes);
+    _dismissTextBoxInteraction();
+    final currentPage = _page;
+    if (currentPage == null || _redoStack.isEmpty) {
+      return;
+    }
+    final updatedPage = _redoStack.removeLast();
+    _undoStack.add(currentPage);
 
     setState(() {
       _page = updatedPage;
       _pagesById[updatedPage.id] = updatedPage;
       _selectedStrokeIds.clear();
+      _selectedTextBoxId = null;
+      _editingTextBoxId = null;
       _eraseGestureBaseline = null;
       _eraseGestureChanged = false;
       _pendingLassoStrokeBaseline = null;
@@ -1077,6 +1196,10 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   void _setTool(DrawingTool tool) {
+    if (tool.type != _tool.type &&
+        (_selectedTextBoxId != null || _editingTextBoxId != null)) {
+      _dismissTextBoxInteraction();
+    }
     setState(() {
       final wasUsingLasso = _tool.type == ToolType.lasso;
       _tool = tool;
@@ -1166,18 +1289,22 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   void _recordStrokeMutation(NotePage page, {List<Stroke>? before}) {
-    final history = _strokeUndoHistoryByPageId.putIfAbsent(
-      page.id,
-      () => <List<Stroke>>[],
+    _recordPageMutation(
+      before: before == null ? page : page.copyWith(strokes: before),
     );
-    history.add(List<Stroke>.unmodifiable(before ?? page.strokes));
+  }
+
+  void _recordPageMutation({required NotePage before}) {
+    final history = _pageUndoHistoryByPageId.putIfAbsent(
+      before.id,
+      () => <NotePage>[],
+    );
+    history.add(before);
     const maximumHistoryLength = 100;
     if (history.length > maximumHistoryLength) {
       history.removeAt(0);
     }
-    _strokeRedoHistoryByPageId
-        .putIfAbsent(page.id, () => <List<Stroke>>[])
-        .clear();
+    _pageRedoHistoryByPageId.putIfAbsent(before.id, () => <NotePage>[]).clear();
   }
 
   void _selectStrokesWithLasso(List<Offset> polygon) {
@@ -2442,12 +2569,18 @@ class _EditorScreenState extends State<EditorScreen> {
               ),
               TextBoxLayer(
                 page: page,
-                activeTextBoxId: _activeTextBoxId,
+                selectedTextBoxId: _selectedTextBoxId,
+                editingTextBoxId: _editingTextBoxId,
                 onCreateTextBox: _tool.type == ToolType.text
                     ? _addTextBoxAt
                     : null,
                 onTextBoxChanged: _updateTextBox,
                 onTextBoxDeleted: _deleteTextBox,
+                onTextBoxSelected: _selectTextBox,
+                onTextBoxEditingStarted: _startEditingTextBox,
+                onInteractionDismissed: _dismissTextBoxInteraction,
+                onMutationStarted: _beginTextBoxMutation,
+                onMutationEnded: _endTextBoxMutation,
               ),
               if (_tool.type == ToolType.lasso)
                 LassoSelectionLayer(
@@ -4960,6 +5093,7 @@ class _PageThumbnailPainter extends CustomPainter {
         ),
         maxLines: 3,
         textDirection: TextDirection.ltr,
+        textAlign: noteTextBoxTextAlign(textBox.alignment),
       )..layout(maxWidth: textBox.width);
 
       textPainter.paint(canvas, textBox.position);

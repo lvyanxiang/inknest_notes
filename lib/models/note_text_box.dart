@@ -4,16 +4,19 @@ import 'package:flutter/foundation.dart';
 
 enum NoteTextBoxFont { system, liuJianMaoCao, longCang, zhiMangXing }
 
+enum NoteTextBoxAlignment { left, center, right }
+
 @immutable
 class NoteTextBox {
   const NoteTextBox({
     required this.id,
     required this.position,
-    this.text = 'Text',
+    this.text = '',
     this.width = 240,
     this.color = const Color(0xFF1E2526),
     this.fontSize = 24,
     this.font = NoteTextBoxFont.system,
+    this.alignment = NoteTextBoxAlignment.left,
   });
 
   final String id;
@@ -23,6 +26,7 @@ class NoteTextBox {
   final Color color;
   final double fontSize;
   final NoteTextBoxFont font;
+  final NoteTextBoxAlignment alignment;
 
   factory NoteTextBox.fromJson(Map<String, Object?> json) {
     return NoteTextBox(
@@ -36,6 +40,10 @@ class NoteTextBox {
       color: Color(json['color']! as int),
       fontSize: (json['fontSize']! as num).toDouble(),
       font: _fontFromJson(json),
+      alignment: NoteTextBoxAlignment.values.firstWhere(
+        (alignment) => alignment.name == json['alignment'],
+        orElse: () => NoteTextBoxAlignment.left,
+      ),
     );
   }
 
@@ -49,6 +57,7 @@ class NoteTextBox {
       'color': color.toARGB32(),
       'fontSize': fontSize,
       'font': font.name,
+      'alignment': alignment.name,
     };
   }
 
@@ -59,6 +68,7 @@ class NoteTextBox {
     Color? color,
     double? fontSize,
     NoteTextBoxFont? font,
+    NoteTextBoxAlignment? alignment,
   }) {
     return NoteTextBox(
       id: id,
@@ -68,6 +78,7 @@ class NoteTextBox {
       color: color ?? this.color,
       fontSize: fontSize ?? this.fontSize,
       font: font ?? this.font,
+      alignment: alignment ?? this.alignment,
     );
   }
 

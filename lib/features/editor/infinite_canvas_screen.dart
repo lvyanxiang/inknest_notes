@@ -58,7 +58,11 @@ class _InfiniteCanvasScreenState extends State<InfiniteCanvasScreen> {
   bool _fingerWritingAssistEnabled = true;
   _CanvasContentState? _eraseStartState;
   _CanvasContentState? _lassoPreviewStartState;
-  String? _activeTextBoxId;
+  String? _selectedTextBoxId;
+  String? _editingTextBoxId;
+  String? _newTextBoxId;
+  _CanvasContentState? _textBoxMutationBaseline;
+  bool _textBoxMutationChanged = false;
   String? _activeImageId;
   bool? _fingerPanBeforeLasso;
 
@@ -153,9 +157,16 @@ class _InfiniteCanvasScreenState extends State<InfiniteCanvasScreen> {
   void _undo() {
     final document = _document;
     if (document == null || _undoStates.isEmpty) return;
-    _redoStates.add(_contentState(document));
-    final updated = _withContent(document, _undoStates.removeLast());
-    setState(() => _document = updated);
+    _dismissTextBoxInteraction();
+    final current = _document;
+    if (current == null || _undoStates.isEmpty) return;
+    _redoStates.add(_contentState(current));
+    final updated = _withContent(current, _undoStates.removeLast());
+    setState(() {
+      _document = updated;
+      _selectedTextBoxId = null;
+      _editingTextBoxId = null;
+    });
     _selectedStrokeIds.clear();
     unawaited(_save(updated));
   }
@@ -163,18 +174,30 @@ class _InfiniteCanvasScreenState extends State<InfiniteCanvasScreen> {
   void _redo() {
     final document = _document;
     if (document == null || _redoStates.isEmpty) return;
-    _undoStates.add(_contentState(document));
-    final updated = _withContent(document, _redoStates.removeLast());
-    setState(() => _document = updated);
+    _dismissTextBoxInteraction();
+    final current = _document;
+    if (current == null || _redoStates.isEmpty) return;
+    _undoStates.add(_contentState(current));
+    final updated = _withContent(current, _redoStates.removeLast());
+    setState(() {
+      _document = updated;
+      _selectedTextBoxId = null;
+      _editingTextBoxId = null;
+    });
     _selectedStrokeIds.clear();
     unawaited(_save(updated));
   }
 
   void _setTool(DrawingTool tool) {
+    if (tool.type != _tool.type &&
+        (_selectedTextBoxId != null || _editingTextBoxId != null)) {
+      _dismissTextBoxInteraction();
+    }
     setState(() {
       final wasUsingLasso = _tool.type == ToolType.lasso;
       _tool = tool;
-      _activeTextBoxId = null;
+      _selectedTextBoxId = null;
+      _editingTextBoxId = null;
       _activeImageId = null;
       if (tool.type == ToolType.lasso) {
         if (!wasUsingLasso) {
@@ -205,30 +228,40 @@ class _InfiniteCanvasScreenState extends State<InfiniteCanvasScreen> {
   void _addTextBoxAt(Offset position) {
     final document = _document;
     if (document == null) return;
+    _beginTextBoxMutation();
     final textBox = NoteTextBox(
       id: 'text-${DateTime.now().microsecondsSinceEpoch}',
       position: position - const Offset(120, 24),
       width: 240,
       color: _tool.color,
     );
-    _activeTextBoxId = textBox.id;
-    _commitContent(
-      document.copyWith(textBoxes: [...document.textBoxes, textBox]),
-    );
+    setState(() {
+      _document = document.copyWith(
+        textBoxes: [...document.textBoxes, textBox],
+      );
+      _selectedTextBoxId = textBox.id;
+      _editingTextBoxId = textBox.id;
+      _newTextBoxId = textBox.id;
+      _textBoxMutationChanged = true;
+    });
   }
 
   void _updateTextBox(NoteTextBox textBox) {
     final document = _document;
     if (document == null) return;
-    _activeTextBoxId = textBox.id;
-    _commitContent(
-      document.copyWith(
-        textBoxes: [
-          for (final existing in document.textBoxes)
-            if (existing.id == textBox.id) textBox else existing,
-        ],
-      ),
+    final updated = document.copyWith(
+      textBoxes: [
+        for (final existing in document.textBoxes)
+          if (existing.id == textBox.id) textBox else existing,
+      ],
     );
+    setState(() {
+      _document = updated;
+      if (_textBoxMutationBaseline != null) {
+        _textBoxMutationChanged = true;
+      }
+    });
+    unawaited(_save(updated));
   }
 
   void _deleteTextBox(String id) {
@@ -239,8 +272,98 @@ class _InfiniteCanvasScreenState extends State<InfiniteCanvasScreen> {
         if (textBox.id != id) textBox,
     ];
     if (remaining.length == document.textBoxes.length) return;
-    _activeTextBoxId = null;
-    _commitContent(document.copyWith(textBoxes: remaining));
+    final updated = document.copyWith(textBoxes: remaining);
+    if (id == _newTextBoxId) {
+      _cancelTextBoxMutation();
+      setState(() {
+        _document = updated;
+        _selectedTextBoxId = null;
+        _editingTextBoxId = null;
+        _newTextBoxId = null;
+      });
+      unawaited(_save(updated));
+      return;
+    }
+    _endTextBoxMutation();
+    _selectedTextBoxId = null;
+    _editingTextBoxId = null;
+    _newTextBoxId = null;
+    _commitContent(updated);
+  }
+
+  void _selectTextBox(String textBoxId) {
+    setState(() {
+      _selectedTextBoxId = textBoxId;
+      _editingTextBoxId = null;
+    });
+  }
+
+  void _startEditingTextBox(String textBoxId) {
+    _beginTextBoxMutation();
+    setState(() {
+      _selectedTextBoxId = textBoxId;
+      _editingTextBoxId = textBoxId;
+    });
+  }
+
+  void _dismissTextBoxInteraction() {
+    final document = _document;
+    final editingId = _editingTextBoxId;
+    if (document == null) return;
+    if (editingId != null && editingId == _newTextBoxId) {
+      NoteTextBox? textBox;
+      for (final candidate in document.textBoxes) {
+        if (candidate.id == editingId) {
+          textBox = candidate;
+          break;
+        }
+      }
+      if (textBox == null || textBox.text.trim().isEmpty) {
+        final updated = document.copyWith(
+          textBoxes: [
+            for (final existing in document.textBoxes)
+              if (existing.id != editingId) existing,
+          ],
+        );
+        setState(() {
+          _document = updated;
+          _selectedTextBoxId = null;
+          _editingTextBoxId = null;
+          _newTextBoxId = null;
+        });
+        _cancelTextBoxMutation();
+        unawaited(_save(updated));
+        return;
+      }
+    }
+    _endTextBoxMutation();
+    setState(() {
+      _selectedTextBoxId = null;
+      _editingTextBoxId = null;
+      _newTextBoxId = null;
+    });
+  }
+
+  void _beginTextBoxMutation() {
+    final document = _document;
+    if (document == null || _textBoxMutationBaseline != null) return;
+    _textBoxMutationBaseline = _contentState(document);
+    _textBoxMutationChanged = false;
+  }
+
+  void _endTextBoxMutation() {
+    final baseline = _textBoxMutationBaseline;
+    if (baseline != null && _textBoxMutationChanged) {
+      _undoStates.add(baseline);
+      _redoStates.clear();
+    }
+    _textBoxMutationBaseline = null;
+    _textBoxMutationChanged = false;
+  }
+
+  void _cancelTextBoxMutation() {
+    _textBoxMutationBaseline = null;
+    _textBoxMutationChanged = false;
   }
 
   Future<void> _insertImage() async {
@@ -551,7 +674,8 @@ class _InfiniteCanvasScreenState extends State<InfiniteCanvasScreen> {
                   tool: _tool,
                   fingerPanEnabled: _fingerPanEnabled,
                   fingerWritingAssistEnabled: _fingerWritingAssistEnabled,
-                  activeTextBoxId: _activeTextBoxId,
+                  selectedTextBoxId: _selectedTextBoxId,
+                  editingTextBoxId: _editingTextBoxId,
                   activeImageId: _activeImageId,
                   selectedStrokes: _selectedStrokes(document),
                   onStrokeComplete: _commitStroke,
@@ -561,6 +685,11 @@ class _InfiniteCanvasScreenState extends State<InfiniteCanvasScreen> {
                   onTextBoxCreate: _addTextBoxAt,
                   onTextBoxChanged: _updateTextBox,
                   onTextBoxDeleted: _deleteTextBox,
+                  onTextBoxSelected: _selectTextBox,
+                  onTextBoxEditingStarted: _startEditingTextBox,
+                  onTextBoxInteractionDismissed: _dismissTextBoxInteraction,
+                  onTextBoxMutationStarted: _beginTextBoxMutation,
+                  onTextBoxMutationEnded: _endTextBoxMutation,
                   onImageChanged: _updateImage,
                   onImageDeleted: _deleteImage,
                   onShapeComplete: _addShape,
@@ -651,7 +780,8 @@ class _InfiniteCanvasViewport extends StatefulWidget {
     required this.tool,
     required this.fingerPanEnabled,
     required this.fingerWritingAssistEnabled,
-    required this.activeTextBoxId,
+    required this.selectedTextBoxId,
+    required this.editingTextBoxId,
     required this.activeImageId,
     required this.selectedStrokes,
     required this.onStrokeComplete,
@@ -661,6 +791,11 @@ class _InfiniteCanvasViewport extends StatefulWidget {
     required this.onTextBoxCreate,
     required this.onTextBoxChanged,
     required this.onTextBoxDeleted,
+    required this.onTextBoxSelected,
+    required this.onTextBoxEditingStarted,
+    required this.onTextBoxInteractionDismissed,
+    required this.onTextBoxMutationStarted,
+    required this.onTextBoxMutationEnded,
     required this.onImageChanged,
     required this.onImageDeleted,
     required this.onShapeComplete,
@@ -675,7 +810,8 @@ class _InfiniteCanvasViewport extends StatefulWidget {
   final DrawingTool tool;
   final bool fingerPanEnabled;
   final bool fingerWritingAssistEnabled;
-  final String? activeTextBoxId;
+  final String? selectedTextBoxId;
+  final String? editingTextBoxId;
   final String? activeImageId;
   final List<Stroke> selectedStrokes;
   final ValueChanged<Stroke> onStrokeComplete;
@@ -685,6 +821,11 @@ class _InfiniteCanvasViewport extends StatefulWidget {
   final ValueChanged<Offset> onTextBoxCreate;
   final ValueChanged<NoteTextBox> onTextBoxChanged;
   final ValueChanged<String> onTextBoxDeleted;
+  final ValueChanged<String> onTextBoxSelected;
+  final ValueChanged<String> onTextBoxEditingStarted;
+  final VoidCallback onTextBoxInteractionDismissed;
+  final VoidCallback onTextBoxMutationStarted;
+  final VoidCallback onTextBoxMutationEnded;
   final ValueChanged<NoteImage> onImageChanged;
   final ValueChanged<String> onImageDeleted;
   final ValueChanged<NoteShape> onShapeComplete;
@@ -1155,7 +1296,8 @@ class _InfiniteCanvasViewportState extends State<_InfiniteCanvasViewport> {
                 ),
                 TextBoxLayer(
                   page: screenPage,
-                  activeTextBoxId: widget.activeTextBoxId,
+                  selectedTextBoxId: widget.selectedTextBoxId,
+                  editingTextBoxId: widget.editingTextBoxId,
                   onCreateTextBox: widget.tool.type == ToolType.text
                       ? (position) => widget.onTextBoxCreate(
                           _screenToWorld(position, size),
@@ -1164,6 +1306,11 @@ class _InfiniteCanvasViewportState extends State<_InfiniteCanvasViewport> {
                   onTextBoxChanged: (textBox) =>
                       widget.onTextBoxChanged(_textBoxToWorld(textBox, size)),
                   onTextBoxDeleted: widget.onTextBoxDeleted,
+                  onTextBoxSelected: widget.onTextBoxSelected,
+                  onTextBoxEditingStarted: widget.onTextBoxEditingStarted,
+                  onInteractionDismissed: widget.onTextBoxInteractionDismissed,
+                  onMutationStarted: widget.onTextBoxMutationStarted,
+                  onMutationEnded: widget.onTextBoxMutationEnded,
                 ),
                 if (widget.tool.type == ToolType.lasso)
                   LassoSelectionLayer(

@@ -11,11 +11,13 @@ void main() {
       position: Offset(12, 24),
       text: '真实字体',
       font: NoteTextBoxFont.zhiMangXing,
+      alignment: NoteTextBoxAlignment.center,
     );
 
     final reloaded = NoteTextBox.fromJson(textBox.toJson());
 
     expect(reloaded.font, NoteTextBoxFont.zhiMangXing);
+    expect(reloaded.alignment, NoteTextBoxAlignment.center);
     expect(noteTextBoxTextStyle(reloaded).fontFamily, 'ZhiMangXing');
     expect(noteTextBoxTextStyle(reloaded).fontFamilyFallback, isNull);
     expect(noteTextBoxTextStyle(reloaded).fontStyle, isNull);
@@ -35,6 +37,7 @@ void main() {
     });
 
     expect(textBox.font, NoteTextBoxFont.liuJianMaoCao);
+    expect(textBox.alignment, NoteTextBoxAlignment.left);
     expect(noteTextBoxTextStyle(textBox).fontFamily, 'LiuJianMaoCao');
   });
 

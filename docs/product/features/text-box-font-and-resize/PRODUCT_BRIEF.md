@@ -1,4 +1,4 @@
-# Text Box Font And Resize Product Brief
+# Text Box Interaction V2 Product Brief
 
 - Status: Delivered
 - Size: Medium
@@ -7,59 +7,68 @@
 
 ## Problem
 
-Typed notes currently have a fixed-width text box and a one-tap simulated
-handwriting toggle. Users cannot directly control wrapping by resizing the
-box, and the simulated system-font fallback is weaker than the three real
-handwriting fonts already bundled for Smart Ink.
+Typed notes currently behave like permanently open form fields: every box
+always shows a surface, border, and compact controls, while selection and
+editing are indistinguishable. Empty boxes persist placeholder content,
+formatting is incomplete, and undo is either absent on paged notes or records
+every intermediate update on infinite canvas.
 
 ## Recommended Outcome
 
-Make text boxes directly resizable and give them an explicit font picker.
-Keep the platform default font for compatibility and offer the three bundled
-handwriting fonts as real font-family choices. Remove the old simulated
-handwriting style without changing Smart Ink recognition or Beautify.
+Treat text as a first-class canvas object with three states: idle, selected,
+and editing. Idle text leaves the paper visually clean. Selection exposes a
+light frame, large resize handles, and an external object toolbar. Editing adds
+the caret and keyboard without changing the object's layout. Text changes,
+movement, resizing, formatting, creation, and deletion use coherent undo
+transactions.
 
 ## Scope
 
-- In scope: paged and infinite-canvas text boxes, horizontal width resizing,
-  automatic wrapping inside the chosen width, manual line breaks, font
-  selection, persistence migration, PDF export, and tests.
-- Non-goals: removing or changing ML Kit, Smart Ink, Beautify, font-to-stroke
-  redraw, rich-text spans, vertical resizing, or font download.
+- In scope: paged and infinite-canvas text boxes; idle/selected/editing states;
+  empty placeholder behavior; tap-outside completion; move and width resize;
+  real font, size, color, and alignment controls; deletion; persistence; PDF
+  export; and transaction-level undo/redo.
+- Non-goals: rich-text spans, rotation, layer ordering, locking, text flowing
+  between pages, imported fonts, or changing ML Kit Smart Ink/Beautify.
 
 ## User Flow
 
-1. Insert or select a text box.
-2. Type text, choose a font from the text-box header, and drag the resize
-   handle to control wrapping.
-3. Move or delete the box with the existing controls; changes persist and
-   export with the notebook.
+1. Choose Text and tap the paper to create an empty box in editing state.
+2. Type and format from the floating object toolbar; drag a side handle to
+   control wrapping or the move handle to reposition the box.
+3. Tap outside to finish. Empty new boxes disappear; non-empty boxes become
+   clean, chrome-free text.
+4. Tap an existing box to select it and tap again to edit. Undo restores one
+   completed input, move, resize, format, creation, or deletion action.
 
 ## Acceptance Criteria
 
-- [x] Text boxes expose Default, 刘建毛草, 龙藏, and 芝麻行 font choices.
-- [x] The three handwriting choices render with their bundled font files,
-  without system-font fallback, forced italic, or synthetic weight styling.
-- [x] Dragging the resize handle changes and persists box width within the
-  available paged surface; text wraps at that width and preserves manual
-  newlines.
-- [x] Paged and infinite-canvas editors share the same text-box interaction.
-- [x] Existing `regular` text boxes remain default-font text; legacy
-  `handwriting` boxes migrate to 刘建毛草 instead of simulated styling.
-- [x] Smart Ink and Beautify behavior and tests remain intact.
+- [x] Idle text displays no permanent card, border, toolbar, or controls.
+- [x] One tap selects an existing text box; a second tap enters editing.
+- [x] New boxes start empty with a non-persisted hint and immediate keyboard
+  focus; tapping outside removes an unused empty box.
+- [x] Selected/editing boxes provide at least 44px move/resize/action targets
+  and an external toolbar for font, size, color, alignment, and more actions.
+- [x] Width resizing controls wrapping without changing font size.
+- [x] Paged and infinite-canvas editors use the same interaction state model.
+- [x] Creation, deletion, a continuous edit session, and each complete
+  move/resize gesture are atomic undo/redo operations.
+- [x] Existing font/style migration, persistence, thumbnails, PDF export, and
+  Smart Ink continue to work.
 
 ## Alternatives And Tradeoffs
 
-- Keep a one-tap style toggle: rejected because it hides the selected font and
-  cannot represent three real choices.
-- Remove the default font: rejected because it would silently restyle existing
-  typed notes.
+- Keep improving the permanent header: rejected because it cannot provide a
+  clean reading state or clear gesture ownership.
+- Enter editing on the first tap: rejected because selection, movement, and
+  object formatting would remain easy to trigger accidentally.
 
 ## Dependencies And Risks
 
-- Depends on the three font assets already declared in `pubspec.yaml`.
-- Persisted text-box JSON needs backward-compatible decoding of the old
-  `style` field.
+- The shared text layer needs explicit parent-owned selected/editing state.
+- Paged editor history must expand from stroke-only snapshots to page-content
+  snapshots without breaking existing Smart Ink and eraser behavior.
+- Floating controls must stay usable near page edges and under canvas zoom.
 
 ## Open Decisions
 
@@ -69,5 +78,4 @@ handwriting style without changing Smart Ink recognition or Beautify.
 
 - UI/UX spec: `docs/product/features/text-box-font-and-resize/UI_UX_SPEC.md`
 - Implementation status: Delivered
-- Verification: `flutter analyze`, all 267 Flutter tests, and
-  `git diff --check` pass.
+- Verification: 269 Flutter tests, `flutter analyze`, and `git diff --check`

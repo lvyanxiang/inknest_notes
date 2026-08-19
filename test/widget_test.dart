@@ -386,7 +386,10 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.drag(find.byTooltip('Resize text box'), const Offset(64, 0));
+    await tester.drag(
+      find.byTooltip('Resize text box from right'),
+      const Offset(64, 0),
+    );
     await tester.pump();
     document = await repository.loadInfiniteCanvas(notebook);
     expect(document.textBoxes.single.font, NoteTextBoxFont.zhiMangXing);
@@ -425,9 +428,22 @@ void main() {
     document = await repository.loadInfiniteCanvas(notebook);
     expect(document.shapes, hasLength(1));
 
-    await tester.tap(find.byTooltip('Delete text box'));
+    await selectInsertAction(tester, 'Text');
+    final idleTextBoxId = document.textBoxes.single.id;
+    await tester.tap(find.byKey(ValueKey('text-box-idle-$idleTextBoxId')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(ValueKey('text-box-more-$idleTextBoxId')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete text box').last);
     await tester.pumpAndSettle();
     expect((await repository.loadInfiniteCanvas(notebook)).textBoxes, isEmpty);
+
+    await tester.tap(find.byKey(const ValueKey('infinite-canvas-undo')));
+    await tester.pumpAndSettle();
+    expect(
+      (await repository.loadInfiniteCanvas(notebook)).textBoxes.single.text,
+      'Spatial idea',
+    );
   });
 
   testWidgets('infinite canvas lasso selects and deletes ink', (
@@ -910,7 +926,8 @@ void main() {
 
     expect(find.text('Typed note'), findsOneWidget);
     expect(find.byTooltip('Choose font (Default)'), findsOneWidget);
-    expect(find.byTooltip('Resize text box'), findsOneWidget);
+    expect(find.byTooltip('Resize text box from left'), findsOneWidget);
+    expect(find.byTooltip('Resize text box from right'), findsOneWidget);
 
     final textBoxBefore = tester
         .widget<TextBoxLayer>(find.byType(TextBoxLayer))
@@ -935,7 +952,44 @@ void main() {
       NoteTextBoxFont.longCang,
     );
 
-    await tester.drag(find.byTooltip('Resize text box'), const Offset(72, 0));
+    await tester.tap(
+      find.byKey(ValueKey('text-box-size-menu-${textBoxBefore.id}')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(ValueKey('text-box-size-${textBoxBefore.id}-28')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(ValueKey('text-box-alignment-menu-${textBoxBefore.id}')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(ValueKey('text-box-alignment-${textBoxBefore.id}-center')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(ValueKey('text-box-color-menu-${textBoxBefore.id}')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(ValueKey('text-box-color-${textBoxBefore.id}-Blue')),
+    );
+    await tester.pumpAndSettle();
+
+    final formattedTextBox = tester
+        .widget<TextBoxLayer>(find.byType(TextBoxLayer))
+        .page
+        .textBoxes
+        .single;
+    expect(formattedTextBox.fontSize, 28);
+    expect(formattedTextBox.alignment, NoteTextBoxAlignment.center);
+    expect(formattedTextBox.color, const Color(0xFF3568B8));
+
+    await tester.drag(
+      find.byTooltip('Resize text box from right'),
+      const Offset(72, 0),
+    );
     await tester.pumpAndSettle();
 
     expect(
@@ -948,6 +1002,28 @@ void main() {
       greaterThan(textBoxBefore.width),
     );
 
+    await tester.tap(find.byKey(ValueKey('text-box-done-${textBoxBefore.id}')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(ValueKey('text-box-toolbar-${textBoxBefore.id}')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(ValueKey('text-box-idle-${textBoxBefore.id}')),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(ValueKey('text-box-idle-${textBoxBefore.id}')));
+    await tester.pumpAndSettle();
+    expect(find.byType(TextField), findsNothing);
+    await tester.tap(
+      find.byKey(ValueKey('text-box-selected-${textBoxBefore.id}')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(TextField), findsOneWidget);
+    await tester.tap(find.byKey(ValueKey('text-box-done-${textBoxBefore.id}')));
+    await tester.pumpAndSettle();
+
     await addPageAfterCurrent(tester);
     await openEditorPages(tester);
     await tester.tap(find.byTooltip('Page 1'));
@@ -956,10 +1032,94 @@ void main() {
 
     expect(find.text('Typed note'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Delete text box'));
+    await tester.tap(find.byKey(ValueKey('text-box-idle-${textBoxBefore.id}')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(ValueKey('text-box-more-${textBoxBefore.id}')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete text box').last);
     await tester.pumpAndSettle();
 
     expect(find.text('Typed note'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('editor-undo-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('Typed note'), findsOneWidget);
+  });
+
+  testWidgets('dismisses an unused empty editor text box', (
+    WidgetTester tester,
+  ) async {
+    await pumpInkNestApp(tester);
+    await createPagedNotebook(tester);
+    await selectInsertAction(tester, 'Text');
+
+    await tester.tapAt(visibleCanvasPoint(tester));
+    await tester.pumpAndSettle();
+    expect(find.byType(TextField), findsOneWidget);
+    expect(
+      tester.widget<TextBoxLayer>(find.byType(TextBoxLayer)).page.textBoxes,
+      hasLength(1),
+    );
+
+    await tester.tapAt(
+      visibleCanvasPoint(tester, horizontalFraction: 0.82, verticalInset: 220),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<TextBoxLayer>(find.byType(TextBoxLayer)).page.textBoxes,
+      isEmpty,
+    );
+  });
+
+  testWidgets('groups paged text editing into undoable sessions', (
+    WidgetTester tester,
+  ) async {
+    await pumpInkNestApp(tester);
+    await createPagedNotebook(tester);
+    await selectInsertAction(tester, 'Text');
+
+    await tester.tapAt(visibleCanvasPoint(tester));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'First draft');
+    await tester.pump();
+    final textBoxId = tester
+        .widget<TextBoxLayer>(find.byType(TextBoxLayer))
+        .page
+        .textBoxes
+        .single
+        .id;
+    await tester.tap(find.byKey(ValueKey('text-box-done-$textBoxId')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('editor-undo-button')));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextBoxLayer>(find.byType(TextBoxLayer)).page.textBoxes,
+      isEmpty,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('editor-redo-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('First draft'), findsOneWidget);
+
+    await tester.tap(find.byKey(ValueKey('text-box-idle-$textBoxId')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(ValueKey('text-box-selected-$textBoxId')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Revised draft');
+    await tester.pump();
+    await tester.tap(find.byKey(ValueKey('text-box-done-$textBoxId')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('editor-undo-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('First draft'), findsOneWidget);
+    expect(find.text('Revised draft'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('editor-redo-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('Revised draft'), findsOneWidget);
   });
 
   testWidgets('beautifies selected handwriting into ink strokes', (
