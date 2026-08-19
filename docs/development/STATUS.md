@@ -349,7 +349,9 @@
 - Editor-search removal coverage verifies that no editor Search action remains,
   while existing library filtering and Smart Ink tests continue to pass. Raster
   search/OCR tests and dependencies were removed with their implementation.
-  All 264 remaining Flutter tests and `flutter analyze` pass.
+  All 264 remaining Flutter tests and `flutter analyze` pass. The iOS simulator
+  app and Android Debug APK both build successfully with only ML Kit Digital
+  Ink retained; `git diff --check` also passes.
 
 - Widget coverage now proves atomic Smart Ink undo/redo and restoration after
   partially erasing beautified ink, alongside ordinary erase undo/redo. The
