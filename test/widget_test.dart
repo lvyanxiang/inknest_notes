@@ -10,6 +10,8 @@ import 'package:inknest_notes/app/app.dart';
 import 'package:inknest_notes/features/editor/canvas/drawing_canvas.dart';
 import 'package:inknest_notes/features/editor/editor_screen.dart';
 import 'package:inknest_notes/features/editor/infinite_canvas_screen.dart';
+import 'package:inknest_notes/features/editor/text/text_box_layer.dart';
+import 'package:inknest_notes/models/note_text_box.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/note_page_template.dart';
 import 'package:inknest_notes/models/notebook_audio_recording.dart';
@@ -375,6 +377,21 @@ void main() {
 
     var document = await repository.loadInfiniteCanvas(notebook);
     expect(document.textBoxes.single.text, 'Spatial idea');
+    final initialTextWidth = document.textBoxes.single.width;
+    await tester.tap(find.byTooltip('Choose font (Default)'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(
+        ValueKey('text-box-font-${document.textBoxes.single.id}-zhiMangXing'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.drag(find.byTooltip('Resize text box'), const Offset(64, 0));
+    await tester.pump();
+    document = await repository.loadInfiniteCanvas(notebook);
+    expect(document.textBoxes.single.font, NoteTextBoxFont.zhiMangXing);
+    expect(document.textBoxes.single.width, greaterThan(initialTextWidth));
+
     final initialTextPosition = document.textBoxes.single.position;
     await tester.drag(find.byTooltip('Move text box'), const Offset(44, 28));
     await tester.pump();
@@ -892,12 +909,44 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Typed note'), findsOneWidget);
-    expect(find.byTooltip('Handwriting style'), findsOneWidget);
+    expect(find.byTooltip('Choose font (Default)'), findsOneWidget);
+    expect(find.byTooltip('Resize text box'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Handwriting style'));
+    final textBoxBefore = tester
+        .widget<TextBoxLayer>(find.byType(TextBoxLayer))
+        .page
+        .textBoxes
+        .single;
+    await tester.tap(find.byTooltip('Choose font (Default)'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(ValueKey('text-box-font-${textBoxBefore.id}-longCang')),
+    );
     await tester.pumpAndSettle();
 
-    expect(find.byTooltip('Plain text'), findsOneWidget);
+    expect(find.byTooltip('Choose font (龙藏)'), findsOneWidget);
+    expect(
+      tester
+          .widget<TextBoxLayer>(find.byType(TextBoxLayer))
+          .page
+          .textBoxes
+          .single
+          .font,
+      NoteTextBoxFont.longCang,
+    );
+
+    await tester.drag(find.byTooltip('Resize text box'), const Offset(72, 0));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<TextBoxLayer>(find.byType(TextBoxLayer))
+          .page
+          .textBoxes
+          .single
+          .width,
+      greaterThan(textBoxBefore.width),
+    );
 
     await addPageAfterCurrent(tester);
     await openEditorPages(tester);
@@ -993,7 +1042,7 @@ void main() {
     await tester.pump();
 
     expect(find.byType(AlertDialog), findsNothing);
-    expect(find.byTooltip('Plain text'), findsNothing);
+    expect(find.byTooltip('Choose font (Default)'), findsNothing);
     expect(
       find.byKey(const ValueKey('lasso-selection-toolbar')),
       findsOneWidget,

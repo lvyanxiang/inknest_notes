@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:inknest_notes/features/editor/lasso/lasso_geometry.dart';
 import 'package:inknest_notes/features/editor/recognition/font_glyph_stroke_generator.dart';
-import 'package:inknest_notes/features/editor/recognition/ink_beautify_fonts.dart';
+import 'package:inknest_notes/features/editor/text/handwriting_font_presets.dart';
 import 'package:inknest_notes/models/stroke.dart';
 
 Future<void> _loadHandwritingFonts() async {
@@ -31,7 +31,7 @@ void main() {
     const targetBounds = Rect.fromLTWH(40, 60, 120, 120);
     final strokes = await generator.generate(
       text: '美',
-      font: InkBeautifyFonts.liuJianMaoCao,
+      font: HandwritingFontPresets.liuJianMaoCao,
       targetBounds: targetBounds,
       color: const Color(0xFF1E2526),
       strokeWidth: 3,
@@ -46,7 +46,7 @@ void main() {
 
   test('supports each bundled beautify font family', () async {
     const generator = FontGlyphStrokeGenerator(maximumDimension: 280);
-    for (final font in InkBeautifyFonts.values) {
+    for (final font in HandwritingFontPresets.values) {
       final strokes = await generator.generate(
         text: 'A',
         font: font,
@@ -69,7 +69,7 @@ void main() {
       const generator = FontGlyphStrokeGenerator(maximumDimension: 720);
       const targetBounds = Rect.fromLTWH(100, 140, 96, 30);
 
-      for (final font in InkBeautifyFonts.values) {
+      for (final font in HandwritingFontPresets.values) {
         final strokes = await generator.generate(
           text: '这是一段已经写好的文字',
           font: font,
@@ -94,7 +94,7 @@ void main() {
     const targetBounds = Rect.fromLTWH(24, 32, 90, 70);
     final strokes = await generator.generate(
       text: '第一行\n第二行',
-      font: InkBeautifyFonts.longCang,
+      font: HandwritingFontPresets.longCang,
       targetBounds: targetBounds,
       color: const Color(0xFF1E2526),
       strokeWidth: 3,

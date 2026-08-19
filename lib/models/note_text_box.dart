@@ -2,7 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 
-enum NoteTextBoxStyle { regular, handwriting }
+enum NoteTextBoxFont { system, liuJianMaoCao, longCang, zhiMangXing }
 
 @immutable
 class NoteTextBox {
@@ -13,7 +13,7 @@ class NoteTextBox {
     this.width = 240,
     this.color = const Color(0xFF1E2526),
     this.fontSize = 24,
-    this.style = NoteTextBoxStyle.regular,
+    this.font = NoteTextBoxFont.system,
   });
 
   final String id;
@@ -22,7 +22,7 @@ class NoteTextBox {
   final double width;
   final Color color;
   final double fontSize;
-  final NoteTextBoxStyle style;
+  final NoteTextBoxFont font;
 
   factory NoteTextBox.fromJson(Map<String, Object?> json) {
     return NoteTextBox(
@@ -35,9 +35,7 @@ class NoteTextBox {
       width: (json['width']! as num).toDouble(),
       color: Color(json['color']! as int),
       fontSize: (json['fontSize']! as num).toDouble(),
-      style: NoteTextBoxStyle.values.byName(
-        json['style'] as String? ?? NoteTextBoxStyle.regular.name,
-      ),
+      font: _fontFromJson(json),
     );
   }
 
@@ -50,7 +48,7 @@ class NoteTextBox {
       'width': width,
       'color': color.toARGB32(),
       'fontSize': fontSize,
-      'style': style.name,
+      'font': font.name,
     };
   }
 
@@ -60,7 +58,7 @@ class NoteTextBox {
     double? width,
     Color? color,
     double? fontSize,
-    NoteTextBoxStyle? style,
+    NoteTextBoxFont? font,
   }) {
     return NoteTextBox(
       id: id,
@@ -69,7 +67,23 @@ class NoteTextBox {
       width: width ?? this.width,
       color: color ?? this.color,
       fontSize: fontSize ?? this.fontSize,
-      style: style ?? this.style,
+      font: font ?? this.font,
     );
+  }
+
+  static NoteTextBoxFont _fontFromJson(Map<String, Object?> json) {
+    final fontName = json['font'] as String?;
+    if (fontName != null) {
+      return NoteTextBoxFont.values.firstWhere(
+        (font) => font.name == fontName,
+        orElse: () => NoteTextBoxFont.system,
+      );
+    }
+
+    // Migrate the removed binary style toggle without preserving its system
+    // font fallback, italic, or synthetic weight simulation.
+    return json['style'] == 'handwriting'
+        ? NoteTextBoxFont.liuJianMaoCao
+        : NoteTextBoxFont.system;
   }
 }

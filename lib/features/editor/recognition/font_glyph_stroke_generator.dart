@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:inknest_notes/features/editor/recognition/ink_beautify_fonts.dart';
+import 'package:inknest_notes/features/editor/text/handwriting_font_presets.dart';
 import 'package:inknest_notes/models/stroke.dart';
 import 'package:inknest_notes/models/stroke_point.dart';
 import 'package:inknest_notes/models/tool.dart';
@@ -26,7 +26,7 @@ class FontGlyphStrokeGenerator {
 
   Future<List<Stroke>> generate({
     required String text,
-    required InkBeautifyFont font,
+    required HandwritingFontPreset font,
     required Rect targetBounds,
     required Color color,
     required double strokeWidth,

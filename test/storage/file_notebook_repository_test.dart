@@ -147,7 +147,7 @@ void main() {
           text: 'Momentum',
           width: 220,
           fontSize: 20,
-          style: NoteTextBoxStyle.handwriting,
+          font: NoteTextBoxFont.longCang,
         ),
       ],
       strokes: [
@@ -184,7 +184,7 @@ void main() {
     );
     expect(reloadedPage.textBoxes.single.text, 'Momentum');
     expect(reloadedPage.textBoxes.single.position, const Offset(80, 96));
-    expect(reloadedPage.textBoxes.single.style, NoteTextBoxStyle.handwriting);
+    expect(reloadedPage.textBoxes.single.font, NoteTextBoxFont.longCang);
     expect(reloadedPage.images.single.position, const Offset(240, 320));
     expect(reloadedPage.images.single.assetPath, 'assets/images/photo.png');
     expect(reloadedPage.shapes.single.type, NoteShapeType.rectangle);

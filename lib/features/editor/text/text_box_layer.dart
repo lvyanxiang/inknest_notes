@@ -73,6 +73,8 @@ class _EditableTextBox extends StatefulWidget {
 }
 
 class _EditableTextBoxState extends State<_EditableTextBox> {
+  static const _minimumWidth = 120.0;
+
   late final TextEditingController _controller;
 
   @override
@@ -113,17 +115,31 @@ class _EditableTextBoxState extends State<_EditableTextBox> {
     );
   }
 
-  void _toggleStyle() {
-    final style = widget.textBox.style == NoteTextBoxStyle.handwriting
-        ? NoteTextBoxStyle.regular
-        : NoteTextBoxStyle.handwriting;
-    widget.onChanged(widget.textBox.copyWith(style: style));
+  void _selectFont(NoteTextBoxFont font) {
+    if (font == widget.textBox.font) {
+      return;
+    }
+    widget.onChanged(widget.textBox.copyWith(font: font));
+  }
+
+  void _resizeBy(double deltaX) {
+    final availableWidth = math.max(
+      _minimumWidth,
+      widget.page.width - widget.textBox.position.dx,
+    );
+    final width = (widget.textBox.width + deltaX)
+        .clamp(_minimumWidth, availableWidth)
+        .toDouble();
+    if (width == widget.textBox.width) {
+      return;
+    }
+    widget.onChanged(widget.textBox.copyWith(width: width));
   }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final isHandwriting = widget.textBox.style == NoteTextBoxStyle.handwriting;
+    final fontLabel = noteTextBoxFontLabel(widget.textBox.font);
 
     return Material(
       color: Colors.transparent,
@@ -159,19 +175,48 @@ class _EditableTextBoxState extends State<_EditableTextBox> {
                     ),
                   ),
                   const Spacer(),
-                  IconButton(
-                    tooltip: isHandwriting ? 'Plain text' : 'Handwriting style',
-                    onPressed: _toggleStyle,
-                    icon: Icon(
-                      isHandwriting ? Icons.text_fields : Icons.draw_outlined,
-                      size: 16,
+                  SizedBox.square(
+                    dimension: 28,
+                    child: PopupMenuButton<NoteTextBoxFont>(
+                      key: ValueKey('text-box-font-menu-${widget.textBox.id}'),
+                      tooltip: 'Choose font ($fontLabel)',
+                      initialValue: widget.textBox.font,
+                      onSelected: _selectFont,
+                      padding: EdgeInsets.zero,
+                      iconSize: 16,
+                      icon: const Icon(Icons.font_download_outlined),
+                      itemBuilder: (context) => [
+                        for (final font in noteTextBoxFontChoices)
+                          CheckedPopupMenuItem<NoteTextBoxFont>(
+                            key: ValueKey(
+                              'text-box-font-${widget.textBox.id}-${font.name}',
+                            ),
+                            value: font,
+                            checked: font == widget.textBox.font,
+                            child: Text(
+                              noteTextBoxFontLabel(font),
+                              style: TextStyle(
+                                fontFamily: noteTextBoxFontFamily(font),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints.tightFor(
-                      width: 28,
-                      height: 28,
+                  ),
+                  Tooltip(
+                    message: 'Resize text box',
+                    child: MouseRegion(
+                      cursor: SystemMouseCursors.resizeLeftRight,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onHorizontalDragUpdate: (details) =>
+                            _resizeBy(details.delta.dx),
+                        child: const SizedBox.square(
+                          dimension: 28,
+                          child: Icon(Icons.drag_indicator, size: 16),
+                        ),
+                      ),
                     ),
-                    visualDensity: VisualDensity.compact,
                   ),
                   IconButton(
                     tooltip: 'Delete text box',

@@ -93,7 +93,8 @@ the existing writing workspace without showing page-only controls.
 - Insert exposes Text, Image, and Shape with the existing labels and property
   surfaces; inserting content keeps the current viewport stable.
 - Text mode taps create an editable text box in world coordinates. Existing
-  text boxes expose edit, move, handwriting-style, and delete controls.
+  text boxes expose edit, move, explicit font selection, width resize, and
+  delete controls.
 - Inserted images appear at the viewport focus and expose move, resize, and
   delete handles without adding finite canvas boundaries.
 - Shape mode draws directly in world coordinates and retains two-finger

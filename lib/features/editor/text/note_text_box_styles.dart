@@ -1,26 +1,34 @@
 import 'package:flutter/painting.dart';
+import 'package:inknest_notes/features/editor/text/handwriting_font_presets.dart';
 import 'package:inknest_notes/models/note_text_box.dart';
 
-const _handwritingFontFallback = [
-  'Snell Roundhand',
-  'Bradley Hand',
-  'Noteworthy',
-  'Chalkboard SE',
-  'Savoye LET',
-];
+const noteTextBoxFontChoices = NoteTextBoxFont.values;
+
+String noteTextBoxFontLabel(NoteTextBoxFont font) {
+  return switch (font) {
+    NoteTextBoxFont.system => 'Default',
+    _ => noteTextBoxHandwritingFont(font)!.label,
+  };
+}
+
+String? noteTextBoxFontFamily(NoteTextBoxFont font) {
+  return noteTextBoxHandwritingFont(font)?.fontFamily;
+}
+
+HandwritingFontPreset? noteTextBoxHandwritingFont(NoteTextBoxFont font) {
+  return switch (font) {
+    NoteTextBoxFont.system => null,
+    NoteTextBoxFont.liuJianMaoCao => HandwritingFontPresets.liuJianMaoCao,
+    NoteTextBoxFont.longCang => HandwritingFontPresets.longCang,
+    NoteTextBoxFont.zhiMangXing => HandwritingFontPresets.zhiMangXing,
+  };
+}
 
 TextStyle noteTextBoxTextStyle(NoteTextBox textBox) {
-  final isHandwriting = textBox.style == NoteTextBoxStyle.handwriting;
-
   return TextStyle(
     color: textBox.color,
     fontSize: textBox.fontSize,
-    fontFamily: isHandwriting ? _handwritingFontFallback.first : null,
-    fontFamilyFallback: isHandwriting
-        ? _handwritingFontFallback.skip(1).toList()
-        : null,
-    fontStyle: isHandwriting ? FontStyle.italic : FontStyle.normal,
-    fontWeight: isHandwriting ? FontWeight.w500 : FontWeight.w400,
-    height: isHandwriting ? 1.15 : 1.2,
+    fontFamily: noteTextBoxFontFamily(textBox.font),
+    height: 1.2,
   );
 }

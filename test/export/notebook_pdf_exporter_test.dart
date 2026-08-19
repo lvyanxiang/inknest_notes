@@ -110,7 +110,7 @@ void main() {
             id: 'text-1',
             position: Offset(120, 160),
             text: 'Typed note 中文',
-            style: NoteTextBoxStyle.handwriting,
+            font: NoteTextBoxFont.zhiMangXing,
           ),
         ],
         strokes: [_sampleStroke()],

@@ -17,10 +17,10 @@ import 'package:inknest_notes/features/editor/lasso/lasso_geometry.dart';
 import 'package:inknest_notes/features/editor/lasso/lasso_selection_layer.dart';
 import 'package:inknest_notes/features/editor/recognition/digital_ink_text_recognizer.dart';
 import 'package:inknest_notes/features/editor/recognition/font_glyph_stroke_generator.dart';
-import 'package:inknest_notes/features/editor/recognition/ink_beautify_fonts.dart';
 import 'package:inknest_notes/features/editor/shapes/shape_layer.dart';
 import 'package:inknest_notes/features/editor/templates/page_template_layer.dart';
 import 'package:inknest_notes/features/editor/templates/page_template_sheet.dart';
+import 'package:inknest_notes/features/editor/text/handwriting_font_presets.dart';
 import 'package:inknest_notes/features/editor/text/note_text_box_styles.dart';
 import 'package:inknest_notes/features/editor/text/text_box_layer.dart';
 import 'package:inknest_notes/features/editor/theme/editor_chrome.dart';
@@ -3066,7 +3066,7 @@ class _SmartInkConfirmation {
   });
 
   final String text;
-  final InkBeautifyFont font;
+  final HandwritingFontPreset font;
   final bool replaceSelectedInk;
 }
 
@@ -3087,7 +3087,7 @@ class _SmartInkConfirmationDialog extends StatefulWidget {
 class _SmartInkConfirmationDialogState
     extends State<_SmartInkConfirmationDialog> {
   final TextEditingController _controller = TextEditingController();
-  InkBeautifyFont _font = InkBeautifyFonts.liuJianMaoCao;
+  HandwritingFontPreset _font = HandwritingFontPresets.liuJianMaoCao;
   bool _isRecognizing = true;
   bool _userEditedText = false;
   bool _showTextEditor = false;
@@ -3222,7 +3222,7 @@ class _SmartInkConfirmationDialogState
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  for (final font in InkBeautifyFonts.values)
+                  for (final font in HandwritingFontPresets.values)
                     ChoiceChip(
                       key: ValueKey('beautify-font-${font.id}'),
                       label: Text(font.label),

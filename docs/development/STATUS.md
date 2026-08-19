@@ -2,15 +2,15 @@
 
 ## Current
 
-- Milestone: Selected-stroke Smart Ink uses ML Kit Digital Ink across iOS and
-  Android; editor-internal content search and raster OCR have been removed.
+- Milestone: Typed text boxes use explicit real-font selection and direct width
+  resizing in paged and infinite-canvas editors; ML Kit Smart Ink is retained.
 - Next task: Revalidate representative Chinese/English handwriting on physical
   iOS and Android devices, including first-use model download, accuracy, and
   latency.
-- Last completed: Removed the paged-editor Search action, sheet, query/result
-  state, cross-page highlights, PDF/image/text-box search services, raster OCR
-  caches, ML Kit Text Recognition dependencies, and their dedicated tests.
-  Library title/folder search and Smart Ink remain.
+- Last completed: Replaced the text-box simulated handwriting toggle with
+  Default/刘建毛草/龙藏/芝麻行 selection, added persistent horizontal resizing
+  for user-controlled wrapping, migrated legacy styles, and shared one bundled
+  font catalog with Smart Ink.
 
 ### Licensing follow-up before public release or commercial use
 
@@ -345,6 +345,11 @@
   its source JSON.
 
 ## Verification
+
+- Text-box model, persistence, PDF export, paged editor, and infinite-canvas
+  coverage verifies explicit font selection, legacy style migration, and width
+  resizing. All 267 Flutter tests, `flutter analyze`, and `git diff --check`
+  pass; Smart Ink recognition and glyph redraw regression tests remain green.
 
 - Editor-search removal coverage verifies that no editor Search action remains,
   while existing library filtering and Smart Ink tests continue to pass. Raster
@@ -1007,9 +1012,15 @@
 - Editor export can save the full notebook, current page, or an ordered page/range expression such as `1,3,5-7`, with filenames suffixed by exported scope.
 - Editor export offers Compact, Balanced, and Best quality presets; Balanced is the default, Compact prioritizes sharing size, and Best preserves lossless PDF background detail.
 - PDF export now avoids rerendering duplicate backgrounds in the same export and renders imported PDF backgrounds at a higher default pixel density.
-- Editor toolbar includes a Text tool that can add typed text boxes to the current page; text boxes can be edited, moved, deleted, persisted, shown in thumbnails, and exported to PDF.
-- Text boxes can toggle between regular text and handwriting-style rendering; thumbnails and PDF export use the same text style path.
-- The Lasso contextual toolbar exposes Smart Ink for selected strokes, confirms text, and creates editable handwriting-style text from the selection.
+- Editor toolbar includes a Text tool that can add typed text boxes to the
+  current page; text boxes can be edited, moved, width-resized, assigned the
+  default or one of three bundled handwriting fonts, deleted, persisted, shown
+  in thumbnails, and exported to PDF.
+- Text boxes use real bundled fonts without system handwriting fallbacks,
+  forced italics, or synthetic font weights; legacy simulated handwriting
+  migrates to 刘建毛草.
+- The Lasso contextual toolbar exposes Smart Ink for selected strokes, confirms
+  text and font, and redraws the selection as fitted ink strokes.
 - Editor toolbar includes Insert image; selected images are copied into notebook assets, placed on the current page, movable, resizable, deletable, persisted, shown as thumbnail placeholders, and included in PDF export.
 - Editor toolbar includes a Shape tool with a shape-type menu for line, arrow, rectangle, and ellipse; created shapes persist, appear in thumbnails, and export to PDF.
 - Editor tool dock includes complete black/teal/red pen and yellow highlighter presets without covering the paper.
