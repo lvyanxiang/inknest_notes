@@ -2,16 +2,23 @@
 
 ## Current
 
-- Milestone: Typed text boxes now behave as first-class canvas objects with
-  idle, selected, and editing states in paged and infinite-canvas editors; ML
-  Kit Smart Ink is retained.
+- Milestone: Public release readiness is being tracked; App Store and Google
+  Play status is currently NO-GO while the recorded store blockers remain
+  open.
 - Next task: Revalidate representative Chinese/English handwriting on physical
   iOS and Android devices, including first-use model download, accuracy, and
   latency.
-- Last completed: Delivered text-box interaction V2 with clean idle rendering,
-  first-tap selection and second-tap editing, an external formatting toolbar,
-  empty-box cancellation, direct move/width resize, alignment persistence, and
-  atomic undo/redo transactions across both editor layouts.
+- Last completed: Optimized local-to-cloud synchronization with debounced
+  persistence triggers, foreground resume and periodic checks, serialized
+  follow-up cycles, editor-safe push-only behavior, and an explicit Sync Now
+  action.
+
+### Release readiness
+
+- Current decision: **NO-GO** for public App Store or Google Play release.
+- Checklist: `docs/development/RELEASE_CHECKLIST.md`.
+- Update rule: check an item only after implementation and dated evidence are
+  recorded; reopen it when a release change invalidates that evidence.
 
 ### Licensing follow-up before public release or commercial use
 
@@ -47,6 +54,9 @@
 
 ## Decisions
 
+- Use `docs/development/RELEASE_CHECKLIST.md` as the source of truth for public
+  release readiness. Keep this status file as its short pointer, and update the
+  checklist item plus dated evidence whenever release work is completed.
 - Use `docs/development/ROADMAP.md` as the main checklist for project execution.
 - Use this file as the short resume point for future sessions.
 - Keep the first product direction iPadOS/iOS-first, handwriting-first, and paged-notebook based.
@@ -348,6 +358,20 @@
   its source JSON.
 
 ## Verification
+
+- Automatic synchronization focused coverage passes with 28 tests: local
+  mutation requests, debounce coalescing, editor-safe push-only operation,
+  foreground resume, periodic recovery checks, busy-cycle follow-up, manual
+  Sync Now, failure retry, conflicts, and Tombstones. `flutter analyze` and
+  `git diff --check` pass. The complete Flutter suite also passes with 274
+  tests.
+
+- The 2026-08-26 release audit is recorded in
+  `docs/development/RELEASE_CHECKLIST.md`: Flutter analysis and all 269 Flutter
+  tests pass; backend Ruff/mypy and 66 non-integration tests pass; PostgreSQL
+  and MinIO are healthy; iOS device release code builds without signing. The
+  backend integration suite has one asset-cleanup failure, and Android release
+  packaging still exits unsuccessfully during native debug-symbol stripping.
 
 - Text-box interaction V2 coverage verifies clean idle rendering, empty-box
   cancellation, explicit font/size/color/alignment controls, persistence,

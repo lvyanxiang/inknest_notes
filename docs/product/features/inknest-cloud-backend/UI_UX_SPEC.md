@@ -110,6 +110,18 @@ continue-local state without overwriting either side.
    notebooks to the library root, and never appears in Recently Deleted. Page
    structure and canvas background use their existing controls and the same
    non-blocking sync status; no new editor control or modal is added.
+6. Local saves request a debounced background cycle. Returning the App to the
+   foreground and a lightweight foreground interval also request a cycle, so
+   another device's changes can arrive without leaving and reopening the
+   library. Requests received while a cycle is busy produce one follow-up
+   cycle rather than being discarded.
+   While the editor is open, the cycle uploads local work but waits to apply
+   remote changes until the user returns to the library, avoiding a race with
+   the currently open in-memory page or canvas.
+7. While signed in, the library header always exposes the existing sync-status
+   target. Its sheet includes `立即同步`; activating it closes the sheet and
+   starts the same non-blocking push-then-pull path. Signed-out users do not see
+   the target. Automatic checks do not show a modal or steal editor focus.
 
 ### Conflict recovery
 
@@ -179,12 +191,17 @@ continue-local state without overwriting either side.
 | Incremental pull applied | Refreshed shelf plus snackbar summary | Continue using library | Cursor advances after complete application |
 | Pull needs reconciliation | Existing local shelf plus non-blocking message | Continue locally | Cursor and local files remain unchanged |
 | Pull offline/error | Existing local shelf plus retry-later message | Continue locally | No first-sign-in modal or local mutation |
+| Signed-in idle | Sync-status target and concise ready message | `立即同步`, Close | Manual request starts non-blocking synchronization |
+| Automatic request while busy | Existing syncing state | Continue local work | One follow-up cycle runs after the active cycle |
 
 ## Layout And Components
 
 - Placement and hierarchy: sync status owns the entry point; notebook shelf
   and Pages panel may show a small conflict badge but must not add permanent
   editor toolbar controls.
+- The existing library-header sync target remains visible whenever an account
+  is signed in. It retains a minimum 44 logical-pixel target, tooltip, and
+  semantic label; no editor toolbar control is added.
 - Reused components: current sheets, dialogs, list rows, progress indicators,
   snackbars, theme colors and spacing.
 - New pattern: one conflict detail row that clearly separates the resource
@@ -239,6 +256,10 @@ continue-local state without overwriting either side.
   reconciliation counts without exposing a delete or replace-local action.
 - [x] An initialized session downloads additive cloud-only notebooks in the
   background, refreshes the shelf, and keeps local use available on failure.
+- [x] Local persistence, foreground resume, and the foreground recovery
+  interval request serialized synchronization without blocking local editing.
+- [x] A request received during synchronization produces one follow-up cycle,
+  and the signed-in status sheet provides an accessible `立即同步` action.
 
 - [x] A background conflict never blocks or overwrites ongoing local writing.
 - [x] Pending conflicts survive restart and appear consistently on other
@@ -257,6 +278,8 @@ continue-local state without overwriting either side.
 ## Verification
 
 - Widget tests: pending list, all resolution actions, retry and stale states.
+- Automatic scheduling tests: local debounce, editor-safe upload-only behavior,
+  foreground resume, foreground interval, busy-cycle follow-up, and Sync Now.
 - Responsive/semantic tests: compact, regular iPad portrait and landscape;
   focus order and screen-reader labels.
 - Manual device checks: conflict arrival while drawing and offline recovery on
@@ -318,6 +341,12 @@ continue-local state without overwriting either side.
   the local operation. Existing Delete Folder uses the same flow: remote devices
   remove the folder and show its notebooks at the root, with concise sync-status
   feedback and no additional shelf control.
+  Successful local persistence now requests a two-second debounced cycle;
+  foreground resume and a 30-second foreground recovery interval use the same
+  serialized scheduler. Requests arriving while busy produce one follow-up
+  cycle. An editor-covered library uploads local work but defers remote apply
+  until the library is current. Signed-in users always have the existing cloud
+  status target and can start `立即同步` from its sheet.
 - Intentional deviations: The server reserves the copy ID immediately but only
   materializes a normal notebook/page when the user chooses Keep Both. This
   avoids temporary duplicate library entries while preserving both snapshots.

@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:inknest_notes/app/app.dart';
 import 'package:inknest_notes/auth/auth_controller.dart';
 import 'package:inknest_notes/auth/auth_service.dart';
+import 'package:inknest_notes/features/library/library_screen.dart';
 import 'package:inknest_notes/storage/in_memory_notebook_repository.dart';
 import 'package:inknest_notes/sync/bootstrap_restore_service.dart';
 import 'package:inknest_notes/sync/first_sign_in_sync_service.dart';
@@ -382,6 +383,212 @@ void main() {
 
     expect(find.text('同步完成'), findsOneWidget);
     expect(find.text('本地笔记与云端已同步。'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    controller.dispose();
+  });
+
+  testWidgets('signed-in sync status can start an immediate sync', (
+    tester,
+  ) async {
+    final controller = AuthController(
+      service: _RestoredAuthService(),
+      deviceName: 'Test iPad',
+      platform: 'ios',
+    );
+    await controller.initialize();
+    final sync = _StartupSyncService(uploadedOperationCount: 0);
+
+    await tester.pumpWidget(
+      InkNestApp(
+        notebookRepository: InMemoryNotebookRepository(),
+        authController: controller,
+        firstSignInSyncService: sync,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('library-sync-status')));
+    await tester.pumpAndSettle();
+    expect(find.text('立即同步'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('sync-now-library')));
+    await tester.pumpAndSettle();
+
+    expect(sync.calls, ['push', 'pull', 'push', 'pull']);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    controller.dispose();
+  });
+
+  testWidgets('local sync requests are debounced into one cycle', (
+    tester,
+  ) async {
+    final controller = AuthController(
+      service: _RestoredAuthService(),
+      deviceName: 'Test iPad',
+      platform: 'ios',
+    );
+    await controller.initialize();
+    final sync = _StartupSyncService(uploadedOperationCount: 0);
+    final requests = StreamController<void>.broadcast();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LibraryScreen(
+          notebookRepository: InMemoryNotebookRepository(),
+          authController: controller,
+          firstSignInSyncService: sync,
+          syncRequests: requests.stream,
+          syncDebounceDuration: const Duration(milliseconds: 50),
+          foregroundSyncInterval: const Duration(days: 1),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    sync.calls.clear();
+
+    requests.add(null);
+    requests.add(null);
+    requests.add(null);
+    await tester.pump(const Duration(milliseconds: 49));
+    expect(sync.calls, isEmpty);
+    await tester.pump(const Duration(milliseconds: 1));
+    await tester.pumpAndSettle();
+
+    expect(sync.calls, ['push', 'pull']);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await requests.close();
+    controller.dispose();
+  });
+
+  testWidgets('editor-covered library uploads but defers remote pull', (
+    tester,
+  ) async {
+    final controller = AuthController(
+      service: _RestoredAuthService(),
+      deviceName: 'Test iPad',
+      platform: 'ios',
+    );
+    await controller.initialize();
+    final sync = _StartupSyncService(uploadedOperationCount: 1);
+    final requests = StreamController<void>.broadcast();
+    final navigatorKey = GlobalKey<NavigatorState>();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorKey: navigatorKey,
+        home: LibraryScreen(
+          notebookRepository: InMemoryNotebookRepository(),
+          authController: controller,
+          firstSignInSyncService: sync,
+          syncRequests: requests.stream,
+          syncDebounceDuration: const Duration(milliseconds: 1),
+          foregroundSyncInterval: const Duration(days: 1),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    sync.calls.clear();
+
+    unawaited(
+      navigatorKey.currentState!.push<void>(
+        MaterialPageRoute(builder: (_) => const Scaffold(body: Text('Editor'))),
+      ),
+    );
+    await tester.pumpAndSettle();
+    requests.add(null);
+    await tester.pump(const Duration(milliseconds: 1));
+    await tester.pumpAndSettle();
+
+    expect(sync.calls, ['push']);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await requests.close();
+    controller.dispose();
+  });
+
+  testWidgets('a sync request received while busy runs a follow-up cycle', (
+    tester,
+  ) async {
+    final controller = AuthController(
+      service: _RestoredAuthService(),
+      deviceName: 'Test iPad',
+      platform: 'ios',
+    );
+    await controller.initialize();
+    final gate = Completer<void>();
+    final sync = _StartupSyncService(
+      uploadedOperationCount: 0,
+      pushGate: gate.future,
+    );
+    final requests = StreamController<void>.broadcast();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LibraryScreen(
+          notebookRepository: InMemoryNotebookRepository(),
+          authController: controller,
+          firstSignInSyncService: sync,
+          syncRequests: requests.stream,
+          syncDebounceDuration: const Duration(milliseconds: 1),
+          foregroundSyncInterval: const Duration(days: 1),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(sync.calls, ['push']);
+
+    requests.add(null);
+    await tester.pump(const Duration(milliseconds: 1));
+    gate.complete();
+    await tester.pumpAndSettle();
+
+    expect(sync.calls, ['push', 'pull', 'push', 'pull']);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await requests.close();
+    controller.dispose();
+  });
+
+  testWidgets('foreground resume and interval request synchronization', (
+    tester,
+  ) async {
+    final controller = AuthController(
+      service: _RestoredAuthService(),
+      deviceName: 'Test iPad',
+      platform: 'ios',
+    );
+    await controller.initialize();
+    final sync = _StartupSyncService(uploadedOperationCount: 0);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LibraryScreen(
+          notebookRepository: InMemoryNotebookRepository(),
+          authController: controller,
+          firstSignInSyncService: sync,
+          foregroundSyncInterval: const Duration(seconds: 1),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    sync.calls.clear();
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(sync.calls, ['push', 'pull']);
+
+    sync.calls.clear();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+    expect(sync.calls, ['push', 'pull']);
 
     await tester.pumpWidget(const SizedBox.shrink());
     controller.dispose();

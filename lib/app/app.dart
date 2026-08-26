@@ -10,6 +10,7 @@ import 'package:inknest_notes/storage/notebook_repository.dart';
 import 'package:inknest_notes/sync/first_sign_in_sync_service.dart';
 import 'package:inknest_notes/sync/inknest_api_client.dart';
 import 'package:inknest_notes/sync/sync_mutation_tracker.dart';
+import 'package:inknest_notes/sync/sync_trigger.dart';
 import 'package:path_provider/path_provider.dart';
 
 class InkNestApp extends StatefulWidget {
@@ -32,6 +33,7 @@ class _InkNestAppState extends State<InkNestApp> {
   late final Future<_AppResources> _resources;
   late final AuthController _authController;
   InkNestApiClient? _ownedApiClient;
+  SyncTriggerController? _ownedSyncTrigger;
   late final bool _ownsAuthController;
 
   @override
@@ -62,6 +64,7 @@ class _InkNestAppState extends State<InkNestApp> {
       _authController.dispose();
     }
     _ownedApiClient?.close();
+    unawaited(_ownedSyncTrigger?.dispose());
     super.dispose();
   }
 
@@ -75,9 +78,12 @@ class _InkNestAppState extends State<InkNestApp> {
     }
 
     final documentsDirectory = await getApplicationDocumentsDirectory();
+    final syncTrigger = SyncTriggerController();
+    _ownedSyncTrigger = syncTrigger;
     final mutationTracker = SyncMutationTracker(
       rootDirectory: documentsDirectory,
       activeSession: () => _authController.session,
+      onSyncRequested: syncTrigger.request,
     );
     final repository = FileNotebookRepository(
       rootDirectory: documentsDirectory,
@@ -93,6 +99,7 @@ class _InkNestAppState extends State<InkNestApp> {
     final apiClient = _ownedApiClient;
     return _AppResources(
       repository: repository,
+      syncRequests: syncTrigger.requests,
       firstSignInSyncService:
           widget.firstSignInSyncService ??
           (apiClient == null
@@ -121,6 +128,7 @@ class _InkNestAppState extends State<InkNestApp> {
               authController: _authController,
               firstSignInSyncService:
                   snapshot.requireData.firstSignInSyncService,
+              syncRequests: snapshot.requireData.syncRequests,
             );
           }
 
@@ -137,8 +145,10 @@ class _AppResources {
   const _AppResources({
     required this.repository,
     required this.firstSignInSyncService,
+    this.syncRequests,
   });
 
   final NotebookRepository repository;
   final FirstSignInSyncService? firstSignInSyncService;
+  final Stream<void>? syncRequests;
 }

@@ -49,11 +49,17 @@ class LibraryScreen extends StatefulWidget {
     required this.notebookRepository,
     required this.authController,
     this.firstSignInSyncService,
+    this.syncRequests,
+    this.syncDebounceDuration = const Duration(seconds: 2),
+    this.foregroundSyncInterval = const Duration(seconds: 30),
   });
 
   final NotebookRepository notebookRepository;
   final AuthController authController;
   final FirstSignInSyncService? firstSignInSyncService;
+  final Stream<void>? syncRequests;
+  final Duration syncDebounceDuration;
+  final Duration foregroundSyncInterval;
 
   @override
   State<LibraryScreen> createState() => _LibraryScreenState();
@@ -195,7 +201,8 @@ class _NotebookTypeCard extends StatelessWidget {
   }
 }
 
-class _LibraryScreenState extends State<LibraryScreen> {
+class _LibraryScreenState extends State<LibraryScreen>
+    with WidgetsBindingObserver {
   final _searchController = TextEditingController();
   late List<Notebook> _notebooks;
   late List<NotebookFolder> _folders;
@@ -207,6 +214,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
   NotebookFolder? _currentFolder;
   String? _checkedSessionKey;
   bool _syncCheckScheduled = false;
+  bool _syncRequestedWhileRunning = false;
+  bool _pullRequestedWhileRunning = false;
+  StreamSubscription<void>? _syncRequestSubscription;
+  Timer? _syncDebounceTimer;
+  Timer? _foregroundSyncTimer;
   List<CloudSyncConflict> _pendingConflicts = const [];
   List<CloudSyncTombstone> _activeTombstones = const [];
   _LibrarySyncStatus _syncStatus = _LibrarySyncStatus.idle;
@@ -216,21 +228,65 @@ class _LibraryScreenState extends State<LibraryScreen> {
     super.initState();
     _notebooks = [];
     _folders = [];
+    WidgetsBinding.instance.addObserver(this);
     widget.authController.addListener(_handleAuthChanged);
+    _syncRequestSubscription = widget.syncRequests?.listen((_) {
+      _scheduleAutomaticSync();
+    });
+    _foregroundSyncTimer = Timer.periodic(widget.foregroundSyncInterval, (_) {
+      if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+        _requestAutomaticSync();
+      }
+    });
     _loadNotebooks();
     _handleAuthChanged();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     widget.authController.removeListener(_handleAuthChanged);
+    _syncRequestSubscription?.cancel();
+    _syncDebounceTimer?.cancel();
+    _foregroundSyncTimer?.cancel();
     _searchController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _requestAutomaticSync();
+    }
+  }
+
+  void _scheduleAutomaticSync() {
+    if (widget.authController.session == null) return;
+    _syncDebounceTimer?.cancel();
+    _syncDebounceTimer = Timer(
+      widget.syncDebounceDuration,
+      _requestAutomaticSync,
+    );
+  }
+
+  void _requestAutomaticSync() {
+    if (!mounted || widget.authController.session == null) {
+      return;
+    }
+    unawaited(
+      _checkCloudAfterSignIn(
+        force: true,
+        pullRemote: ModalRoute.of(context)?.isCurrent == true,
+      ),
+    );
   }
 
   void _handleAuthChanged() {
     final session = widget.authController.session;
     if (session == null) {
+      _syncDebounceTimer?.cancel();
+      _syncRequestedWhileRunning = false;
+      _pullRequestedWhileRunning = false;
       _checkedSessionKey = null;
       if (_pendingConflicts.isNotEmpty ||
           _activeTombstones.isNotEmpty ||
@@ -254,13 +310,38 @@ class _LibraryScreenState extends State<LibraryScreen> {
     });
   }
 
-  Future<void> _checkCloudAfterSignIn({bool force = false}) async {
+  Future<void> _checkCloudAfterSignIn({
+    bool force = false,
+    bool pullRemote = true,
+  }) async {
+    if (_syncStatus.phase == _LibrarySyncPhase.syncing) {
+      if (force) {
+        _syncRequestedWhileRunning = true;
+        _pullRequestedWhileRunning |= pullRemote;
+      }
+      return;
+    }
+    var shouldPullRemote = pullRemote;
+    do {
+      _syncRequestedWhileRunning = false;
+      _pullRequestedWhileRunning = false;
+      await _runCloudSyncCycle(force: force, pullRemote: shouldPullRemote);
+      force = true;
+      shouldPullRemote = _pullRequestedWhileRunning;
+    } while (mounted &&
+        _syncRequestedWhileRunning &&
+        widget.authController.session != null);
+  }
+
+  Future<void> _runCloudSyncCycle({
+    required bool force,
+    required bool pullRemote,
+  }) async {
     final session = widget.authController.session;
     final service = widget.firstSignInSyncService;
     if (session == null || service == null) return;
     final sessionKey = '${session.user.id}:${session.device.id}';
-    if ((!force && _checkedSessionKey == sessionKey) ||
-        _syncStatus.phase == _LibrarySyncPhase.syncing) {
+    if (!force && _checkedSessionKey == sessionKey) {
       return;
     }
     _checkedSessionKey = sessionKey;
@@ -275,6 +356,22 @@ class _LibraryScreenState extends State<LibraryScreen> {
         userId: session.user.id,
         deviceId: session.device.id,
       );
+      if (!pullRemote) {
+        if (!mounted) return;
+        setState(() {
+          _syncStatus = _LibrarySyncStatus(
+            pushResult.preservedDeleteEditCount > 0
+                ? _LibrarySyncPhase.preservedEdit
+                : _LibrarySyncPhase.completed,
+            pushResult.preservedDeleteEditCount > 0
+                ? '已保留另一台设备上的编辑；返回资料库后将检查云端更新。'
+                : pushResult.uploadedOperationCount > 0
+                ? '已上传 ${pushResult.uploadedOperationCount} 项本地更改；返回资料库后将检查云端更新。'
+                : '本地更改已检查；返回资料库后将检查云端更新。',
+          );
+        });
+        return;
+      }
       final pullResult = await service.pullIncremental(
         userId: session.user.id,
         deviceId: session.device.id,
@@ -454,8 +551,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   Future<void> _openSyncStatus() async {
-    if (_syncStatus.phase == _LibrarySyncPhase.idle) return;
-    final retry = await showModalBottomSheet<bool>(
+    if (widget.authController.session == null ||
+        widget.firstSignInSyncService == null) {
+      return;
+    }
+    final syncNow = await showModalBottomSheet<bool>(
       context: context,
       showDragHandle: true,
       builder: (context) => SafeArea(
@@ -470,22 +570,30 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 8),
-              Text(_syncStatus.message),
-              if (_syncStatus.canRetry) ...[
-                const SizedBox(height: 20),
-                FilledButton.icon(
-                  key: const ValueKey('retry-library-sync'),
-                  onPressed: () => Navigator.of(context).pop(true),
-                  icon: const Icon(Icons.sync_rounded),
-                  label: const Text('重试同步'),
+              Text(
+                _syncStatus.phase == _LibrarySyncPhase.idle
+                    ? '本地笔记可离线使用；登录期间会自动与云端同步。'
+                    : _syncStatus.message,
+              ),
+              const SizedBox(height: 20),
+              FilledButton.icon(
+                key: ValueKey(
+                  _syncStatus.canRetry
+                      ? 'retry-library-sync'
+                      : 'sync-now-library',
                 ),
-              ],
+                onPressed: _syncStatus.phase == _LibrarySyncPhase.syncing
+                    ? null
+                    : () => Navigator.of(context).pop(true),
+                icon: const Icon(Icons.sync_rounded),
+                label: Text(_syncStatus.canRetry ? '重试同步' : '立即同步'),
+              ),
             ],
           ),
         ),
       ),
     );
-    if (retry == true && mounted) {
+    if (syncNow == true && mounted) {
       await _checkCloudAfterSignIn(force: true);
     }
   }
@@ -1453,6 +1561,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
               onOpenConflicts: _openSyncConflicts,
               recentlyDeletedCount: _activeTombstones.length,
               onOpenRecentlyDeleted: _openRecentlyDeleted,
+              syncAvailable:
+                  widget.authController.session != null &&
+                  widget.firstSignInSyncService != null,
               syncStatus: _syncStatus,
               onOpenSyncStatus: _openSyncStatus,
             ),
@@ -1524,6 +1635,7 @@ class _LibraryHeader extends StatelessWidget {
     required this.onOpenConflicts,
     required this.recentlyDeletedCount,
     required this.onOpenRecentlyDeleted,
+    required this.syncAvailable,
     required this.syncStatus,
     required this.onOpenSyncStatus,
   });
@@ -1549,6 +1661,7 @@ class _LibraryHeader extends StatelessWidget {
   final VoidCallback onOpenConflicts;
   final int recentlyDeletedCount;
   final VoidCallback onOpenRecentlyDeleted;
+  final bool syncAvailable;
   final _LibrarySyncStatus syncStatus;
   final VoidCallback onOpenSyncStatus;
 
@@ -1648,7 +1761,7 @@ class _LibraryHeader extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      if (syncStatus.phase != _LibrarySyncPhase.idle) ...[
+                      if (syncAvailable) ...[
                         IconButton(
                           key: const ValueKey('library-sync-status'),
                           onPressed: onOpenSyncStatus,

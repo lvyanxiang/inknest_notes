@@ -238,6 +238,32 @@ The first slice sets no retention period and performs no physical cleanup.
   duplication, and editor return schedule this flow without blocking local use;
   the next login repairs a missed trigger.
 
+### Automatic synchronization scheduling
+
+- A successful local persistence callback requests synchronization without
+  delaying the local save. Requests are debounced so a handwriting or metadata
+  burst produces one push-then-pull cycle instead of one network request per
+  write.
+- While an editor route is open, the automatic cycle uploads durable local
+  operations but defers remote pull application until the library is current.
+  This prevents a background file replacement from racing the editor's in-memory
+  document; returning to the library immediately requests the full push-then-pull
+  cycle.
+- An authenticated initialized device also requests synchronization when the
+  App returns to the foreground and periodically while the library remains in
+  the foreground. The periodic check is a recovery boundary for missed local
+  triggers and remote changes; it is not a real-time collaboration guarantee.
+- Only one synchronization cycle runs at a time. A request received during an
+  active cycle is remembered and starts one follow-up cycle after the current
+  attempt finishes, so mutations cannot be lost to a busy-state guard.
+- The library sync-status entry remains available while signed in and offers
+  an explicit Sync Now action. Manual and automatic requests use the same
+  serialized push-then-pull path, durable queue, Revision guards, and error
+  feedback.
+- Scheduling never blocks writing, never runs for a signed-out session, and is
+  disposed with the library screen so foreground timers cannot outlive their
+  owner.
+
 ### Notebook metadata synchronization contract
 
 - Existing Rename, Archive/Restore, and Move actions remain immediate local
@@ -426,6 +452,11 @@ The first slice sets no retention period and performs no physical cleanup.
   persistence restores the exact prior local state; success removes the
   transient snapshot. This is an internal recovery boundary, not the future
   manual backup archive.
+  Automatic synchronization now bridges successful local persistence to a
+  two-second debounced scheduler, retries missed triggers on foreground resume
+  and a 30-second foreground interval, serializes cycles with one remembered
+  follow-up request, uploads safely while an editor is open, and exposes Sync
+  Now from the signed-in library status sheet.
 - Verification: Backend tests cover authentication, account isolation,
   revisioned content, asset transfer, cursors, atomic/idempotent commits, page
   and notebook conflicts, all resolution choices, soft delete/restore, both

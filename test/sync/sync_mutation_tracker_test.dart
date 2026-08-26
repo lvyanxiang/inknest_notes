@@ -31,9 +31,11 @@ void main() {
         contentHash: 'a' * 64,
       ),
     ]);
+    var syncRequestCount = 0;
     final tracker = SyncMutationTracker(
       rootDirectory: root,
       activeSession: _session,
+      onSyncRequested: () => syncRequestCount++,
     );
     final repository = FileNotebookRepository(
       rootDirectory: root,
@@ -61,6 +63,7 @@ void main() {
     expect(operation.content, contains('strokes'));
     expect(operation.content, isNot(contains('id')));
     expect(operation.content, isNot(contains('width')));
+    expect(syncRequestCount, 2);
   });
 
   test('bookmark save queues rewritten notebook content only', () async {

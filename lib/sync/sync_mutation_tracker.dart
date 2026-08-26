@@ -11,15 +11,18 @@ import 'package:inknest_notes/sync/sync_resource_map_store.dart';
 import 'package:inknest_notes/sync/sync_state.dart';
 
 typedef ActiveSyncSession = InkNestAuthSession? Function();
+typedef SyncRequested = void Function();
 
 class SyncMutationTracker {
   SyncMutationTracker({
     required this.rootDirectory,
     required this.activeSession,
+    this.onSyncRequested,
   });
 
   final Directory rootDirectory;
   final ActiveSyncSession activeSession;
+  final SyncRequested? onSyncRequested;
   Future<void> _queue = Future.value();
   int _suppressionDepth = 0;
 
@@ -76,7 +79,10 @@ class SyncMutationTracker {
   }
 
   Future<void> _enqueue(Future<void> Function() action) {
-    final next = _queue.catchError((_) {}).then((_) => action());
+    final next = _queue.catchError((_) {}).then((_) async {
+      await action();
+      onSyncRequested?.call();
+    });
     _queue = next;
     return next;
   }
