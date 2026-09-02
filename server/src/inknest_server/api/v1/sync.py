@@ -13,6 +13,7 @@ from inknest_server.repositories.content import (
     FolderMetadataConflictError,
     InfiniteCanvasMetadataConflictError,
     NotebookMetadataConflictError,
+    PageMetadataConflictError,
     ResourceDeletedError,
 )
 from inknest_server.repositories.sync import SyncIdempotencyKeyReusedError
@@ -233,6 +234,13 @@ async def commit_sync_changes(
                 message="Infinite canvas background changed concurrently.",
                 status_code=409,
                 details={**details, "fields": ["background"]},
+            ) from error
+        if isinstance(error.cause, PageMetadataConflictError):
+            raise ApiError(
+                code="sync_page_metadata_conflict",
+                message="Page paper metadata changed concurrently.",
+                status_code=409,
+                details={**details, "fields": error.cause.fields},
             ) from error
         if isinstance(error.cause, ResourceDeletedError):
             raise ApiError(

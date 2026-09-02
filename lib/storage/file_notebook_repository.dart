@@ -555,6 +555,23 @@ class FileNotebookRepository implements NotebookRepository {
   }
 
   @override
+  Future<void> applySyncedPage(Notebook notebook, NotePage page) async {
+    await _runStorageWrite(() async {
+      await _writeJsonFile(_pageFile(notebook, page.id), page.toJson());
+      final notebooks = await _readIndex();
+      final current = notebooks.firstWhere(
+        (item) => item.id == notebook.id,
+        orElse: () => notebook,
+      );
+      final updated = current.copyWith(updatedAt: DateTime.now());
+      await _writeIndex([
+        for (final item in notebooks)
+          if (item.id == notebook.id) updated else item,
+      ]);
+    });
+  }
+
+  @override
   Future<Notebook> renameNotebook(Notebook notebook, String title) async {
     final updatedNotebook = notebook.copyWith(
       title: title.trim().isEmpty ? notebook.title : title.trim(),

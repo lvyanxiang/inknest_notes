@@ -750,6 +750,8 @@ void main() {
     expect(result.status, IncrementalSyncPullStatus.applied);
     final page = await repository.loadPage(notebook, notebook.pageIds.single);
     expect(page.textBoxes.single.text, 'Cloud text');
+    expect(page.rotationQuarterTurns, 1);
+    expect(page.template.name, 'grid');
     expect((await stateStore.loadSnapshot()).lastAppliedCursor, 'cursor-2');
   });
 
@@ -1582,8 +1584,8 @@ CloudSyncBootstrap _sharedPageBootstrap(String notebookId) {
         width: 768,
         height: 1024,
         coordinateSpaceVersion: 1,
-        rotationQuarterTurns: 0,
-        template: 'blank',
+        rotationQuarterTurns: 1,
+        template: 'grid',
         revision: 2,
         contentHash: 'e' * 64,
         content: const {

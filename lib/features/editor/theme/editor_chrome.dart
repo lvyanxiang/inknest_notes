@@ -200,7 +200,9 @@ class EditorChromeActionTile extends StatelessWidget {
       borderRadius: BorderRadius.circular(EditorWorkspaceTokens.controlRadius),
       child: InkWell(
         onTap: enabled ? onTap : null,
-        borderRadius: BorderRadius.circular(EditorWorkspaceTokens.controlRadius),
+        borderRadius: BorderRadius.circular(
+          EditorWorkspaceTokens.controlRadius,
+        ),
         child: Padding(
           padding: EdgeInsets.symmetric(
             horizontal: 10,
@@ -268,7 +270,9 @@ class EditorChromeIconTile extends StatelessWidget {
       borderRadius: BorderRadius.circular(EditorWorkspaceTokens.controlRadius),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(EditorWorkspaceTokens.controlRadius),
+        borderRadius: BorderRadius.circular(
+          EditorWorkspaceTokens.controlRadius,
+        ),
         child: DecoratedBox(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(

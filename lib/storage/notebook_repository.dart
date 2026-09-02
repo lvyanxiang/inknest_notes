@@ -133,6 +133,8 @@ abstract class NotebookRepository {
     List<String> pageIds,
   );
 
+  Future<void> applySyncedPage(Notebook notebook, NotePage page);
+
   Future<Notebook> addPage(Notebook notebook);
 
   Future<Notebook> insertPage(Notebook notebook, int index);

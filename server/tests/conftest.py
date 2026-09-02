@@ -33,6 +33,7 @@ class FakeObjectStorage:
         self.upload_requests: list[tuple[str, timedelta]] = []
         self.download_requests: list[tuple[str, timedelta]] = []
         self.deleted_objects: list[str] = []
+        self.delete_failures: set[str] = set()
         self.objects: dict[str, FakeStoredObject] = {}
 
     def put_object(self, object_key: str, content: bytes, *, content_type: str) -> None:
@@ -55,6 +56,8 @@ class FakeObjectStorage:
 
     async def delete_object(self, object_key: str) -> None:
         self.deleted_objects.append(object_key)
+        if object_key in self.delete_failures:
+            raise RuntimeError("simulated object deletion failure")
         self.objects.pop(object_key, None)
 
     async def list_object_keys(self, prefix: str) -> list[str]:

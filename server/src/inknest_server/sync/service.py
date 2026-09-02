@@ -10,6 +10,7 @@ from inknest_server.repositories.content import (
     FolderMetadataConflictError,
     InfiniteCanvasMetadataConflictError,
     NotebookMetadataConflictError,
+    PageMetadataConflictError,
     ResourceDeletedError,
     RevisionConflictError,
 )
@@ -49,6 +50,7 @@ from inknest_server.sync.schemas import (
     SyncMergeInfiniteCanvasMetadata,
     SyncMergeNotebookMetadata,
     SyncMergePageMetadata,
+    SyncPageMetadata,
     SyncTombstoneResponse,
 )
 from inknest_server.sync.tombstones import LastPageDeletionError, TombstoneService
@@ -71,6 +73,7 @@ class SyncOperationFailedError(Exception):
             | FolderMetadataConflictError
             | InfiniteCanvasMetadataConflictError
             | NotebookMetadataConflictError
+            | PageMetadataConflictError
             | ResourceDeletedError
             | LibraryResourceNotFoundError
             | LastPageDeletionError
@@ -460,13 +463,29 @@ class SyncService:
                     device_id=device_id,
                 )
             elif operation.resource_type == "page":
-                if operation.content is None:
-                    raise RuntimeError("validated page upsert has no content")
-                content_result = await self._content.save_page_content(
+                if operation.content is None and operation.metadata is None:
+                    raise RuntimeError(
+                        "validated page upsert has no content or metadata"
+                    )
+                if operation.metadata is not None and not isinstance(
+                    operation.metadata, SyncPageMetadata
+                ):
+                    raise RuntimeError("validated page upsert has wrong metadata")
+                content_result = await self._content.save_page(
                     user_id=user_id,
                     page_id=operation.resource_id,
                     base_revision=operation.base_revision,
                     content=operation.content,
+                    metadata=(
+                        operation.metadata.model_dump(mode="json", by_alias=True)
+                        if operation.metadata is not None
+                        else None
+                    ),
+                    base_metadata=(
+                        operation.base_metadata.model_dump(mode="json", by_alias=True)
+                        if operation.base_metadata is not None
+                        else None
+                    ),
                     device_id=device_id,
                 )
             else:
@@ -544,6 +563,7 @@ class SyncService:
             FolderMetadataConflictError,
             InfiniteCanvasMetadataConflictError,
             NotebookMetadataConflictError,
+            PageMetadataConflictError,
             LibraryResourceNotFoundError,
         ) as error:
             raise SyncOperationFailedError(operation, error) from error

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:inknest_notes/auth/account_agreements.dart';
 import 'package:inknest_notes/auth/auth_controller.dart';
+import 'package:inknest_notes/features/account/account_legal_screen.dart';
+import 'package:inknest_notes/features/account/account_security_dialogs.dart';
 
 enum _AuthMode { signIn, register }
 
@@ -115,6 +118,40 @@ class _SignedInAccount extends StatelessWidget {
           label: 'Current device',
           value: '${session.device.name} · ${session.device.platform}',
         ),
+        if (!controller.agreementsCurrent) ...[
+          const SizedBox(height: 16),
+          Card(
+            color: colorScheme.secondaryContainer,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Review required',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Review and accept the current Privacy Policy and Terms before using InkNest Cloud.',
+                  ),
+                  const SizedBox(height: 8),
+                  _LegalLinks(),
+                  const SizedBox(height: 8),
+                  FilledButton(
+                    key: const ValueKey('account-accept-agreements'),
+                    onPressed: controller.isBusy
+                        ? null
+                        : controller.acceptCurrentAgreements,
+                    child: const Text('Accept current agreements'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
         const SizedBox(height: 12),
         Text(
           'Signing out removes this cloud session only. Notes stored on this device stay available.',
@@ -127,6 +164,36 @@ class _SignedInAccount extends StatelessWidget {
           _AccountError(message: message),
         ],
         const SizedBox(height: 24),
+        Text('Security', style: Theme.of(context).textTheme.titleMedium),
+        ListTile(
+          key: const ValueKey('account-change-password'),
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.password_rounded),
+          title: const Text('Change password'),
+          trailing: const Icon(Icons.chevron_right_rounded),
+          enabled: !controller.isBusy,
+          onTap: controller.isBusy
+              ? null
+              : () async {
+                  final changed = await showChangePasswordDialog(
+                    context,
+                    controller,
+                  );
+                  if (changed && context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Password updated. Other devices were signed out.',
+                        ),
+                      ),
+                    );
+                  }
+                },
+        ),
+        const SizedBox(height: 12),
+        Text('Legal', style: Theme.of(context).textTheme.titleMedium),
+        const _LegalDocumentTiles(),
+        const SizedBox(height: 16),
         OutlinedButton.icon(
           key: const ValueKey('account-sign-out'),
           onPressed: controller.isBusy ? null : controller.logout,
@@ -137,6 +204,45 @@ class _SignedInAccount extends StatelessWidget {
                 )
               : const Icon(Icons.logout_rounded),
           label: const Text('Sign out'),
+        ),
+        const SizedBox(height: 28),
+        Divider(color: colorScheme.error.withValues(alpha: 0.45)),
+        const SizedBox(height: 12),
+        Text(
+          'Danger zone',
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            color: colorScheme.error,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Permanently delete this cloud account and its cloud data. Local notes on this device remain.',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          key: const ValueKey('account-delete'),
+          onPressed: controller.isBusy
+              ? null
+              : () async {
+                  final deleted = await showDeleteAccountFlow(
+                    context,
+                    controller,
+                  );
+                  if (deleted && context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Account deletion accepted. Local notes remain on this device.',
+                        ),
+                      ),
+                    );
+                  }
+                },
+          style: OutlinedButton.styleFrom(foregroundColor: colorScheme.error),
+          icon: const Icon(Icons.delete_forever_rounded),
+          label: const Text('Delete account'),
         ),
         const SizedBox(height: 8),
         TextButton(
@@ -190,6 +296,8 @@ class _AuthFormState extends State<_AuthForm> {
   final _confirmationFocus = FocusNode();
   _AuthMode _mode = _AuthMode.signIn;
   bool _obscurePassword = true;
+  bool _agreementsAccepted = false;
+  bool _showAgreementError = false;
 
   bool get _registering => _mode == _AuthMode.register;
 
@@ -210,6 +318,8 @@ class _AuthFormState extends State<_AuthForm> {
     setState(() {
       _mode = selected.single;
       _confirmationController.clear();
+      _agreementsAccepted = false;
+      _showAgreementError = false;
     });
     widget.controller.clearError();
     _formKey.currentState?.reset();
@@ -218,6 +328,10 @@ class _AuthFormState extends State<_AuthForm> {
   Future<void> _submit() async {
     FocusManager.instance.primaryFocus?.unfocus();
     if (!(_formKey.currentState?.validate() ?? false)) {
+      return;
+    }
+    if (_registering && !_agreementsAccepted) {
+      setState(() => _showAgreementError = true);
       return;
     }
     final succeeded = _registering
@@ -381,6 +495,30 @@ class _AuthFormState extends State<_AuthForm> {
                     : null,
                 onFieldSubmitted: (_) => _submit(),
               ),
+              const SizedBox(height: 12),
+              CheckboxListTile(
+                key: const ValueKey('account-agreements'),
+                value: _agreementsAccepted,
+                enabled: !busy,
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                title: const Text(
+                  'I agree to the Privacy Policy and Terms of Service.',
+                ),
+                onChanged: (value) => setState(() {
+                  _agreementsAccepted = value ?? false;
+                  if (_agreementsAccepted) _showAgreementError = false;
+                }),
+              ),
+              const _LegalLinks(),
+              if (_showAgreementError)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    'Review and accept both agreements to create an account.',
+                    style: TextStyle(color: colorScheme.error),
+                  ),
+                ),
             ],
             if (widget.controller.errorMessage case final message?) ...[
               const SizedBox(height: 16),
@@ -403,9 +541,68 @@ class _AuthFormState extends State<_AuthForm> {
                     : Text(_registering ? 'Create account' : 'Sign in'),
               ),
             ),
+            if (!_registering) ...[
+              const SizedBox(height: 12),
+              const _LegalLinks(),
+            ],
           ],
         ),
       ),
+    );
+  }
+}
+
+class _LegalLinks extends StatelessWidget {
+  const _LegalLinks();
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      alignment: WrapAlignment.center,
+      spacing: 8,
+      children: [
+        TextButton(
+          key: const ValueKey('account-privacy-policy'),
+          onPressed: () =>
+              openAccountLegalDocument(context, privacyPolicyDocument),
+          child: const Text('Privacy Policy'),
+        ),
+        TextButton(
+          key: const ValueKey('account-terms'),
+          onPressed: () =>
+              openAccountLegalDocument(context, termsOfServiceDocument),
+          child: const Text('Terms of Service'),
+        ),
+      ],
+    );
+  }
+}
+
+class _LegalDocumentTiles extends StatelessWidget {
+  const _LegalDocumentTiles();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.privacy_tip_outlined),
+          title: const Text('Privacy Policy'),
+          subtitle: const Text('版本 $currentPrivacyPolicyVersion'),
+          trailing: const Icon(Icons.chevron_right_rounded),
+          onTap: () => openAccountLegalDocument(context, privacyPolicyDocument),
+        ),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.description_outlined),
+          title: const Text('Terms of Service'),
+          subtitle: const Text('版本 $currentTermsVersion'),
+          trailing: const Icon(Icons.chevron_right_rounded),
+          onTap: () =>
+              openAccountLegalDocument(context, termsOfServiceDocument),
+        ),
+      ],
     );
   }
 }

@@ -283,7 +283,7 @@ void main() {
               'contentHash': 'a' * 64,
               'changed': false,
               'outcome': 'conflict',
-              'conflict': <String, Object?>{},
+              'conflict': _pendingConflictJson(),
               'tombstone': null,
             },
           ],
@@ -321,6 +321,7 @@ void main() {
       'operations': operations,
     });
     expect(result.results.single.outcome, 'conflict');
+    expect(result.results.single.conflict?.id, 'conflict-1');
     expect(result.nextCursor, 'cursor-2');
   });
 
@@ -797,6 +798,26 @@ Map<String, Object?> _resolvedConflictJson() => {
   'resolution': 'keep_both',
   'resolvedByDeviceId': '33333333-3333-4333-8333-333333333333',
   'resolvedAt': '2026-08-07T01:00:00Z',
+  'createdAt': '2026-08-07T00:00:00Z',
+};
+
+Map<String, Object?> _pendingConflictJson() => {
+  'id': 'conflict-1',
+  'resourceType': 'page',
+  'originalResourceId': 'page-1',
+  'copyResourceId': 'page-copy-1',
+  'copyDisplayName': '第 1 页（冲突副本）',
+  'baseRevision': 0,
+  'currentRevision': 2,
+  'submittedContentHash': 'a' * 64,
+  'submittedContent': const {'strokes': <Object?>[]},
+  'currentContentHash': 'b' * 64,
+  'currentContent': const {'strokes': <Object?>[]},
+  'sourceDeviceId': '22222222-2222-4222-8222-222222222222',
+  'status': 'pending',
+  'resolution': null,
+  'resolvedByDeviceId': null,
+  'resolvedAt': null,
   'createdAt': '2026-08-07T00:00:00Z',
 };
 

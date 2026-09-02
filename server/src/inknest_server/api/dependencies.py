@@ -44,6 +44,7 @@ def get_auth_service(request: Request, session: DbSession) -> AuthService:
         cast(PasswordManager, request.app.state.password_manager),
         cast(TokenManager, request.app.state.token_manager),
         cast(LoginRateLimiter, request.app.state.login_rate_limiter),
+        cast(ObjectStorage, request.app.state.object_storage),
     )
 
 

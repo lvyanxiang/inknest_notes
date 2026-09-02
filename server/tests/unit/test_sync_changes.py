@@ -6,6 +6,10 @@ from httpx import AsyncClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from inknest_server.auth.agreements import (
+    CURRENT_PRIVACY_POLICY_VERSION,
+    CURRENT_TERMS_VERSION,
+)
 from inknest_server.config import Settings
 from inknest_server.models import (
     Conflict,
@@ -35,6 +39,8 @@ async def register(client: AsyncClient, email: str) -> dict[str, Any]:
             "password": "correct-horse-battery-staple",
             "deviceName": "Test iPad",
             "platform": "ios",
+            "privacyPolicyVersion": CURRENT_PRIVACY_POLICY_VERSION,
+            "termsVersion": CURRENT_TERMS_VERSION,
         },
     )
     assert response.status_code == 201
@@ -84,11 +90,12 @@ async def test_library_and_revision_writes_append_transactional_changes(
         height=1024,
         coordinate_space_version=1,
     )
+    page_id = page.id
     content: dict[str, object] = {"id": page.id, "strokes": []}
     repository = ContentRepository(db_session)
     first = await repository.save_page_content(
         user_id=user.id,
-        page_id=page.id,
+        page_id=page_id,
         base_revision=0,
         content=content,
     )
@@ -386,6 +393,103 @@ async def test_sync_commit_updates_notebook_metadata_and_rejects_concurrent_stru
         "After",
         True,
         "metadata-folder",
+    )
+
+
+async def test_sync_commit_updates_page_metadata_and_rejects_stale_fields(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    registered = await register(client, "sync-page-metadata@example.com")
+    user_id = UUID(registered["user"]["id"])
+    device_id = UUID(registered["device"]["id"])
+    headers = bearer(registered["accessToken"])
+    library = LibraryRepository(db_session)
+    notebook = await library.create_notebook(
+        user_id=user_id,
+        notebook_id="page-metadata-notebook",
+        title="Paper",
+        layout_mode="paged",
+    )
+    page = await library.create_page(
+        user_id=user_id,
+        notebook_id=notebook.id,
+        page_id="page-metadata-page",
+        position=0,
+        width=768,
+        height=1024,
+        coordinate_space_version=1,
+    )
+    page_id = page.id
+    content = ContentRepository(db_session)
+    initial = await content.save_page_content(
+        user_id=user_id,
+        page_id=page_id,
+        base_revision=0,
+        content={"strokes": []},
+        device_id=device_id,
+    )
+    await db_session.commit()
+    before = await client.get("/api/v1/sync/changes", headers=headers)
+    base_metadata = {
+        "width": 768,
+        "height": 1024,
+        "coordinateSpaceVersion": 1,
+        "rotationQuarterTurns": 0,
+        "template": "blank",
+    }
+    payload = {
+        "deviceId": str(device_id),
+        "idempotencyKey": "page-metadata-grid",
+        "baseCursor": before.json()["nextCursor"],
+        "operations": [
+            {
+                "operationId": "page-metadata-grid",
+                "operation": "upsert",
+                "resourceType": "page",
+                "resourceId": page_id,
+                "baseRevision": initial.revision,
+                "baseMetadata": base_metadata,
+                "metadata": {
+                    **base_metadata,
+                    "rotationQuarterTurns": 1,
+                    "template": "grid",
+                },
+            }
+        ],
+    }
+
+    updated = await client.post("/api/v1/sync/commit", headers=headers, json=payload)
+    stale = await client.post(
+        "/api/v1/sync/commit",
+        headers=headers,
+        json={
+            **payload,
+            "idempotencyKey": "page-metadata-ruled",
+            "operations": [
+                {
+                    **payload["operations"][0],
+                    "operationId": "page-metadata-ruled",
+                    "metadata": {**base_metadata, "template": "ruled"},
+                }
+            ],
+        },
+    )
+    db_session.expire_all()
+    stored = await db_session.scalar(
+        select(Page).where(Page.id == page_id, Page.user_id == user_id)
+    )
+
+    assert updated.status_code == 200
+    assert updated.json()["results"][0]["revision"] == 2
+    assert stale.status_code == 409
+    assert stale.json()["error"]["code"] == "sync_page_metadata_conflict"
+    assert stale.json()["error"]["details"]["fields"] == ["template"]
+    assert stored is not None
+    assert (stored.rotation_quarter_turns, stored.template, stored.revision) == (
+        1,
+        "grid",
+        2,
     )
 
 

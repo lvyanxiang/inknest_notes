@@ -14,11 +14,15 @@ import 'package:inknest_notes/sync/incremental_sync_push_service.dart';
 import 'package:inknest_notes/sync/inknest_api_models.dart';
 import 'package:inknest_notes/sync/sync_conflict_resolution_service.dart';
 import 'package:inknest_notes/sync/sync_conflicts.dart';
+import 'package:inknest_notes/sync/sync_bootstrap.dart';
+import 'package:inknest_notes/sync/sync_merge_plan.dart';
 import 'package:inknest_notes/sync/sync_tombstone_restore_service.dart';
 import 'package:inknest_notes/sync/sync_tombstones.dart';
+import 'package:inknest_notes/sync/sync_state.dart';
+import 'package:inknest_notes/sync/sync_structural_conflicts.dart';
 
 void main() {
-  testWidgets('signed-in startup pushes before pull and reports upload count', (
+  testWidgets('signed-in startup syncs silently and keeps details in status', (
     tester,
   ) async {
     final controller = AuthController(
@@ -39,7 +43,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(sync.calls, ['push', 'pull']);
-    expect(find.text('已上传 2 项本地更改。'), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('library-sync-status')));
+    await tester.pumpAndSettle();
+    expect(find.text('已上传 2 项本地更改，当前已同步。'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
     controller.dispose();
@@ -77,7 +84,138 @@ void main() {
     controller.dispose();
   });
 
-  testWidgets('shared pull reports updated existing content', (tester) async {
+  testWidgets('uninitialized cloud library merges without opening a dialog', (
+    tester,
+  ) async {
+    final controller = AuthController(
+      service: _RestoredAuthService(),
+      deviceName: 'Test iPad',
+      platform: 'ios',
+    );
+    await controller.initialize();
+    final sync = _StartupSyncService(
+      uploadedOperationCount: 0,
+      pullResult: const IncrementalSyncPullResult(
+        status: IncrementalSyncPullStatus.notInitialized,
+      ),
+      initialPreview: _firstSignInPreview(
+        local: SyncLibraryInventory(),
+        cloud: SyncLibraryInventory(notebookIds: const ['cloud-notebook']),
+      ),
+    );
+
+    await tester.pumpWidget(
+      InkNestApp(
+        notebookRepository: InMemoryNotebookRepository(),
+        authController: controller,
+        firstSignInSyncService: sync,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(sync.calls, ['push', 'pull', 'inspect', 'restore']);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byType(SnackBar), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('library-sync-status')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('已接收 1 本云端笔记'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    controller.dispose();
+  });
+
+  testWidgets('first mixed merge exposes a stored conflict warning silently', (
+    tester,
+  ) async {
+    final controller = AuthController(
+      service: _RestoredAuthService(),
+      deviceName: 'Test iPad',
+      platform: 'ios',
+    );
+    await controller.initialize();
+    final conflict = _pendingConflict(id: 'first-merge-conflict');
+    final sync = _StartupSyncService(
+      uploadedOperationCount: 0,
+      pullResult: const IncrementalSyncPullResult(
+        status: IncrementalSyncPullStatus.notInitialized,
+      ),
+      initialPreview: _firstSignInPreview(
+        local: SyncLibraryInventory(notebookIds: const ['shared-notebook']),
+        cloud: SyncLibraryInventory(notebookIds: const ['shared-notebook']),
+      ),
+      firstSignInConflicts: [conflict],
+    );
+
+    await tester.pumpWidget(
+      InkNestApp(
+        notebookRepository: InMemoryNotebookRepository(),
+        authController: controller,
+        firstSignInSyncService: sync,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(sync.calls, ['push', 'pull', 'inspect', 'merge']);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byType(SnackBar), findsNothing);
+    expect(
+      find.byKey(const ValueKey('library-sync-conflicts')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('library-sync-conflicts')));
+    await tester.pumpAndSettle();
+    expect(find.text(conflict.copyDisplayName), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    controller.dispose();
+  });
+
+  testWidgets('structural conflict warning offers local or cloud version', (
+    tester,
+  ) async {
+    final controller = AuthController(
+      service: _RestoredAuthService(),
+      deviceName: 'Test iPad',
+      platform: 'ios',
+    );
+    await controller.initialize();
+    final conflict = SyncStructuralConflict(
+      resourceType: SyncResourceType.page,
+      resourceId: 'page-1',
+      cloudRevision: 3,
+      fields: const ['template', 'rotationQuarterTurns'],
+      localMetadata: const {'template': 'grid', 'rotationQuarterTurns': 1},
+      baseMetadata: const {'template': 'blank', 'rotationQuarterTurns': 0},
+      cloudMetadata: const {'template': 'ruled', 'rotationQuarterTurns': 2},
+    );
+    final sync = _StartupSyncService(structuralConflicts: [conflict]);
+
+    await tester.pumpWidget(
+      InkNestApp(
+        notebookRepository: InMemoryNotebookRepository(),
+        authController: controller,
+        firstSignInSyncService: sync,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AlertDialog), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('library-sync-conflicts')));
+    await tester.pumpAndSettle();
+    expect(find.text('页面属性冲突'), findsOneWidget);
+    await tester.tap(find.text('页面属性冲突'));
+    await tester.pumpAndSettle();
+    expect(find.text('使用本机版本'), findsOneWidget);
+    expect(find.text('使用云端版本'), findsOneWidget);
+    expect(find.textContaining('两个都保留'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    controller.dispose();
+  });
+
+  testWidgets('shared pull refreshes silently and reports details in status', (
+    tester,
+  ) async {
     final controller = AuthController(
       service: _RestoredAuthService(),
       deviceName: 'Test iPad',
@@ -102,6 +240,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.byType(SnackBar), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('library-sync-status')));
+    await tester.pumpAndSettle();
     expect(find.textContaining('更新 1 项已有内容'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
@@ -135,6 +276,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.byType(SnackBar), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('library-sync-status')));
+    await tester.pumpAndSettle();
     expect(find.textContaining('本地恢复副本已保留'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
@@ -168,6 +312,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.byType(SnackBar), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('library-sync-status')));
+    await tester.pumpAndSettle();
     expect(find.textContaining('可恢复的本地页面副本已保留'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
@@ -221,7 +368,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('1 个同步冲突待处理'), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
     expect(
       find.byKey(const ValueKey('library-sync-conflicts')),
       findsOneWidget,
@@ -232,7 +379,7 @@ void main() {
 
     expect(find.text('同步冲突'), findsOneWidget);
     expect(find.text('第 1 页（冲突副本）'), findsOneWidget);
-    expect(find.text('1 项待处理；两个版本都已安全保留。'), findsOneWidget);
+    expect(find.text('1 项待处理；本机与云端版本均已安全保留。'), findsOneWidget);
 
     await tester.tap(find.text('第 1 页（冲突副本）'));
     await tester.pumpAndSettle();
@@ -657,7 +804,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('已保留另一台设备上的编辑'), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
     await tester.tap(find.byKey(const ValueKey('library-sync-status')));
     await tester.pumpAndSettle();
     expect(find.text('编辑已保留'), findsOneWidget);
@@ -672,12 +819,16 @@ class _StartupSyncService
     implements
         FirstSignInSyncService,
         SyncConflictResolutionService,
-        SyncTombstoneRestoreService {
+        SyncTombstoneRestoreService,
+        SyncStructuralConflictResolutionService {
   _StartupSyncService({
     this.uploadedOperationCount = 2,
     this.preservedDeleteEditCount = 0,
     this.pushFailuresRemaining = 0,
     this.pushGate,
+    this.initialPreview,
+    this.firstSignInConflicts = const [],
+    this.structuralConflicts = const [],
     this.pullResult = const IncrementalSyncPullResult(
       status: IncrementalSyncPullStatus.upToDate,
     ),
@@ -687,10 +838,35 @@ class _StartupSyncService
   final int preservedDeleteEditCount;
   int pushFailuresRemaining;
   final Future<void>? pushGate;
+  final FirstSignInSyncPreview? initialPreview;
+  final List<CloudSyncConflict> firstSignInConflicts;
+  List<SyncStructuralConflict> structuralConflicts;
   final IncrementalSyncPullResult pullResult;
   final List<String> calls = [];
   final List<SyncConflictResolution> resolutions = [];
   final List<String> restoredTombstoneIds = [];
+
+  @override
+  Future<List<SyncStructuralConflict>> loadStructuralConflicts({
+    required String userId,
+    required String deviceId,
+  }) async => structuralConflicts;
+
+  @override
+  Future<SyncStructuralConflictResolutionResult> resolveStructuralConflict({
+    required String userId,
+    required String deviceId,
+    required String conflictId,
+    required SyncStructuralConflictResolution resolution,
+  }) async {
+    structuralConflicts = [
+      for (final conflict in structuralConflicts)
+        if (conflict.id != conflictId) conflict,
+    ];
+    return SyncStructuralConflictResolutionResult(
+      pendingConflicts: structuralConflicts,
+    );
+  }
 
   @override
   Future<SyncTombstoneRestoreResult> restoreTombstone({
@@ -728,6 +904,12 @@ class _StartupSyncService
   }) async {
     calls.add('push');
     await pushGate;
+    if (structuralConflicts.isNotEmpty) {
+      throw IncrementalSyncPushException(
+        pendingOperationCount: structuralConflicts.length,
+        structuralConflicts: structuralConflicts,
+      );
+    }
     if (pushFailuresRemaining > 0) {
       pushFailuresRemaining--;
       throw const IncrementalSyncPushException(pendingOperationCount: 2);
@@ -749,14 +931,24 @@ class _StartupSyncService
   }
 
   @override
-  Future<FirstSignInSyncPreview> inspect() => throw UnimplementedError();
+  Future<FirstSignInSyncPreview> inspect() async {
+    calls.add('inspect');
+    return initialPreview ?? (throw UnimplementedError());
+  }
 
   @override
   Future<BootstrapRestoreResult> restoreCloudOnly({
     required FirstSignInSyncPreview preview,
     required String userId,
     required String deviceId,
-  }) => throw UnimplementedError();
+  }) async {
+    calls.add('restore');
+    return const BootstrapRestoreResult(
+      downloadedNotebookCount: 1,
+      downloadedAssetCount: 2,
+      cursorPersisted: true,
+    );
+  }
 
   @override
   Future<LocalMergeUploadResult> uploadLocalOnly({
@@ -770,7 +962,16 @@ class _StartupSyncService
     required FirstSignInSyncPreview preview,
     required String userId,
     required String deviceId,
-  }) => throw UnimplementedError();
+  }) async {
+    calls.add('merge');
+    return MixedLibraryMergeResult(
+      uploadedNotebookCount: 0,
+      downloadedNotebookCount: 0,
+      transferredAssetCount: 0,
+      preservedConflictCount: firstSignInConflicts.length,
+      pendingConflicts: firstSignInConflicts,
+    );
+  }
 }
 
 class _RestoredAuthService implements AuthService {
@@ -793,10 +994,28 @@ class _RestoredAuthService implements AuthService {
     required String deviceName,
     required String platform,
     required String clientInstanceId,
+    required String privacyPolicyVersion,
+    required String termsVersion,
   }) => throw UnimplementedError();
 
   @override
   Future<void> logout() async {}
+
+  @override
+  Future<InkNestCloudUser> acceptAgreements({
+    required String privacyPolicyVersion,
+    required String termsVersion,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<AccountDeletionResult> deleteAccount({required String password}) =>
+      throw UnimplementedError();
 }
 
 InkNestAuthSession _session() {
@@ -810,6 +1029,9 @@ InkNestAuthSession _session() {
       id: 'user-1',
       email: 'writer@example.com',
       createdAt: now,
+      privacyPolicyVersion: '2026-08-31.1',
+      termsVersion: '2026-08-31.1',
+      agreementsAcceptedAt: now,
     ),
     device: InkNestCloudDevice(
       id: 'device-1',
@@ -821,3 +1043,43 @@ InkNestAuthSession _session() {
     ),
   );
 }
+
+FirstSignInSyncPreview _firstSignInPreview({
+  required SyncLibraryInventory local,
+  required SyncLibraryInventory cloud,
+}) {
+  final assessment = SyncBootstrapAssessment(local: local, cloud: cloud);
+  return FirstSignInSyncPreview(
+    bootstrap: CloudSyncBootstrap(
+      inventory: cloud,
+      baseCursor: 'cursor-bootstrap',
+      folders: const [],
+      notebooks: const [],
+      pages: const [],
+      infiniteCanvases: const [],
+      assets: const [],
+    ),
+    assessment: assessment,
+    plan: SyncMergePlan.fromAssessment(assessment),
+  );
+}
+
+CloudSyncConflict _pendingConflict({required String id}) => CloudSyncConflict(
+  id: id,
+  resourceType: 'page',
+  originalResourceId: 'page-1',
+  copyResourceId: 'page-copy-1',
+  copyDisplayName: '第 1 页（冲突副本）',
+  baseRevision: 1,
+  currentRevision: 2,
+  submittedContentHash: 'a' * 64,
+  submittedContent: const {'strokes': <Object?>[]},
+  currentContentHash: 'b' * 64,
+  currentContent: const {'strokes': <Object?>[]},
+  sourceDeviceId: 'device-2',
+  status: 'pending',
+  resolution: null,
+  resolvedByDeviceId: null,
+  resolvedAt: null,
+  createdAt: DateTime.utc(2026, 8, 31),
+);

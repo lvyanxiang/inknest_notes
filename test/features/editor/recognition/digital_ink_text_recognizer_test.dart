@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -111,6 +113,40 @@ void main() {
       ]);
     },
   );
+
+  test('does not hang when native recognizer close never completes', () async {
+    const channel = MethodChannel('google_mlkit_digital_ink_recognizer');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          if (call.method == 'vision#startDigitalInkRecognizer') {
+            return <Object?>[
+              <Object?, Object?>{'text': '美化', 'score': 0},
+            ];
+          }
+          if (call.method == 'vision#closeDigitalInkRecognizer') {
+            return Completer<Object?>().future;
+          }
+          return null;
+        });
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+
+    final candidates = await MlKitDigitalInkRecognitionBackend()
+        .recognize(
+          languageTag: 'zh-Hani-CN',
+          strokes: const [
+            DigitalInkStroke(
+              points: [DigitalInkPoint(x: 12, y: 12, timeMs: 1)],
+            ),
+          ],
+          writingArea: const Size(36, 36),
+        )
+        .timeout(const Duration(seconds: 2));
+
+    expect(candidates.single.text, '美化');
+  });
 }
 
 Stroke _stroke(String id, DateTime time) {

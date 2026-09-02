@@ -6,7 +6,9 @@ import 'package:inknest_notes/sync/inknest_api_client.dart';
 import 'package:inknest_notes/sync/local_sync_asset_inventory.dart';
 import 'package:inknest_notes/sync/sync_cloud_client.dart';
 import 'package:inknest_notes/sync/sync_resource_map_store.dart';
+import 'package:inknest_notes/sync/sync_bootstrap.dart';
 import 'package:inknest_notes/sync/sync_state.dart';
+import 'package:inknest_notes/sync/sync_structural_conflicts.dart';
 import 'package:inknest_notes/sync/sync_upload_models.dart';
 
 class IncrementalSyncPushResult {
@@ -22,9 +24,13 @@ class IncrementalSyncPushResult {
 }
 
 class IncrementalSyncPushException implements Exception {
-  const IncrementalSyncPushException({required this.pendingOperationCount});
+  const IncrementalSyncPushException({
+    required this.pendingOperationCount,
+    this.structuralConflicts = const [],
+  });
 
   final int pendingOperationCount;
+  final List<SyncStructuralConflict> structuralConflicts;
 }
 
 class IncrementalSyncPushService {
@@ -52,6 +58,11 @@ class IncrementalSyncPushService {
       userId: userId,
       deviceId: deviceId,
     );
+    final structuralConflictStore = FileSyncStructuralConflictStore(
+      rootDirectory: rootDirectory,
+      userId: userId,
+      deviceId: deviceId,
+    );
     var uploaded = 0;
     var conflicts = 0;
     var deleteEditConflicts = 0;
@@ -61,6 +72,15 @@ class IncrementalSyncPushService {
       return const IncrementalSyncPushResult(
         uploadedOperationCount: 0,
         preservedConflictCount: 0,
+      );
+    }
+    final existingStructuralConflicts = await structuralConflictStore.load();
+    if (existingStructuralConflicts.isNotEmpty) {
+      throw IncrementalSyncPushException(
+        pendingOperationCount:
+            initialState.pendingOperations.length +
+            (initialState.inFlightBatch?.operations.length ?? 0),
+        structuralConflicts: existingStructuralConflicts,
       );
     }
 
@@ -115,7 +135,8 @@ class IncrementalSyncPushService {
           if (result.outcome == 'conflict' &&
               operation.metadata != null &&
               operation.baseMetadata != null) {
-            await stateStore.enqueueNotebookMetadata(
+            await stateStore.enqueueMetadataOnly(
+              resourceType: operation.resourceType,
               resourceId: operation.resourceId,
               baseRevision: result.revision,
               baseMetadata: operation.baseMetadata!,
@@ -135,6 +156,19 @@ class IncrementalSyncPushService {
             .where((result) => result.outcome == 'delete_conflict')
             .length;
       }
+    } on InkNestApiException catch (error) {
+      final structuralConflicts = await _recordStructuralConflict(
+        error: error,
+        stateStore: stateStore,
+        store: structuralConflictStore,
+      );
+      final failedState = await stateStore.loadSnapshot();
+      throw IncrementalSyncPushException(
+        pendingOperationCount:
+            failedState.pendingOperations.length +
+            (failedState.inFlightBatch?.operations.length ?? 0),
+        structuralConflicts: structuralConflicts,
+      );
     } on Object {
       final failedState = await stateStore.loadSnapshot();
       throw IncrementalSyncPushException(
@@ -148,6 +182,101 @@ class IncrementalSyncPushService {
       preservedConflictCount: conflicts,
       preservedDeleteEditCount: deleteEditConflicts,
     );
+  }
+
+  Future<List<SyncStructuralConflict>> _recordStructuralConflict({
+    required InkNestApiException error,
+    required FileSyncStateStore stateStore,
+    required FileSyncStructuralConflictStore store,
+  }) async {
+    if (!const {
+      'sync_folder_metadata_conflict',
+      'sync_notebook_metadata_conflict',
+      'sync_page_metadata_conflict',
+      'sync_infinite_canvas_metadata_conflict',
+    }.contains(error.code)) {
+      return store.load();
+    }
+    final operationId = error.details['operationId'];
+    final fields = error.details['fields'];
+    final batch = (await stateStore.loadSnapshot()).inFlightBatch;
+    if (operationId is! String ||
+        fields is! List<Object?> ||
+        fields.any((field) => field is! String) ||
+        batch == null) {
+      return store.load();
+    }
+    final matching = batch.operations.where(
+      (operation) => operation.operationId == operationId,
+    );
+    if (matching.length != 1) return store.load();
+    final operation = matching.single;
+    if (operation.metadata == null || operation.baseMetadata == null) {
+      return store.load();
+    }
+    final bootstrap = await cloudClient.bootstrap();
+    final cloud = _cloudMetadata(bootstrap, operation);
+    if (cloud == null) return store.load();
+    await store.put(
+      SyncStructuralConflict(
+        resourceType: operation.resourceType,
+        resourceId: operation.resourceId,
+        cloudRevision: cloud.$1,
+        fields: fields.cast<String>(),
+        localMetadata: operation.metadata!,
+        baseMetadata: operation.baseMetadata!,
+        cloudMetadata: cloud.$2,
+      ),
+    );
+    return store.load();
+  }
+
+  (int, Map<String, Object?>)? _cloudMetadata(
+    CloudSyncBootstrap bootstrap,
+    PendingSyncOperation operation,
+  ) {
+    switch (operation.resourceType) {
+      case SyncResourceType.folder:
+        for (final folder in bootstrap.folders) {
+          if (folder.id == operation.resourceId) {
+            return (folder.revision, {'name': folder.name});
+          }
+        }
+      case SyncResourceType.notebook:
+        for (final notebook in bootstrap.notebooks) {
+          if (notebook.id == operation.resourceId) {
+            final pages =
+                bootstrap.pages
+                    .where((page) => page.notebookId == notebook.id)
+                    .toList()
+                  ..sort(
+                    (left, right) => left.position.compareTo(right.position),
+                  );
+            return (
+              notebook.revision,
+              notebookSyncMetadata(
+                notebook,
+                pageOrder: notebook.layoutMode == 'paged'
+                    ? pages.map((page) => page.id)
+                    : null,
+              ),
+            );
+          }
+        }
+      case SyncResourceType.page:
+        for (final page in bootstrap.pages) {
+          if (page.id == operation.resourceId) {
+            return (page.revision, pageSyncMetadata(page));
+          }
+        }
+      case SyncResourceType.infiniteCanvas:
+        for (final canvas in bootstrap.infiniteCanvases) {
+          if (canvas.id == operation.resourceId) {
+            return (canvas.revision, {'background': canvas.background});
+          }
+        }
+    }
+    return null;
   }
 
   Future<void> _uploadMissingAssets(

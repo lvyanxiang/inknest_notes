@@ -280,6 +280,20 @@ class SyncInfiniteCanvasMetadata(SyncApiModel):
     background: Literal["blank", "dotted", "grid"]
 
 
+class SyncPageMetadata(SyncApiModel):
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        extra="forbid",
+        populate_by_name=True,
+    )
+
+    width: float = Field(gt=0)
+    height: float = Field(gt=0)
+    coordinate_space_version: object
+    rotation_quarter_turns: int = Field(ge=0, le=3)
+    template: str = Field(min_length=1, max_length=32)
+
+
 class SyncCommitOperation(SyncApiModel):
     operation_id: str = Field(min_length=1, max_length=128)
     operation: Literal["upsert", "delete"]
@@ -288,10 +302,18 @@ class SyncCommitOperation(SyncApiModel):
     base_revision: int = Field(ge=0)
     content: dict[str, object] | None = None
     metadata: (
-        SyncFolderMetadata | SyncNotebookMetadata | SyncInfiniteCanvasMetadata | None
+        SyncFolderMetadata
+        | SyncNotebookMetadata
+        | SyncPageMetadata
+        | SyncInfiniteCanvasMetadata
+        | None
     ) = None
     base_metadata: (
-        SyncFolderMetadata | SyncNotebookMetadata | SyncInfiniteCanvasMetadata | None
+        SyncFolderMetadata
+        | SyncNotebookMetadata
+        | SyncPageMetadata
+        | SyncInfiniteCanvasMetadata
+        | None
     ) = None
 
     @model_validator(mode="after")
@@ -321,6 +343,11 @@ class SyncCommitOperation(SyncApiModel):
                 self.base_metadata, SyncFolderMetadata
             ):
                 raise ValueError("folder baseMetadata must match folder metadata")
+        elif self.resource_type == "page" and self.metadata is not None:
+            if not isinstance(self.metadata, SyncPageMetadata) or not isinstance(
+                self.base_metadata, SyncPageMetadata
+            ):
+                raise ValueError("page metadata requires matching baseMetadata")
         elif self.resource_type == "infinite_canvas" and self.metadata is not None:
             if not isinstance(
                 self.metadata, SyncInfiniteCanvasMetadata

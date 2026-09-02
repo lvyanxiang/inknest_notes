@@ -54,13 +54,19 @@ Then run:
 make run
 ```
 
-That calls `scripts/run_app.sh`, which is equivalent to
-`flutter run --dart-define-from-file=.env.flutter`. Extra Flutter flags can be
-passed through the script, for example:
+That calls `scripts/run_app.sh`, which loads `.env.flutter` and launches the
+app. With more than one connected phone, simulator, or desktop target, the
+script lists them and asks which one to use.
+
+Pin a device without the interactive prompt:
 
 ```sh
+make run DEVICE=<device-id>
 ./scripts/run_app.sh -d <device-id>
+make run ARGS='-d <device-id> --release'
 ```
+
+List IDs with `flutter devices`.
 
 If a previous debug session left behind dead `iproxy` tunnels or a hung
 CoreDevice helper (`Error connecting to the service protocol`), clear them and
@@ -68,6 +74,7 @@ relaunch from the repository root:
 
 ```sh
 make restart
+make restart DEVICE=<device-id>
 ```
 
 Use `make stop` when you only need to clear those helpers.
@@ -97,13 +104,6 @@ For a manual local check:
 2. Return to the library and confirm the Account tooltip shows the email.
 3. Restart the App and confirm the account is restored.
 4. Sign out and confirm existing local notebooks are still present.
-
-If more than one device is available, list the devices and select one by ID:
-
-```sh
-flutter devices
-flutter run -d <device-id>
-```
 
 Run the test suite with:
 

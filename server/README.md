@@ -163,7 +163,11 @@ All application routes use the base URL `http://127.0.0.1:8000/api/v1`.
 | `POST` | `/auth/login` | No | Sign in and create a device session. |
 | `POST` | `/auth/refresh` | Refresh Token in body | Rotate the Refresh Token and issue a new Access Token. |
 | `POST` | `/auth/logout` | Refresh Token in body | Revoke the supplied Refresh Token. |
+| `GET` | `/legal/agreements` | No | Return the current Privacy Policy and Terms versions. |
 | `GET` | `/me` | Bearer Access Token | Return the current user. |
+| `PUT` | `/me/agreements` | Bearer Access Token | Explicitly accept the current agreement versions. |
+| `PUT` | `/me/password` | Bearer Access Token | Change the password and revoke sessions on other devices. |
+| `DELETE` | `/me` | Bearer Access Token | Deactivate the account and delete associated cloud data. |
 | `GET` | `/devices` | Bearer Access Token | List the current user's devices. |
 | `DELETE` | `/devices/{device_id}` | Bearer Access Token | Revoke one device owned by the current user. |
 | `POST` | `/assets/upload-sessions` | Bearer Access Token | Create or retry an upload session and return a MinIO presigned PUT URL. |
@@ -189,6 +193,18 @@ allows five failures for the same client IP and normalized email, and 25 total
 failures from one client IP. A blocked request returns `429 Too Many Requests`,
 the structured error code `login_rate_limited`, and a `Retry-After` header.
 Successful login clears the account/client failure bucket.
+
+Account deletion revokes every device immediately. If private object cleanup is
+temporarily unavailable, the API returns an accepted `pending` result and keeps
+a minimal retry record. After storage recovers, retry all pending requests from
+`server/`:
+
+```bash
+uv run python -m inknest_server.maintenance.delete_accounts
+```
+
+The command exits non-zero while any request remains pending, so it can be run
+by a scheduled production job and monitored safely.
 
 ### Presigned asset uploads
 

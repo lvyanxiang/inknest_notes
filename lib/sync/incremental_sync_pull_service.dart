@@ -151,6 +151,13 @@ class IncrementalSyncPullService {
     }
 
     if (allChanges.isEmpty) {
+      final pagesWithoutMetadata = mappings
+          .where(
+            (mapping) =>
+                mapping.resourceType == SyncResourceType.page &&
+                mapping.pageMetadata == null,
+          )
+          .toList();
       final canvasesWithoutMetadata = mappings
           .where(
             (mapping) =>
@@ -158,8 +165,34 @@ class IncrementalSyncPullService {
                 mapping.infiniteCanvasMetadata == null,
           )
           .toList();
-      if (canvasesWithoutMetadata.isNotEmpty) {
+      if (pagesWithoutMetadata.isNotEmpty ||
+          canvasesWithoutMetadata.isNotEmpty) {
         final bootstrap = await cloudClient.bootstrap();
+        for (final mapping in pagesWithoutMetadata) {
+          CloudSyncPage? cloud;
+          for (final candidate in bootstrap.pages) {
+            if (candidate.id == mapping.remoteResourceId) {
+              cloud = candidate;
+              break;
+            }
+          }
+          if (cloud == null ||
+              cloud.revision != mapping.revision ||
+              cloud.contentHash != mapping.contentHash) {
+            return IncrementalSyncPullResult(
+              status: IncrementalSyncPullStatus.requiresReconciliation,
+              pendingConflicts: pendingConflicts,
+              activeTombstones: activeTombstones,
+            );
+          }
+          await resourceMap.updateRemote(
+            resourceType: mapping.resourceType,
+            remoteResourceId: mapping.remoteResourceId,
+            revision: mapping.revision,
+            contentHash: mapping.contentHash,
+            pageMetadata: pageSyncMetadata(cloud),
+          );
+        }
         for (final mapping in canvasesWithoutMetadata) {
           CloudSyncInfiniteCanvas? cloud;
           for (final candidate in bootstrap.infiniteCanvases) {

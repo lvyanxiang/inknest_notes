@@ -9,10 +9,13 @@ import 'package:inknest_notes/storage/file_notebook_repository.dart';
 import 'package:inknest_notes/sync/file_sync_state_store.dart';
 import 'package:inknest_notes/sync/first_sign_in_sync_service.dart';
 import 'package:inknest_notes/sync/incremental_sync_pull_service.dart';
+import 'package:inknest_notes/sync/inknest_api_models.dart';
+import 'package:inknest_notes/sync/sync_mutation_tracker.dart';
 import 'package:inknest_notes/sync/sync_resource_map_store.dart';
 import 'package:inknest_notes/sync/sync_bootstrap.dart';
 import 'package:inknest_notes/sync/sync_changes.dart';
 import 'package:inknest_notes/sync/sync_cloud_client.dart';
+import 'package:inknest_notes/sync/sync_conflicts.dart';
 import 'package:inknest_notes/sync/sync_upload_models.dart';
 
 void main() {
@@ -110,6 +113,57 @@ void main() {
         ).loadSnapshot()).lastAppliedCursor,
         isNull,
       );
+    },
+  );
+
+  test(
+    'incremental push requeues a mapped page saved while signed out',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'inknest-signed-out-catch-up-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      final cloud = _CloudRestoreHandoffClient();
+      final initialRepository = FileNotebookRepository(rootDirectory: root);
+      final initialService = ApiFirstSignInSyncService(
+        repository: initialRepository,
+        apiClient: cloud,
+        rootDirectory: root,
+      );
+      final preview = await initialService.inspect();
+      await initialService.restoreCloudOnly(
+        preview: preview,
+        userId: 'user-1',
+        deviceId: 'device-1',
+      );
+      final notebook = (await initialRepository.listNotebooks()).single;
+      final page = await initialRepository.loadPage(
+        notebook,
+        notebook.pageIds.single,
+      );
+      InkNestAuthSession? session;
+      final tracker = SyncMutationTracker(
+        rootDirectory: root,
+        activeSession: () => session,
+      );
+      final repository = FileNotebookRepository(
+        rootDirectory: root,
+        onPagePersisted: tracker.pageSaved,
+      );
+      await repository.savePage(notebook, page);
+
+      session = _authSession();
+      final result = await ApiFirstSignInSyncService(
+        repository: repository,
+        apiClient: cloud,
+        rootDirectory: root,
+        mutationTracker: tracker,
+      ).pushIncremental(userId: 'user-1', deviceId: 'device-1');
+
+      expect(result.uploadedOperationCount, 1);
+      expect(cloud.reconciledOperations, hasLength(1));
+      expect(cloud.reconciledOperations.single['resourceType'], 'page');
+      expect(cloud.reconciledOperations.single['resourceId'], 'cloud-page');
     },
   );
 
@@ -298,6 +352,88 @@ void main() {
   );
 
   test(
+    'initialized incremental push creates a new child page and final order',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'inknest-incremental-child-page-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      final repository = FileNotebookRepository(rootDirectory: root);
+      final initialNotebook = await repository.createNotebook(title: 'Shared');
+      final initialPage = await repository.loadPage(
+        initialNotebook,
+        initialNotebook.pageIds.single,
+      );
+      final cloud = _ChildPageCloudClient(initialNotebook, initialPage);
+      final stateStore = FileSyncStateStore(
+        rootDirectory: root,
+        userId: 'user-1',
+        deviceId: 'device-1',
+      );
+      await stateStore.markChangesPageApplied('cursor-1');
+      await FileSyncResourceMapStore(
+        rootDirectory: root,
+        userId: 'user-1',
+        deviceId: 'device-1',
+      ).replaceAll(
+        await buildSyncResourceMappings(
+          repository: repository,
+          bootstrap: await cloud.bootstrap(),
+        ),
+      );
+      final updatedNotebook = await repository.addPage(initialNotebook);
+      final tracker = SyncMutationTracker(
+        rootDirectory: root,
+        activeSession: _authSession,
+      );
+      final service = ApiFirstSignInSyncService(
+        repository: repository,
+        apiClient: cloud,
+        rootDirectory: root,
+        mutationTracker: tracker,
+      );
+
+      final result = await service.pushIncremental(
+        userId: 'user-1',
+        deviceId: 'device-1',
+      );
+
+      expect(result.uploadedOperationCount, greaterThanOrEqualTo(2));
+      final created = cloud.mergeOperations.singleWhere(
+        (operation) => operation['resourceType'] == 'page',
+      );
+      final createdMetadata = created['metadata']! as Map<String, Object?>;
+      expect(createdMetadata['position'], 1);
+      expect(createdMetadata['template'], 'blank');
+      final expectedRemoteId = remotePageSyncId(
+        initialNotebook.id,
+        updatedNotebook.pageIds.last,
+      );
+      expect(created['resourceId'], expectedRemoteId);
+      final notebookUpdate = cloud.incrementalOperations.singleWhere(
+        (operation) => operation['resourceType'] == 'notebook',
+      );
+      expect(
+        (notebookUpdate['metadata']! as Map<String, Object?>)['pageOrder'],
+        [
+          remotePageSyncId(initialNotebook.id, initialNotebook.pageIds.single),
+          expectedRemoteId,
+        ],
+      );
+      final mapping =
+          await FileSyncResourceMapStore(
+            rootDirectory: root,
+            userId: 'user-1',
+            deviceId: 'device-1',
+          ).find(
+            pageSyncLocalKey(initialNotebook.id, updatedNotebook.pageIds.last),
+          );
+      expect(mapping?.remoteResourceId, expectedRemoteId);
+      expect(mapping?.pageMetadata?['template'], 'blank');
+    },
+  );
+
+  test(
     'mixed Merge reconciles shared content before upload and restore',
     () async {
       final root = await Directory.systemTemp.createTemp(
@@ -331,6 +467,7 @@ void main() {
       expect(result.uploadedNotebookCount, 1);
       expect(result.downloadedNotebookCount, 1);
       expect(result.preservedConflictCount, 1);
+      expect(result.pendingConflicts.single.id, 'conflict-first-merge');
       expect(
         cloud.reconciledOperations.map((item) => item['resourceType']),
         containsAll(['notebook', 'page']),
@@ -350,6 +487,12 @@ void main() {
         deviceId: 'device-1',
       ).loadSnapshot();
       expect(state.lastAppliedCursor, 'cursor-complete');
+      final storedConflicts = await FileSyncConflictStore(
+        rootDirectory: root,
+        userId: 'user-1',
+        deviceId: 'device-1',
+      ).loadPending();
+      expect(storedConflicts.single.id, 'conflict-first-merge');
     },
   );
 
@@ -434,6 +577,29 @@ void main() {
 
 String _remotePageId(String notebookId, String localPageId) =>
     'page-${sha256.convert(utf8.encode('$notebookId\u0000$localPageId')).toString().substring(0, 40)}';
+
+InkNestAuthSession _authSession() {
+  final now = DateTime.utc(2026, 8, 26);
+  return InkNestAuthSession(
+    accessToken: 'access',
+    refreshToken: 'refresh',
+    tokenType: 'bearer',
+    expiresIn: 900,
+    user: InkNestCloudUser(
+      id: 'user-1',
+      email: 'writer@example.com',
+      createdAt: now,
+    ),
+    device: InkNestCloudDevice(
+      id: 'device-1',
+      name: 'Test device',
+      platform: 'test',
+      createdAt: now,
+      lastSeenAt: now,
+      current: true,
+    ),
+  );
+}
 
 class _CloudRestoreHandoffClient implements FirstSignInCloudClient {
   final List<String?> requestedChangeCursors = [];
@@ -676,6 +842,27 @@ class _MixedFirstSignInCloudClient implements FirstSignInCloudClient {
             outcome: operation['resourceType'] == 'page'
                 ? 'conflict'
                 : 'unchanged',
+            conflict: operation['resourceType'] == 'page'
+                ? CloudSyncConflict(
+                    id: 'conflict-first-merge',
+                    resourceType: 'page',
+                    originalResourceId: operation['resourceId']! as String,
+                    copyResourceId: 'page-conflict-copy',
+                    copyDisplayName: '第 1 页（冲突副本）',
+                    baseRevision: 0,
+                    currentRevision: 1,
+                    submittedContentHash: 'e' * 64,
+                    submittedContent: const {'strokes': <Object?>[]},
+                    currentContentHash: 'f' * 64,
+                    currentContent: const {'strokes': <Object?>[]},
+                    sourceDeviceId: 'device-1',
+                    status: 'pending',
+                    resolution: null,
+                    resolvedByDeviceId: null,
+                    resolvedAt: null,
+                    createdAt: DateTime.utc(2026, 8, 31),
+                  )
+                : null,
           ),
       ],
     );
@@ -720,6 +907,162 @@ class _MixedFirstSignInCloudClient implements FirstSignInCloudClient {
     CloudAssetDownload download,
     File destination,
   ) => throw UnimplementedError();
+}
+
+class _ChildPageCloudClient implements FirstSignInCloudClient {
+  _ChildPageCloudClient(this.notebook, NotePage initialPage)
+    : pages = [
+        _cloudPage(
+          notebook,
+          initialPage,
+          remotePageSyncId(notebook.id, initialPage.id),
+          0,
+        ),
+      ];
+
+  final Notebook notebook;
+  final List<CloudSyncPage> pages;
+  final List<Map<String, Object?>> mergeOperations = [];
+  final List<Map<String, Object?>> incrementalOperations = [];
+
+  @override
+  Future<CloudSyncBootstrap> bootstrap() async {
+    final now = DateTime.utc(2026, 8, 31);
+    return CloudSyncBootstrap(
+      inventory: SyncLibraryInventory(notebookIds: [notebook.id]),
+      baseCursor: 'cursor-1',
+      folders: const [],
+      notebooks: [
+        CloudSyncNotebook(
+          id: notebook.id,
+          folderId: null,
+          title: notebook.title,
+          layoutMode: 'paged',
+          isArchived: false,
+          revision: 1,
+          contentHash: 'a' * 64,
+          content: const {},
+          conflictOf: null,
+          createdAt: now,
+          updatedAt: now,
+        ),
+      ],
+      pages: List.unmodifiable(pages),
+      infiniteCanvases: const [],
+      assets: const [],
+    );
+  }
+
+  @override
+  Future<SyncMergeCommitResult> commitInitialMerge({
+    required String deviceId,
+    required String idempotencyKey,
+    required String baseCursor,
+    required List<Map<String, Object?>> operations,
+  }) async {
+    mergeOperations.addAll(operations);
+    for (final operation in operations) {
+      if (operation['resourceType'] != 'page') continue;
+      final metadata = operation['metadata']! as Map<String, Object?>;
+      final content = (metadata['content']! as Map<Object?, Object?>)
+          .cast<String, Object?>();
+      pages.add(
+        CloudSyncPage(
+          id: operation['resourceId']! as String,
+          notebookId: notebook.id,
+          position: metadata['position']! as int,
+          width: (metadata['width']! as num).toDouble(),
+          height: (metadata['height']! as num).toDouble(),
+          coordinateSpaceVersion: metadata['coordinateSpaceVersion'],
+          rotationQuarterTurns: metadata['rotationQuarterTurns']! as int,
+          template: metadata['template']! as String,
+          revision: 1,
+          contentHash: 'b' * 64,
+          content: content,
+          conflictOf: null,
+          createdAt: DateTime.utc(2026, 8, 31),
+          updatedAt: DateTime.utc(2026, 8, 31),
+        ),
+      );
+    }
+    return const SyncMergeCommitResult(nextCursor: 'cursor-1');
+  }
+
+  @override
+  Future<SyncContentCommitResult> commitSharedContent({
+    required String deviceId,
+    required String idempotencyKey,
+    required String baseCursor,
+    required List<Map<String, Object?>> operations,
+  }) async {
+    incrementalOperations.addAll(operations);
+    return SyncContentCommitResult(
+      idempotencyKey: idempotencyKey,
+      nextCursor: baseCursor,
+      results: [
+        for (final operation in operations)
+          SyncContentCommitOperationResult(
+            operationId: operation['operationId']! as String,
+            resourceType: operation['resourceType']! as String,
+            resourceId: operation['resourceId']! as String,
+            revision: (operation['baseRevision']! as int) + 1,
+            contentHash: 'c' * 64,
+            outcome: 'applied',
+          ),
+      ],
+    );
+  }
+
+  @override
+  Future<CloudSyncChangePage> listChanges({String? cursor, int limit = 100}) =>
+      throw UnimplementedError();
+
+  @override
+  Future<CloudAssetUploadSession> createAssetUploadSession(
+    LocalSyncAsset asset,
+  ) => throw UnimplementedError();
+
+  @override
+  Future<void> uploadAssetFile(
+    CloudAssetUploadSession session,
+    LocalSyncAsset asset,
+  ) => throw UnimplementedError();
+
+  @override
+  Future<void> completeAssetUpload(String uploadId) =>
+      throw UnimplementedError();
+
+  @override
+  Future<CloudAssetDownload> createAssetDownload(String assetId) =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> downloadAssetToFile(
+    CloudAssetDownload download,
+    File destination,
+  ) => throw UnimplementedError();
+
+  static CloudSyncPage _cloudPage(
+    Notebook notebook,
+    NotePage page,
+    String remoteId,
+    int position,
+  ) => CloudSyncPage(
+    id: remoteId,
+    notebookId: notebook.id,
+    position: position,
+    width: page.width,
+    height: page.height,
+    coordinateSpaceVersion: page.persistedCoordinateSpaceVersion,
+    rotationQuarterTurns: page.rotationQuarterTurns,
+    template: page.template.name,
+    revision: 1,
+    contentHash: 'b' * 64,
+    content: const {'strokes': <Object?>[]},
+    conflictOf: null,
+    createdAt: DateTime.utc(2026, 8, 31),
+    updatedAt: DateTime.utc(2026, 8, 31),
+  );
 }
 
 class _FakeFirstSignInCloudClient implements FirstSignInCloudClient {

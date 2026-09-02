@@ -227,9 +227,28 @@ class MlKitDigitalInkRecognitionBackend
       );
       rethrow;
     } finally {
-      await _recognitionChannel.invokeMethod<void>(
-        'vision#closeDigitalInkRecognizer',
-        <String, Object?>{'id': recognizerId},
+      // On some Android devices ML Kit's close call never completes. Do not
+      // await it unboundedly or Beautify stays on the loading spinner forever
+      // even after candidates are already available.
+      await _closeRecognizer(recognizerId);
+    }
+  }
+
+  Future<void> _closeRecognizer(String recognizerId) async {
+    _smartInkLog('native recognizer close started id=$recognizerId');
+    try {
+      await _recognitionChannel
+          .invokeMethod<void>(
+            'vision#closeDigitalInkRecognizer',
+            <String, Object?>{'id': recognizerId},
+          )
+          .timeout(const Duration(milliseconds: 800));
+      _smartInkLog('native recognizer close finished id=$recognizerId');
+    } catch (error, stackTrace) {
+      _smartInkLogError(
+        'native recognizer close skipped id=$recognizerId',
+        error,
+        stackTrace,
       );
     }
   }

@@ -7,6 +7,10 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from inknest_server.auth.agreements import (
+    CURRENT_PRIVACY_POLICY_VERSION,
+    CURRENT_TERMS_VERSION,
+)
 from inknest_server.models import Asset, AssetUpload, Notebook
 
 CONTENT = b"test"
@@ -21,6 +25,8 @@ async def register(client: AsyncClient, email: str) -> dict[str, Any]:
             "password": "correct-horse-battery-staple",
             "deviceName": "Test iPad",
             "platform": "ios",
+            "privacyPolicyVersion": CURRENT_PRIVACY_POLICY_VERSION,
+            "termsVersion": CURRENT_TERMS_VERSION,
         },
     )
     assert response.status_code == 201

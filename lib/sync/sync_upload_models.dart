@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:inknest_notes/sync/inknest_api_models.dart';
+import 'package:inknest_notes/sync/sync_conflicts.dart';
 
 class LocalSyncAsset {
   const LocalSyncAsset({
@@ -99,6 +100,7 @@ class SyncContentCommitOperationResult {
     required this.revision,
     required this.contentHash,
     required this.outcome,
+    this.conflict,
   });
 
   final String operationId;
@@ -107,11 +109,13 @@ class SyncContentCommitOperationResult {
   final int revision;
   final String contentHash;
   final String outcome;
+  final CloudSyncConflict? conflict;
 
   factory SyncContentCommitOperationResult.fromJson(Map<String, Object?> json) {
     final resourceType = requiredString(json, 'resourceType');
     final revision = json['revision'];
     final outcome = requiredString(json, 'outcome');
+    final rawConflict = json['conflict'];
     if (!const {
           'folder',
           'notebook',
@@ -129,13 +133,32 @@ class SyncContentCommitOperationResult {
         }.contains(outcome)) {
       throw const FormatException('Invalid shared-content commit result.');
     }
+    final conflict = rawConflict == null
+        ? null
+        : rawConflict is Map<Object?, Object?>
+        ? CloudSyncConflict.fromJson(rawConflict.cast<String, Object?>())
+        : throw const FormatException(
+            'Invalid shared-content conflict result.',
+          );
+    if ((outcome == 'conflict') != (conflict != null)) {
+      throw const FormatException(
+        'Shared-content conflict outcome does not match its payload.',
+      );
+    }
+    final resourceId = requiredString(json, 'resourceId');
+    if (conflict != null && conflict.originalResourceId != resourceId) {
+      throw const FormatException(
+        'Shared-content conflict resource does not match its operation.',
+      );
+    }
     return SyncContentCommitOperationResult(
       operationId: requiredString(json, 'operationId'),
       resourceType: resourceType,
-      resourceId: requiredString(json, 'resourceId'),
+      resourceId: resourceId,
       revision: revision,
       contentHash: requiredSha256(json, 'contentHash'),
       outcome: outcome,
+      conflict: conflict,
     );
   }
 }

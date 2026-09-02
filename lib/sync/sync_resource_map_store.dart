@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:inknest_notes/storage/notebook_repository.dart';
 import 'package:inknest_notes/sync/sync_bootstrap.dart';
 import 'package:inknest_notes/sync/sync_state.dart';
@@ -14,6 +15,7 @@ class SyncResourceMapping {
     required this.contentHash,
     this.folderMetadata,
     this.notebookMetadata,
+    this.pageMetadata,
     this.infiniteCanvasMetadata,
   });
 
@@ -24,6 +26,7 @@ class SyncResourceMapping {
   final String contentHash;
   final Map<String, Object?>? folderMetadata;
   final Map<String, Object?>? notebookMetadata;
+  final Map<String, Object?>? pageMetadata;
   final Map<String, Object?>? infiniteCanvasMetadata;
 
   SyncResourceMapping copyWith({
@@ -31,6 +34,7 @@ class SyncResourceMapping {
     String? contentHash,
     Map<String, Object?>? folderMetadata,
     Map<String, Object?>? notebookMetadata,
+    Map<String, Object?>? pageMetadata,
     Map<String, Object?>? infiniteCanvasMetadata,
   }) => SyncResourceMapping(
     localKey: localKey,
@@ -40,6 +44,7 @@ class SyncResourceMapping {
     contentHash: contentHash ?? this.contentHash,
     folderMetadata: folderMetadata ?? this.folderMetadata,
     notebookMetadata: notebookMetadata ?? this.notebookMetadata,
+    pageMetadata: pageMetadata ?? this.pageMetadata,
     infiniteCanvasMetadata:
         infiniteCanvasMetadata ?? this.infiniteCanvasMetadata,
   );
@@ -77,6 +82,12 @@ class SyncResourceMapping {
               (json['notebookMetadata']! as Map<Object?, Object?>)
                   .cast<String, Object?>(),
             ),
+      pageMetadata: json['pageMetadata'] == null
+          ? null
+          : Map.unmodifiable(
+              (json['pageMetadata']! as Map<Object?, Object?>)
+                  .cast<String, Object?>(),
+            ),
       infiniteCanvasMetadata: json['infiniteCanvasMetadata'] == null
           ? null
           : Map.unmodifiable(
@@ -94,6 +105,7 @@ class SyncResourceMapping {
     'contentHash': contentHash,
     if (folderMetadata != null) 'folderMetadata': folderMetadata,
     if (notebookMetadata != null) 'notebookMetadata': notebookMetadata,
+    if (pageMetadata != null) 'pageMetadata': pageMetadata,
     if (infiniteCanvasMetadata != null)
       'infiniteCanvasMetadata': infiniteCanvasMetadata,
   };
@@ -194,6 +206,7 @@ class FileSyncResourceMapStore {
     required int revision,
     required String contentHash,
     Map<String, Object?>? notebookMetadata,
+    Map<String, Object?>? pageMetadata,
     Map<String, Object?>? infiniteCanvasMetadata,
   }) {
     return _enqueueWrite(() async {
@@ -216,6 +229,7 @@ class FileSyncResourceMapStore {
               revision: revision,
               contentHash: contentHash,
               notebookMetadata: notebookMetadata,
+              pageMetadata: pageMetadata,
               infiniteCanvasMetadata: infiniteCanvasMetadata,
             )
           else
@@ -277,6 +291,9 @@ String folderSyncLocalKey(String folderId) => 'folder:$folderId';
 
 String pageSyncLocalKey(String notebookId, String pageId) =>
     'page:$notebookId:$pageId';
+
+String remotePageSyncId(String notebookId, String localPageId) =>
+    'page-${sha256.convert(utf8.encode('$notebookId\u0000$localPageId')).toString().substring(0, 40)}';
 
 String canvasSyncLocalKey(String notebookId) => 'infinite_canvas:$notebookId';
 
@@ -343,12 +360,16 @@ Future<List<SyncResourceMapping>> buildSyncResourceMappings({
       ),
     );
     if (notebook.layoutMode.name == 'paged') {
+      final cloudPagesById = {for (final page in cloudPages) page.id: page};
       for (final (position, localPageId) in notebook.pageIds.indexed) {
-        if (position >= cloudPages.length ||
-            cloudPages[position].position != position) {
-          continue;
-        }
-        final cloudPage = cloudPages[position];
+        final cloudPage =
+            cloudPagesById[localPageId] ??
+            cloudPagesById[remotePageSyncId(notebook.id, localPageId)] ??
+            (position < cloudPages.length &&
+                    cloudPages[position].position == position
+                ? cloudPages[position]
+                : null);
+        if (cloudPage == null) continue;
         mappings.add(
           SyncResourceMapping(
             localKey: pageSyncLocalKey(notebook.id, localPageId),
@@ -356,6 +377,7 @@ Future<List<SyncResourceMapping>> buildSyncResourceMappings({
             remoteResourceId: cloudPage.id,
             revision: cloudPage.revision,
             contentHash: cloudPage.contentHash,
+            pageMetadata: pageSyncMetadata(cloudPage),
           ),
         );
       }
@@ -389,6 +411,14 @@ Map<String, Object?> notebookSyncMetadata(
   'isArchived': notebook.isArchived,
   'folderId': notebook.folderId,
   if (pageOrder != null) 'pageOrder': pageOrder.toList(),
+};
+
+Map<String, Object?> pageSyncMetadata(CloudSyncPage page) => {
+  'width': page.width,
+  'height': page.height,
+  'coordinateSpaceVersion': page.coordinateSpaceVersion,
+  'rotationQuarterTurns': page.rotationQuarterTurns,
+  'template': page.template,
 };
 
 class _SyncResourceMapDocument {

@@ -7,6 +7,7 @@ import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/pdf_outline_entry.dart';
 import 'package:inknest_notes/sync/file_sync_state_store.dart';
 import 'package:inknest_notes/sync/inknest_api_models.dart';
+import 'package:inknest_notes/sync/signed_out_sync_mutations.dart';
 import 'package:inknest_notes/sync/sync_resource_map_store.dart';
 import 'package:inknest_notes/sync/sync_state.dart';
 
@@ -18,11 +19,15 @@ class SyncMutationTracker {
     required this.rootDirectory,
     required this.activeSession,
     this.onSyncRequested,
-  });
+  }) : _signedOutMutationStore = FileSignedOutSyncMutationStore(
+         rootDirectory: rootDirectory,
+       );
 
   final Directory rootDirectory;
   final ActiveSyncSession activeSession;
   final SyncRequested? onSyncRequested;
+  final FileSignedOutSyncMutationStore _signedOutMutationStore;
+  final Map<String, Future<Set<SignedOutSyncScope>>> _mappedScopeCache = {};
   Future<void> _queue = Future.value();
   int _suppressionDepth = 0;
 
@@ -89,12 +94,16 @@ class SyncMutationTracker {
 
   Future<void> _trackPageSaved(Notebook notebook, NotePage page) async {
     final session = activeSession();
-    if (session == null) return;
+    if (session == null) {
+      await _recordSignedOutUpsert(pageSyncLocalKey(notebook.id, page.id));
+      return;
+    }
     final mapping = await FileSyncResourceMapStore(
       rootDirectory: rootDirectory,
       userId: session.user.id,
       deviceId: session.device.id,
     ).find(pageSyncLocalKey(notebook.id, page.id));
+    final baseMetadata = mapping?.pageMetadata;
     if (mapping == null) return;
 
     final content = Map<String, Object?>.from(page.toJson());
@@ -108,21 +117,41 @@ class SyncMutationTracker {
     }) {
       content.remove(key);
     }
-    await FileSyncStateStore(
+    final stateStore = FileSyncStateStore(
       rootDirectory: rootDirectory,
       userId: session.user.id,
       deviceId: session.device.id,
-    ).enqueueUpsert(
-      resourceType: mapping.resourceType,
+    );
+    if (baseMetadata == null) {
+      await stateStore.enqueueUpsert(
+        resourceType: mapping.resourceType,
+        resourceId: mapping.remoteResourceId,
+        baseRevision: mapping.revision,
+        content: content,
+      );
+      return;
+    }
+    await stateStore.enqueuePage(
       resourceId: mapping.remoteResourceId,
       baseRevision: mapping.revision,
       content: content,
+      baseMetadata: baseMetadata,
+      metadata: {
+        'width': page.width,
+        'height': page.height,
+        'coordinateSpaceVersion': page.persistedCoordinateSpaceVersion,
+        'rotationQuarterTurns': page.rotationQuarterTurns,
+        'template': page.template.name,
+      },
     );
   }
 
   Future<void> _trackNotebookContent(Notebook notebook) async {
     final session = activeSession();
-    if (session == null) return;
+    if (session == null) {
+      await _recordSignedOutUpsert(notebookSyncLocalKey(notebook.id));
+      return;
+    }
     final resourceMap = _resourceMap(session);
     final resources = await resourceMap.load();
     final mapping = _findMapping(resources, notebookSyncLocalKey(notebook.id));
@@ -167,7 +196,10 @@ class SyncMutationTracker {
 
   Future<void> _trackNotebookMetadata(Notebook notebook) async {
     final session = activeSession();
-    if (session == null) return;
+    if (session == null) {
+      await _recordSignedOutUpsert(notebookSyncLocalKey(notebook.id));
+      return;
+    }
     final resourceMap = _resourceMap(session);
     final resources = await resourceMap.load();
     final mapping = _findMapping(resources, notebookSyncLocalKey(notebook.id));
@@ -212,7 +244,10 @@ class SyncMutationTracker {
 
   Future<void> _trackFolder(NotebookFolder folder) async {
     final session = activeSession();
-    if (session == null) return;
+    if (session == null) {
+      await _recordSignedOutUpsert(folderSyncLocalKey(folder.id));
+      return;
+    }
     final stateStore = _stateStore(session);
     if ((await stateStore.loadSnapshot()).lastAppliedCursor == null) return;
     final mapping = await _resourceMap(
@@ -236,7 +271,10 @@ class SyncMutationTracker {
     InfiniteCanvasDocument document,
   ) async {
     final session = activeSession();
-    if (session == null) return;
+    if (session == null) {
+      await _recordSignedOutUpsert(canvasSyncLocalKey(notebook.id));
+      return;
+    }
     final resourceMap = _resourceMap(session);
     final mapping = await resourceMap.find(canvasSyncLocalKey(notebook.id));
     final baseMetadata = mapping?.infiniteCanvasMetadata;
@@ -254,7 +292,10 @@ class SyncMutationTracker {
 
   Future<void> _trackNotebookDeleted(Notebook notebook) async {
     final session = activeSession();
-    if (session == null) return;
+    if (session == null) {
+      await _recordSignedOutDelete(notebookSyncLocalKey(notebook.id));
+      return;
+    }
     final mapping = await _resourceMap(
       session,
     ).find(notebookSyncLocalKey(notebook.id));
@@ -270,7 +311,10 @@ class SyncMutationTracker {
 
   Future<void> _trackFolderDeleted(NotebookFolder folder) async {
     final session = activeSession();
-    if (session == null) return;
+    if (session == null) {
+      await _recordSignedOutDelete(folderSyncLocalKey(folder.id));
+      return;
+    }
     final stateStore = _stateStore(session);
     final mapping = await _resourceMap(
       session,
@@ -310,7 +354,10 @@ class SyncMutationTracker {
       return;
     }
     final session = activeSession();
-    if (session == null) return;
+    if (session == null) {
+      await _recordSignedOutDelete(pageSyncLocalKey(notebook.id, pageId));
+      return;
+    }
     final mapping = await _resourceMap(
       session,
     ).find(pageSyncLocalKey(notebook.id, pageId));
@@ -330,6 +377,30 @@ class SyncMutationTracker {
         userId: session.user.id,
         deviceId: session.device.id,
       );
+
+  Future<void> _recordSignedOutUpsert(String localKey) =>
+      _recordSignedOut(localKey, SignedOutSyncMutationKind.upsert);
+
+  Future<void> _recordSignedOutDelete(String localKey) =>
+      _recordSignedOut(localKey, SignedOutSyncMutationKind.delete);
+
+  Future<void> _recordSignedOut(
+    String localKey,
+    SignedOutSyncMutationKind kind,
+  ) async {
+    final scopes = await _mappedScopeCache.putIfAbsent(
+      localKey,
+      () => _signedOutMutationStore.discoverMappedScopes(localKey),
+    );
+    if (scopes.isEmpty) {
+      _mappedScopeCache.remove(localKey);
+    }
+    await _signedOutMutationStore.record(
+      localKey: localKey,
+      kind: kind,
+      scopes: scopes,
+    );
+  }
 
   FileSyncStateStore _stateStore(InkNestAuthSession session) =>
       FileSyncStateStore(

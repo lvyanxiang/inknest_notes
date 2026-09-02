@@ -1,4 +1,9 @@
-from inknest_server.models.auth import Device, RefreshToken, User
+from inknest_server.models.auth import (
+    AccountDeletionRequest,
+    Device,
+    RefreshToken,
+    User,
+)
 from inknest_server.models.library import (
     Asset,
     AssetGarbageCollectionCandidate,
@@ -18,6 +23,7 @@ __all__ = [
     "Asset",
     "AssetGarbageCollectionCandidate",
     "AssetUpload",
+    "AccountDeletionRequest",
     "Conflict",
     "ContentRevision",
     "Device",

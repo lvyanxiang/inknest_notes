@@ -8,18 +8,22 @@ import 'package:inknest_notes/auth/auth_controller.dart';
 import 'package:inknest_notes/features/account/account_screen.dart';
 import 'package:inknest_notes/features/editor/editor_screen.dart';
 import 'package:inknest_notes/features/editor/infinite_canvas_screen.dart';
-import 'package:inknest_notes/features/sync/first_sign_in_sync_dialog.dart';
 import 'package:inknest_notes/models/notebook.dart';
 import 'package:inknest_notes/models/notebook_folder.dart';
 import 'package:inknest_notes/models/notebook_layout_mode.dart';
 import 'package:inknest_notes/storage/notebook_repository.dart';
+import 'package:inknest_notes/sync/automatic_first_sign_in_sync.dart';
 import 'package:inknest_notes/sync/first_sign_in_sync_service.dart';
 import 'package:inknest_notes/sync/incremental_sync_pull_service.dart';
 import 'package:inknest_notes/sync/incremental_sync_push_service.dart';
+import 'package:inknest_notes/sync/inknest_api_client.dart';
+import 'package:inknest_notes/sync/inknest_api_models.dart';
 import 'package:inknest_notes/sync/sync_conflict_resolution_service.dart';
 import 'package:inknest_notes/sync/sync_conflicts.dart';
 import 'package:inknest_notes/sync/sync_tombstone_restore_service.dart';
 import 'package:inknest_notes/sync/sync_tombstones.dart';
+import 'package:inknest_notes/sync/sync_structural_conflicts.dart';
+import 'package:inknest_notes/sync/sync_state.dart';
 
 enum _LibrarySyncPhase {
   idle,
@@ -220,6 +224,7 @@ class _LibraryScreenState extends State<LibraryScreen>
   Timer? _syncDebounceTimer;
   Timer? _foregroundSyncTimer;
   List<CloudSyncConflict> _pendingConflicts = const [];
+  List<SyncStructuralConflict> _structuralConflicts = const [];
   List<CloudSyncTombstone> _activeTombstones = const [];
   _LibrarySyncStatus _syncStatus = _LibrarySyncStatus.idle;
 
@@ -261,7 +266,7 @@ class _LibraryScreenState extends State<LibraryScreen>
   }
 
   void _scheduleAutomaticSync() {
-    if (widget.authController.session == null) return;
+    if (!widget.authController.agreementsCurrent) return;
     _syncDebounceTimer?.cancel();
     _syncDebounceTimer = Timer(
       widget.syncDebounceDuration,
@@ -270,7 +275,7 @@ class _LibraryScreenState extends State<LibraryScreen>
   }
 
   void _requestAutomaticSync() {
-    if (!mounted || widget.authController.session == null) {
+    if (!mounted || !widget.authController.agreementsCurrent) {
       return;
     }
     unawaited(
@@ -289,14 +294,20 @@ class _LibraryScreenState extends State<LibraryScreen>
       _pullRequestedWhileRunning = false;
       _checkedSessionKey = null;
       if (_pendingConflicts.isNotEmpty ||
+          _structuralConflicts.isNotEmpty ||
           _activeTombstones.isNotEmpty ||
           _syncStatus.phase != _LibrarySyncPhase.idle) {
         setState(() {
           _pendingConflicts = const [];
+          _structuralConflicts = const [];
           _activeTombstones = const [];
           _syncStatus = _LibrarySyncStatus.idle;
         });
       }
+      return;
+    }
+    if (!widget.authController.agreementsCurrent) {
+      _checkedSessionKey = null;
       return;
     }
     if (widget.firstSignInSyncService == null || _syncCheckScheduled) return;
@@ -330,7 +341,7 @@ class _LibraryScreenState extends State<LibraryScreen>
       shouldPullRemote = _pullRequestedWhileRunning;
     } while (mounted &&
         _syncRequestedWhileRunning &&
-        widget.authController.session != null);
+        widget.authController.agreementsCurrent);
   }
 
   Future<void> _runCloudSyncCycle({
@@ -339,7 +350,11 @@ class _LibraryScreenState extends State<LibraryScreen>
   }) async {
     final session = widget.authController.session;
     final service = widget.firstSignInSyncService;
-    if (session == null || service == null) return;
+    if (session == null ||
+        !widget.authController.agreementsCurrent ||
+        service == null) {
+      return;
+    }
     final sessionKey = '${session.user.id}:${session.device.id}';
     if (!force && _checkedSessionKey == sessionKey) {
       return;
@@ -399,18 +414,6 @@ class _LibraryScreenState extends State<LibraryScreen>
                   : message,
             );
           });
-          if (pushResult.uploadedOperationCount > 0 ||
-              pushResult.preservedDeleteEditCount > 0) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  pushResult.preservedDeleteEditCount > 0
-                      ? _syncStatus.message
-                      : '已上传 ${pushResult.uploadedOperationCount} 项本地更改。',
-                ),
-              ),
-            );
-          }
           return;
         case IncrementalSyncPullStatus.applied:
           if (pullResult.changedLocalLibrary) {
@@ -431,9 +434,6 @@ class _LibraryScreenState extends State<LibraryScreen>
               message,
             );
           });
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text(message)));
           return;
         case IncrementalSyncPullStatus.requiresReconciliation:
           final message = pushResult.preservedDeleteEditCount > 0
@@ -450,23 +450,24 @@ class _LibraryScreenState extends State<LibraryScreen>
               message,
             );
           });
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text(message)));
           return;
       }
     } on IncrementalSyncPushException catch (error) {
       if (!mounted) return;
       final count = error.pendingOperationCount;
       setState(() {
+        _structuralConflicts = error.structuralConflicts;
         _syncStatus = _LibrarySyncStatus(
-          _LibrarySyncPhase.failed,
-          count > 0 ? '同步失败，$count 项本地更改仍安全保留，等待重试。' : '同步失败，本地笔记未受影响，可以重试。',
+          error.structuralConflicts.isEmpty
+              ? _LibrarySyncPhase.failed
+              : _LibrarySyncPhase.needsAttention,
+          error.structuralConflicts.isNotEmpty
+              ? '${error.structuralConflicts.length} 项结构冲突待处理；本机与云端版本均已保留。'
+              : count > 0
+              ? '同步失败，$count 项本地更改仍安全保留，等待重试。'
+              : '同步失败，本地笔记未受影响，可以重试。',
         );
       });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(_syncStatus.message)));
       return;
     } catch (_) {
       if (!mounted) return;
@@ -476,39 +477,88 @@ class _LibraryScreenState extends State<LibraryScreen>
           '暂时无法检查云端更改；本地笔记未受影响，可以重试。',
         );
       });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(_syncStatus.message)));
       return;
     }
-    final result = await showFirstSignInSyncDialog(
-      context: context,
-      service: service,
-      session: session,
-    );
-    if (!mounted || result == null) return;
-    if (result.restoreResult != null || result.mixedResult != null) {
-      await _loadNotebooks();
+    await _runAutomaticFirstSignInSync(service: service, session: session);
+  }
+
+  Future<void> _runAutomaticFirstSignInSync({
+    required FirstSignInSyncService service,
+    required InkNestAuthSession session,
+  }) async {
+    try {
+      final result = await runAutomaticFirstSignInSync(
+        service: service,
+        userId: session.user.id,
+        deviceId: session.device.id,
+      );
+      if (!mounted || !_isCurrentSession(session)) return;
+      if (result.changedLocalLibrary) {
+        await _loadNotebooks();
+      }
+      if (!mounted || !_isCurrentSession(session)) return;
+      final message = result.restoreResult != null
+          ? '已接收 ${result.restoreResult!.downloadedNotebookCount} 本云端笔记和 '
+                '${result.restoreResult!.downloadedAssetCount} 个附件。'
+          : result.uploadResult != null
+          ? '已同步 ${result.uploadResult!.uploadedNotebookCount} 本本地笔记和 '
+                '${result.uploadResult!.uploadedAssetCount} 个附件。'
+          : result.mixedResult != null
+          ? '已上传 ${result.mixedResult!.uploadedNotebookCount} 本、接收 '
+                '${result.mixedResult!.downloadedNotebookCount} 本笔记。'
+          : '本地笔记与云端已同步。';
+      final pendingConflicts = _mergePendingConflicts(
+        _pendingConflicts,
+        result.pendingConflicts,
+      );
+      setState(() {
+        _pendingConflicts = pendingConflicts;
+        _syncStatus = _LibrarySyncStatus(
+          pendingConflicts.isEmpty
+              ? _LibrarySyncPhase.completed
+              : _LibrarySyncPhase.needsAttention,
+          pendingConflicts.isEmpty
+              ? message
+              : '${pendingConflicts.length} 个同步冲突待处理；两个版本都已保留。',
+        );
+      });
+    } on InkNestApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _syncStatus = _LibrarySyncStatus(
+          _LibrarySyncPhase.failed,
+          error.statusCode == 401
+              ? '登录状态已过期；本地笔记未受影响，请重新登录后同步。'
+              : '暂时无法完成首次云端同步；本地笔记未受影响，可以重试。',
+        );
+      });
+    } on Object {
+      if (!mounted) return;
+      setState(() {
+        _syncStatus = const _LibrarySyncStatus(
+          _LibrarySyncPhase.failed,
+          '首次云端同步未完成；无法安全协调的内容未被覆盖，可以重试。',
+        );
+      });
     }
-    if (!mounted) return;
-    final message = result.restoreResult != null
-        ? '已恢复 ${result.restoreResult!.downloadedNotebookCount} 本笔记和 '
-              '${result.restoreResult!.downloadedAssetCount} 个附件。'
-        : result.uploadResult != null
-        ? '已保护 ${result.uploadResult!.uploadedNotebookCount} 本笔记和 '
-              '${result.uploadResult!.uploadedAssetCount} 个附件。'
-        : result.mixedResult != null
-        ? '已上传 ${result.mixedResult!.uploadedNotebookCount} 本、恢复 '
-              '${result.mixedResult!.downloadedNotebookCount} 本笔记；'
-              '保留 ${result.mixedResult!.preservedConflictCount} 个待处理冲突。'
-        : null;
-    if (message == null) return;
-    setState(() {
-      _syncStatus = _LibrarySyncStatus(_LibrarySyncPhase.completed, message);
-    });
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  bool _isCurrentSession(InkNestAuthSession session) {
+    final current = widget.authController.session;
+    return current?.user.id == session.user.id &&
+        current?.device.id == session.device.id;
+  }
+
+  List<CloudSyncConflict> _mergePendingConflicts(
+    List<CloudSyncConflict> current,
+    List<CloudSyncConflict> incoming,
+  ) {
+    final byId = <String, CloudSyncConflict>{
+      for (final conflict in current) conflict.id: conflict,
+      for (final conflict in incoming) conflict.id: conflict,
+    };
+    return byId.values.where((conflict) => conflict.isPending).toList()
+      ..sort((left, right) => right.createdAt.compareTo(left.createdAt));
   }
 
   String _incrementalSyncResultMessage({
@@ -599,7 +649,7 @@ class _LibraryScreenState extends State<LibraryScreen>
   }
 
   Future<void> _openSyncConflicts() async {
-    if (_pendingConflicts.isEmpty) return;
+    if (_pendingConflicts.isEmpty && _structuralConflicts.isEmpty) return;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -611,14 +661,37 @@ class _LibraryScreenState extends State<LibraryScreen>
             children: [
               ListTile(
                 title: const Text('同步冲突'),
-                subtitle: Text('${_pendingConflicts.length} 项待处理；两个版本都已安全保留。'),
+                subtitle: Text(
+                  '${_pendingConflicts.length + _structuralConflicts.length} 项待处理；本机与云端版本均已安全保留。',
+                ),
               ),
               const Divider(height: 1),
               Expanded(
                 child: ListView.separated(
-                  itemCount: _pendingConflicts.length,
+                  itemCount:
+                      _pendingConflicts.length + _structuralConflicts.length,
                   separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (context, index) {
+                    if (index >= _pendingConflicts.length) {
+                      final conflict =
+                          _structuralConflicts[index -
+                              _pendingConflicts.length];
+                      return ListTile(
+                        leading: const Icon(Icons.account_tree_outlined),
+                        title: Text(_structuralConflictTitle(conflict)),
+                        subtitle: Text(
+                          conflict.fields.map(_structuralFieldLabel).join('、'),
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () async {
+                          Navigator.of(context).pop();
+                          await Future<void>.delayed(Duration.zero);
+                          if (mounted) {
+                            await _openStructuralConflictDetail(conflict);
+                          }
+                        },
+                      );
+                    }
                     final conflict = _pendingConflicts[index];
                     final resourceLabel = conflict.resourceType == 'page'
                         ? '页面冲突'
@@ -646,11 +719,168 @@ class _LibraryScreenState extends State<LibraryScreen>
               ),
               const Padding(
                 padding: EdgeInsets.fromLTRB(24, 12, 24, 20),
-                child: Text('选择一项后，可明确决定保留哪个版本。'),
+                child: Text('正文冲突可保留两份；结构冲突请选择使用本机或云端版本。'),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Future<void> _openStructuralConflictDetail(
+    SyncStructuralConflict conflict,
+  ) async {
+    final service = widget.firstSignInSyncService;
+    SyncStructuralConflictResolution? busy;
+    String? errorMessage;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          Future<void> resolve(SyncStructuralConflictResolution choice) async {
+            if (busy != null ||
+                service is! SyncStructuralConflictResolutionService) {
+              return;
+            }
+            final resolver = service as SyncStructuralConflictResolutionService;
+            final useLocal =
+                choice == SyncStructuralConflictResolution.useLocal;
+            final confirmed =
+                await showDialog<bool>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: Text(useLocal ? '使用本机版本？' : '使用云端版本？'),
+                    content: Text(
+                      useLocal
+                          ? '本机结构将提交到云端；若云端再次变化，会重新提示。'
+                          : '这项本机结构修改将撤销，并应用已验证的云端结构。笔记正文与附件不会删除。',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(false),
+                        child: const Text('取消'),
+                      ),
+                      FilledButton(
+                        onPressed: () => Navigator.of(context).pop(true),
+                        child: const Text('确认'),
+                      ),
+                    ],
+                  ),
+                ) ??
+                false;
+            if (!confirmed || !context.mounted) return;
+            final session = widget.authController.session;
+            if (session == null) return;
+            setSheetState(() {
+              busy = choice;
+              errorMessage = null;
+            });
+            try {
+              final result = await resolver.resolveStructuralConflict(
+                userId: session.user.id,
+                deviceId: session.device.id,
+                conflictId: conflict.id,
+                resolution: choice,
+              );
+              if (!mounted || !context.mounted) return;
+              setState(() {
+                _structuralConflicts = result.pendingConflicts;
+                _syncStatus = _LibrarySyncStatus(
+                  result.pendingConflicts.isEmpty
+                      ? _LibrarySyncPhase.completed
+                      : _LibrarySyncPhase.needsAttention,
+                  result.pendingConflicts.isEmpty
+                      ? '结构冲突已处理，本地与云端已同步。'
+                      : '${result.pendingConflicts.length} 项结构冲突仍待处理。',
+                );
+              });
+              await _loadNotebooks();
+              if (context.mounted) Navigator.of(context).pop();
+            } on Object {
+              if (!context.mounted) return;
+              setSheetState(() {
+                busy = null;
+                errorMessage = '处理未完成；本机与云端版本仍安全保留，请重试。';
+              });
+            }
+          }
+
+          return SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(24, 4, 24, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    _structuralConflictTitle(conflict),
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '冲突字段：${conflict.fields.map(_structuralFieldLabel).join('、')}',
+                  ),
+                  const SizedBox(height: 16),
+                  _StructuralVersionCard(
+                    title: '共同基线',
+                    summary: _structuralMetadataSummary(
+                      conflict.baseMetadata,
+                      conflict.fields,
+                    ),
+                  ),
+                  _StructuralVersionCard(
+                    title: '本机版本',
+                    summary: _structuralMetadataSummary(
+                      conflict.localMetadata,
+                      conflict.fields,
+                    ),
+                  ),
+                  _StructuralVersionCard(
+                    title: '云端版本',
+                    summary: _structuralMetadataSummary(
+                      conflict.cloudMetadata,
+                      conflict.fields,
+                    ),
+                  ),
+                  if (errorMessage != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      errorMessage!,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  FilledButton(
+                    onPressed: busy == null
+                        ? () =>
+                              resolve(SyncStructuralConflictResolution.useLocal)
+                        : null,
+                    child: const Text('使用本机版本'),
+                  ),
+                  const SizedBox(height: 10),
+                  OutlinedButton(
+                    onPressed: busy == null
+                        ? () =>
+                              resolve(SyncStructuralConflictResolution.useCloud)
+                        : null,
+                    child: const Text('使用云端版本'),
+                  ),
+                  TextButton(
+                    onPressed: busy == null
+                        ? () => Navigator.of(context).pop()
+                        : null,
+                    child: const Text('取消'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -1413,9 +1643,6 @@ class _LibraryScreenState extends State<LibraryScreen>
             '删除遇到另一台设备的新编辑；编辑内容已自动保留，无需处理。',
           );
         });
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(_syncStatus.message)));
       } else if (pullResult.confirmedLocalDeletionCount > 0 ||
           pullResult.confirmedLocalFolderDeletionCount > 0) {
         setState(() {
@@ -1424,15 +1651,6 @@ class _LibraryScreenState extends State<LibraryScreen>
             '已将删除同步到云端，其他设备将在下次同步时更新。',
           );
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              pullResult.confirmedLocalFolderDeletionCount > 0
-                  ? '已将文件夹删除同步到云端；笔记仍保留在资料库。'
-                  : '已将删除同步到云端，其他设备将在下次同步时移除这本笔记。',
-            ),
-          ),
-        );
       } else if (pullResult.status ==
               IncrementalSyncPullStatus.requiresReconciliation ||
           pushResult.preservedConflictCount > 0) {
@@ -1442,9 +1660,6 @@ class _LibraryScreenState extends State<LibraryScreen>
             '删除同步需要协调；本地和云端内容均未被猜测性覆盖。',
           );
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('删除遇到其他设备的编辑，云端内容已保留待协调。')),
-        );
       } else {
         setState(() {
           _syncStatus = const _LibrarySyncStatus(
@@ -1461,9 +1676,6 @@ class _LibraryScreenState extends State<LibraryScreen>
           '笔记已从本机删除；${error.pendingOperationCount} 项更改仍安全保留，等待重试。',
         );
       });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(_syncStatus.message)));
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -1472,9 +1684,6 @@ class _LibraryScreenState extends State<LibraryScreen>
           '笔记已从本机删除；云端删除仍安全保留，等待联网后重试。',
         );
       });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(_syncStatus.message)));
     }
   }
 
@@ -1557,12 +1766,13 @@ class _LibraryScreenState extends State<LibraryScreen>
               onCreateNotebook: _createNotebook,
               authController: widget.authController,
               onOpenAccount: _openAccount,
-              pendingConflictCount: _pendingConflicts.length,
+              pendingConflictCount:
+                  _pendingConflicts.length + _structuralConflicts.length,
               onOpenConflicts: _openSyncConflicts,
               recentlyDeletedCount: _activeTombstones.length,
               onOpenRecentlyDeleted: _openRecentlyDeleted,
               syncAvailable:
-                  widget.authController.session != null &&
+                  widget.authController.agreementsCurrent &&
                   widget.firstSignInSyncService != null,
               syncStatus: _syncStatus,
               onOpenSyncStatus: _openSyncStatus,
@@ -1603,6 +1813,77 @@ class _LibraryScreenState extends State<LibraryScreen>
       ),
     );
   }
+}
+
+class _StructuralVersionCard extends StatelessWidget {
+  const _StructuralVersionCard({required this.title, required this.summary});
+
+  final String title;
+  final String summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: colorScheme.outlineVariant),
+        ),
+        child: ListTile(title: Text(title), subtitle: Text(summary)),
+      ),
+    );
+  }
+}
+
+String _structuralConflictTitle(SyncStructuralConflict conflict) =>
+    switch (conflict.resourceType) {
+      SyncResourceType.folder => '文件夹结构冲突',
+      SyncResourceType.notebook => '笔记结构冲突',
+      SyncResourceType.page => '页面属性冲突',
+      SyncResourceType.infiniteCanvas => '画布背景冲突',
+    };
+
+String _structuralFieldLabel(String field) => switch (field) {
+  'name' => '名称',
+  'title' => '标题',
+  'isArchived' => '归档状态',
+  'folderId' => '所在文件夹',
+  'pageOrder' => '页面顺序',
+  'template' => '纸张模板',
+  'rotationQuarterTurns' => '页面方向',
+  'width' || 'height' => '页面尺寸',
+  'coordinateSpaceVersion' => '坐标版本',
+  'background' => '画布背景',
+  _ => field,
+};
+
+String _structuralMetadataSummary(
+  Map<String, Object?> metadata,
+  List<String> fields,
+) {
+  final summaries = <String>[];
+  for (final field in fields) {
+    if (field == 'width' || field == 'height') {
+      if (summaries.any((item) => item.startsWith('页面尺寸：'))) continue;
+      summaries.add('页面尺寸：${metadata['width']} × ${metadata['height']}');
+      continue;
+    }
+    final value = metadata[field];
+    final display = switch ((field, value)) {
+      ('isArchived', true) => '已归档',
+      ('isArchived', false) => '未归档',
+      ('folderId', null) => '资料库根目录',
+      ('pageOrder', List<Object?> order) => '${order.length} 页的既定顺序',
+      ('rotationQuarterTurns', int turns) => '${turns * 90}°',
+      (_, null) => '无',
+      _ => value.toString(),
+    };
+    summaries.add('${_structuralFieldLabel(field)}：$display');
+  }
+  return summaries.join('\n');
 }
 
 Color _libraryFurnitureColor(ColorScheme colorScheme) {

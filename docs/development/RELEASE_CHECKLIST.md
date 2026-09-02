@@ -2,7 +2,7 @@
 
 - Status: **NO-GO — not ready for public App Store or Google Play release**
 - First audit: 2026-08-26
-- Last updated: 2026-08-26
+- Last updated: 2026-08-31
 - Release direction: iPadOS/iOS first; Android remains in the same checklist
 - Scope: public binary release with the current optional account and cloud-sync
   features visible
@@ -79,6 +79,12 @@ this checklist into it.
   - Provide a public web deletion/request page for Google Play and users who no
     longer have the App installed.
   - Evidence: end-to-end tests plus App Store/Play Console deletion URLs.
+  - 2026-08-31 implementation evidence: the App now provides reauthenticated,
+    two-stage deletion; the API deactivates the user, revokes all sessions,
+    deletes cascaded account rows and `users/{user_id}/` objects, and persists
+    retryable cleanup when object deletion fails. Unit/widget tests cover
+    completion, failed-storage retry, and local-note retention. This item stays
+    open until the public HTTPS deletion/request page and console URLs exist.
 
 ### Privacy, legal, and store policy
 
@@ -89,6 +95,21 @@ this checklist into it.
     PDFs, images, audio, cloud storage, logs, retention, deletion, service
     providers, security, and contact details.
   - Add service terms/EULA appropriate to the release model.
+  - Use one canonical artifact for each document/version. Generate the HTTPS
+    rendering and App offline fallback from it; do not maintain separate text.
+  - Make the App prefer the matching immutable HTTPS version online and use
+    only the same-version/content-digest bundled copy offline. Block acceptance
+    if the displayed content cannot be proven to match the advertised version.
+  - 2026-08-31 implementation evidence: versioned acceptance and in-App readers
+    are implemented. Local version `2026-08-31.1` now accurately covers the
+    current App/backend data, permissions, ML Kit SDK metrics, retention,
+    deletion, open-source terms, and present individual-developer contact,
+    without legal-text placeholders. This item stays open until the store legal
+    identity is confirmed, production processor/region and log-retention facts
+    are added, counsel review is complete, and stable public HTTPS documents
+    are live.
+  - Publishing contract and future URL structure:
+    `docs/legal/README.md`.
 - [ ] **REL-010 — Complete platform privacy declarations.**
   - Add and validate the App-owned iOS `PrivacyInfo.xcprivacy`, including
     collected-data and required-reason API declarations that apply to the App.
@@ -219,6 +240,32 @@ note taking while they remain unassessed.
     files; the signed-in status sheet provides Sync Now.
   - Evidence: 28 focused Flutter synchronization tests, the complete 274-test
     Flutter suite, `flutter analyze`, and `git diff --check` pass.
+- [x] **BASE-011 — Signed-out mapped changes catch up safely.**
+  - 2026-08-26: sign-out still performs no network synchronization. Successful
+    local changes to previously mapped pages, notebooks, folders, and infinite
+    canvases persist account/device-scoped intent; matching re-login rebuilds
+    the existing Revision-guarded operations, while explicit deletes retain
+    their delete semantics and unrelated accounts cannot consume the intent.
+  - Evidence: 26 focused Flutter synchronization tests, the complete 279-test
+    Flutter suite, `flutter analyze`, and `git diff --check` pass.
+- [x] **BASE-012 — Automatic synchronization is non-blocking and conflict-safe.**
+  - 2026-08-31: first-sign-in/new-device Merge runs behind library header
+    status without an automatic dialog; routine push, pull, deletion, and
+    failure feedback no longer raises automatic SnackBars. Mixed-Merge conflict
+    payloads are persisted before Cursor advancement and remain reachable from
+    the warning badge and three-choice resolution flow.
+  - Evidence: 42 focused Flutter synchronization tests, the complete 279-test
+    Flutter suite, `flutter analyze`, and `git diff --check` pass.
+- [x] **BASE-013 — Initialized-notebook P0 synchronization is complete.**
+  - 2026-08-31: inserted, duplicated, and PDF-imported child pages upload with
+    stable IDs, verified assets, and final page order; page template, rotation,
+    dimensions, and coordinate-space metadata use Revision-guarded explicit
+    metadata; folder/notebook/page/canvas structural conflicts persist behind
+    the warning badge and support an explicit local-or-cloud resolution.
+  - Evidence: 134 focused synchronization tests, the complete 285-test Flutter
+    suite, `flutter analyze`, backend Ruff/mypy, and all 67 backend unit tests
+    pass. PostgreSQL/MinIO integration execution remains to be repeated when
+    the local Docker daemon is available; no schema migration was introduced.
 
 ## Conditional Market Checks
 
@@ -241,6 +288,9 @@ note taking while they remain unassessed.
 | --- | --- | --- | --- |
 | 2026-08-26 | Initial audit | Created the release-readiness source of truth and recorded the verified baseline. | Repository/configuration audit plus Flutter, backend, iOS, and Android checks described above. |
 | 2026-08-26 | BASE-010 | Added and verified foreground automatic synchronization scheduling and Sync Now. | 28 focused Flutter tests plus static analysis. |
+| 2026-08-26 | BASE-011 | Added restart-safe, account-scoped catch-up for mapped changes made while signed out. | 26 focused and 279 complete Flutter tests plus static analysis. |
+| 2026-08-31 | BASE-012 | Removed automatic synchronization dialogs/SnackBars and preserved first-Merge conflict details for the warning-badge flow. | 42 focused and 279 complete Flutter tests plus static analysis. |
+| 2026-08-31 | BASE-013 | Completed incremental child-page creation, explicit page metadata, and persistent user-resolvable structural conflicts. | 134 focused and 285 complete Flutter tests, static analysis, and 67 backend unit tests; integration environment unavailable. |
 
 ## Policy References
 

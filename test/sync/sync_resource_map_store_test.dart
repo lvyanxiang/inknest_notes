@@ -122,6 +122,13 @@ void main() {
     expect(page?.resourceType, SyncResourceType.page);
     expect(page?.remoteResourceId, 'remote-page-1');
     expect(page?.revision, 4);
+    expect(page?.pageMetadata, {
+      'width': 768.0,
+      'height': 1024.0,
+      'coordinateSpaceVersion': 1,
+      'rotationQuarterTurns': 0,
+      'template': 'blank',
+    });
     final notebookMapping = await restartedStore.find(
       notebookSyncLocalKey(notebook.id),
     );

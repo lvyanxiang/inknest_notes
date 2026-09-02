@@ -46,12 +46,7 @@ class LassoGeometry {
   }
 
   static List<Offset> rectPolygon(Rect rect) {
-    return [
-      rect.topLeft,
-      rect.topRight,
-      rect.bottomRight,
-      rect.bottomLeft,
-    ];
+    return [rect.topLeft, rect.topRight, rect.bottomRight, rect.bottomLeft];
   }
 
   static double _distanceToStroke(Stroke stroke, Offset point) {

@@ -60,6 +60,12 @@ class InfiniteCanvasMetadataConflictError(Exception):
     pass
 
 
+class PageMetadataConflictError(Exception):
+    def __init__(self, fields: list[str]) -> None:
+        self.fields = fields
+        super().__init__("page metadata changed concurrently")
+
+
 @dataclass(frozen=True, slots=True)
 class ContentSaveResult:
     revision: int
@@ -499,6 +505,25 @@ class ContentRepository:
         content: dict[str, object],
         device_id: UUID | None = None,
     ) -> ContentSaveResult:
+        return await self.save_page(
+            user_id=user_id,
+            page_id=page_id,
+            base_revision=base_revision,
+            content=content,
+            device_id=device_id,
+        )
+
+    async def save_page(
+        self,
+        *,
+        user_id: UUID,
+        page_id: str,
+        base_revision: int,
+        content: dict[str, object] | None = None,
+        metadata: dict[str, object] | None = None,
+        base_metadata: dict[str, object] | None = None,
+        device_id: UUID | None = None,
+    ) -> ContentSaveResult:
         resource = await self._session.scalar(
             select(Page)
             .where(Page.id == page_id, Page.user_id == user_id)
@@ -506,13 +531,95 @@ class ContentRepository:
         )
         if resource is None:
             raise LibraryResourceNotFoundError("page", page_id)
-        return await self._save(
-            resource=resource,
-            resource_type="page",
+        if device_id is not None:
+            await self._ensure_active_device_owned(user_id=user_id, device_id=device_id)
+        if resource.deleted_at is not None:
+            raise ResourceDeletedError(current_revision=resource.revision)
+
+        current_metadata: dict[str, object] = {
+            "width": resource.width,
+            "height": resource.height,
+            "coordinateSpaceVersion": resource.coordinate_space_version,
+            "rotationQuarterTurns": resource.rotation_quarter_turns,
+            "template": resource.template,
+        }
+        merged_metadata = dict(current_metadata)
+        if metadata is not None:
+            if base_metadata is None:
+                raise ValueError("base_metadata is required with metadata")
+            conflicting_fields: list[str] = []
+            for field in current_metadata:
+                desired = metadata[field]
+                baseline = base_metadata[field]
+                current = current_metadata[field]
+                if desired == baseline:
+                    continue
+                if current not in (baseline, desired):
+                    conflicting_fields.append(field)
+                else:
+                    merged_metadata[field] = desired
+            if conflicting_fields:
+                raise PageMetadataConflictError(conflicting_fields)
+
+        normalized_content = (
+            normalized_json_object(content) if content is not None else resource.content
+        )
+        new_hash = calculate_content_hash(normalized_content)
+        content_changed = resource.content_hash != new_hash
+        metadata_changed = merged_metadata != current_metadata
+        if content_changed and resource.revision != base_revision:
+            raise RevisionConflictError(
+                expected_revision=base_revision,
+                current_revision=resource.revision,
+            )
+        if not content_changed and not metadata_changed:
+            return ContentSaveResult(
+                revision=resource.revision,
+                content_hash=resource.content_hash,
+                created_revision=False,
+            )
+
+        next_revision = resource.revision + 1
+        self._session.add(
+            ContentRevision(
+                user_id=user_id,
+                resource_type="page",
+                resource_id=resource.id,
+                revision=next_revision,
+                content_hash=new_hash,
+                content=normalized_content,
+                device_id=device_id,
+            )
+        )
+        resource.revision = next_revision
+        resource.content_hash = new_hash
+        resource.content = normalized_content
+        width = merged_metadata["width"]
+        height = merged_metadata["height"]
+        rotation = merged_metadata["rotationQuarterTurns"]
+        if not isinstance(width, (int, float)) or not isinstance(height, (int, float)):
+            raise ValueError("page dimensions must be numeric")
+        if not isinstance(rotation, int):
+            raise ValueError("page rotation must be an integer")
+        resource.width = float(width)
+        resource.height = float(height)
+        resource.coordinate_space_version = merged_metadata["coordinateSpaceVersion"]
+        resource.rotation_quarter_turns = rotation
+        resource.template = str(merged_metadata["template"])
+        await self._session.flush()
+        await self._changes.append_upsert(
             user_id=user_id,
-            base_revision=base_revision,
-            content=content,
+            resource_type="page",
+            resource_id=resource.id,
+            payload=page_snapshot(resource),
+            revision=next_revision,
+            content_hash=new_hash,
             device_id=device_id,
+        )
+        return ContentSaveResult(
+            revision=next_revision,
+            content_hash=new_hash,
+            created_revision=True,
         )
 
     async def save_infinite_canvas_content(

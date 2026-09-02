@@ -5,6 +5,10 @@ from httpx import AsyncClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from inknest_server.auth.agreements import (
+    CURRENT_PRIVACY_POLICY_VERSION,
+    CURRENT_TERMS_VERSION,
+)
 from inknest_server.models import (
     ContentRevision,
     Folder,
@@ -24,6 +28,8 @@ async def _register(client: AsyncClient, email: str) -> dict[str, Any]:
             "password": "correct-horse-battery-staple",
             "deviceName": "Merge test device",
             "platform": "ios",
+            "privacyPolicyVersion": CURRENT_PRIVACY_POLICY_VERSION,
+            "termsVersion": CURRENT_TERMS_VERSION,
         },
     )
     assert response.status_code == 201

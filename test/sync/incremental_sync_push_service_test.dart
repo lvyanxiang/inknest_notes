@@ -3,12 +3,14 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:inknest_notes/sync/file_sync_state_store.dart';
 import 'package:inknest_notes/sync/incremental_sync_push_service.dart';
+import 'package:inknest_notes/sync/inknest_api_client.dart';
 import 'package:inknest_notes/sync/sync_bootstrap.dart';
 import 'package:inknest_notes/sync/sync_changes.dart';
 import 'package:inknest_notes/sync/sync_cloud_client.dart';
 import 'package:inknest_notes/sync/sync_resource_map_store.dart';
 import 'package:inknest_notes/sync/sync_state.dart';
 import 'package:inknest_notes/sync/sync_upload_models.dart';
+import 'package:inknest_notes/sync/sync_structural_conflicts.dart';
 import 'package:inknest_notes/storage/file_notebook_repository.dart';
 
 void main() {
@@ -140,6 +142,88 @@ void main() {
     expect(mapping?.notebookMetadata?['title'], 'Before');
   });
 
+  test(
+    'page content conflict retries its metadata without page content',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'inknest-page-conflict-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      final stateStore = FileSyncStateStore(
+        rootDirectory: root,
+        userId: 'user-1',
+        deviceId: 'device-1',
+        idFactory: (prefix) => '$prefix-1',
+      );
+      await stateStore.markChangesPageApplied('cursor-1');
+      await stateStore.enqueuePage(
+        resourceId: 'page-1',
+        baseRevision: 1,
+        content: const {'strokes': <Object?>[]},
+        baseMetadata: const {
+          'width': 768.0,
+          'height': 1024.0,
+          'coordinateSpaceVersion': 1,
+          'rotationQuarterTurns': 0,
+          'template': 'blank',
+        },
+        metadata: const {
+          'width': 768.0,
+          'height': 1024.0,
+          'coordinateSpaceVersion': 1,
+          'rotationQuarterTurns': 1,
+          'template': 'grid',
+        },
+      );
+      final cloud = _PushCloudClient(failuresRemaining: 0, outcome: 'conflict');
+
+      final result = await IncrementalSyncPushService(
+        cloudClient: cloud,
+        repository: FileNotebookRepository(rootDirectory: root),
+        rootDirectory: root,
+      ).push(userId: 'user-1', deviceId: 'device-1');
+
+      expect(result.preservedConflictCount, 1);
+      expect(cloud.requests, hasLength(2));
+      expect(cloud.requests.first.operation, contains('content'));
+      expect(cloud.requests[1].operation['resourceType'], 'page');
+      expect(cloud.requests[1].operation, isNot(contains('content')));
+      expect(cloud.requests[1].operation['baseRevision'], 2);
+      expect(
+        cloud.requests[1].operation['metadata'],
+        containsPair('template', 'grid'),
+      );
+    },
+  );
+
+  test('persists a metadata conflict for user-directed recovery', () async {
+    final fixture = await _PushFixture.create(
+      metadata: true,
+      structuralConflict: true,
+    );
+    addTearDown(fixture.dispose);
+
+    await expectLater(
+      fixture.service.push(userId: 'user-1', deviceId: 'device-1'),
+      throwsA(
+        isA<IncrementalSyncPushException>().having(
+          (error) => error.structuralConflicts.single.fields,
+          'fields',
+          ['title'],
+        ),
+      ),
+    );
+
+    final conflicts = await FileSyncStructuralConflictStore(
+      rootDirectory: fixture.root,
+      userId: 'user-1',
+      deviceId: 'device-1',
+    ).load();
+    expect(conflicts.single.localMetadata['title'], 'After');
+    expect(conflicts.single.cloudMetadata['title'], 'Cloud');
+    expect(conflicts.single.cloudRevision, 3);
+  });
+
   test('retries a new attachment before committing its queued page', () async {
     final root = await Directory.systemTemp.createTemp('inknest-asset-push-');
     addTearDown(() => root.delete(recursive: true));
@@ -262,6 +346,7 @@ class _PushFixture {
     int failuresRemaining = 0,
     bool delete = false,
     bool metadata = false,
+    bool structuralConflict = false,
     String? outcome,
   }) async {
     final root = await Directory.systemTemp.createTemp('inknest-push-');
@@ -330,6 +415,7 @@ class _PushFixture {
       cloud: _PushCloudClient(
         failuresRemaining: failuresRemaining,
         outcome: outcome,
+        structuralConflict: structuralConflict,
       ),
       repository: repository,
     );
@@ -357,11 +443,13 @@ class _PushCloudClient implements FirstSignInCloudClient {
     required this.failuresRemaining,
     this.assetFailuresRemaining = 0,
     this.outcome,
+    this.structuralConflict = false,
   });
 
   int failuresRemaining;
   int assetFailuresRemaining;
   final String? outcome;
+  final bool structuralConflict;
   final List<_PushRequest> requests = [];
   final List<String> events = [];
   LocalSyncAsset? uploadedAsset;
@@ -387,6 +475,23 @@ class _PushCloudClient implements FirstSignInCloudClient {
       failuresRemaining--;
       throw StateError('simulated response loss');
     }
+    if (structuralConflict) {
+      throw InkNestApiException(
+        statusCode: 409,
+        code: 'sync_notebook_metadata_conflict',
+        message: 'conflict',
+        details: {
+          'operationId': operation['operationId'],
+          'resourceType': 'notebook',
+          'resourceId': 'notebook-1',
+          'fields': const ['title'],
+        },
+      );
+    }
+    final requestedOutcome =
+        outcome == 'conflict' && !operation.containsKey('content')
+        ? 'applied'
+        : outcome;
     return SyncContentCommitResult(
       idempotencyKey: idempotencyKey,
       nextCursor: 'cursor-2',
@@ -395,10 +500,10 @@ class _PushCloudClient implements FirstSignInCloudClient {
           operationId: operation['operationId']! as String,
           resourceType: operation['resourceType']! as String,
           resourceId: operation['resourceId']! as String,
-          revision: 2,
+          revision: requests.length + 1,
           contentHash: 'b' * 64,
           outcome:
-              outcome ??
+              requestedOutcome ??
               (operation['operation'] == 'delete' ? 'deleted' : 'applied'),
         ),
       ],
@@ -409,13 +514,34 @@ class _PushCloudClient implements FirstSignInCloudClient {
   Future<CloudSyncBootstrap> bootstrap() async {
     events.add('bootstrap');
     final asset = uploadedAsset;
+    final now = DateTime.utc(2026, 8, 31);
     return CloudSyncBootstrap(
       inventory: SyncLibraryInventory(
-        notebookIds: asset == null ? const [] : [asset.notebookId],
+        notebookIds: structuralConflict
+            ? const ['notebook-1']
+            : asset == null
+            ? const []
+            : [asset.notebookId],
       ),
       baseCursor: 'cursor-1',
       folders: const [],
-      notebooks: const [],
+      notebooks: structuralConflict
+          ? [
+              CloudSyncNotebook(
+                id: 'notebook-1',
+                folderId: null,
+                title: 'Cloud',
+                layoutMode: 'paged',
+                isArchived: false,
+                revision: 3,
+                contentHash: 'c' * 64,
+                content: const {},
+                conflictOf: null,
+                createdAt: now,
+                updatedAt: now,
+              ),
+            ]
+          : const [],
       pages: const [],
       infiniteCanvases: const [],
       assets: asset == null

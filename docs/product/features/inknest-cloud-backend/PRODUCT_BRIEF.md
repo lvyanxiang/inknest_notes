@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Size: Large
-- Updated: 2026-08-10
+- Updated: 2026-08-31
 - Roadmap link: `docs/development/ROADMAP.md#milestone-8-sync-and-backup-paused`
 
 ## Problem
@@ -24,6 +24,13 @@ new-device restore, version history, and conservative conflict recovery.
 The first synchronization version operates at folder, notebook metadata, page,
 infinite-canvas document, and asset granularity. It does not attempt
 stroke-level merging or real-time collaboration.
+
+An initialized notebook must remain complete as it evolves: newly inserted,
+duplicated, or PDF-imported child pages are created in the cloud without a new
+sign-in flow, and page dimensions, coordinate-space version, rotation, and
+template are synchronized as explicit metadata alongside page content. These
+operations retain local page order and use the same idempotent, Revision-
+guarded background cycle as ordinary edits.
 
 The App keeps accounts optional and the local library available before, during,
 and after authentication. It stores the current access/refresh session in
@@ -48,6 +55,15 @@ arrival order. A normal delete is a reversible soft delete backed by a full
 snapshot Tombstone; an explicit restore writes that snapshot as a new Revision.
 The first slice sets no retention period and performs no physical cleanup.
 
+Concurrent structural edits are never reduced to an unexplained retry loop.
+Folder name, notebook title/archive/folder/page order, page metadata, and canvas
+background conflicts are persisted on the affected device with the local,
+cloud, and common-baseline metadata. The header warning opens a detail flow
+where the user chooses the local or cloud structure. “Keep Both” remains only
+for page/notebook content snapshots because two simultaneous orders,
+backgrounds, or names cannot coexist on one resource without duplicating a
+larger document.
+
 ## Scope
 
 - In scope:
@@ -64,6 +80,12 @@ The first slice sets no retention period and performs no physical cleanup.
   - MinIO-backed PDF, image, audio, thumbnail, export, and backup objects.
   - Incremental push/pull synchronization with opaque cursors and idempotent
     commits.
+  - Incremental child-page creation inside an already synchronized notebook,
+    including insertion, duplication, and multi-PDF import.
+  - Explicit page metadata synchronization for dimensions, coordinate-space
+    version, rotation, and template.
+  - Persistent, user-resolvable structural conflict records for folder,
+    notebook, page, and infinite-canvas metadata.
   - Optimistic revision checks and explicit conflict copies.
   - Default merge of pre-existing local notebooks with cloud notebooks.
   - Manual backup/restore followed by automatic background sync.
@@ -260,9 +282,44 @@ The first slice sets no retention period and performs no physical cleanup.
   an explicit Sync Now action. Manual and automatic requests use the same
   serialized push-then-pull path, durable queue, Revision guards, and error
   feedback.
+- Routine upload, download, deletion propagation, and retry failure do not
+  raise automatic dialogs or SnackBars. The header spinner and status sheet
+  carry transient progress, completion details, and retry state; a persistent
+  warning entry is reserved for an actual conflict or unsafe reconciliation.
+- A device without an applied Cursor inspects and executes the existing
+  conservative first-sign-in Merge in the background. Cloud-only content is
+  restored, local-only content is uploaded, and mixed libraries use stable IDs,
+  Revision guards, verified staging, and conflict preservation without a
+  confirmation dialog. A safety-gate failure stops with the local library
+  unchanged and a retryable status.
 - Scheduling never blocks writing, never runs for a signed-out session, and is
   disposed with the library screen so foreground timers cannot outlive their
   owner.
+
+### Signed-out local change catch-up
+
+- Signing out continues to stop every network request, but successful local
+  persistence records a compact dirty intent for an existing resource that was
+  already mapped to an account/device before sign-out. The intent stores stable
+  local identity, upsert/delete kind, and only the previously mapped scopes; it
+  stores no note content, credentials, or tokens.
+- When the same account and installation sign in again, InkNest first finishes
+  any previously frozen durable batch, then converts matching intents into the
+  normal Revision-guarded queue and uploads them before local-only inventory
+  and remote pull. Page, notebook, folder, and infinite-canvas changes use
+  their existing mutation contracts; explicit signed-out deletes become normal
+  delete operations and retain the existing conflict/Tombstone rules.
+- A different account cannot consume an intent merely because it signs in on
+  the same device. A new local-only root folder or notebook needs no journal
+  because the existing inventory Merge discovers it. Creating an unmapped child
+  page inside an already mapped notebook still requires a separate incremental
+  child-creation contract and is outside this mapped-resource catch-up slice.
+- InkNest never infers deletion only because a mapped file is absent. A cloud
+  delete is queued only from an explicit local delete callback, preventing file
+  corruption or manual storage loss from being mistaken for user intent.
+- An intent is removed for one scope only after its normal queue operation is
+  durably written. Failure leaves the intent available across App restart and
+  the existing retry path remains non-destructive.
 
 ### Notebook metadata synchronization contract
 
@@ -296,6 +353,28 @@ The first slice sets no retention period and performs no physical cleanup.
   `sync_infinite_canvas_metadata_conflict`. A continuous remote Revision updates
   the existing canvas without adding UI controls.
 
+### Child-page and structural-conflict completion contract
+
+- Before incremental pull, Flutter compares every mapped paged notebook with
+  bootstrap and discovers local child pages without mappings. It uploads their
+  verified assets, creates the pages idempotently in local order, rebuilds the
+  resource map, and queues the latest page/notebook state again so edits made
+  during creation are not lost.
+- Page upserts carry content plus explicit `metadata/baseMetadata` for width,
+  height, `coordinateSpaceVersion`, `rotationQuarterTurns`, and template. The
+  server three-way checks only changed metadata fields and shares one page
+  Revision with content; unknown coordinate-space values are compared and
+  preserved as JSON, never rewritten.
+- A metadata conflict returns the affected resource and fields. Flutter saves
+  one account/device-scoped reconciliation item before reporting attention.
+  Retrying does not discard the frozen local operation or create duplicate
+  items.
+- Choosing the local version rebases the frozen operation on the latest cloud
+  Revision/metadata and retries through the normal commit path. Choosing the
+  cloud version applies the verified bootstrap snapshot locally, removes only
+  that resource's pending operation, refreshes mappings, and then resumes pull.
+  A new concurrent edit may conflict again and stays visible.
+
 ## Acceptance Criteria
 
 - [x] A user can register, sign in, refresh a session, sign out, and revoke a
@@ -315,6 +394,14 @@ The first slice sets no retention period and performs no physical cleanup.
 - [x] A notebook created after device initialization uploads without requiring
   another first-sign-in dialog; logout/login discovers and repairs any
   still-local-only notebook instead of reporting a false up-to-date state.
+- [x] A page inserted, duplicated, or imported from PDF inside an already
+  synchronized notebook uploads with its assets and intended order without
+  requiring another sign-in or reopening the notebook.
+- [x] Page template, rotation, dimensions, and coordinate-space metadata
+  converge across devices without being embedded in page content.
+- [x] Concurrent folder/notebook/page/canvas metadata changes create a durable
+  warning that can apply either the local or cloud structure without silently
+  overwriting the other version.
 - [x] Retrying the same synchronization commit does not duplicate pages,
   assets, conflicts, or change events.
 - [x] Signing in on a device with local notebooks defaults to merge and does
@@ -457,6 +544,13 @@ The first slice sets no retention period and performs no physical cleanup.
   and a 30-second foreground interval, serializes cycles with one remembered
   follow-up request, uploads safely while an editor is open, and exposes Sync
   Now from the signed-in library status sheet.
+  Signed-out persistence now journals only mapped local resource identities and
+  upsert/delete intent. Re-login on the same account and stable installation
+  flushes any older frozen batch, rebuilds current page/notebook/folder/canvas
+  operations from disk, and uploads them through the existing Revision and
+  asset contracts. Intent remains durable across restart, is consumed only
+  after queue persistence, and cannot be claimed by an account that was not a
+  mapped owner when the change occurred.
 - Verification: Backend tests cover authentication, account isolation,
   revisioned content, asset transfer, cursors, atomic/idempotent commits, page
   and notebook conflicts, all resolution choices, soft delete/restore, both

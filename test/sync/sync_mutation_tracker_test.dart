@@ -29,6 +29,13 @@ void main() {
         remoteResourceId: 'remote-page-1',
         revision: 7,
         contentHash: 'a' * 64,
+        pageMetadata: const {
+          'width': 768.0,
+          'height': 1024.0,
+          'coordinateSpaceVersion': 1,
+          'rotationQuarterTurns': 0,
+          'template': 'blank',
+        },
       ),
     ]);
     var syncRequestCount = 0;
@@ -63,6 +70,14 @@ void main() {
     expect(operation.content, contains('strokes'));
     expect(operation.content, isNot(contains('id')));
     expect(operation.content, isNot(contains('width')));
+    expect(operation.baseMetadata, {
+      'width': 768.0,
+      'height': 1024.0,
+      'coordinateSpaceVersion': 1,
+      'rotationQuarterTurns': 0,
+      'template': 'blank',
+    });
+    expect(operation.metadata, operation.baseMetadata);
     expect(syncRequestCount, 2);
   });
 

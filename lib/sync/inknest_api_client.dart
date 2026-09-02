@@ -88,6 +88,8 @@ class InkNestApiClient
     required String deviceName,
     required String platform,
     required String clientInstanceId,
+    required String privacyPolicyVersion,
+    required String termsVersion,
   }) async {
     final session = InkNestAuthSession.fromJson(
       await _postObject(
@@ -98,6 +100,8 @@ class InkNestApiClient
           'deviceName': deviceName,
           'platform': platform,
           'clientInstanceId': clientInstanceId,
+          'privacyPolicyVersion': privacyPolicyVersion,
+          'termsVersion': termsVersion,
         },
         expectedStatus: 201,
         skipAuth: true,
@@ -152,6 +156,63 @@ class InkNestApiClient
     } finally {
       await _sessionStore.clear();
     }
+  }
+
+  @override
+  Future<InkNestCloudUser> acceptAgreements({
+    required String privacyPolicyVersion,
+    required String termsVersion,
+  }) async {
+    final user = InkNestCloudUser.fromJson(
+      await _putObject(
+        'me/agreements',
+        data: {
+          'privacyPolicyVersion': privacyPolicyVersion,
+          'termsVersion': termsVersion,
+        },
+        expectedStatus: 200,
+      ),
+    );
+    final stored = await _sessionStore.read();
+    if (stored == null) {
+      throw StateError('The account session is unavailable.');
+    }
+    await _storeSession(stored.session.copyWith(user: user));
+    return user;
+  }
+
+  @override
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) => _putNoContent(
+    'me/password',
+    data: {'currentPassword': currentPassword, 'newPassword': newPassword},
+  );
+
+  @override
+  Future<AccountDeletionResult> deleteAccount({
+    required String password,
+  }) async {
+    final response = await _deleteObject(
+      'me',
+      data: {'password': password, 'confirmation': 'DELETE'},
+      expectedStatus: 202,
+    );
+    final status = response['status'];
+    final cloudDeletionComplete = response['cloudDeletionComplete'];
+    final localDataRetained = response['localDataRetained'];
+    if (status is! String ||
+        cloudDeletionComplete is! bool ||
+        localDataRetained is! bool) {
+      throw const FormatException('Invalid account deletion response.');
+    }
+    await _sessionStore.clear();
+    return AccountDeletionResult(
+      status: status,
+      cloudDeletionComplete: cloudDeletionComplete,
+      localDataRetained: localDataRetained,
+    );
   }
 
   @override
@@ -523,6 +584,46 @@ class InkNestApiClient
         options: Options(extra: {_skipAuth: skipAuth}),
       );
       return _decodeObject(response, expectedStatus: expectedStatus);
+    } on DioException catch (error) {
+      throw _exceptionFromDio(error);
+    }
+  }
+
+  Future<Map<String, Object?>> _putObject(
+    String path, {
+    required Map<String, Object?> data,
+    required int expectedStatus,
+  }) async {
+    try {
+      final response = await _dio.put<Object?>(path, data: data);
+      return _decodeObject(response, expectedStatus: expectedStatus);
+    } on DioException catch (error) {
+      throw _exceptionFromDio(error);
+    }
+  }
+
+  Future<Map<String, Object?>> _deleteObject(
+    String path, {
+    required Map<String, Object?> data,
+    required int expectedStatus,
+  }) async {
+    try {
+      final response = await _dio.delete<Object?>(path, data: data);
+      return _decodeObject(response, expectedStatus: expectedStatus);
+    } on DioException catch (error) {
+      throw _exceptionFromDio(error);
+    }
+  }
+
+  Future<void> _putNoContent(
+    String path, {
+    required Map<String, Object?> data,
+  }) async {
+    try {
+      final response = await _dio.put<Object?>(path, data: data);
+      if (response.statusCode != 204) {
+        throw _exceptionFromResponse(response);
+      }
     } on DioException catch (error) {
       throw _exceptionFromDio(error);
     }

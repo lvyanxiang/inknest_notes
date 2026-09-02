@@ -3,17 +3,26 @@ class InkNestCloudUser {
     required this.id,
     required this.email,
     required this.createdAt,
+    this.privacyPolicyVersion,
+    this.termsVersion,
+    this.agreementsAcceptedAt,
   });
 
   final String id;
   final String email;
   final DateTime createdAt;
+  final String? privacyPolicyVersion;
+  final String? termsVersion;
+  final DateTime? agreementsAcceptedAt;
 
   factory InkNestCloudUser.fromJson(Map<String, Object?> json) {
     return InkNestCloudUser(
       id: _requiredString(json, 'id'),
       email: _requiredString(json, 'email'),
       createdAt: _requiredDateTime(json, 'createdAt'),
+      privacyPolicyVersion: json['privacyPolicyVersion'] as String?,
+      termsVersion: json['termsVersion'] as String?,
+      agreementsAcceptedAt: _optionalDateTime(json, 'agreementsAcceptedAt'),
     );
   }
 
@@ -21,7 +30,23 @@ class InkNestCloudUser {
     'id': id,
     'email': email,
     'createdAt': createdAt.toUtc().toIso8601String(),
+    'privacyPolicyVersion': privacyPolicyVersion,
+    'termsVersion': termsVersion,
+    'agreementsAcceptedAt': agreementsAcceptedAt?.toUtc().toIso8601String(),
   };
+
+  InkNestCloudUser copyWith({
+    String? privacyPolicyVersion,
+    String? termsVersion,
+    DateTime? agreementsAcceptedAt,
+  }) => InkNestCloudUser(
+    id: id,
+    email: email,
+    createdAt: createdAt,
+    privacyPolicyVersion: privacyPolicyVersion ?? this.privacyPolicyVersion,
+    termsVersion: termsVersion ?? this.termsVersion,
+    agreementsAcceptedAt: agreementsAcceptedAt ?? this.agreementsAcceptedAt,
+  );
 }
 
 class InkNestCloudDevice {
@@ -86,6 +111,15 @@ class InkNestAuthSession {
   final int expiresIn;
   final InkNestCloudUser user;
   final InkNestCloudDevice device;
+
+  InkNestAuthSession copyWith({InkNestCloudUser? user}) => InkNestAuthSession(
+    accessToken: accessToken,
+    refreshToken: refreshToken,
+    tokenType: tokenType,
+    expiresIn: expiresIn,
+    user: user ?? this.user,
+    device: device,
+  );
 
   factory InkNestAuthSession.fromJson(Map<String, Object?> json) {
     final expiresIn = json['expiresIn'];

@@ -1,3 +1,4 @@
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Request, Response, status
@@ -6,7 +7,16 @@ from inknest_server.api.dependencies import (
     AuthServiceDependency,
     CurrentSessionDependency,
 )
+from inknest_server.auth.agreements import (
+    CURRENT_PRIVACY_POLICY_VERSION,
+    CURRENT_TERMS_VERSION,
+)
 from inknest_server.auth.schemas import (
+    AcceptAgreementsRequest,
+    AccountDeletionResponse,
+    AgreementVersionsResponse,
+    ChangePasswordRequest,
+    DeleteAccountRequest,
     DeviceResponse,
     LoginRequest,
     LogoutRequest,
@@ -35,6 +45,8 @@ async def register(
         device_name=payload.device_name,
         platform=payload.platform,
         client_instance_id=payload.client_instance_id,
+        privacy_policy_version=payload.privacy_policy_version,
+        terms_version=payload.terms_version,
     )
     return _token_response(result, service)
 
@@ -77,6 +89,67 @@ async def logout(
 @router.get("/me", response_model=UserResponse)
 async def me(current: CurrentSessionDependency) -> UserResponse:
     return UserResponse.model_validate(current.user)
+
+
+@router.get("/legal/agreements", response_model=AgreementVersionsResponse)
+async def agreement_versions() -> AgreementVersionsResponse:
+    return AgreementVersionsResponse(
+        privacy_policy_version=CURRENT_PRIVACY_POLICY_VERSION,
+        terms_version=CURRENT_TERMS_VERSION,
+        effective_date="2026-08-31",
+    )
+
+
+@router.put("/me/agreements", response_model=UserResponse)
+async def accept_agreements(
+    payload: AcceptAgreementsRequest,
+    current: CurrentSessionDependency,
+    service: AuthServiceDependency,
+) -> UserResponse:
+    await service.accept_agreements(
+        user=current.user,
+        privacy_policy_version=payload.privacy_policy_version,
+        terms_version=payload.terms_version,
+    )
+    return UserResponse.model_validate(current.user)
+
+
+@router.put("/me/password", status_code=status.HTTP_204_NO_CONTENT)
+async def change_password(
+    payload: ChangePasswordRequest,
+    current: CurrentSessionDependency,
+    service: AuthServiceDependency,
+) -> Response:
+    await service.change_password(
+        user=current.user,
+        current_device_id=current.device.id,
+        current_password=payload.current_password,
+        new_password=payload.new_password,
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete(
+    "/me",
+    response_model=AccountDeletionResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def delete_account(
+    payload: DeleteAccountRequest,
+    current: CurrentSessionDependency,
+    service: AuthServiceDependency,
+) -> AccountDeletionResponse:
+    result = await service.request_account_deletion(
+        user=current.user,
+        password=payload.password,
+    )
+    deletion_status: Literal["pending", "completed"] = (
+        "completed" if result.status == "completed" else "pending"
+    )
+    return AccountDeletionResponse(
+        status=deletion_status,
+        cloud_deletion_complete=result.status == "completed",
+    )
 
 
 @router.get("/devices", response_model=list[DeviceResponse])

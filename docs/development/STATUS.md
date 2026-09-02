@@ -5,13 +5,15 @@
 - Milestone: Public release readiness is being tracked; App Store and Google
   Play status is currently NO-GO while the recorded store blockers remain
   open.
-- Next task: Revalidate representative Chinese/English handwriting on physical
-  iOS and Android devices, including first-use model download, accuracy, and
-  latency.
-- Last completed: Optimized local-to-cloud synchronization with debounced
-  persistence triggers, foreground resume and periodic checks, serialized
-  follow-up cycles, editor-safe push-only behavior, and an explicit Sync Now
-  action.
+- Next task: Finish the account release dependencies that require product/legal
+  choices: public HTTPS Privacy/Terms/deletion pages, final operator and contact
+  details, launch territories and retention/processor disclosures; then select
+  an email provider before implementing verified email and password recovery.
+- Last completed: Replaced the placeholder local legal drafts with versioned
+  Simplified Chinese Privacy Policy and Terms `2026-08-31.1`, audited against
+  the current local-first storage, optional cloud account/sync, permissions,
+  ML Kit metrics, security logs, retention, deletion, and licensing behavior;
+  App and backend agreement versions now require reacceptance.
 
 ### Release readiness
 
@@ -53,6 +55,12 @@
   dependency and asset license inventory for that exact release.
 
 ## Decisions
+
+- When production HTTPS becomes available, publish Privacy Policy and Terms
+  from one canonical versioned source. The App uses the matching HTTPS document
+  online and only an exact version/content-digest-matched generated local copy
+  offline; never maintain or accept drifting copies. Follow
+  `docs/legal/README.md`.
 
 - Use `docs/development/RELEASE_CHECKLIST.md` as the source of truth for public
   release readiness. Keep this status file as its short pointer, and update the
@@ -152,6 +160,22 @@
 - Keep cloud sync local-first: first sign-in defaults to merging local and
   cloud libraries, uncertain or concurrent edits create recoverable conflict
   copies, and no restore path silently overwrites local notes.
+- Run first-sign-in Merge and ordinary automatic synchronization without
+  blocking dialogs or routine SnackBars. Use the library header for progress,
+  completion, failure, and retry; reserve the persistent warning badge and
+  user-opened detail sheet for stored conflicts.
+- Treat a newly added page inside an already mapped notebook as an incremental
+  resource creation: derive its stable remote ID, upload referenced assets,
+  create it idempotently, rebuild mappings, and then commit the notebook's full
+  page order. Do not require sign-out, sign-in, or reopening the notebook.
+- Synchronize page template, rotation, dimensions, and coordinate-space version
+  as explicit `metadata/baseMetadata` guarded by the same page Revision as
+  content. Preserve unknown coordinate-space versions on remote apply.
+- Persist concurrent folder, notebook, page-order, page-metadata, and canvas-
+  background changes as account/device structural conflict records. Block
+  automatic retry for that resource until the user chooses the local or cloud
+  structure; Keep Both remains limited to content conflicts that can create a
+  genuine second resource.
 - Keep sync Cursors server-owned, signed, account-bound, and opaque to clients;
   the App persists a page Cursor only after applying the complete page locally.
 - Keep `/sync/commit` batches atomic and scope idempotency keys to one account
@@ -358,6 +382,28 @@
   its source JSON.
 
 ## Verification
+
+- P0 synchronization completion passes 134 focused Flutter synchronization
+  tests and the complete 285-test Flutter suite; `flutter analyze` reports no
+  issues. Backend Ruff format/check, mypy, and all 67 non-integration tests pass.
+  The 16 PostgreSQL/MinIO integration tests could not run on 2026-08-31 because
+  the local Docker daemon and PostgreSQL service were not running; this is
+  recorded as an environment-validation follow-up, not as a passed check. The
+  slice changes no database schema and requires no Alembic migration.
+
+- Seamless synchronization passes 42 focused Flutter tests covering automatic
+  cloud-only/local-only/mixed first Merge, silent startup upload and pull,
+  background deletion feedback, failure retry through status, conflict entry,
+  strict conflict response parsing, and persistence before Cursor handoff. The
+  complete 279-test Flutter suite, `flutter analyze`, and `git diff --check`
+  pass. No backend route, database model, or migration changed.
+
+- Signed-out synchronization catch-up passes 26 focused tests covering
+  restart persistence, stable-account/device replay, different-account
+  isolation, page/notebook/folder/infinite-canvas updates, delete coalescing,
+  queue integration, and the existing mutation contracts. The complete 279-test
+  Flutter suite, `flutter analyze`, and `git diff --check` pass. No backend API,
+  database model, or migration changed.
 
 - Automatic synchronization focused coverage passes with 28 tests: local
   mutation requests, debounce coalescing, editor-safe push-only operation,

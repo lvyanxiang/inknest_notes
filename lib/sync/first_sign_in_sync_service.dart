@@ -11,12 +11,14 @@ import 'package:inknest_notes/sync/inknest_api_client.dart';
 import 'package:inknest_notes/sync/incremental_sync_pull_service.dart';
 import 'package:inknest_notes/sync/incremental_sync_push_service.dart';
 import 'package:inknest_notes/sync/local_sync_asset_inventory.dart';
+import 'package:inknest_notes/sync/signed_out_sync_reconciliation_service.dart';
 import 'package:inknest_notes/sync/sync_bootstrap.dart';
 import 'package:inknest_notes/sync/sync_merge_plan.dart';
 import 'package:inknest_notes/sync/sync_mutation_tracker.dart';
 import 'package:inknest_notes/sync/sync_resource_map_store.dart';
 import 'package:inknest_notes/sync/sync_restore_snapshot.dart';
 import 'package:inknest_notes/sync/sync_tombstone_restore_service.dart';
+import 'package:inknest_notes/sync/sync_structural_conflicts.dart';
 import 'package:inknest_notes/sync/sync_upload_models.dart';
 import 'package:inknest_notes/sync/sync_cloud_client.dart';
 import 'package:inknest_notes/sync/sync_conflict_resolution_service.dart';
@@ -59,12 +61,14 @@ class MixedLibraryMergeResult {
     required this.downloadedNotebookCount,
     required this.transferredAssetCount,
     required this.preservedConflictCount,
+    this.pendingConflicts = const [],
   });
 
   final int uploadedNotebookCount;
   final int downloadedNotebookCount;
   final int transferredAssetCount;
   final int preservedConflictCount;
+  final List<CloudSyncConflict> pendingConflicts;
 }
 
 abstract interface class FirstSignInSyncService {
@@ -103,7 +107,8 @@ class ApiFirstSignInSyncService
     implements
         FirstSignInSyncService,
         SyncConflictResolutionService,
-        SyncTombstoneRestoreService {
+        SyncTombstoneRestoreService,
+        SyncStructuralConflictResolutionService {
   const ApiFirstSignInSyncService({
     required this.repository,
     required this.apiClient,
@@ -127,6 +132,9 @@ class ApiFirstSignInSyncService
       rootDirectory: rootDirectory,
     );
     final initial = await pushService.push(userId: userId, deviceId: deviceId);
+    var uploadedOperationCount = initial.uploadedOperationCount;
+    var preservedConflictCount = initial.preservedConflictCount;
+    var preservedDeleteEditCount = initial.preservedDeleteEditCount;
     final state = await FileSyncStateStore(
       rootDirectory: rootDirectory,
       userId: userId,
@@ -136,30 +144,191 @@ class ApiFirstSignInSyncService
       return initial;
     }
 
+    final tracker = mutationTracker;
+    if (tracker != null) {
+      final reconciliation = await SignedOutSyncReconciliationService(
+        repository: repository,
+        rootDirectory: rootDirectory,
+        mutationTracker: tracker,
+      ).reconcile(userId: userId, deviceId: deviceId);
+      if (reconciliation.queuedMutationCount > 0) {
+        final catchUp = await pushService.push(
+          userId: userId,
+          deviceId: deviceId,
+        );
+        uploadedOperationCount += catchUp.uploadedOperationCount;
+        preservedConflictCount += catchUp.preservedConflictCount;
+        preservedDeleteEditCount += catchUp.preservedDeleteEditCount;
+      }
+    }
+
     final created = await _syncLocalOnlyRoots(
       userId: userId,
       deviceId: deviceId,
     );
-    if (created.uploadedRootCount == 0) {
-      return initial;
+    final createdPages = await _syncLocalOnlyPages(
+      userId: userId,
+      deviceId: deviceId,
+    );
+    if (created.uploadedRootCount == 0 && createdPages.pageCount == 0) {
+      return IncrementalSyncPushResult(
+        uploadedOperationCount: uploadedOperationCount,
+        preservedConflictCount:
+            preservedConflictCount + created.preservedConflictCount,
+        preservedDeleteEditCount: preservedDeleteEditCount,
+      );
     }
 
     await _queueLatestCreatedContent(
-      notebookIds: created.notebookIds,
+      notebookIds: {...created.notebookIds, ...createdPages.notebookIds},
       folderIds: created.folderIds,
     );
     final followUp = await pushService.push(userId: userId, deviceId: deviceId);
     return IncrementalSyncPushResult(
       uploadedOperationCount:
-          initial.uploadedOperationCount +
+          uploadedOperationCount +
           created.uploadedRootCount +
+          createdPages.pageCount +
           followUp.uploadedOperationCount,
       preservedConflictCount:
-          initial.preservedConflictCount +
+          preservedConflictCount +
           created.preservedConflictCount +
           followUp.preservedConflictCount,
       preservedDeleteEditCount:
-          initial.preservedDeleteEditCount + followUp.preservedDeleteEditCount,
+          preservedDeleteEditCount + followUp.preservedDeleteEditCount,
+    );
+  }
+
+  Future<_LocalChildPageSyncResult> _syncLocalOnlyPages({
+    required String userId,
+    required String deviceId,
+  }) async {
+    final bootstrap = await apiClient.bootstrap();
+    final folders = await repository.listFolders();
+    final notebooks = <Notebook>[
+      ...await repository.listNotebooks(),
+      for (final folder in folders)
+        ...await repository.listNotebooks(folderId: folder.id),
+      ...await repository.listNotebooks(archived: true),
+    ];
+    final cloudNotebooks = {
+      for (final notebook in bootstrap.notebooks) notebook.id: notebook,
+    };
+    final cloudPageIds = {for (final page in bootstrap.pages) page.id};
+    final cloudPageCounts = <String, int>{};
+    for (final page in bootstrap.pages) {
+      cloudPageCounts.update(
+        page.notebookId,
+        (count) => count + 1,
+        ifAbsent: () => 1,
+      );
+    }
+    final missing = <_LocalChildPage>[];
+    for (final notebook in notebooks) {
+      if (notebook.layoutMode != NotebookLayoutMode.paged ||
+          cloudNotebooks[notebook.id]?.layoutMode != 'paged') {
+        continue;
+      }
+      var appendPosition = cloudPageCounts[notebook.id] ?? 0;
+      for (final pageId in notebook.pageIds) {
+        final remoteId = cloudPageIds.contains(pageId)
+            ? pageId
+            : remotePageSyncId(notebook.id, pageId);
+        if (cloudPageIds.contains(remoteId)) continue;
+        missing.add(
+          _LocalChildPage(
+            notebook: notebook,
+            pageId: pageId,
+            remoteId: remoteId,
+            appendPosition: appendPosition++,
+          ),
+        );
+      }
+    }
+    if (missing.isEmpty) return const _LocalChildPageSyncResult();
+
+    final snapshot = await _buildLocalChildPageSnapshot(missing);
+    await _uploadSnapshot(
+      snapshot,
+      deviceId: deviceId,
+      baseCursor: bootstrap.baseCursor,
+    );
+    final completed = await apiClient.bootstrap();
+    final completedPages = {for (final page in completed.pages) page.id: page};
+    for (final page in missing) {
+      final cloud = completedPages[page.remoteId];
+      if (cloud == null || cloud.notebookId != page.notebook.id) {
+        throw StateError('Cloud bootstrap does not contain the uploaded page.');
+      }
+    }
+    _verifyUploadedSnapshot(snapshot, completed);
+    await _replaceResourceMappings(
+      bootstrap: completed,
+      userId: userId,
+      deviceId: deviceId,
+    );
+    return _LocalChildPageSyncResult(
+      notebookIds: missing.map((page) => page.notebook.id).toSet(),
+      pageCount: missing.length,
+    );
+  }
+
+  Future<_LocalUploadSnapshot> _buildLocalChildPageSnapshot(
+    List<_LocalChildPage> pages,
+  ) async {
+    final operations = <Map<String, Object?>>[];
+    final assetsByPath = <String, LocalSyncAsset>{};
+    for (final child in pages) {
+      final page = await repository.loadPage(child.notebook, child.pageId);
+      final content = Map<String, Object?>.from(page.toJson());
+      for (final key in const {
+        'id',
+        'width',
+        'height',
+        'coordinateSpaceVersion',
+        'rotationQuarterTurns',
+        'template',
+      }) {
+        content.remove(key);
+      }
+      operations.add(
+        _operation('page', child.remoteId, {
+          'notebookId': child.notebook.id,
+          'position': child.appendPosition,
+          'width': page.width,
+          'height': page.height,
+          'coordinateSpaceVersion': page.persistedCoordinateSpaceVersion,
+          'rotationQuarterTurns': page.rotationQuarterTurns,
+          'template': page.template.name,
+          'content': content,
+        }),
+      );
+      final background = page.pdfBackground;
+      if (background != null) {
+        await _addAsset(
+          assetsByPath,
+          child.notebook,
+          background.assetPath,
+          File(background.filePath),
+          'pdf',
+        );
+      }
+      for (final image in page.images) {
+        await _addAsset(
+          assetsByPath,
+          child.notebook,
+          image.assetPath,
+          File(image.filePath),
+          'image',
+        );
+      }
+    }
+    return _LocalUploadSnapshot(
+      operations: operations,
+      assets: assetsByPath.values.toList()
+        ..sort((left, right) => left.id.compareTo(right.id)),
+      folderIds: const {},
+      notebookIds: pages.map((page) => page.notebook.id).toSet(),
     );
   }
 
@@ -309,6 +478,66 @@ class ApiFirstSignInSyncService
   }
 
   @override
+  Future<List<SyncStructuralConflict>> loadStructuralConflicts({
+    required String userId,
+    required String deviceId,
+  }) => FileSyncStructuralConflictStore(
+    rootDirectory: rootDirectory,
+    userId: userId,
+    deviceId: deviceId,
+  ).load();
+
+  @override
+  Future<SyncStructuralConflictResolutionResult> resolveStructuralConflict({
+    required String userId,
+    required String deviceId,
+    required String conflictId,
+    required SyncStructuralConflictResolution resolution,
+  }) async {
+    final store = FileSyncStructuralConflictStore(
+      rootDirectory: rootDirectory,
+      userId: userId,
+      deviceId: deviceId,
+    );
+    final matching = (await store.load()).where(
+      (conflict) => conflict.id == conflictId,
+    );
+    if (matching.length != 1) {
+      throw StateError('The structural conflict is no longer pending.');
+    }
+    final conflict = matching.single;
+    final stateStore = FileSyncStateStore(
+      rootDirectory: rootDirectory,
+      userId: userId,
+      deviceId: deviceId,
+    );
+    await stateStore.requeueStructuralConflict(
+      resourceKey: conflict.id,
+      cloudRevision: conflict.cloudRevision,
+      cloudMetadata: conflict.cloudMetadata,
+      keepLocalMetadata:
+          resolution == SyncStructuralConflictResolution.useLocal,
+    );
+    await store.remove(conflict.id);
+    try {
+      await pushIncremental(userId: userId, deviceId: deviceId);
+      final pull = await pullIncremental(userId: userId, deviceId: deviceId);
+      if (pull.status == IncrementalSyncPullStatus.requiresReconciliation ||
+          pull.status == IncrementalSyncPullStatus.notInitialized) {
+        throw StateError('Structural conflict resolution is not yet applied.');
+      }
+    } on Object {
+      if ((await store.load()).every((item) => item.id != conflict.id)) {
+        await store.put(conflict);
+      }
+      rethrow;
+    }
+    return SyncStructuralConflictResolutionResult(
+      pendingConflicts: await store.load(),
+    );
+  }
+
+  @override
   Future<FirstSignInSyncPreview> inspect() async {
     final results = await Future.wait<Object>([
       readLocalSyncLibraryInventory(repository),
@@ -451,6 +680,7 @@ class ApiFirstSignInSyncService
 
     var cursor = preview.bootstrap.baseCursor;
     var preservedConflicts = 0;
+    final pendingConflicts = <CloudSyncConflict>[];
     final contentOperations = _sharedContentOperations(shared);
     for (var offset = 0; offset < contentOperations.length; offset += 100) {
       final end = (offset + 100).clamp(0, contentOperations.length);
@@ -466,6 +696,11 @@ class ApiFirstSignInSyncService
       preservedConflicts += result.results
           .where((item) => item.outcome == 'conflict')
           .length;
+      pendingConflicts.addAll(
+        result.results
+            .map((item) => item.conflict)
+            .whereType<CloudSyncConflict>(),
+      );
       cursor = result.nextCursor;
     }
     await _uploadSnapshot(localOnly, deviceId: deviceId, baseCursor: cursor);
@@ -501,6 +736,14 @@ class ApiFirstSignInSyncService
       userId: userId,
       deviceId: deviceId,
     );
+    final conflictStore = FileSyncConflictStore(
+      rootDirectory: rootDirectory,
+      userId: userId,
+      deviceId: deviceId,
+    );
+    for (final conflict in pendingConflicts) {
+      await conflictStore.applyConflict(conflict);
+    }
     await FileSyncStateStore(
       rootDirectory: rootDirectory,
       userId: userId,
@@ -512,6 +755,7 @@ class ApiFirstSignInSyncService
       transferredAssetCount:
           localOnly.assets.length + restored.downloadedAssetCount,
       preservedConflictCount: preservedConflicts,
+      pendingConflicts: List.unmodifiable(pendingConflicts),
     );
   }
 
@@ -599,7 +843,7 @@ class ApiFirstSignInSyncService
         for (final pageId in notebook.pageIds)
           pageId: cloudPageIdsByNotebook[notebook.id]?.contains(pageId) ?? false
               ? pageId
-              : _remotePageId(notebook.id, pageId),
+              : remotePageSyncId(notebook.id, pageId),
       };
       final notebookJson = Map<String, Object?>.from(
         _rewritePageReferences(notebook.toJson(), remotePageIds) as Map,
@@ -966,9 +1210,6 @@ class ApiFirstSignInSyncService
     }
   }
 
-  String _remotePageId(String notebookId, String localPageId) =>
-      'page-${sha256.convert(utf8.encode('$notebookId\u0000$localPageId')).toString().substring(0, 40)}';
-
   String _canvasId(String notebookId) =>
       'canvas-${sha256.convert(utf8.encode(notebookId)).toString().substring(0, 40)}';
 
@@ -1016,6 +1257,30 @@ class _LocalRootSyncResult {
   final Set<String> notebookIds;
   final int preservedConflictCount;
   int get uploadedRootCount => folderIds.length + notebookIds.length;
+}
+
+class _LocalChildPageSyncResult {
+  const _LocalChildPageSyncResult({
+    this.notebookIds = const <String>{},
+    this.pageCount = 0,
+  });
+
+  final Set<String> notebookIds;
+  final int pageCount;
+}
+
+class _LocalChildPage {
+  const _LocalChildPage({
+    required this.notebook,
+    required this.pageId,
+    required this.remoteId,
+    required this.appendPosition,
+  });
+
+  final Notebook notebook;
+  final String pageId;
+  final String remoteId;
+  final int appendPosition;
 }
 
 class _LocalUploadSnapshot {

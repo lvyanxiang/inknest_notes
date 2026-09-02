@@ -562,29 +562,21 @@ class SharedSyncApplyService {
           return null;
         }
         final local = await repository.loadPage(notebook, pageId);
-        if (cloud.width != local.width ||
-            cloud.height != local.height ||
-            cloud.coordinateSpaceVersion !=
-                local.persistedCoordinateSpaceVersion ||
-            cloud.rotationQuarterTurns != local.rotationQuarterTurns ||
-            cloud.template != local.template.name) {
-          return null;
-        }
         final updated = NotePage.fromJson({
           ...cloud.content,
           'id': local.id,
-          'width': local.width,
-          'height': local.height,
-          'coordinateSpaceVersion': local.persistedCoordinateSpaceVersion,
-          'rotationQuarterTurns': local.rotationQuarterTurns,
-          'template': local.template.name,
+          'width': cloud.width,
+          'height': cloud.height,
+          'coordinateSpaceVersion': cloud.coordinateSpaceVersion,
+          'rotationQuarterTurns': cloud.rotationQuarterTurns,
+          'template': cloud.template,
         });
         if (!await _pageAssetsAreKnown(notebook, updated, resourceMap)) {
           return null;
         }
         return _SharedApplyAction(
-          apply: () => repository.savePage(notebook, updated),
-          rollback: () => repository.savePage(notebook, local),
+          apply: () => repository.applySyncedPage(notebook, updated),
+          rollback: () => repository.applySyncedPage(notebook, local),
         );
       }
     }

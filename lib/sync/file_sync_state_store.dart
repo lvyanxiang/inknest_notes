@@ -148,6 +148,89 @@ class FileSyncStateStore {
     });
   }
 
+  Future<PendingSyncOperation> enqueuePage({
+    required String resourceId,
+    required int baseRevision,
+    required Map<String, Object?> content,
+    required Map<String, Object?> baseMetadata,
+    required Map<String, Object?> metadata,
+  }) {
+    if (resourceId.trim().isEmpty || baseRevision < 0) {
+      throw ArgumentError('Invalid page synchronization state.');
+    }
+    return _mutate((state) {
+      final resourceKey = '${SyncResourceType.page.apiValue}:$resourceId';
+      final existingIndex = state.pendingOperations.indexWhere(
+        (operation) => operation.resourceKey == resourceKey,
+      );
+      if (existingIndex != -1) {
+        final existing = state.pendingOperations[existingIndex];
+        final updated = existing.copyWith(
+          operation: SyncOperationKind.upsert,
+          content: content,
+          includesContent: true,
+          metadata: metadata,
+          baseMetadata: existing.baseMetadata ?? baseMetadata,
+        );
+        state.pendingOperations[existingIndex] = updated;
+        return updated;
+      }
+      final operation = PendingSyncOperation(
+        operationId: _idFactory('operation'),
+        resourceType: SyncResourceType.page,
+        resourceId: resourceId,
+        baseRevision: baseRevision,
+        content: content,
+        metadata: metadata,
+        baseMetadata: baseMetadata,
+      );
+      state.pendingOperations.add(operation);
+      return operation;
+    });
+  }
+
+  Future<PendingSyncOperation> enqueueMetadataOnly({
+    required SyncResourceType resourceType,
+    required String resourceId,
+    required int baseRevision,
+    required Map<String, Object?> baseMetadata,
+    required Map<String, Object?> metadata,
+  }) {
+    if (resourceType == SyncResourceType.folder ||
+        resourceId.trim().isEmpty ||
+        baseRevision < 0) {
+      throw ArgumentError('Invalid metadata-only synchronization state.');
+    }
+    return _mutate((state) {
+      final resourceKey = '${resourceType.apiValue}:$resourceId';
+      final existingIndex = state.pendingOperations.indexWhere(
+        (operation) => operation.resourceKey == resourceKey,
+      );
+      if (existingIndex != -1) {
+        final existing = state.pendingOperations[existingIndex];
+        final updated = existing.copyWith(
+          operation: SyncOperationKind.upsert,
+          metadata: metadata,
+          baseMetadata: existing.baseMetadata ?? baseMetadata,
+        );
+        state.pendingOperations[existingIndex] = updated;
+        return updated;
+      }
+      final operation = PendingSyncOperation(
+        operationId: _idFactory('operation'),
+        resourceType: resourceType,
+        resourceId: resourceId,
+        baseRevision: baseRevision,
+        content: const {},
+        includesContent: false,
+        metadata: metadata,
+        baseMetadata: baseMetadata,
+      );
+      state.pendingOperations.add(operation);
+      return operation;
+    });
+  }
+
   Future<PendingSyncOperation> enqueueInfiniteCanvas({
     required String resourceId,
     required int baseRevision,
@@ -290,6 +373,67 @@ class FileSyncStateStore {
       if (index == -1) return false;
       state.pendingOperations.removeAt(index);
       return true;
+    });
+  }
+
+  Future<void> requeueStructuralConflict({
+    required String resourceKey,
+    required int cloudRevision,
+    required Map<String, Object?> cloudMetadata,
+    required bool keepLocalMetadata,
+  }) {
+    return _mutate((state) {
+      final batch = state.inFlightBatch;
+      if (batch == null) {
+        throw SyncCommitStateException('No structural conflict batch exists.');
+      }
+      final conflicted = batch.operations.where(
+        (operation) => operation.resourceKey == resourceKey,
+      );
+      if (conflicted.length != 1) {
+        throw SyncCommitStateException(
+          'The structural conflict operation is missing from the batch.',
+        );
+      }
+      for (final operation in batch.operations.reversed) {
+        final pendingIndex = state.pendingOperations.indexWhere(
+          (pending) => pending.resourceKey == operation.resourceKey,
+        );
+        final isTarget = operation.resourceKey == resourceKey;
+        final newest = pendingIndex == -1
+            ? operation
+            : state.pendingOperations.removeAt(pendingIndex);
+        PendingSyncOperation? requeued = newest;
+        if (isTarget) {
+          if (keepLocalMetadata) {
+            requeued = PendingSyncOperation(
+              operationId: newest.operationId,
+              operation: newest.operation,
+              resourceType: newest.resourceType,
+              resourceId: newest.resourceId,
+              baseRevision: cloudRevision,
+              content: newest.content,
+              includesContent: newest.includesContent,
+              metadata: newest.metadata,
+              baseMetadata: cloudMetadata,
+            );
+          } else if (newest.includesContent) {
+            requeued = PendingSyncOperation(
+              operationId: newest.operationId,
+              operation: SyncOperationKind.upsert,
+              resourceType: newest.resourceType,
+              resourceId: newest.resourceId,
+              baseRevision: cloudRevision,
+              content: newest.content,
+              includesContent: true,
+            );
+          } else {
+            requeued = null;
+          }
+        }
+        if (requeued != null) state.pendingOperations.insert(0, requeued);
+      }
+      state.inFlightBatch = null;
     });
   }
 

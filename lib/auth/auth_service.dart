@@ -9,6 +9,8 @@ abstract interface class AuthService {
     required String deviceName,
     required String platform,
     required String clientInstanceId,
+    required String privacyPolicyVersion,
+    required String termsVersion,
   });
 
   Future<InkNestAuthSession> login({
@@ -20,6 +22,30 @@ abstract interface class AuthService {
   });
 
   Future<void> logout();
+
+  Future<InkNestCloudUser> acceptAgreements({
+    required String privacyPolicyVersion,
+    required String termsVersion,
+  });
+
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  });
+
+  Future<AccountDeletionResult> deleteAccount({required String password});
+}
+
+class AccountDeletionResult {
+  const AccountDeletionResult({
+    required this.status,
+    required this.cloudDeletionComplete,
+    required this.localDataRetained,
+  });
+
+  final String status;
+  final bool cloudDeletionComplete;
+  final bool localDataRetained;
 }
 
 abstract interface class AuthSessionInvalidationSource {
