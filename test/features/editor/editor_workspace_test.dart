@@ -140,7 +140,7 @@ void main() {
       },
     );
 
-    testWidgets('uses a second navigation row without overflow on phones', (
+    testWidgets('keeps a two-row editor chrome without overflow on phones', (
       tester,
     ) async {
       await _createFixture(tester, const Size(390, 844));
@@ -151,18 +151,21 @@ void main() {
       final compactNavigation = find.byKey(
         const ValueKey('editor-compact-navigation-row'),
       );
+      final appBar = tester.widget<AppBar>(find.byType(AppBar));
 
       expect(documentContext, findsOneWidget);
-      expect(compactNavigation, findsOneWidget);
-      expect(
-        tester.getRect(compactNavigation).top,
-        greaterThanOrEqualTo(tester.getRect(documentContext).bottom),
-      );
+      expect(appBar.preferredSize.height, 104);
+      expect(compactNavigation, findsNothing);
       expect(find.byKey(const ValueKey('editor-pages-button')), findsOneWidget);
       expect(
         find.byKey(const ValueKey('editor-add-page-button')),
         findsOneWidget,
       );
+      final addPageSize = tester.getSize(
+        find.byKey(const ValueKey('editor-add-page-button')),
+      );
+      expect(addPageSize.width, greaterThanOrEqualTo(44));
+      expect(addPageSize.height, greaterThanOrEqualTo(44));
       expect(
         find.byKey(const ValueKey('editor-previous-page-button')),
         findsNothing,
@@ -171,14 +174,27 @@ void main() {
         find.byKey(const ValueKey('editor-next-page-button')),
         findsNothing,
       );
-      expect(
-        find.byKey(const ValueKey('editor-outline-button')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const ValueKey('editor-outline-button')), findsNothing);
       expect(
         find.byKey(const ValueKey('editor-bookmarks-button')),
+        findsNothing,
+      );
+      expect(find.byKey(const ValueKey('editor-undo-button')), findsOneWidget);
+      expect(find.byKey(const ValueKey('editor-redo-button')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      await tester.tap(find.byKey(const ValueKey('editor-more-actions')));
+      await tester.pumpAndSettle();
+      expect(find.text('Outline'), findsOneWidget);
+      expect(find.text('Bookmarks'), findsOneWidget);
+      await tester.tap(find.text('Outline'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('editor-outline-panel')),
         findsOneWidget,
       );
+      await tester.tapAt(const Offset(10, 100));
+      await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     });
 

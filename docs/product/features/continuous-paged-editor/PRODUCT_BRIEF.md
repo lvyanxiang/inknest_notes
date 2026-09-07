@@ -21,6 +21,12 @@ header. Remove redundant previous/next toolbar buttons, keep Add page, and make
 the visible `Page n of total` document context open the Pages panel for precise
 navigation and management.
 
+Keep the fixed editor chrome to two 52dp rows at every width. The document row
+uses one ordered action list and a width-derived visible-action capacity; items
+that do not fit move to More. Add page, undo, redo, outline, bookmarks,
+recording, and export therefore share one responsive rule instead of separate
+phone and tablet layouts.
+
 Because a touch drag cannot both write and scroll, paged notebooks start in
 `Finger moves`: one finger scrolls and a stylus writes. `Finger writes` remains
 available as an explicit mode and disables one-finger page scrolling while it
@@ -38,6 +44,9 @@ is active.
     Pages, Outline, Bookmarks, audio follow, and page creation.
   - A simplified header with Add page as the only dedicated pagination action;
     the visible page position opens Pages for non-gesture navigation.
+  - One two-row editor header at every width. The document row exposes a
+    prioritized action list and moves overflow into More without toolbar
+    wrapping.
   - Existing editing layers, canonical coordinates, rotation, persistence,
     undo/redo, protected-page state, and PDF backgrounds.
   - Explicit gesture ownership between finger scrolling, stylus writing,
@@ -69,6 +78,9 @@ is active.
 - [x] The complete Flutter test suite and static analysis pass.
 - [x] Previous/next toolbar buttons are absent; Add page remains a 44dp target,
       and activating `Page n of total` opens Pages.
+- [x] At every supported width, the editor chrome occupies two 52dp rows; the
+      prioritized document-row actions fit without wrapping, and overflow
+      actions remain reachable from More.
 
 ## Risks
 

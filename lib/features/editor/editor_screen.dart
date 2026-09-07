@@ -1804,6 +1804,22 @@ class _EditorScreenState extends State<EditorScreen> {
   Future<void> _handleEditorMenuAction(_EditorMenuAction action) async {
     final page = _page;
     switch (action) {
+      case _EditorMenuAction.undo:
+        if (page != null && _undoStack.isNotEmpty) {
+          _undo();
+        }
+        break;
+      case _EditorMenuAction.redo:
+        if (_redoStack.isNotEmpty) {
+          _redo();
+        }
+        break;
+      case _EditorMenuAction.outline:
+        _showNavigationSheet(_EditorNavigationPanel.outline);
+        break;
+      case _EditorMenuAction.bookmarks:
+        _showNavigationSheet(_EditorNavigationPanel.bookmarks);
+        break;
       case _EditorMenuAction.audioLibrary:
         _showAudioRecordingsSheet();
         break;
@@ -2243,9 +2259,22 @@ class _EditorScreenState extends State<EditorScreen> {
             (recording) => recording.id == playbackRecording.id,
           );
     final screenWidth = MediaQuery.sizeOf(context).width;
-    final useCompactDocumentBar = screenWidth < 600;
-    final showRecordAction = screenWidth >= 720;
-    final showExportAction = screenWidth >= 1000;
+    final allHeaderActions = const [
+      _EditorHeaderAction.addPage,
+      _EditorHeaderAction.undo,
+      _EditorHeaderAction.redo,
+      _EditorHeaderAction.outline,
+      _EditorHeaderAction.bookmarks,
+      _EditorHeaderAction.record,
+      _EditorHeaderAction.export,
+    ];
+    final visibleHeaderActions = allHeaderActions
+        .take(_editorHeaderActionCapacity(screenWidth))
+        .toList(growable: false);
+    final hiddenHeaderActions = allHeaderActions
+        .skip(visibleHeaderActions.length)
+        .toSet();
+    const documentNavigatorLabel = 'Open Pages';
     final currentPageNumber = math.max(
       1,
       _notebook.pageIds.indexOf(_currentPageId) + 1,
@@ -2262,11 +2291,11 @@ class _EditorScreenState extends State<EditorScreen> {
             Expanded(
               key: const ValueKey('editor-document-context'),
               child: Tooltip(
-                message: 'Open Pages',
+                message: documentNavigatorLabel,
                 child: Semantics(
                   button: true,
                   label:
-                      'Open Pages, page $currentPageNumber of '
+                      '$documentNavigatorLabel, page $currentPageNumber of '
                       '${_notebook.pageIds.length}',
                   excludeSemantics: true,
                   child: InkWell(
@@ -2314,62 +2343,11 @@ class _EditorScreenState extends State<EditorScreen> {
                 ),
               ),
             ),
-            if (!useCompactDocumentBar) ...[
-              const SizedBox(width: 4),
-              _buildAddPageButton(page),
-              _buildOutlineButton(),
-              _buildBookmarksButton(),
-            ],
           ],
         ),
         actions: [
-          IconButton(
-            key: const ValueKey('editor-undo-button'),
-            onPressed: page != null && _undoStack.isNotEmpty ? _undo : null,
-            tooltip: 'Undo ink edit',
-            icon: const Icon(Icons.undo),
-          ),
-          IconButton(
-            key: const ValueKey('editor-redo-button'),
-            onPressed: _redoStack.isNotEmpty ? _redo : null,
-            tooltip: 'Redo ink edit',
-            icon: const Icon(Icons.redo),
-          ),
-          if (showRecordAction)
-            IconButton(
-              key: const ValueKey('editor-record-button'),
-              onPressed: page == null || _isAudioBusy
-                  ? null
-                  : () => unawaited(_toggleAudioRecording()),
-              tooltip: isRecording
-                  ? 'Stop audio recording'
-                  : 'Start audio recording',
-              icon: _isAudioBusy
-                  ? const SizedBox.square(
-                      dimension: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Icon(
-                      isRecording ? Icons.stop_circle : Icons.mic_none,
-                      color: isRecording
-                          ? Theme.of(context).colorScheme.error
-                          : null,
-                    ),
-            ),
-          if (showExportAction)
-            IconButton(
-              key: const ValueKey('editor-export-button'),
-              onPressed: page == null || _isExporting
-                  ? null
-                  : () => unawaited(_exportPdf()),
-              tooltip: 'Export PDF',
-              icon: _isExporting
-                  ? const SizedBox.square(
-                      dimension: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.ios_share),
-            ),
+          for (final action in visibleHeaderActions)
+            _buildHeaderAction(action, page: page, isRecording: isRecording),
           _EditorOverflowMenu(
             page: page,
             isRecording: isRecording,
@@ -2377,46 +2355,30 @@ class _EditorScreenState extends State<EditorScreen> {
             isImportingPdfs: _isImportingPdfs,
             isExporting: _isExporting,
             hasAudioRecordings: _notebook.audioRecordings.isNotEmpty,
+            hiddenActions: hiddenHeaderActions,
+            canUndo: page != null && _undoStack.isNotEmpty,
+            canRedo: _redoStack.isNotEmpty,
             onSelected: (action) => unawaited(_handleEditorMenuAction(action)),
           ),
           const SizedBox(width: 6),
         ],
         bottom: PreferredSize(
-          preferredSize: Size.fromHeight(useCompactDocumentBar ? 104 : 52),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (useCompactDocumentBar)
-                SizedBox(
-                  key: const ValueKey('editor-compact-navigation-row'),
-                  height: 52,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _buildAddPageButton(page),
-                      _buildOutlineButton(),
-                      _buildBookmarksButton(),
-                    ],
-                  ),
-                ),
-              IgnorePointer(
-                ignoring: _isCurrentPageWriteProtected,
-                child: AnimatedOpacity(
-                  opacity: _isCurrentPageWriteProtected ? 0.52 : 1,
-                  duration: const Duration(milliseconds: 160),
-                  child: EditorToolbar(
-                    tool: _tool,
-                    fingerPanEnabled: _fingerPanEnabled,
-                    fingerWritingAssistEnabled: _fingerWritingAssistEnabled,
-                    onToolChanged: _setTool,
-                    onFingerPanChanged: _setFingerPanEnabled,
-                    onFingerWritingAssistChanged:
-                        _setFingerWritingAssistEnabled,
-                    onInsertImage: () => unawaited(_insertImage()),
-                  ),
-                ),
+          preferredSize: const Size.fromHeight(52),
+          child: IgnorePointer(
+            ignoring: _isCurrentPageWriteProtected,
+            child: AnimatedOpacity(
+              opacity: _isCurrentPageWriteProtected ? 0.52 : 1,
+              duration: const Duration(milliseconds: 160),
+              child: EditorToolbar(
+                tool: _tool,
+                fingerPanEnabled: _fingerPanEnabled,
+                fingerWritingAssistEnabled: _fingerWritingAssistEnabled,
+                onToolChanged: _setTool,
+                onFingerPanChanged: _setFingerPanEnabled,
+                onFingerWritingAssistChanged: _setFingerWritingAssistEnabled,
+                onInsertImage: () => unawaited(_insertImage()),
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -2468,6 +2430,70 @@ class _EditorScreenState extends State<EditorScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildHeaderAction(
+    _EditorHeaderAction action, {
+    required NotePage? page,
+    required bool isRecording,
+  }) {
+    switch (action) {
+      case _EditorHeaderAction.addPage:
+        return _buildAddPageButton(page);
+      case _EditorHeaderAction.undo:
+        return IconButton(
+          key: const ValueKey('editor-undo-button'),
+          onPressed: page != null && _undoStack.isNotEmpty ? _undo : null,
+          tooltip: 'Undo ink edit',
+          icon: const Icon(Icons.undo),
+        );
+      case _EditorHeaderAction.redo:
+        return IconButton(
+          key: const ValueKey('editor-redo-button'),
+          onPressed: _redoStack.isNotEmpty ? _redo : null,
+          tooltip: 'Redo ink edit',
+          icon: const Icon(Icons.redo),
+        );
+      case _EditorHeaderAction.outline:
+        return _buildOutlineButton();
+      case _EditorHeaderAction.bookmarks:
+        return _buildBookmarksButton();
+      case _EditorHeaderAction.record:
+        return IconButton(
+          key: const ValueKey('editor-record-button'),
+          onPressed: page == null || _isAudioBusy
+              ? null
+              : () => unawaited(_toggleAudioRecording()),
+          tooltip: isRecording
+              ? 'Stop audio recording'
+              : 'Start audio recording',
+          icon: _isAudioBusy
+              ? const SizedBox.square(
+                  dimension: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Icon(
+                  isRecording ? Icons.stop_circle : Icons.mic_none,
+                  color: isRecording
+                      ? Theme.of(context).colorScheme.error
+                      : null,
+                ),
+        );
+      case _EditorHeaderAction.export:
+        return IconButton(
+          key: const ValueKey('editor-export-button'),
+          onPressed: page == null || _isExporting
+              ? null
+              : () => unawaited(_exportPdf()),
+          tooltip: 'Export PDF',
+          icon: _isExporting
+              ? const SizedBox.square(
+                  dimension: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.ios_share),
+        );
+    }
   }
 
   Widget _buildAddPageButton(NotePage? page) {
@@ -2760,6 +2786,32 @@ class _CoordinateSpaceReadOnlyBanner extends StatelessWidget {
   }
 }
 
+enum _EditorHeaderAction {
+  addPage,
+  undo,
+  redo,
+  outline,
+  bookmarks,
+  record,
+  export,
+}
+
+int _editorHeaderActionCapacity(double width) {
+  if (width < 360) {
+    return 2;
+  }
+  if (width < 600) {
+    return 3;
+  }
+  if (width < 720) {
+    return 5;
+  }
+  if (width < 1000) {
+    return 6;
+  }
+  return 7;
+}
+
 enum _EditorNavigationPanel {
   pages('Pages'),
   outline('Outline'),
@@ -2771,6 +2823,10 @@ enum _EditorNavigationPanel {
 }
 
 enum _EditorMenuAction {
+  undo,
+  redo,
+  outline,
+  bookmarks,
   audioLibrary,
   toggleRecording,
   importPdf,
@@ -2787,6 +2843,9 @@ class _EditorOverflowMenu extends StatelessWidget {
     required this.isImportingPdfs,
     required this.isExporting,
     required this.hasAudioRecordings,
+    required this.hiddenActions,
+    required this.canUndo,
+    required this.canRedo,
     required this.onSelected,
   });
 
@@ -2796,6 +2855,9 @@ class _EditorOverflowMenu extends StatelessWidget {
   final bool isImportingPdfs;
   final bool isExporting;
   final bool hasAudioRecordings;
+  final Set<_EditorHeaderAction> hiddenActions;
+  final bool canUndo;
+  final bool canRedo;
   final ValueChanged<_EditorMenuAction> onSelected;
 
   @override
@@ -2808,7 +2870,56 @@ class _EditorOverflowMenu extends StatelessWidget {
       shape: EditorChrome.shape,
       onSelected: onSelected,
       itemBuilder: (context) {
-        return [
+        final items = <PopupMenuEntry<_EditorMenuAction>>[];
+        if (hiddenActions.contains(_EditorHeaderAction.undo) ||
+            hiddenActions.contains(_EditorHeaderAction.redo)) {
+          items.add(_editorMenuSection('History'));
+          if (hiddenActions.contains(_EditorHeaderAction.undo)) {
+            items.add(
+              _editorMenuItem(
+                value: _EditorMenuAction.undo,
+                icon: Icons.undo,
+                label: 'Undo',
+                enabled: canUndo,
+              ),
+            );
+          }
+          if (hiddenActions.contains(_EditorHeaderAction.redo)) {
+            items.add(
+              _editorMenuItem(
+                value: _EditorMenuAction.redo,
+                icon: Icons.redo,
+                label: 'Redo',
+                enabled: canRedo,
+              ),
+            );
+          }
+          items.add(const PopupMenuDivider(height: 8));
+        }
+        if (hiddenActions.contains(_EditorHeaderAction.outline) ||
+            hiddenActions.contains(_EditorHeaderAction.bookmarks)) {
+          items.add(_editorMenuSection('Navigate'));
+          if (hiddenActions.contains(_EditorHeaderAction.outline)) {
+            items.add(
+              _editorMenuItem(
+                value: _EditorMenuAction.outline,
+                icon: Icons.format_list_bulleted,
+                label: 'Outline',
+              ),
+            );
+          }
+          if (hiddenActions.contains(_EditorHeaderAction.bookmarks)) {
+            items.add(
+              _editorMenuItem(
+                value: _EditorMenuAction.bookmarks,
+                icon: Icons.bookmark_border,
+                label: 'Bookmarks',
+              ),
+            );
+          }
+          items.add(const PopupMenuDivider(height: 8));
+        }
+        items.addAll([
           _editorMenuSection('Document'),
           _editorMenuItem(
             value: _EditorMenuAction.importPdf,
@@ -2849,7 +2960,8 @@ class _EditorOverflowMenu extends StatelessWidget {
             label: 'Fit page',
             enabled: page != null,
           ),
-        ];
+        ]);
+        return items;
       },
       icon: const Icon(Icons.more_horiz),
     );

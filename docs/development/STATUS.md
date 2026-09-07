@@ -13,13 +13,13 @@
   continuous vertical page flow on phone and tablet across iOS/iPadOS and
   Android. Scrolling updates the active page and page actions; direct page
   navigation, shared zoom, rotation, canonical document coordinates, and all
-  editing layers remain intact. The header now keeps only Add page as the direct
-  pagination action; its visible page position opens Pages for precise jumps
-  and management. Paged notebooks now start in Finger moves so a finger scrolls
-  while a stylus writes; Finger writes and Lasso suspend list dragging to avoid
-  gesture conflicts. This supersedes the earlier narrow-phone single-page
-  top-anchoring behavior. Shape Recognition V2 core and the Android phone UX
-  audit remain delivered.
+  editing layers remain intact. Every width now uses two 52dp editor rows with
+  one prioritized document-row action list; actions beyond the width capacity
+  move into More, while the title/page context opens Pages. Paged notebooks now
+  start in Finger moves so a finger scrolls while a stylus writes; Finger writes
+  and Lasso suspend list dragging to avoid gesture conflicts. This supersedes
+  the earlier narrow-phone single-page top-anchoring behavior. Shape
+  Recognition V2 core and the Android phone UX audit remain delivered.
 
 ### Release readiness
 
@@ -392,8 +392,10 @@
 - Continuous paged editing passes all 310 Flutter tests and `flutter analyze`.
   Focused coverage verifies phone/tablet vertical page stacking, scroll-driven
   current-page updates, direct page jumps, writing to Page 2 after scrolling,
-  canonical coordinates, rotation, zoom, Finger moves, Finger writes, Lasso,
-  text, images, shapes, erasing, undo/redo, and existing page operations.
+  the two-row responsive chrome, width-based More overflow, canonical
+  coordinates, rotation, zoom, Finger moves, Finger writes, Lasso, text,
+  images, shapes, erasing, undo/redo, and existing page operations.
+  `git diff --check` also passes.
 
 - Shape Recognition V2 core passes all 309 Flutter tests. Coverage includes
   quick Pen ink, 500ms hold conversion, preview adjustment, disabling the

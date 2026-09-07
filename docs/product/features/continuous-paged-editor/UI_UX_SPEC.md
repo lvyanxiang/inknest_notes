@@ -19,8 +19,8 @@ coordinates to match the device aspect ratio.
 2. Write with a stylus or drag one finger to scroll through adjacent sheets.
 3. As the viewport focus crosses a page boundary, update the header page count,
    undo/redo target, bookmark state, and current-page actions.
-4. Tap the title's `Page n of total`, Outline, or Bookmarks to jump directly;
-   the selected sheet scrolls into view.
+4. Tap the title's `Page n of total` to open Pages, or use a visible Outline,
+   Bookmarks, or More action; selecting an item scrolls its sheet into view.
 5. Adding or duplicating a page selects it and scrolls it into view.
 
 ## States And Feedback
@@ -44,11 +44,17 @@ coordinates to match the device aspect ratio.
 - Build only visible and nearby pages. The current page remains the sheet
   nearest the viewport's reading focus.
 - Keep zoom controls viewport-fixed, upright, and above the paper list.
-- Preserve the existing fixed header, editing dock, audio bars, Pages panel,
-  and lasso toolbar.
+- Preserve the existing fixed header, editing dock, audio bars, navigator, and
+  lasso toolbar.
 - Remove previous/next arrows and the separate page-count control. Keep one
-  44dp Add page button beside Outline and Bookmarks. Treat the title and page
-  subtitle as one labelled button that opens Pages.
+  44dp Add page button. Treat the title and page subtitle as one labelled
+  button that opens navigation.
+- Use exactly two fixed 52dp rows at every width: the document row and the
+  drawing toolbar. The document row has one prioritized action list in this
+  order: Add page, Undo, Redo, Outline, Bookmarks, Record, Export. A simple
+  width-based capacity determines how many are shown directly; all remaining
+  actions stay in More. The title/page context always opens Pages, and the
+  optional pinned Pages rail remains available at 1100dp and above.
 
 ## Input And Accessibility
 
@@ -75,6 +81,11 @@ coordinates to match the device aspect ratio.
 - [x] No previous/next page arrows remain; Add page is still directly
       available, and the document context opens Pages with a clear semantic
       label.
+- [x] 390dp, 600dp, 834dp, and 1194dp layouts use two fixed 52dp editor rows;
+      no third navigation row is rendered.
+- [x] The ordered action capacity shows Add page directly at every width and
+      exposes overflow actions in More without horizontal or vertical toolbar
+      overflow.
 
 ## Verification
 
@@ -89,3 +100,7 @@ coordinates to match the device aspect ratio.
   shared Fit Width-relative zoom. Adjacent-page buttons were removed because
   scrolling is now the primary navigation; the visible page position and Pages
   panel provide the accessible precision-jump fallback.
+- Every width now uses the same two-row chrome. The document row applies one
+  ordered action-capacity rule: Add page, Undo, Redo, Outline, Bookmarks,
+  Record, Export. Actions beyond the width capacity remain in More, while the
+  title/page context continues to open Pages.
