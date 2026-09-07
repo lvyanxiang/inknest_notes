@@ -13,11 +13,13 @@
   continuous vertical page flow on phone and tablet across iOS/iPadOS and
   Android. Scrolling updates the active page and page actions; direct page
   navigation, shared zoom, rotation, canonical document coordinates, and all
-  editing layers remain intact. Paged notebooks now start in Finger moves so a
-  finger scrolls while a stylus writes; Finger writes and Lasso suspend list
-  dragging to avoid gesture conflicts. This supersedes the earlier narrow-phone
-  single-page top-anchoring behavior. Shape Recognition V2 core and the Android
-  phone UX audit remain delivered.
+  editing layers remain intact. The header now keeps only Add page as the direct
+  pagination action; its visible page position opens Pages for precise jumps
+  and management. Paged notebooks now start in Finger moves so a finger scrolls
+  while a stylus writes; Finger writes and Lasso suspend list dragging to avoid
+  gesture conflicts. This supersedes the earlier narrow-phone single-page
+  top-anchoring behavior. Shape Recognition V2 core and the Android phone UX
+  audit remain delivered.
 
 ### Release readiness
 

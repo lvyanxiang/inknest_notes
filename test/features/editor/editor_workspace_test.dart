@@ -69,7 +69,7 @@ void main() {
       expect(
         find.descendant(
           of: find.byKey(const ValueKey('editor-pages-button')),
-          matching: find.byIcon(Icons.library_books_outlined),
+          matching: find.byIcon(Icons.expand_more),
         ),
         findsOneWidget,
       );
@@ -112,27 +112,29 @@ void main() {
     });
 
     testWidgets(
-      'keeps page navigation in the header without a floating page chip',
+      'opens Pages from the document context without a floating page chip',
       (tester) async {
         await _createFixture(tester, const Size(834, 1194));
 
+        final documentContext = find.byKey(
+          const ValueKey('editor-document-context'),
+        );
         expect(
-          find.byKey(const ValueKey('editor-pages-button')),
+          find.descendant(
+            of: documentContext,
+            matching: find.byKey(const ValueKey('editor-pages-button')),
+          ),
           findsOneWidget,
         );
         expect(
           find.byKey(const ValueKey('editor-page-position-button')),
           findsNothing,
         );
+        await tester.tap(find.byKey(const ValueKey('editor-pages-button')));
+        await tester.pumpAndSettle();
         expect(
-          tester
-              .getRect(find.byKey(const ValueKey('editor-document-context')))
-              .right,
-          lessThan(
-            tester
-                .getRect(find.byKey(const ValueKey('editor-pages-button')))
-                .left,
-          ),
+          find.byKey(const ValueKey('editor-pages-panel')),
+          findsOneWidget,
         );
         expect(find.byKey(const ValueKey('editor-zoom-chip')), findsOneWidget);
       },
@@ -158,6 +160,18 @@ void main() {
       );
       expect(find.byKey(const ValueKey('editor-pages-button')), findsOneWidget);
       expect(
+        find.byKey(const ValueKey('editor-add-page-button')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('editor-previous-page-button')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('editor-next-page-button')),
+        findsNothing,
+      );
+      expect(
         find.byKey(const ValueKey('editor-outline-button')),
         findsOneWidget,
       );
@@ -168,7 +182,7 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('uses the header pager for adjacent navigation and quick add', (
+    testWidgets('keeps only Add page as the direct pagination action', (
       tester,
     ) async {
       await _createFixture(tester, const Size(600, 800));
@@ -179,11 +193,9 @@ void main() {
       final next = find.byKey(const ValueKey('editor-next-page-button'));
       final add = find.byKey(const ValueKey('editor-add-page-button'));
 
-      expect(tester.widget<IconButton>(previous).onPressed, isNull);
-      expect(tester.widget<IconButton>(next).onPressed, isNull);
-      expect(find.text('1 / 1'), findsOneWidget);
-      expect(tester.getSize(previous).width, greaterThanOrEqualTo(44));
-      expect(tester.getSize(previous).height, greaterThanOrEqualTo(44));
+      expect(previous, findsNothing);
+      expect(next, findsNothing);
+      expect(find.text('Page 1 of 1'), findsOneWidget);
       expect(tester.getSize(add).width, greaterThanOrEqualTo(44));
       expect(tester.getSize(add).height, greaterThanOrEqualTo(44));
 
@@ -193,25 +205,20 @@ void main() {
       expect(find.text('Add page'), findsOneWidget);
       await tester.tap(find.byTooltip('Close paper styles'));
       await tester.pumpAndSettle();
-      expect(find.text('1 / 1'), findsOneWidget);
+      expect(find.text('Page 1 of 1'), findsOneWidget);
 
       await tester.tap(add);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('page-template-blank')));
       await tester.pumpAndSettle();
 
-      expect(find.text('2 / 2'), findsOneWidget);
-      expect(tester.widget<IconButton>(previous).onPressed, isNotNull);
-      expect(tester.widget<IconButton>(next).onPressed, isNull);
+      expect(find.text('Page 2 of 2'), findsOneWidget);
+      expect(previous, findsNothing);
+      expect(next, findsNothing);
 
-      await tester.tap(previous);
+      await tester.tap(find.byKey(const ValueKey('editor-pages-button')));
       await tester.pumpAndSettle();
-      expect(find.text('1 / 2'), findsOneWidget);
-      expect(tester.widget<IconButton>(next).onPressed, isNotNull);
-
-      await tester.tap(next);
-      await tester.pumpAndSettle();
-      expect(find.text('2 / 2'), findsOneWidget);
+      expect(find.byKey(const ValueKey('editor-pages-panel')), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
@@ -238,18 +245,19 @@ void main() {
         findsOneWidget,
       );
 
-      await tester.tap(
-        find.byKey(const ValueKey('editor-previous-page-button')),
+      await tester.drag(
+        find.byKey(const ValueKey('continuous-page-list')),
+        const Offset(0, 520),
       );
       await tester.pumpAndSettle();
-      expect(find.text('1 / 2'), findsOneWidget);
+      expect(find.text('Page 1 of 2'), findsOneWidget);
 
       await tester.drag(
         find.byKey(const ValueKey('continuous-page-list')),
         const Offset(0, -520),
       );
       await tester.pumpAndSettle();
-      expect(find.text('2 / 2'), findsOneWidget);
+      expect(find.text('Page 2 of 2'), findsOneWidget);
 
       final pageTwoCanvas = find.descendant(
         of: find.byKey(const ValueKey('continuous-page-item-page-2')),

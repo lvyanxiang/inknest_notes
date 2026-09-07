@@ -17,8 +17,9 @@ and writing across a page boundary.
 Present every page in one vertically continuous, lazy list on phone and tablet.
 Each sheet keeps its persisted dimensions, rotation, content coordinates, and
 independent edit history. Scrolling changes the current page shown by the
-header; the Pages panel and adjacent-page actions remain alternate accessible
-jump mechanisms rather than the primary flow.
+header. Remove redundant previous/next toolbar buttons, keep Add page, and make
+the visible `Page n of total` document context open the Pages panel for precise
+navigation and management.
 
 Because a touch drag cannot both write and scroll, paged notebooks start in
 `Finger moves`: one finger scrolls and a stylus writes. `Finger writes` remains
@@ -35,6 +36,8 @@ is active.
     horizontal panning when zoomed beyond the viewport.
   - Current-page tracking while scrolling and programmatic jumps from header,
     Pages, Outline, Bookmarks, audio follow, and page creation.
+  - A simplified header with Add page as the only dedicated pagination action;
+    the visible page position opens Pages for non-gesture navigation.
   - Existing editing layers, canonical coordinates, rotation, persistence,
     undo/redo, protected-page state, and PDF backgrounds.
   - Explicit gesture ownership between finger scrolling, stylus writing,
@@ -64,6 +67,8 @@ is active.
 - [x] Fit Width, Fit Page, zoom in/out, rotation, erasing, selection, text,
       images, shapes, undo/redo, and write protection remain available.
 - [x] The complete Flutter test suite and static analysis pass.
+- [x] Previous/next toolbar buttons are absent; Add page remains a 44dp target,
+      and activating `Page n of total` opens Pages.
 
 ## Risks
 

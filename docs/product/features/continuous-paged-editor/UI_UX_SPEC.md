@@ -19,8 +19,8 @@ coordinates to match the device aspect ratio.
 2. Write with a stylus or drag one finger to scroll through adjacent sheets.
 3. As the viewport focus crosses a page boundary, update the header page count,
    undo/redo target, bookmark state, and current-page actions.
-4. Open Pages, Outline, or Bookmarks to jump directly; the selected sheet
-   scrolls into view.
+4. Tap the title's `Page n of total`, Outline, or Bookmarks to jump directly;
+   the selected sheet scrolls into view.
 5. Adding or duplicating a page selects it and scrolls it into view.
 
 ## States And Feedback
@@ -46,6 +46,9 @@ coordinates to match the device aspect ratio.
 - Keep zoom controls viewport-fixed, upright, and above the paper list.
 - Preserve the existing fixed header, editing dock, audio bars, Pages panel,
   and lasso toolbar.
+- Remove previous/next arrows and the separate page-count control. Keep one
+  44dp Add page button beside Outline and Bookmarks. Treat the title and page
+  subtitle as one labelled button that opens Pages.
 
 ## Input And Accessibility
 
@@ -69,6 +72,9 @@ coordinates to match the device aspect ratio.
 - [x] Rotated and differently sized sheets remain centered, separated, and
       editable.
 - [x] Large text and screen readers retain labelled page navigation controls.
+- [x] No previous/next page arrows remain; Add page is still directly
+      available, and the document context opens Pages with a clear semantic
+      label.
 
 ## Verification
 
@@ -80,5 +86,6 @@ coordinates to match the device aspect ratio.
 
 - Status: Delivered
 - The previous one-page viewport was replaced by one lazy vertical list with
-  shared Fit Width-relative zoom. Existing adjacent-page buttons remain as an
-  accessibility and precision-jump fallback, not as the primary navigation.
+  shared Fit Width-relative zoom. Adjacent-page buttons were removed because
+  scrolling is now the primary navigation; the visible page position and Pages
+  panel provide the accessible precision-jump fallback.

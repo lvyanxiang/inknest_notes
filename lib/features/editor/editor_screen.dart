@@ -2246,8 +2246,10 @@ class _EditorScreenState extends State<EditorScreen> {
     final useCompactDocumentBar = screenWidth < 600;
     final showRecordAction = screenWidth >= 720;
     final showExportAction = screenWidth >= 1000;
-    final currentPageIndex = _notebook.pageIds.indexOf(_currentPageId);
-    final currentPageNumber = math.max(1, currentPageIndex + 1);
+    final currentPageNumber = math.max(
+      1,
+      _notebook.pageIds.indexOf(_currentPageId) + 1,
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -2259,37 +2261,62 @@ class _EditorScreenState extends State<EditorScreen> {
           children: [
             Expanded(
               key: const ValueKey('editor-document-context'),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    _notebook.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
+              child: Tooltip(
+                message: 'Open Pages',
+                child: Semantics(
+                  button: true,
+                  label:
+                      'Open Pages, page $currentPageNumber of '
+                      '${_notebook.pageIds.length}',
+                  excludeSemantics: true,
+                  child: InkWell(
+                    key: const ValueKey('editor-pages-button'),
+                    onTap: () => _showPagesForWidth(screenWidth),
+                    borderRadius: BorderRadius.circular(
+                      EditorWorkspaceTokens.controlRadius,
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(4, 2, 2, 2),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  _notebook.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.titleMedium
+                                      ?.copyWith(fontWeight: FontWeight.w700),
+                                ),
+                                Text(
+                                  'Page $currentPageNumber of '
+                                  '${_notebook.pageIds.length}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.labelSmall
+                                      ?.copyWith(
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.onSurfaceVariant,
+                                      ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.expand_more, size: 18),
+                        ],
+                      ),
                     ),
                   ),
-                  Text(
-                    'Page $currentPageNumber of ${_notebook.pageIds.length}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
             if (!useCompactDocumentBar) ...[
               const SizedBox(width: 4),
-              _buildHeaderPager(
-                page: page,
-                screenWidth: screenWidth,
-                currentPageIndex: currentPageIndex,
-                currentPageNumber: currentPageNumber,
-              ),
+              _buildAddPageButton(page),
               _buildOutlineButton(),
               _buildBookmarksButton(),
             ],
@@ -2366,12 +2393,7 @@ class _EditorScreenState extends State<EditorScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      _buildHeaderPager(
-                        page: page,
-                        screenWidth: screenWidth,
-                        currentPageIndex: currentPageIndex,
-                        currentPageNumber: currentPageNumber,
-                      ),
+                      _buildAddPageButton(page),
                       _buildOutlineButton(),
                       _buildBookmarksButton(),
                     ],
@@ -2448,31 +2470,16 @@ class _EditorScreenState extends State<EditorScreen> {
     );
   }
 
-  Widget _buildHeaderPager({
-    required NotePage? page,
-    required double screenWidth,
-    required int currentPageIndex,
-    required int currentPageNumber,
-  }) {
-    return _EditorPagePager(
-      currentPageNumber: currentPageNumber,
-      pageCount: _notebook.pageIds.length,
-      onPrevious: currentPageIndex > 0
-          ? () => unawaited(
-              _selectPageManually(_notebook.pageIds[currentPageIndex - 1]),
-            )
-          : null,
-      onOpenPages: () => _showPagesForWidth(screenWidth),
-      onNext:
-          currentPageIndex >= 0 &&
-              currentPageIndex < _notebook.pageIds.length - 1
-          ? () => unawaited(
-              _selectPageManually(_notebook.pageIds[currentPageIndex + 1]),
-            )
-          : null,
-      onAddPage: page == null
+  Widget _buildAddPageButton(NotePage? page) {
+    return IconButton(
+      key: const ValueKey('editor-add-page-button'),
+      onPressed: page == null
           ? null
           : () => unawaited(_chooseTemplateAndInsertPageAfterCurrent()),
+      tooltip: 'Add page after current',
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+      icon: const Icon(Icons.note_add_outlined, size: 20),
     );
   }
 
@@ -2761,118 +2768,6 @@ enum _EditorNavigationPanel {
   const _EditorNavigationPanel(this.label);
 
   final String label;
-}
-
-class _EditorPagePager extends StatelessWidget {
-  const _EditorPagePager({
-    required this.currentPageNumber,
-    required this.pageCount,
-    required this.onPrevious,
-    required this.onOpenPages,
-    required this.onNext,
-    required this.onAddPage,
-  });
-
-  final int currentPageNumber;
-  final int pageCount;
-  final VoidCallback? onPrevious;
-  final VoidCallback onOpenPages;
-  final VoidCallback? onNext;
-  final VoidCallback? onAddPage;
-
-  @override
-  Widget build(BuildContext context) {
-    const targetSize = 44.0;
-    final divider = Container(
-      width: 1,
-      height: 24,
-      color: EditorWorkspaceTokens.divider,
-    );
-
-    return Material(
-      color: EditorWorkspaceTokens.chrome,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(
-          EditorWorkspaceTokens.controlRadius,
-        ),
-        side: const BorderSide(color: EditorWorkspaceTokens.divider),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: SizedBox(
-        height: targetSize,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              key: const ValueKey('editor-previous-page-button'),
-              onPressed: onPrevious,
-              tooltip: 'Previous page',
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints.tightFor(
-                width: targetSize,
-                height: targetSize,
-              ),
-              icon: const Icon(Icons.chevron_left, size: 22),
-            ),
-            divider,
-            Tooltip(
-              message: 'Open Pages; page $currentPageNumber of $pageCount',
-              child: TextButton(
-                key: const ValueKey('editor-pages-button'),
-                onPressed: onOpenPages,
-                style: TextButton.styleFrom(
-                  foregroundColor: EditorWorkspaceTokens.ink,
-                  minimumSize: const Size(68, targetSize),
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  shape: const RoundedRectangleBorder(),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.library_books_outlined, size: 17),
-                    const SizedBox(width: 4),
-                    Text(
-                      '$currentPageNumber / $pageCount',
-                      maxLines: 1,
-                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: EditorWorkspaceTokens.ink,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            divider,
-            IconButton(
-              key: const ValueKey('editor-next-page-button'),
-              onPressed: onNext,
-              tooltip: 'Next page',
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints.tightFor(
-                width: targetSize,
-                height: targetSize,
-              ),
-              icon: const Icon(Icons.chevron_right, size: 22),
-            ),
-            divider,
-            IconButton(
-              key: const ValueKey('editor-add-page-button'),
-              onPressed: onAddPage,
-              tooltip: 'Add page after current',
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints.tightFor(
-                width: targetSize,
-                height: targetSize,
-              ),
-              icon: const Icon(Icons.note_add_outlined, size: 20),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 enum _EditorMenuAction {
