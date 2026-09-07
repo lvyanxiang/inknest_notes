@@ -464,14 +464,15 @@ void main() {
       );
       expect(
         find.byKey(const ValueKey('infinite-canvas-compact-toolbar-row')),
-        size.width < 600 ? findsOneWidget : findsNothing,
+        findsNothing,
       );
-      if (size.width < 600) {
-        expect(
-          find.byKey(const ValueKey('infinite-canvas-document-context')),
-          findsOneWidget,
-        );
-      }
+      expect(
+        find.byKey(const ValueKey('infinite-canvas-document-context')),
+        findsOneWidget,
+      );
+      final appBar = tester.widget<AppBar>(find.byType(AppBar));
+      expect(appBar.toolbarHeight, 52);
+      expect(appBar.preferredSize.height, 104);
       expect(find.byTooltip('Pen'), findsOneWidget);
       expect(find.byTooltip('Highlighter'), findsOneWidget);
       expect(find.byTooltip('Eraser'), findsOneWidget);
@@ -482,10 +483,66 @@ void main() {
         findsOneWidget,
       );
       expect(
+        find.byKey(const ValueKey('infinite-canvas-background')),
+        size.width >= 600 ? findsOneWidget : findsNothing,
+      );
+      expect(
         find.byKey(const ValueKey('infinite-canvas-recenter')),
-        findsOneWidget,
+        size.width >= 720 ? findsOneWidget : findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('infinite-canvas-more-actions')),
+        size.width < 720 ? findsOneWidget : findsNothing,
       );
     }
+  });
+
+  testWidgets('moves compact infinite canvas actions into More', (
+    WidgetTester tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final repository = InMemoryNotebookRepository();
+    final notebook = await repository.createNotebook(
+      title: 'Compact canvas',
+      layoutMode: NotebookLayoutMode.infiniteCanvas,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: InfiniteCanvasScreen(
+          notebook: notebook,
+          notebookRepository: repository,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('infinite-canvas-background')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('infinite-canvas-recenter')),
+      findsNothing,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('infinite-canvas-more-actions')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Canvas background'), findsOneWidget);
+    expect(find.text('Fit content'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const ValueKey('infinite-canvas-background-grid')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      (await repository.loadInfiniteCanvas(notebook)).background,
+      InfiniteCanvasBackground.grid,
+    );
   });
 
   testWidgets('infinite canvas converts a held Pen line into a shape', (

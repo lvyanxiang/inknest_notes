@@ -14,6 +14,7 @@ import 'package:inknest_notes/features/editor/lasso/lasso_selection_layer.dart';
 import 'package:inknest_notes/features/editor/shapes/shape_layer.dart';
 import 'package:inknest_notes/features/editor/shapes/shape_recognizer.dart';
 import 'package:inknest_notes/features/editor/text/text_box_layer.dart';
+import 'package:inknest_notes/features/editor/theme/editor_workspace_tokens.dart';
 import 'package:inknest_notes/features/editor/tools/editor_toolbar.dart';
 import 'package:inknest_notes/models/infinite_canvas_document.dart';
 import 'package:inknest_notes/models/note_image.dart';
@@ -599,99 +600,41 @@ class _InfiniteCanvasScreenState extends State<InfiniteCanvasScreen> {
   Widget build(BuildContext context) {
     final document = _document;
     final screenWidth = MediaQuery.sizeOf(context).width;
-    final useCompactHeader = screenWidth < 600;
+    const allHeaderActions = [
+      _InfiniteCanvasHeaderAction.undo,
+      _InfiniteCanvasHeaderAction.redo,
+      _InfiniteCanvasHeaderAction.background,
+      _InfiniteCanvasHeaderAction.fitContent,
+    ];
+    final visibleHeaderActions = allHeaderActions
+        .take(_infiniteCanvasHeaderActionCapacity(screenWidth))
+        .toList(growable: false);
+    final hiddenHeaderActions = allHeaderActions
+        .skip(visibleHeaderActions.length)
+        .toSet();
     return Scaffold(
       appBar: AppBar(
-        toolbarHeight: 60,
+        toolbarHeight: 52,
         titleSpacing: 0,
-        title: useCompactHeader
-            ? _buildDocumentIdentity()
-            : LayoutBuilder(
-                builder: (context, constraints) {
-                  final showIdentity = constraints.maxWidth >= 500;
-                  return Row(
-                    children: [
-                      if (showIdentity) ...[
-                        SizedBox(
-                          width: constraints.maxWidth >= 760 ? 220 : 180,
-                          child: _buildDocumentIdentity(),
-                        ),
-                        const SizedBox(width: 8),
-                      ],
-                      Expanded(child: Center(child: _buildCanvasToolbar())),
-                    ],
-                  );
-                },
-              ),
+        backgroundColor: EditorWorkspaceTokens.chrome,
+        surfaceTintColor: Colors.transparent,
+        title: _buildDocumentIdentity(),
         actions: [
-          IconButton(
-            key: const ValueKey('infinite-canvas-undo'),
-            tooltip: 'Undo',
-            onPressed: _undoStates.isEmpty ? null : _undo,
-            icon: const Icon(Icons.undo),
-          ),
-          IconButton(
-            key: const ValueKey('infinite-canvas-redo'),
-            tooltip: 'Redo',
-            onPressed: _redoStates.isEmpty ? null : _redo,
-            icon: const Icon(Icons.redo),
-          ),
-          PopupMenuButton<InfiniteCanvasBackground>(
-            key: const ValueKey('infinite-canvas-background'),
-            tooltip: 'Canvas background',
-            initialValue: document?.background,
-            onSelected: _changeBackground,
-            itemBuilder: (context) => const [
-              PopupMenuItem(
-                value: InfiniteCanvasBackground.blank,
-                child: _BackgroundMenuItem(
-                  icon: Icons.crop_square,
-                  label: 'Blank',
-                ),
-              ),
-              PopupMenuItem(
-                value: InfiniteCanvasBackground.dotted,
-                child: _BackgroundMenuItem(
-                  icon: Icons.more_horiz,
-                  label: 'Dotted',
-                ),
-              ),
-              PopupMenuItem(
-                value: InfiniteCanvasBackground.grid,
-                child: _BackgroundMenuItem(icon: Icons.grid_4x4, label: 'Grid'),
-              ),
-            ],
-            icon: const Icon(Icons.texture),
-          ),
-          IconButton(
-            key: const ValueKey('infinite-canvas-recenter'),
-            tooltip: 'Fit content',
-            onPressed: document == null
-                ? null
-                : () => _viewportKey.currentState?.fitContent(document),
-            icon: const Icon(Icons.center_focus_strong),
-          ),
-          const SizedBox(width: 4),
+          for (final action in visibleHeaderActions)
+            _buildHeaderAction(action, document: document),
+          if (hiddenHeaderActions.isNotEmpty)
+            _InfiniteCanvasOverflowMenu(
+              hiddenActions: hiddenHeaderActions,
+              canUndo: _undoStates.isNotEmpty,
+              canRedo: _redoStates.isNotEmpty,
+              onSelected: _handleHeaderMenuAction,
+            ),
+          const SizedBox(width: 6),
         ],
-        bottom: useCompactHeader
-            ? PreferredSize(
-                preferredSize: const Size.fromHeight(52),
-                child: SizedBox(
-                  key: const ValueKey('infinite-canvas-compact-toolbar-row'),
-                  height: 52,
-                  width: double.infinity,
-                  child: screenWidth < 360
-                      ? SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: SizedBox(
-                            width: 360,
-                            child: _buildCanvasToolbar(),
-                          ),
-                        )
-                      : _buildCanvasToolbar(),
-                ),
-              )
-            : null,
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(52),
+          child: _buildCanvasToolbar(),
+        ),
       ),
       body: document == null
           ? const Center(child: CircularProgressIndicator())
@@ -786,9 +729,219 @@ class _InfiniteCanvasScreenState extends State<InfiniteCanvasScreen> {
       onInsertImage: () => unawaited(_insertImage()),
       showLasso: true,
       showInsert: true,
-      embedded: true,
     );
   }
+
+  Widget _buildHeaderAction(
+    _InfiniteCanvasHeaderAction action, {
+    required InfiniteCanvasDocument? document,
+  }) {
+    switch (action) {
+      case _InfiniteCanvasHeaderAction.undo:
+        return IconButton(
+          key: const ValueKey('infinite-canvas-undo'),
+          tooltip: 'Undo',
+          onPressed: _undoStates.isEmpty ? null : _undo,
+          icon: const Icon(Icons.undo),
+        );
+      case _InfiniteCanvasHeaderAction.redo:
+        return IconButton(
+          key: const ValueKey('infinite-canvas-redo'),
+          tooltip: 'Redo',
+          onPressed: _redoStates.isEmpty ? null : _redo,
+          icon: const Icon(Icons.redo),
+        );
+      case _InfiniteCanvasHeaderAction.background:
+        return PopupMenuButton<InfiniteCanvasBackground>(
+          key: const ValueKey('infinite-canvas-background'),
+          tooltip: 'Canvas background',
+          initialValue: document?.background,
+          onSelected: _changeBackground,
+          itemBuilder: _backgroundMenuItems,
+          icon: const Icon(Icons.texture),
+        );
+      case _InfiniteCanvasHeaderAction.fitContent:
+        return IconButton(
+          key: const ValueKey('infinite-canvas-recenter'),
+          tooltip: 'Fit content',
+          onPressed: document == null
+              ? null
+              : () => _viewportKey.currentState?.fitContent(document),
+          icon: const Icon(Icons.center_focus_strong),
+        );
+    }
+  }
+
+  List<PopupMenuEntry<InfiniteCanvasBackground>> _backgroundMenuItems(
+    BuildContext context,
+  ) {
+    return const [
+      PopupMenuItem(
+        value: InfiniteCanvasBackground.blank,
+        child: _BackgroundMenuItem(icon: Icons.crop_square, label: 'Blank'),
+      ),
+      PopupMenuItem(
+        value: InfiniteCanvasBackground.dotted,
+        child: _BackgroundMenuItem(icon: Icons.more_horiz, label: 'Dotted'),
+      ),
+      PopupMenuItem(
+        value: InfiniteCanvasBackground.grid,
+        child: _BackgroundMenuItem(icon: Icons.grid_4x4, label: 'Grid'),
+      ),
+    ];
+  }
+
+  void _handleHeaderMenuAction(_InfiniteCanvasMenuAction action) {
+    final document = _document;
+    switch (action) {
+      case _InfiniteCanvasMenuAction.undo:
+        _undo();
+      case _InfiniteCanvasMenuAction.redo:
+        _redo();
+      case _InfiniteCanvasMenuAction.backgroundBlank:
+        _changeBackground(InfiniteCanvasBackground.blank);
+      case _InfiniteCanvasMenuAction.backgroundDotted:
+        _changeBackground(InfiniteCanvasBackground.dotted);
+      case _InfiniteCanvasMenuAction.backgroundGrid:
+        _changeBackground(InfiniteCanvasBackground.grid);
+      case _InfiniteCanvasMenuAction.fitContent:
+        if (document != null) {
+          _viewportKey.currentState?.fitContent(document);
+        }
+    }
+  }
+}
+
+enum _InfiniteCanvasHeaderAction { undo, redo, background, fitContent }
+
+enum _InfiniteCanvasMenuAction {
+  undo,
+  redo,
+  backgroundBlank,
+  backgroundDotted,
+  backgroundGrid,
+  fitContent,
+}
+
+int _infiniteCanvasHeaderActionCapacity(double width) {
+  if (width < 600) return 2;
+  if (width < 720) return 3;
+  return 4;
+}
+
+class _InfiniteCanvasOverflowMenu extends StatelessWidget {
+  const _InfiniteCanvasOverflowMenu({
+    required this.hiddenActions,
+    required this.canUndo,
+    required this.canRedo,
+    required this.onSelected,
+  });
+
+  final Set<_InfiniteCanvasHeaderAction> hiddenActions;
+  final bool canUndo;
+  final bool canRedo;
+  final ValueChanged<_InfiniteCanvasMenuAction> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<_InfiniteCanvasMenuAction>(
+      key: const ValueKey('infinite-canvas-more-actions'),
+      tooltip: 'More canvas actions',
+      color: EditorWorkspaceTokens.chrome,
+      surfaceTintColor: Colors.transparent,
+      itemBuilder: (context) {
+        final items = <PopupMenuEntry<_InfiniteCanvasMenuAction>>[];
+        if (hiddenActions.contains(_InfiniteCanvasHeaderAction.undo) ||
+            hiddenActions.contains(_InfiniteCanvasHeaderAction.redo)) {
+          items.add(_infiniteCanvasMenuSection('History'));
+          if (hiddenActions.contains(_InfiniteCanvasHeaderAction.undo)) {
+            items.add(
+              _infiniteCanvasMenuItem(
+                value: _InfiniteCanvasMenuAction.undo,
+                icon: Icons.undo,
+                label: 'Undo',
+                enabled: canUndo,
+              ),
+            );
+          }
+          if (hiddenActions.contains(_InfiniteCanvasHeaderAction.redo)) {
+            items.add(
+              _infiniteCanvasMenuItem(
+                value: _InfiniteCanvasMenuAction.redo,
+                icon: Icons.redo,
+                label: 'Redo',
+                enabled: canRedo,
+              ),
+            );
+          }
+        }
+        if (hiddenActions.contains(_InfiniteCanvasHeaderAction.background)) {
+          if (items.isNotEmpty) items.add(const PopupMenuDivider());
+          items.add(_infiniteCanvasMenuSection('Canvas background'));
+          items.add(
+            _infiniteCanvasMenuItem(
+              key: const ValueKey('infinite-canvas-background-blank'),
+              value: _InfiniteCanvasMenuAction.backgroundBlank,
+              icon: Icons.crop_square,
+              label: 'Blank',
+            ),
+          );
+          items.add(
+            _infiniteCanvasMenuItem(
+              key: const ValueKey('infinite-canvas-background-dotted'),
+              value: _InfiniteCanvasMenuAction.backgroundDotted,
+              icon: Icons.more_horiz,
+              label: 'Dotted',
+            ),
+          );
+          items.add(
+            _infiniteCanvasMenuItem(
+              key: const ValueKey('infinite-canvas-background-grid'),
+              value: _InfiniteCanvasMenuAction.backgroundGrid,
+              icon: Icons.grid_4x4,
+              label: 'Grid',
+            ),
+          );
+        }
+        if (hiddenActions.contains(_InfiniteCanvasHeaderAction.fitContent)) {
+          if (items.isNotEmpty) items.add(const PopupMenuDivider());
+          items.add(
+            _infiniteCanvasMenuItem(
+              value: _InfiniteCanvasMenuAction.fitContent,
+              icon: Icons.center_focus_strong,
+              label: 'Fit content',
+            ),
+          );
+        }
+        return items;
+      },
+      onSelected: onSelected,
+    );
+  }
+}
+
+PopupMenuItem<_InfiniteCanvasMenuAction> _infiniteCanvasMenuSection(
+  String label,
+) {
+  return PopupMenuItem<_InfiniteCanvasMenuAction>(
+    enabled: false,
+    child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+  );
+}
+
+PopupMenuItem<_InfiniteCanvasMenuAction> _infiniteCanvasMenuItem({
+  Key? key,
+  required _InfiniteCanvasMenuAction value,
+  required IconData icon,
+  required String label,
+  bool enabled = true,
+}) {
+  return PopupMenuItem<_InfiniteCanvasMenuAction>(
+    key: key,
+    value: value,
+    enabled: enabled,
+    child: Row(children: [Icon(icon), const SizedBox(width: 12), Text(label)]),
+  );
 }
 
 class _BackgroundMenuItem extends StatelessWidget {

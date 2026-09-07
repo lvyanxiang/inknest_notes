@@ -230,7 +230,7 @@ class _EditorToolbarState extends State<EditorToolbar> {
                     ? 4.0
                     : 10.0;
 
-                return Padding(
+                final toolbarContent = Padding(
                   padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
                   child: Align(
                     alignment: density == _ToolbarDensity.compact
@@ -298,6 +298,13 @@ class _EditorToolbarState extends State<EditorToolbar> {
                     ),
                   ),
                 );
+                if (constraints.maxWidth < 360) {
+                  return SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: SizedBox(width: 360, child: toolbarContent),
+                  );
+                }
+                return toolbarContent;
               },
             ),
           ),

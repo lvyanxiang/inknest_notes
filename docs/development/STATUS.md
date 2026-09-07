@@ -19,7 +19,9 @@
   start in Finger moves so a finger scrolls while a stylus writes; Finger writes
   and Lasso suspend list dragging to avoid gesture conflicts. This supersedes
   the earlier narrow-phone single-page top-anchoring behavior. Shape
-  Recognition V2 core and the Android phone UX audit remain delivered.
+  Recognition V2 core and the Android phone UX audit remain delivered. Infinite
+  canvas now uses the same two-row editor chrome and width-based More overflow;
+  background and Fit content remain its only canvas-specific document actions.
 
 ### Release readiness
 
@@ -389,12 +391,14 @@
 
 ## Verification
 
-- Continuous paged editing passes all 310 Flutter tests and `flutter analyze`.
+- Continuous paged editing and the shared infinite-canvas chrome pass all 311
+  Flutter tests and `flutter analyze`.
   Focused coverage verifies phone/tablet vertical page stacking, scroll-driven
   current-page updates, direct page jumps, writing to Page 2 after scrolling,
   the two-row responsive chrome, width-based More overflow, canonical
   coordinates, rotation, zoom, Finger moves, Finger writes, Lasso, text,
-  images, shapes, erasing, undo/redo, and existing page operations.
+  images, shapes, erasing, undo/redo, existing page operations, and infinite
+  canvas action overflow at phone and tablet widths.
   `git diff --check` also passes.
 
 - Shape Recognition V2 core passes all 309 Flutter tests. Coverage includes

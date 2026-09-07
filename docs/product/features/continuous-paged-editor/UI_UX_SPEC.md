@@ -55,6 +55,9 @@ coordinates to match the device aspect ratio.
   width-based capacity determines how many are shown directly; all remaining
   actions stay in More. The title/page context always opens Pages, and the
   optional pinned Pages rail remains available at 1100dp and above.
+- At widths below 360dp, the drawing row may scroll horizontally within its
+  fixed 52dp height so every core drawing tool remains reachable without
+  changing the editor chrome height.
 
 ## Input And Accessibility
 

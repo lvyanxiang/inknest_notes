@@ -36,18 +36,20 @@ the existing writing workspace without showing page-only controls.
 
 ## Layout
 
-- Use one continuous top bar: Back and notebook identity on the left; Pen,
-  Highlighter, Eraser, properties, and Finger mode in the middle; Undo, Redo,
-  background, and recenter on the right.
-- The embedded tool group has no separate dock border or background, so the
-  header reads as one bar rather than two nested toolbars.
-- At compact Split View widths, hide notebook identity and tool labels before
-  hiding any core control. The top bar must not scroll horizontally.
+- Use the same two fixed 52dp editor rows as paged notebooks: notebook
+  identity plus document actions in the top row, and Pen, Highlighter, Eraser,
+  Lasso, Insert, properties, and Finger mode in the bottom row.
+- Keep the top row's action order as Undo, Redo, Canvas background, and Fit
+  content. A width-derived capacity keeps the first actions direct and moves
+  the rest into a labelled More menu.
+- At compact phone widths, keep the document identity visible, expose Undo and
+  Redo directly, and place Canvas background and Fit content in More. At
+  widths below 360dp, the drawing row may scroll horizontally so no core tool
+  is silently removed.
 - No Pages, page count, Add page, Outline, Bookmarks, PDF import, or page export
   actions.
-- The middle tool group reuses Pen, Highlighter, Eraser, properties, and Finger
-  modes. Lasso and Insert are hidden until their canvas-specific implementations
-  exist.
+- The drawing row reuses the shared EditorToolbar, including Lasso and Insert
+  for the delivered rich canvas content.
 - Canvas occupies the remaining area and clips rendering to the viewport.
 
 ## Interaction And Accessibility
@@ -69,8 +71,8 @@ the existing writing workspace without showing page-only controls.
 - [x] Pinch/pan never commits accidental ink.
 - [x] Recenter and restored viewport keep existing content recoverable.
 - [x] Supported iPad widths render without toolbar overflow.
-- [x] Infinite-canvas editing and document controls share one top bar; no
-  second toolbar remains below the canvas.
+- [x] Infinite-canvas editing and document controls use the same two-row
+  editor chrome as paged notebooks; no page-only controls appear.
 
 ## Verification
 
@@ -82,9 +84,9 @@ the existing writing workspace without showing page-only controls.
 ## Implementation Review
 
 - Status: Delivered
-- Intentional deviations: The original bottom tool dock was merged into the
-  document bar after simulator review to reduce split attention and palm
-  obstruction.
+- The earlier single-bar infinite-canvas header was superseded by the shared
+  two-row editor chrome so phone and tablet layouts keep the same vertical
+  rhythm and responsive More behavior as paged notebooks.
 
 ## V2 Shared Editing UI
 

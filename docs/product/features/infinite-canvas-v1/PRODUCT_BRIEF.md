@@ -113,7 +113,9 @@ backgrounds, and persisted content plus viewport restoration.
 - [x] Lasso selects and transforms canvas ink without conflicting with pan or
   pinch gestures.
 - [x] Fit content and undo/redo include all delivered canvas content types.
-- [x] The single top bar remains usable at supported iPad widths.
+- [x] The shared two-row editor chrome remains usable at supported phone and
+  iPad widths; canvas-specific actions use the same width-based More overflow
+  rule as the paged editor.
 
 ### V2 first-slice verification
 
