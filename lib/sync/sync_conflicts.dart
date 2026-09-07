@@ -5,9 +5,9 @@ import 'package:inknest_notes/sync/inknest_api_models.dart';
 import 'package:inknest_notes/sync/sync_changes.dart';
 
 enum SyncConflictResolution {
-  keepOriginal('keep_original', '保留原版本'),
-  useConflict('use_conflict', '使用冲突版本'),
-  keepBoth('keep_both', '两个都保留');
+  keepOriginal('keep_original', 'Keep Original'),
+  useConflict('use_conflict', 'Use Conflict Version'),
+  keepBoth('keep_both', 'Keep Both');
 
   const SyncConflictResolution(this.apiValue, this.label);
 
@@ -57,10 +57,25 @@ class CloudSyncConflict {
 
   bool get isPending => status == 'pending';
 
+  String get displayName {
+    final legacyPageName = RegExp(
+      '^\u7B2C (\\d+) \u9875\uFF08\u51B2\u7A81\u526F\u672C\uFF09\$',
+    ).firstMatch(copyDisplayName);
+    if (legacyPageName != null) {
+      return 'Page ${legacyPageName.group(1)} (conflict copy)';
+    }
+    const legacySuffix = '\uFF08\u51B2\u7A81\u526F\u672C\uFF09';
+    if (copyDisplayName.endsWith(legacySuffix)) {
+      return '${copyDisplayName.substring(0, copyDisplayName.length - legacySuffix.length)} (conflict copy)';
+    }
+    return copyDisplayName;
+  }
+
   String get originalDisplayName {
-    const suffix = '（冲突副本）';
-    return copyDisplayName.endsWith(suffix)
-        ? copyDisplayName.substring(0, copyDisplayName.length - suffix.length)
+    const suffix = ' (conflict copy)';
+    final name = displayName;
+    return name.endsWith(suffix)
+        ? name.substring(0, name.length - suffix.length)
         : originalResourceId;
   }
 

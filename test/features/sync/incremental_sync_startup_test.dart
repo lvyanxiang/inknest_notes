@@ -46,7 +46,10 @@ void main() {
     expect(find.byType(SnackBar), findsNothing);
     await tester.tap(find.byKey(const ValueKey('library-sync-status')));
     await tester.pumpAndSettle();
-    expect(find.text('已上传 2 项本地更改，当前已同步。'), findsOneWidget);
+    expect(
+      find.text('Uploaded 2 local changes. Everything is up to date.'),
+      findsOneWidget,
+    );
 
     await tester.pumpWidget(const SizedBox.shrink());
     controller.dispose();
@@ -118,7 +121,7 @@ void main() {
     expect(find.byType(SnackBar), findsNothing);
     await tester.tap(find.byKey(const ValueKey('library-sync-status')));
     await tester.pumpAndSettle();
-    expect(find.textContaining('已接收 1 本云端笔记'), findsOneWidget);
+    expect(find.textContaining('Received 1 cloud notebook'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
     controller.dispose();
@@ -202,12 +205,12 @@ void main() {
     expect(find.byType(AlertDialog), findsNothing);
     await tester.tap(find.byKey(const ValueKey('library-sync-conflicts')));
     await tester.pumpAndSettle();
-    expect(find.text('页面属性冲突'), findsOneWidget);
-    await tester.tap(find.text('页面属性冲突'));
+    expect(find.text('Page Property Conflict'), findsOneWidget);
+    await tester.tap(find.text('Page Property Conflict'));
     await tester.pumpAndSettle();
-    expect(find.text('使用本机版本'), findsOneWidget);
-    expect(find.text('使用云端版本'), findsOneWidget);
-    expect(find.textContaining('两个都保留'), findsNothing);
+    expect(find.text('Use Local Version'), findsOneWidget);
+    expect(find.text('Use Cloud Version'), findsOneWidget);
+    expect(find.textContaining('Keep Both'), findsNothing);
 
     await tester.pumpWidget(const SizedBox.shrink());
     controller.dispose();
@@ -243,7 +246,7 @@ void main() {
     expect(find.byType(SnackBar), findsNothing);
     await tester.tap(find.byKey(const ValueKey('library-sync-status')));
     await tester.pumpAndSettle();
-    expect(find.textContaining('更新 1 项已有内容'), findsOneWidget);
+    expect(find.textContaining('updated 1 existing item'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
     controller.dispose();
@@ -279,7 +282,10 @@ void main() {
     expect(find.byType(SnackBar), findsNothing);
     await tester.tap(find.byKey(const ValueKey('library-sync-status')));
     await tester.pumpAndSettle();
-    expect(find.textContaining('本地恢复副本已保留'), findsOneWidget);
+    expect(
+      find.textContaining('Local recovery copies were preserved'),
+      findsOneWidget,
+    );
 
     await tester.pumpWidget(const SizedBox.shrink());
     controller.dispose();
@@ -315,7 +321,10 @@ void main() {
     expect(find.byType(SnackBar), findsNothing);
     await tester.tap(find.byKey(const ValueKey('library-sync-status')));
     await tester.pumpAndSettle();
-    expect(find.textContaining('可恢复的本地页面副本已保留'), findsOneWidget);
+    expect(
+      find.textContaining('Recoverable local page copies were preserved'),
+      findsOneWidget,
+    );
 
     await tester.pumpWidget(const SizedBox.shrink());
     controller.dispose();
@@ -335,7 +344,7 @@ void main() {
       resourceType: 'page',
       originalResourceId: 'page-1',
       copyResourceId: 'page-copy-1',
-      copyDisplayName: '第 1 页（冲突副本）',
+      copyDisplayName: 'Page 1 (conflict copy)',
       baseRevision: 1,
       currentRevision: 2,
       submittedContentHash: 'a' * 64,
@@ -377,15 +386,20 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('library-sync-conflicts')));
     await tester.pumpAndSettle();
 
-    expect(find.text('同步冲突'), findsOneWidget);
-    expect(find.text('第 1 页（冲突副本）'), findsOneWidget);
-    expect(find.text('1 项待处理；本机与云端版本均已安全保留。'), findsOneWidget);
+    expect(find.text('Sync Conflicts'), findsOneWidget);
+    expect(find.text('Page 1 (conflict copy)'), findsOneWidget);
+    expect(
+      find.text(
+        '1 item needs attention. Local and cloud versions are safely preserved.',
+      ),
+      findsOneWidget,
+    );
 
-    await tester.tap(find.text('第 1 页（冲突副本）'));
+    await tester.tap(find.text('Page 1 (conflict copy)'));
     await tester.pumpAndSettle();
 
-    expect(find.text('处理同步冲突'), findsOneWidget);
-    expect(find.text('第 1 页'), findsOneWidget);
+    expect(find.text('Resolve Sync Conflict'), findsOneWidget);
+    expect(find.text('Page 1'), findsOneWidget);
     expect(find.byKey(const ValueKey('conflict-keep-both')), findsOneWidget);
     expect(
       find.byKey(const ValueKey('conflict-keep-original')),
@@ -395,17 +409,23 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('conflict-keep-original')));
     await tester.pumpAndSettle();
-    expect(find.text('确认保留原版本？'), findsOneWidget);
+    expect(find.text('Confirm Keep Original?'), findsOneWidget);
     await tester.tap(
-      find.descendant(of: find.byType(AlertDialog), matching: find.text('取消')),
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('Cancel'),
+      ),
     );
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const ValueKey('conflict-use-conflict')));
     await tester.pumpAndSettle();
-    expect(find.text('确认使用冲突版本？'), findsOneWidget);
+    expect(find.text('Confirm Use Conflict Version?'), findsOneWidget);
     await tester.tap(
-      find.descendant(of: find.byType(AlertDialog), matching: find.text('取消')),
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('Cancel'),
+      ),
     );
     await tester.pumpAndSettle();
 
@@ -417,8 +437,8 @@ void main() {
 
     expect(sync.resolutions, [SyncConflictResolution.keepBoth]);
     expect(find.byKey(const ValueKey('library-sync-conflicts')), findsNothing);
-    expect(find.text('处理同步冲突'), findsNothing);
-    expect(find.textContaining('两个都保留完成'), findsOneWidget);
+    expect(find.text('Resolve Sync Conflict'), findsNothing);
+    expect(find.textContaining('Keep Both completed'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
     controller.dispose();
@@ -468,9 +488,12 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('library-recently-deleted')));
     await tester.pumpAndSettle();
 
-    expect(find.text('最近删除'), findsOneWidget);
-    expect(find.text('已删除的笔记'), findsOneWidget);
-    expect(find.textContaining('当前没有永久删除操作'), findsOneWidget);
+    expect(find.text('Recently Deleted'), findsOneWidget);
+    expect(find.text('Deleted notebook'), findsOneWidget);
+    expect(
+      find.textContaining('Permanent deletion is not currently available'),
+      findsOneWidget,
+    );
 
     await tester.tap(
       find.byKey(const ValueKey('restore-tombstone-tombstone-1')),
@@ -484,7 +507,7 @@ void main() {
       find.byKey(const ValueKey('library-recently-deleted')),
       findsNothing,
     );
-    expect(find.textContaining('已删除的笔记已恢复'), findsOneWidget);
+    expect(find.textContaining('Deleted notebook restored'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
     controller.dispose();
@@ -528,8 +551,11 @@ void main() {
     await tester.tap(status);
     await tester.pumpAndSettle();
 
-    expect(find.text('同步完成'), findsOneWidget);
-    expect(find.text('本地笔记与云端已同步。'), findsOneWidget);
+    expect(find.text('Sync Complete'), findsOneWidget);
+    expect(
+      find.text('Local notes are up to date with the cloud.'),
+      findsOneWidget,
+    );
 
     await tester.pumpWidget(const SizedBox.shrink());
     controller.dispose();
@@ -557,7 +583,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('library-sync-status')));
     await tester.pumpAndSettle();
-    expect(find.text('立即同步'), findsOneWidget);
+    expect(find.text('Sync Now'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('sync-now-library')));
     await tester.pumpAndSettle();
 
@@ -766,8 +792,11 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('library-sync-status')));
     await tester.pumpAndSettle();
-    expect(find.text('同步失败'), findsOneWidget);
-    expect(find.textContaining('2 项本地更改仍安全保留'), findsWidgets);
+    expect(find.text('Sync Failed'), findsOneWidget);
+    expect(
+      find.textContaining('2 local changes remain safely stored'),
+      findsWidgets,
+    );
 
     await tester.tap(find.byKey(const ValueKey('retry-library-sync')));
     await tester.pumpAndSettle();
@@ -775,7 +804,7 @@ void main() {
     expect(sync.calls, ['push', 'push', 'pull']);
     await tester.tap(find.byKey(const ValueKey('library-sync-status')));
     await tester.pumpAndSettle();
-    expect(find.text('同步完成'), findsOneWidget);
+    expect(find.text('Sync Complete'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
     controller.dispose();
@@ -807,7 +836,7 @@ void main() {
     expect(find.byType(SnackBar), findsNothing);
     await tester.tap(find.byKey(const ValueKey('library-sync-status')));
     await tester.pumpAndSettle();
-    expect(find.text('编辑已保留'), findsOneWidget);
+    expect(find.text('Edit Preserved'), findsOneWidget);
     expect(find.byKey(const ValueKey('retry-library-sync')), findsNothing);
 
     await tester.pumpWidget(const SizedBox.shrink());
@@ -1029,8 +1058,8 @@ InkNestAuthSession _session() {
       id: 'user-1',
       email: 'writer@example.com',
       createdAt: now,
-      privacyPolicyVersion: '2026-08-31.1',
-      termsVersion: '2026-08-31.1',
+      privacyPolicyVersion: '2026-09-07.1',
+      termsVersion: '2026-09-07.1',
       agreementsAcceptedAt: now,
     ),
     device: InkNestCloudDevice(
@@ -1069,7 +1098,7 @@ CloudSyncConflict _pendingConflict({required String id}) => CloudSyncConflict(
   resourceType: 'page',
   originalResourceId: 'page-1',
   copyResourceId: 'page-copy-1',
-  copyDisplayName: '第 1 页（冲突副本）',
+  copyDisplayName: 'Page 1 (conflict copy)',
   baseRevision: 1,
   currentRevision: 2,
   submittedContentHash: 'a' * 64,

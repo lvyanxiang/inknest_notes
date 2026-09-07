@@ -141,6 +141,7 @@ local notes.
 - Verification: current account implementation passed Flutter and backend
   checks on 2026-08-31. The future publishing pipeline must add automated
   version/content-digest equality verification before REL-009 can close.
-  Local legal version `2026-08-31.1` was audited against current dependencies,
-  permissions, account/sync storage, logging, ML Kit behavior, deletion, and
-  licensing records.
+  English local legal version `2026-09-07.1` was audited against current
+  dependencies, permissions, account/sync storage, logging, ML Kit behavior,
+  deletion, and licensing records. It supersedes the Simplified Chinese local
+  version and requires acceptance as a new immutable document version.

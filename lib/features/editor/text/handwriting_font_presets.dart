@@ -21,23 +21,23 @@ class HandwritingFontPresets {
 
   static const liuJianMaoCao = HandwritingFontPreset(
     id: 'liu_jian_mao_cao',
-    label: '刘建毛草',
+    label: 'Liu Jian Mao Cao',
     fontFamily: 'LiuJianMaoCao',
-    preview: '美化笔迹',
+    preview: 'Smart Ink',
   );
 
   static const longCang = HandwritingFontPreset(
     id: 'long_cang',
-    label: '龙藏',
+    label: 'Long Cang',
     fontFamily: 'LongCang',
-    preview: '美化笔迹',
+    preview: 'Smart Ink',
   );
 
   static const zhiMangXing = HandwritingFontPreset(
     id: 'zhi_mang_xing',
-    label: '芝麻行',
+    label: 'Zhi Mang Xing',
     fontFamily: 'ZhiMangXing',
-    preview: '美化笔迹',
+    preview: 'Smart Ink',
   );
 
   static const values = <HandwritingFontPreset>[

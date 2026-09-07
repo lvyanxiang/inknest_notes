@@ -24,7 +24,7 @@ class AccountLegalScreen extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                '版本 ${document.version} · 生效日期 $currentAgreementEffectiveDate',
+                'Version ${document.version} · Effective $currentAgreementEffectiveDate',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),

@@ -68,17 +68,23 @@ void main() {
     await tester.tap(find.byTooltip('Sign in'));
     await tester.pumpAndSettle();
 
-    final privacyLink = find.byKey(
-      const ValueKey('account-privacy-policy'),
-    );
+    final privacyLink = find.byKey(const ValueKey('account-privacy-policy'));
     await tester.ensureVisible(privacyLink);
     await tester.pumpAndSettle();
     await tester.tap(privacyLink);
     await tester.pumpAndSettle();
-    expect(find.text('InkNest Notes 隐私政策'), findsNWidgets(2));
-    expect(find.textContaining('版本 2026-08-31.1'), findsOneWidget);
-    expect(find.textContaining('个人开发者 Lv'), findsWidgets);
-    await tester.scrollUntilVisible(find.text('4. 设备端手写识别'), 300);
+    expect(find.text('InkNest Notes Privacy Policy'), findsNWidgets(2));
+    expect(find.textContaining('Version 2026-09-07.1'), findsOneWidget);
+    expect(
+      privacyPolicyDocument.sections.any(
+        (section) => section.body.contains('individual developer Lv'),
+      ),
+      isTrue,
+    );
+    await tester.scrollUntilVisible(
+      find.text('4. On-Device Handwriting Recognition'),
+      300,
+    );
     expect(
       privacyPolicyDocument.sections.any(
         (section) => section.body.contains('Google ML Kit'),
@@ -93,18 +99,24 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(termsLink);
     await tester.pumpAndSettle();
-    expect(find.text('InkNest Notes 用户协议'), findsNWidgets(2));
-    await tester.scrollUntilVisible(find.text('5. 软件许可与开源组件'), 300);
+    expect(find.text('InkNest Notes Terms of Service'), findsNWidgets(2));
+    await tester.scrollUntilVisible(
+      find.text('5. Software License and Open-Source Components'),
+      300,
+    );
     expect(
       termsOfServiceDocument.sections.any(
         (section) => section.body.contains('AGPL-3.0-only'),
       ),
       isTrue,
     );
-    await tester.scrollUntilVisible(find.text('9. 费用与订阅'), 300);
+    await tester.scrollUntilVisible(
+      find.text('9. Fees and Subscriptions'),
+      300,
+    );
     expect(
       termsOfServiceDocument.sections.any(
-        (section) => section.body.contains('不提供付费订阅'),
+        (section) => section.body.contains('does not offer paid subscriptions'),
       ),
       isTrue,
     );
@@ -485,8 +497,8 @@ InkNestAuthSession _session({String email = 'user@example.com'}) {
       id: 'user-1',
       email: email,
       createdAt: timestamp,
-      privacyPolicyVersion: '2026-08-31.1',
-      termsVersion: '2026-08-31.1',
+      privacyPolicyVersion: '2026-09-07.1',
+      termsVersion: '2026-09-07.1',
       agreementsAcceptedAt: timestamp,
     ),
     device: InkNestCloudDevice(

@@ -9,21 +9,12 @@
   choices: public HTTPS Privacy/Terms/deletion pages, final operator and contact
   details, launch territories and retention/processor disclosures; then select
   an email provider before implementing verified email and password recovery.
-- Last completed: Replaced the paged editor's one-sheet viewport with a lazy
-  continuous vertical page flow on phone and tablet across iOS/iPadOS and
-  Android. Scrolling updates the active page and page actions; direct page
-  navigation, shared zoom, rotation, canonical document coordinates, and all
-  editing layers remain intact. Every width now uses two 52dp editor rows with
-  one prioritized document-row action list; actions beyond the width capacity
-  move into More, while the title/page context opens Pages. Paged notebooks now
-  start in Finger moves so a finger scrolls while a stylus writes; Finger writes
-  and Lasso suspend list dragging to avoid gesture conflicts. This supersedes
-  the earlier narrow-phone single-page top-anchoring behavior. Shape
-  Recognition V2 core and the Android phone UX audit remain delivered. Infinite
-  canvas now uses the same two-row editor chrome and width-based More overflow;
-  background and Fit content remain its only canvas-specific document actions.
-  The library header now uses one shared flat row across phone and tablet, with a
-  flexible search, compact sorting, and folder/archive actions.
+- Last completed: Unified all fixed user-visible App copy to English, including
+  synchronization status, conflict resolution, recovery, legal readers, and
+  handwriting-font labels. Privacy Policy and Terms are now immutable English
+  version `2026-09-07.1`, with matching App and backend agreement constants.
+  New server conflicts use English copy names, while legacy Chinese conflict
+  names are normalized to English for display without rewriting user content.
 
 ### Release readiness
 
@@ -66,6 +57,9 @@
 
 ## Decisions
 
+- The first release is English-only until a complete localization system is
+  implemented. Keep CJK capability fixtures and legacy compatibility handling
+  out of fixed UI copy; verify store metadata separately before release.
 - When production HTTPS becomes available, publish Privacy Policy and Terms
   from one canonical versioned source. The App uses the matching HTTPS document
   online and only an exact version/content-digest-matched generated local copy
@@ -393,6 +387,11 @@
 
 ## Verification
 
+- English-only UI delivery passes all 312 Flutter tests and `flutter analyze`.
+  Backend Ruff formatting/lint and the 19-test synchronization-change suite
+  pass. Runtime scans find no Han characters in `lib/`, platform shells, or
+  `server/src`; remaining CJK test data exercises Unicode, font, filename, and
+  handwriting-recognition support.
 - Continuous paged editing and the shared infinite-canvas chrome pass all 311
   Flutter tests and `flutter analyze`.
   Focused coverage verifies phone/tablet vertical page stacking, scroll-driven

@@ -21,7 +21,7 @@ void main() {
       deviceId: 'device-1',
     ).loadActive();
 
-    expect(active.single.resourceLabel, '已删除的笔记');
+    expect(active.single.resourceLabel, 'Deleted notebook');
     expect(reloaded.single.id, 'tombstone-1');
 
     final restored = await store.applyChanges([

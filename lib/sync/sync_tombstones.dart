@@ -52,9 +52,9 @@ class CloudSyncTombstone {
       isActive && const {'notebook', 'page'}.contains(resourceType);
 
   String get resourceLabel => switch (resourceType) {
-    'notebook' => '已删除的笔记',
-    'page' => '已删除的页面',
-    _ => '已删除的无限画布',
+    'notebook' => 'Deleted notebook',
+    'page' => 'Deleted page',
+    _ => 'Deleted infinite canvas',
   };
 
   factory CloudSyncTombstone.fromJson(Map<String, Object?> json) {

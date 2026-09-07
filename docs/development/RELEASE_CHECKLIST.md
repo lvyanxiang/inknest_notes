@@ -100,14 +100,15 @@ this checklist into it.
   - Make the App prefer the matching immutable HTTPS version online and use
     only the same-version/content-digest bundled copy offline. Block acceptance
     if the displayed content cannot be proven to match the advertised version.
-  - 2026-08-31 implementation evidence: versioned acceptance and in-App readers
-    are implemented. Local version `2026-08-31.1` now accurately covers the
+  - 2026-09-07 implementation evidence: versioned acceptance and in-App readers
+    are implemented. English local version `2026-09-07.1` accurately covers the
     current App/backend data, permissions, ML Kit SDK metrics, retention,
     deletion, open-source terms, and present individual-developer contact,
-    without legal-text placeholders. This item stays open until the store legal
-    identity is confirmed, production processor/region and log-retention facts
-    are added, counsel review is complete, and stable public HTTPS documents
-    are live.
+    without legal-text placeholders. It supersedes the Simplified Chinese local
+    version as a new immutable agreement version. This item stays open until
+    the store legal identity is confirmed, production processor/region and
+    log-retention facts are added, counsel review is complete, and stable
+    public HTTPS documents are live.
   - Publishing contract and future URL structure:
     `docs/legal/README.md`.
 - [ ] **REL-010 — Complete platform privacy declarations.**
@@ -202,8 +203,10 @@ note taking while they remain unassessed.
   - Audit important controls for labels, focus order, tap targets, contrast,
     Dynamic Type/text scaling, keyboard access, and screen readers.
 - [ ] **REL-112 — Decide release languages and localize accordingly.**
-  - The current UI is primarily English. Record whether the first release is
-    English-only or includes Simplified Chinese, then align App and store text.
+  - 2026-09-07 decision: the first release is English-only. User-visible App
+    strings and bundled legal documents are aligned to English. Keep this item
+    open until App Store and Google Play metadata are also verified as English
+    and a final runtime-string scan passes for the release build.
 
 ## Verified Baseline
 

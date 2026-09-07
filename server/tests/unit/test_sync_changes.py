@@ -1093,7 +1093,7 @@ async def test_sync_commit_creates_an_idempotent_page_conflict_copy(
     conflict_body = body["results"][1]["conflict"]
     assert conflict_body["resourceType"] == "page"
     assert conflict_body["originalResourceId"] == page_id
-    assert conflict_body["copyDisplayName"] == "第 1 页（冲突副本）"
+    assert conflict_body["copyDisplayName"] == "Page 1 (conflict copy)"
     assert conflict_body["baseRevision"] == 0
     assert conflict_body["currentRevision"] == 1
     assert conflict_body["status"] == "pending"
@@ -1248,7 +1248,7 @@ async def test_notebook_conflicts_support_keep_both_and_use_conflict(
         idempotency_key="notebook-keep-both-conflict",
     )
     assert len(keep_both_conflict["copyDisplayName"]) == 300
-    assert keep_both_conflict["copyDisplayName"].endswith("（冲突副本）")
+    assert keep_both_conflict["copyDisplayName"].endswith(" (conflict copy)")
     kept_both = await client.post(
         f"/api/v1/sync/conflicts/{keep_both_conflict['id']}/resolve",
         json={"resolution": "keep_both"},
@@ -1308,7 +1308,7 @@ async def test_notebook_conflicts_support_keep_both_and_use_conflict(
     assert kept_both.status_code == 200
     assert notebook_copy is not None
     assert notebook_copy.conflict_of == keep_both_notebook_id
-    assert notebook_copy.title.endswith("（冲突副本）")
+    assert notebook_copy.title.endswith(" (conflict copy)")
     assert len(notebook_copy.title) == 300
     assert notebook_copy.content["source"] == "offline-device"
     assert replaced.status_code == 200

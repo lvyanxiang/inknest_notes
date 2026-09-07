@@ -51,9 +51,9 @@ never submit it.
 - Reused components: existing Account card, Material dialogs, text fields,
   error container, filled/outlined/text buttons, and semantic error colors.
 - New component: a simple read-only legal document page using selectable text.
-- The current local reader uses clear Simplified Chinese legal text, Chinese
-  section headings, and a visible version/effective date while retaining the
-  existing scrollable selectable layout.
+- The current local reader uses English legal text and section headings with a
+  visible version/effective date, matching the App's current English-only UI
+  while retaining the existing scrollable selectable layout.
 - User-facing copy explicitly distinguishes deleting cloud data from retaining
   local notes.
 - When production HTTPS is configured, the reader prefers the immutable URL for

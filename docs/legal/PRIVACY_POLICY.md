@@ -1,113 +1,113 @@
-# InkNest Notes 隐私政策
+# InkNest Notes Privacy Policy
 
-- 版本：`2026-08-31.1`
-- 生效日期：2026 年 8 月 31 日
-- 适用产品：InkNest Notes
-- 运营者：个人开发者 Lv
-- 联系邮箱：`2256334253@qq.com`
+- Version: `2026-09-07.1`
+- Effective date: September 7, 2026
+- Product: InkNest Notes
+- Operator: Individual developer Lv
+- Contact email: `2256334253@qq.com`
 
-本政策按照 InkNest Notes 当前实际功能编写，说明我们如何处理个人信息及用户内容。发布和 App 离线副本一致性必须遵循[法律文档发布约定](README.md)。正式公开发布前，运营者名称和联系方式仍须与应用商店实名主体核对，并针对实际发行地区完成法律审查。
+This policy reflects the current functionality of InkNest Notes and explains how we process personal information and user content. Publication and App offline-copy consistency must follow the [legal document publication contract](README.md). Before public release, the operator name and contact details must be verified against the legal identity used in the app stores and reviewed for each release territory.
 
-## 1. 适用范围与本地优先原则
+## 1. Scope and Local-First Principle
 
-InkNest Notes 是本地优先的数字笔记应用。您无需注册账号即可创建和编辑笔记、手写内容、文本、图形，导入 PDF 或图片、录制音频以及导出文档。未登录时，InkNest Notes 不会把这些笔记内容上传到 InkNest 云端。
+InkNest Notes is a local-first digital note-taking app. You can create and edit notebooks, handwriting, text, and shapes; import PDFs or images; record audio; and export documents without registering an account. When you are signed out, InkNest Notes does not upload this note content to InkNest Cloud.
 
-注册并登录云账号后，应用才会为您提供跨设备云同步。您可以不创建账号而继续使用本地功能，但云同步、云端恢复及设备会话管理必须使用账号。
+Cross-device cloud synchronization is available only after you register and sign in to a cloud account. You may continue using local features without an account, but cloud synchronization, cloud recovery, and device-session management require one.
 
-## 2. 我们处理的信息
+## 2. Information We Process
 
-### 2.1 本地笔记和文件
+### 2.1 Local Notes and Files
 
-应用会在设备应用目录保存笔记本和文件夹名称、页面顺序、手写笔迹及其坐标与时间信息、文本框、图形、书签、页面模板和尺寸、无限画布内容、导入的 PDF 和图片、录音文件、编辑状态以及同步所需的本地映射和待处理操作。
+The app stores notebook and folder names, page order, handwriting strokes and their coordinates and timestamps, text boxes, shapes, bookmarks, page templates and dimensions, infinite-canvas content, imported PDFs and images, audio recordings, editing state, and local mappings and pending operations required for synchronization in the app directory on your device.
 
-这些信息默认保存在设备本地。您主动登录云账号并使用同步后，同步范围内的内容才会传输到 InkNest 云端。
+This information stays on your device by default. Content within the synchronization scope is transferred to InkNest Cloud only after you choose to sign in and use synchronization.
 
-### 2.2 账号和身份验证信息
+### 2.2 Account and Authentication Information
 
-创建云账号时，我们处理您的电子邮箱地址、密码的安全哈希值、已同意的隐私政策和用户协议版本及同意时间。我们不会保存可直接读取的明文密码。
+When you create a cloud account, we process your email address, a secure hash of your password, the Privacy Policy and Terms versions you accepted, and the acceptance time. We do not store a readable plaintext password.
 
-登录后，应用还会处理访问令牌、刷新令牌、账号 ID 和会话到期时间。令牌保存在系统提供的安全存储中，例如 Apple Keychain 或 Android 加密存储。
+After sign-in, the app also processes access and refresh tokens, an account ID, and session expiration times. Tokens are stored in system-provided secure storage such as Apple Keychain or Android encrypted storage.
 
-### 2.3 设备和安全信息
+### 2.3 Device and Security Information
 
-为区分同步设备、复用同一安装实例并管理会话，我们处理随机生成的安装标识、用户可见的设备名称、设备平台、设备记录、最近活动时间和撤销状态。该安装标识不是广告标识，不用于跨应用跟踪。
+To distinguish synchronized devices, reuse the same app installation, and manage sessions, we process a randomly generated installation identifier, a user-visible device name, device platform, device records, recent activity time, and revocation status. The installation identifier is not an advertising identifier and is not used for cross-app tracking.
 
-登录限流会在内存中短暂处理网络 IP 地址的不可逆摘要，用于限制连续失败的登录尝试；默认窗口为 5 分钟。应用服务会产生请求编号、请求方法、接口路径、响应状态、处理耗时和错误类型等运行日志。当前服务不建立广告画像或分析用户笔记内容的日志数据库。
+Login rate limiting temporarily processes an irreversible digest of the network IP address in memory to limit repeated failed login attempts; the default window is five minutes. The service produces operational logs such as request ID, method, API path, response status, processing time, and error type. The current service does not create advertising profiles or a log database that analyzes note content.
 
-### 2.4 云同步内容
+### 2.4 Cloud Synchronization Content
 
-登录并启用同步后，我们处理文件夹、笔记本、页面和无限画布的结构与内容，PDF、图片和录音附件，内容版本、内容摘要、同步游标、删除记录、修订记录和冲突副本。处理这些信息是为了在您的设备之间上传、下载、合并、恢复和解决冲突。
+After you sign in and enable synchronization, we process folder, notebook, page, and infinite-canvas structure and content; PDF, image, and audio attachments; content versions and digests; synchronization cursors; deletion and revision records; and conflict copies. We process this information to upload, download, merge, restore, and resolve conflicts across your devices.
 
-笔记可能包含您自行输入的个人信息或敏感信息。我们不会主动要求您在笔记中填写敏感信息，也不会将笔记内容用于广告；是否记录以及是否同步此类内容由您决定。
+Notes may contain personal or sensitive information that you enter. We do not ask you to provide sensitive information in notes and do not use note content for advertising. You decide whether to record or synchronize such content.
 
-## 3. 设备权限与主动选择
+## 3. Device Permissions and Your Choices
 
-- 麦克风：仅在您启动“录音笔记”功能时请求，用于生成附加到笔记的音频文件。拒绝权限不会影响非录音功能。
-- 文件访问：系统文件选择器只向应用提供您主动选择导入的 PDF、图片或文件，以及您主动选择的导出位置。InkNest Notes 不会扫描未选择的文件。
-- 网络：用于注册、登录、协议版本检查、云同步、附件传输和下载手写识别模型。
+- Microphone: Requested only when you start audio recording, to create an audio file attached to a note. Denying permission does not affect features unrelated to recording.
+- File access: The system file picker gives the app access only to PDFs, images, or files that you choose to import and export locations that you select. InkNest Notes does not scan files you did not select.
+- Network: Used for registration, sign-in, agreement-version checks, cloud synchronization, attachment transfers, and downloading handwriting-recognition models.
 
-如果您主动把导出文件保存到第三方文件提供商或云盘，后续处理同时受该接收方的条款和隐私规则约束。
+If you choose to save an exported file to a third-party file provider or cloud drive, subsequent processing is also governed by that recipient's terms and privacy rules.
 
-## 4. 设备端手写识别
+## 4. On-Device Handwriting Recognition
 
-“Smart Ink/手写识别”使用 Google ML Kit Digital Ink Recognition。手写笔迹和识别结果在设备端处理，Google 的说明表明其不会把识别输入和输出发送到 Google 服务器。
+Smart Ink uses Google ML Kit Digital Ink Recognition. Handwriting and recognition results are processed on your device. Google states that recognition input and output are not sent to Google servers.
 
-ML Kit 会联网下载所选语言的识别模型，也可能联系 Google 获取模型更新、错误修复及硬件兼容信息，并向 Google 发送 API 性能、使用情况和已配置语言等指标，用于诊断、维护、改进以及防止滥用。这些 SDK 指标由 Google 按其隐私规则处理。您不使用手写识别功能时，InkNest Notes 不会为了该功能提交手写内容。
+ML Kit uses the network to download the selected language model and may contact Google for model updates, bug fixes, and hardware compatibility information. It may also send metrics such as API performance, usage, and configured languages to Google for diagnostics, maintenance, improvement, and abuse prevention. Google processes these SDK metrics under its privacy terms. When you do not use handwriting recognition, InkNest Notes does not submit handwriting for this feature.
 
-## 5. 处理目的
+## 5. Purposes of Processing
 
-我们仅为以下目的处理相关信息：提供本地笔记与文件管理；创建账号和验证身份；维持及保护设备会话；提供云同步、恢复、版本和冲突处理；响应账号或数据删除请求；诊断故障、保障接口安全和防止滥用；履行适用法律及应用商店要求。
+We process information only to provide local note and file management; create accounts and authenticate users; maintain and protect device sessions; provide cloud synchronization, recovery, versioning, and conflict handling; respond to account or data-deletion requests; diagnose failures, secure APIs, and prevent abuse; and comply with applicable law and app-store requirements.
 
-我们不出售个人信息，不使用笔记内容投放广告，也不使用广告标识进行跨应用跟踪。若未来新增广告、统计、崩溃上报、协作或其他会改变处理目的的功能，我们会先更新政策和应用内说明，并在依法需要时重新取得同意。
+We do not sell personal information, use note content for advertising, or use advertising identifiers for cross-app tracking. If we later add advertising, analytics, crash reporting, collaboration, or another feature that changes these purposes, we will first update this policy and the in-app explanation and obtain consent again where legally required.
 
-## 6. 信息共享、委托处理与第三方组件
+## 6. Sharing, Service Providers, and Third-Party Components
 
-除您主动导出、法律要求或提供产品所必要的情形外，我们不会向无关第三方提供您的账号或笔记内容。
+We do not provide your account or note content to unrelated third parties except when you choose to export it, when required by law, or when necessary to provide the product.
 
-当前云服务使用由运营者配置的数据库和私有对象存储处理账号、同步元数据及附件。正式部署所采用的云主机、存储服务商、处理地区和联系方式将在公开 HTTPS 版本中列明；在这些信息公布并完成相应合同和安全审查前，不应把开发环境作为公开生产服务运营。
+The current cloud service uses an operator-configured database and private object storage to process accounts, synchronization metadata, and attachments. The public HTTPS policy will identify the cloud host, storage provider, processing regions, and contact information used in production. A development environment must not be operated as a public production service before those details are published and the required contractual and security reviews are complete.
 
-应用包含 Google ML Kit 手写识别组件，其数据处理见本政策第 4 节。操作系统文件选择器、安全存储、音频和媒体能力由 Apple、Google 或设备厂商提供。我们会要求受托服务提供者仅按我们的指示处理数据并采取不低于本政策的保护措施。
+The app includes Google ML Kit handwriting recognition; its processing is described in Section 4. Operating-system file pickers, secure storage, audio, and media capabilities are provided by Apple, Google, or the device manufacturer. We require service providers to process data only under our instructions and to apply protections no weaker than those described here.
 
-## 7. 存储位置、安全措施与跨境
+## 7. Storage, Security, and International Transfers
 
-本地数据保存在设备应用目录，账号令牌和安装标识保存在系统安全存储。云端元数据存储在受访问控制保护的数据库，附件存储在私有对象存储；下载和上传采用短时效、账号范围内的授权地址。密码使用 Argon2 哈希，访问令牌短期有效，刷新令牌在服务端仅保存摘要并支持轮换和撤销。
+Local data is stored in the app directory on your device. Account tokens and the installation identifier are stored in system secure storage. Cloud metadata is stored in an access-controlled database and attachments in private object storage. Downloads and uploads use short-lived, account-scoped authorized URLs. Passwords are hashed with Argon2, access tokens are short-lived, and only refresh-token digests are stored by the service, with rotation and revocation support.
 
-正式公开服务必须使用 HTTPS，并根据最终部署地区补充数据存储地点和可能的跨境传输说明。当前仓库中的本地开发地址和开发凭据不得用于公开服务。
+A public production service must use HTTPS and disclose storage locations and possible international transfers based on the final deployment regions. Local development addresses and credentials in the repository must not be used for a public service.
 
-尽管我们会采取合理措施，没有任何存储或传输方式能够保证绝对安全。如发现可能影响您权益的安全事件，我们将依适用法律采取处置和通知措施。
+Although we take reasonable measures, no storage or transmission method can guarantee absolute security. If we discover a security incident that may affect your rights, we will respond and provide notice as required by applicable law.
 
-## 8. 保存期限
+## 8. Retention
 
-- 本地笔记：保留到您在应用中删除、清除应用数据或由设备/系统存储机制移除。仅退出云账号不会删除本地笔记。
-- 云账号和同步内容：在账号存续期间保留；普通删除可能以可恢复的修订、墓碑或冲突记录继续保存，直至恢复、覆盖或删除整个云账号。目前不承诺普通笔记删除后的固定自动物理清除期限。
-- 会话：访问令牌默认有效 15 分钟，刷新令牌默认有效 30 天；撤销或过期的会话记录可能在账号存续期间用于会话安全和重放防护，删除账号时一并删除。
-- 上传临时文件：上传会话默认 24 小时到期；清理任务对过期暂存文件给予默认 24 小时等待期，对未引用对象给予默认 7 天隔离期后再次检查并删除。实际完成时间可能因服务故障和重试而延后。
-- 请求日志：应用服务自身只输出不含笔记正文的运行日志，不建立独立长期日志数据库。正式部署必须为日志系统设置实现安全与故障排查所需的最短保存期限，并在公开版本中披露具体期限。
-- 账号删除重试记录：仅在对象清理未完成时保存账号 ID、剩余对象键、尝试次数和错误类型；完成后保留不含邮箱或笔记正文的完成记录。
+- Local notes: Retained until you delete them in the app, clear app data, or they are removed by device or system storage mechanisms. Signing out of a cloud account does not delete local notes.
+- Cloud account and synchronized content: Retained while the account exists. Ordinary deletion may retain recoverable revisions, Tombstones, or conflict records until content is restored or replaced, or the entire cloud account is deleted. We currently do not promise a fixed automatic physical-deletion period after an ordinary note deletion.
+- Sessions: Access tokens are valid for 15 minutes by default and refresh tokens for 30 days. Revoked or expired session records may be retained while the account exists for session security and replay protection and are deleted with the account.
+- Temporary uploads: Upload sessions expire after 24 hours by default. Cleanup gives expired staging files a default 24-hour waiting period and unreferenced objects a default seven-day quarantine before checking and deleting them. Service failures and retries may delay completion.
+- Request logs: The service outputs operational logs without note bodies and does not maintain a separate long-term log database. A production deployment must set the shortest retention needed for security and troubleshooting and disclose the specific period in the public policy.
+- Account-deletion retry records: If object cleanup is incomplete, we retain only the account ID, remaining object keys, attempt count, and error type. After completion, we retain a completion record without the email address or note content.
 
-法律法规要求保留或为解决争议、保障安全确有必要时，我们可能在必要范围和期限内限制处理相关信息，并在公开版本中说明适用例外。
+Where required by law or necessary to resolve disputes or protect security, we may restrict processing within the necessary scope and period and disclose applicable exceptions in the public version.
 
-## 9. 您的权利和控制方式
+## 9. Your Rights and Controls
 
-您可以直接编辑或删除本地内容，拒绝麦克风权限，不注册账号，退出当前云会话，修改密码，查看已登录设备和协议版本，或者在“账号 → 危险区域 → 删除账号”中验证密码并永久删除云账号及关联云数据。
+You can edit or delete local content, deny microphone permission, avoid registering an account, sign out of the current cloud session, change your password, view signed-in devices and agreement versions, or verify your password and permanently delete the cloud account and associated cloud data under Account → Danger Zone → Delete Account.
 
-删除云账号会立即停用账号并撤销全部设备会话，随后删除账号数据库记录和账号范围内的对象存储文件；存储暂时失败时会进入最小化重试队列。该操作不会删除当前设备已有的本地笔记，您可另行在设备上删除它们。
+Deleting a cloud account immediately disables it and revokes all device sessions, then deletes account database records and account-scoped object-storage files. Temporary storage failures enter a minimal retry queue. This action does not delete local notes already stored on the current device; you may delete them separately on the device.
 
-如需访问、更正、复制、限制处理、撤回同意、投诉或询问其他个人信息权利，请发送邮件至 `2256334253@qq.com`。为保护账号，我们可能需要验证请求人与账号的关系。撤回同意不影响撤回前处理活动的效力；如果相关处理是云同步所必需，撤回后您仍可使用本地功能，但不能继续使用相应云功能。
+To request access, correction, a copy, restriction of processing, withdrawal of consent, make a complaint, or ask about other personal-information rights, email `2256334253@qq.com`. To protect the account, we may need to verify the requester's relationship to it. Withdrawing consent does not affect processing that occurred before withdrawal. If processing is required for cloud synchronization, you may continue using local features after withdrawal but cannot continue using the corresponding cloud features.
 
-## 10. 未成年人
+## 10. Children
 
-InkNest Notes 面向一般学习和记录场景，不专门面向不满 14 周岁的儿童。未满适用地区法定年龄的用户应在监护人阅读并同意本政策及用户协议后使用账号和云同步。监护人如认为我们在未经适当同意的情况下处理了未成年人的信息，可通过联系邮箱要求核查和删除。
+InkNest Notes is intended for general learning and note-taking and is not directed specifically to children under 14. A user below the applicable age of independent consent should use an account and cloud synchronization only after a guardian has read and accepted this policy and the Terms of Service. A guardian who believes we processed a minor's information without appropriate consent may contact us to request review and deletion.
 
-## 11. 政策更新
+## 11. Policy Updates
 
-我们可能因功能、数据处理方式、法律或商店政策变化更新本政策。涉及处理目的、方式、信息种类或共享对象的重大变化时，我们会发布新版本，并在应用内要求您审阅和明确同意后再继续相关云功能。已发布的旧版本应保留在不可变的版本化 HTTPS 地址中供查阅。
+We may update this policy when features, data processing, laws, or store policies change. For material changes to processing purposes, methods, information categories, or recipients, we will publish a new version and require you to review and explicitly accept it in the app before continuing to use the related cloud features. Published prior versions should remain available at immutable, versioned HTTPS addresses.
 
-## 12. 联系我们
+## 12. Contact Us
 
-个人信息处理者/运营者：个人开发者 Lv  
-产品：InkNest Notes  
-联系邮箱：`2256334253@qq.com`
+Data controller/operator: Individual developer Lv<br>
+Product: InkNest Notes<br>
+Contact email: `2256334253@qq.com`
 
-我们会在收到邮件后于合理期限内核查和回复。正式发布时，上述运营者名称必须与 App Store Connect、Google Play Console 和公开网站展示的实名主体一致。
+We will review and respond within a reasonable period after receiving an email. At public release, the operator name above must match the legal identity displayed in App Store Connect, Google Play Console, and the public website.
 

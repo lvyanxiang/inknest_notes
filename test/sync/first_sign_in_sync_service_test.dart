@@ -848,7 +848,7 @@ class _MixedFirstSignInCloudClient implements FirstSignInCloudClient {
                     resourceType: 'page',
                     originalResourceId: operation['resourceId']! as String,
                     copyResourceId: 'page-conflict-copy',
-                    copyDisplayName: '第 1 页（冲突副本）',
+                    copyDisplayName: 'Page 1 (conflict copy)',
                     baseRevision: 0,
                     currentRevision: 1,
                     submittedContentHash: 'e' * 64,

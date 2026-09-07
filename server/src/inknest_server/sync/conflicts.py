@@ -280,9 +280,9 @@ class ConflictService:
     def _copy_display_name(cls, resource: Notebook | Page) -> str:
         if isinstance(resource, Notebook):
             return cls._notebook_copy_title(resource.title)
-        return f"第 {resource.position + 1} 页（冲突副本）"
+        return f"Page {resource.position + 1} (conflict copy)"
 
     @staticmethod
     def _notebook_copy_title(title: str) -> str:
-        suffix = "（冲突副本）"
+        suffix = " (conflict copy)"
         return f"{title[: 300 - len(suffix)]}{suffix}"

@@ -537,8 +537,8 @@ active Tombstone. This route does not yet create general local-only resources.
 A conflict record preserves the submitted and current JSON snapshots, their
 hashes, the submitted `baseRevision`, the current server Revision, the source
 device, a stable `copyResourceId`, and `conflictOf` ancestry. Notebook labels use
-`<original title>（冲突副本）`; untitled pages use
-`第 N 页（冲突副本）`. Device and timestamp are metadata rather than title
+`<original title> (conflict copy)`; untitled pages use
+`Page N (conflict copy)`. Device and timestamp are metadata rather than title
 identity.
 
 Resolve an owned conflict with one explicit choice:

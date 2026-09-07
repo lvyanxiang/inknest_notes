@@ -23,7 +23,7 @@ void main() {
         deviceId: 'device-1',
       ).loadPending();
 
-      expect(pending.single.copyDisplayName, '第 2 页（冲突副本）');
+      expect(pending.single.copyDisplayName, 'Page 2 (conflict copy)');
       expect(reloaded.single.id, 'conflict-1');
 
       final resolved = await store.applyChanges([
@@ -52,8 +52,19 @@ void main() {
     final conflict = CloudSyncConflict.fromJson(payload);
 
     expect(conflict.originalResourceId, 'page-2');
-    expect(conflict.originalDisplayName, '第 2 页');
+    expect(conflict.originalDisplayName, 'Page 2');
     expect(conflict.isPending, isFalse);
+  });
+
+  test('normalizes a legacy conflict copy name for display', () {
+    final payload = _conflictPayload()
+      ..['copyDisplayName'] =
+          '\u7B2C 2 \u9875\uFF08\u51B2\u7A81\u526F\u672C\uFF09';
+
+    final conflict = CloudSyncConflict.fromJson(payload);
+
+    expect(conflict.displayName, 'Page 2 (conflict copy)');
+    expect(conflict.originalDisplayName, 'Page 2');
   });
 }
 
@@ -79,7 +90,7 @@ Map<String, Object?> _conflictPayload({
     'resourceType': 'page',
     'conflictOf': 'page-2',
     'copyResourceId': 'page-conflict-copy',
-    'copyDisplayName': '第 2 页（冲突副本）',
+    'copyDisplayName': 'Page 2 (conflict copy)',
     'baseRevision': 1,
     'currentRevision': 2,
     'submittedContentHash': 'a' * 64,

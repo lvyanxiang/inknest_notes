@@ -95,7 +95,7 @@ CloudSyncConflict _conflict({bool resolved = false}) => CloudSyncConflict(
   resourceType: 'page',
   originalResourceId: 'page-1',
   copyResourceId: 'page-copy-1',
-  copyDisplayName: '第 1 页（冲突副本）',
+  copyDisplayName: 'Page 1 (conflict copy)',
   baseRevision: 0,
   currentRevision: 1,
   submittedContentHash: 'a' * 64,

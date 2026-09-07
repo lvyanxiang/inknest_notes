@@ -594,7 +594,7 @@ class _LegalDocumentTiles extends StatelessWidget {
           contentPadding: EdgeInsets.zero,
           leading: const Icon(Icons.privacy_tip_outlined),
           title: const Text('Privacy Policy'),
-          subtitle: const Text('版本 $currentPrivacyPolicyVersion'),
+          subtitle: const Text('Version $currentPrivacyPolicyVersion'),
           trailing: const Icon(Icons.chevron_right_rounded),
           onTap: () => openAccountLegalDocument(context, privacyPolicyDocument),
         ),
@@ -602,7 +602,7 @@ class _LegalDocumentTiles extends StatelessWidget {
           contentPadding: EdgeInsets.zero,
           leading: const Icon(Icons.description_outlined),
           title: const Text('Terms of Service'),
-          subtitle: const Text('版本 $currentTermsVersion'),
+          subtitle: const Text('Version $currentTermsVersion'),
           trailing: const Icon(Icons.chevron_right_rounded),
           onTap: () =>
               openAccountLegalDocument(context, termsOfServiceDocument),

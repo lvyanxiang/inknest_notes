@@ -1177,7 +1177,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byTooltip('Choose font (龙藏)'), findsOneWidget);
+    expect(find.byTooltip('Choose font (Long Cang)'), findsOneWidget);
     expect(
       tester
           .widget<TextBoxLayer>(find.byType(TextBoxLayer))

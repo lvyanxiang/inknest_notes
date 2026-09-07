@@ -365,7 +365,7 @@ class _LibraryScreenState extends State<LibraryScreen>
     setState(() {
       _syncStatus = const _LibrarySyncStatus(
         _LibrarySyncPhase.syncing,
-        '正在上传本地更改并检查云端更新…',
+        'Uploading local changes and checking for cloud updates…',
       );
     });
     try {
@@ -381,10 +381,10 @@ class _LibraryScreenState extends State<LibraryScreen>
                 ? _LibrarySyncPhase.preservedEdit
                 : _LibrarySyncPhase.completed,
             pushResult.preservedDeleteEditCount > 0
-                ? '已保留另一台设备上的编辑；返回资料库后将检查云端更新。'
+                ? 'Edits from another device were preserved; cloud updates will be checked when you return to the library.'
                 : pushResult.uploadedOperationCount > 0
-                ? '已上传 ${pushResult.uploadedOperationCount} 项本地更改；返回资料库后将检查云端更新。'
-                : '本地更改已检查；返回资料库后将检查云端更新。',
+                ? 'Uploaded ${_counted(pushResult.uploadedOperationCount, 'local change')}; cloud updates will be checked when you return to the library.'
+                : 'Local changes checked; cloud updates will be checked when you return to the library.',
           );
         });
         return;
@@ -404,15 +404,15 @@ class _LibraryScreenState extends State<LibraryScreen>
           break;
         case IncrementalSyncPullStatus.upToDate:
           final message = pushResult.uploadedOperationCount > 0
-              ? '已上传 ${pushResult.uploadedOperationCount} 项本地更改，当前已同步。'
-              : '本地笔记与云端已同步。';
+              ? 'Uploaded ${_counted(pushResult.uploadedOperationCount, 'local change')}. Everything is up to date.'
+              : 'Local notes are up to date with the cloud.';
           setState(() {
             _syncStatus = _LibrarySyncStatus(
               pushResult.preservedDeleteEditCount > 0
                   ? _LibrarySyncPhase.preservedEdit
                   : _LibrarySyncPhase.completed,
               pushResult.preservedDeleteEditCount > 0
-                  ? '已保留另一台设备上的编辑，无需处理。'
+                  ? 'Edits from another device were preserved. No action is needed.'
                   : message,
             );
           });
@@ -439,11 +439,11 @@ class _LibraryScreenState extends State<LibraryScreen>
           return;
         case IncrementalSyncPullStatus.requiresReconciliation:
           final message = pushResult.preservedDeleteEditCount > 0
-              ? '已保留另一台设备上的编辑，无需在删除和编辑之间选择。'
+              ? 'Edits from another device were preserved. You do not need to choose between the deletion and the edits.'
               : pushResult.uploadedOperationCount == 0
-              ? '检测到需要协调的云端更改；本地笔记未被覆盖。'
-              : '已上传 ${pushResult.uploadedOperationCount} 项本地更改；'
-                    '检测到需要协调的云端更改，本地笔记未被覆盖。';
+              ? 'Cloud changes require reconciliation. Local notes were not overwritten.'
+              : 'Uploaded ${_counted(pushResult.uploadedOperationCount, 'local change')}. '
+                    'Other cloud changes require reconciliation; local notes were not overwritten.';
           setState(() {
             _syncStatus = _LibrarySyncStatus(
               pushResult.preservedDeleteEditCount > 0
@@ -464,10 +464,10 @@ class _LibraryScreenState extends State<LibraryScreen>
               ? _LibrarySyncPhase.failed
               : _LibrarySyncPhase.needsAttention,
           error.structuralConflicts.isNotEmpty
-              ? '${error.structuralConflicts.length} 项结构冲突待处理；本机与云端版本均已保留。'
+              ? '${_counted(error.structuralConflicts.length, 'structural conflict')} ${error.structuralConflicts.length == 1 ? 'needs' : 'need'} attention. Both local and cloud versions were preserved.'
               : count > 0
-              ? '同步失败，$count 项本地更改仍安全保留，等待重试。'
-              : '同步失败，本地笔记未受影响，可以重试。',
+              ? 'Sync failed. ${_counted(count, 'local change')} ${count == 1 ? 'remains' : 'remain'} safely stored and ready to retry.'
+              : 'Sync failed. Local notes were not affected; you can retry.',
         );
       });
       return;
@@ -476,7 +476,7 @@ class _LibraryScreenState extends State<LibraryScreen>
       setState(() {
         _syncStatus = const _LibrarySyncStatus(
           _LibrarySyncPhase.failed,
-          '暂时无法检查云端更改；本地笔记未受影响，可以重试。',
+          'Cloud changes cannot be checked right now. Local notes were not affected; you can retry.',
         );
       });
       return;
@@ -500,15 +500,15 @@ class _LibraryScreenState extends State<LibraryScreen>
       }
       if (!mounted || !_isCurrentSession(session)) return;
       final message = result.restoreResult != null
-          ? '已接收 ${result.restoreResult!.downloadedNotebookCount} 本云端笔记和 '
-                '${result.restoreResult!.downloadedAssetCount} 个附件。'
+          ? 'Received ${_counted(result.restoreResult!.downloadedNotebookCount, 'cloud notebook')} and '
+                '${_counted(result.restoreResult!.downloadedAssetCount, 'attachment')}.'
           : result.uploadResult != null
-          ? '已同步 ${result.uploadResult!.uploadedNotebookCount} 本本地笔记和 '
-                '${result.uploadResult!.uploadedAssetCount} 个附件。'
+          ? 'Synchronized ${_counted(result.uploadResult!.uploadedNotebookCount, 'local notebook')} and '
+                '${_counted(result.uploadResult!.uploadedAssetCount, 'attachment')}.'
           : result.mixedResult != null
-          ? '已上传 ${result.mixedResult!.uploadedNotebookCount} 本、接收 '
-                '${result.mixedResult!.downloadedNotebookCount} 本笔记。'
-          : '本地笔记与云端已同步。';
+          ? 'Uploaded ${_counted(result.mixedResult!.uploadedNotebookCount, 'notebook')} and received '
+                '${_counted(result.mixedResult!.downloadedNotebookCount, 'notebook')}.'
+          : 'Local notes are up to date with the cloud.';
       final pendingConflicts = _mergePendingConflicts(
         _pendingConflicts,
         result.pendingConflicts,
@@ -521,7 +521,7 @@ class _LibraryScreenState extends State<LibraryScreen>
               : _LibrarySyncPhase.needsAttention,
           pendingConflicts.isEmpty
               ? message
-              : '${pendingConflicts.length} 个同步冲突待处理；两个版本都已保留。',
+              : '${_counted(pendingConflicts.length, 'sync conflict')} ${pendingConflicts.length == 1 ? 'needs' : 'need'} attention. Both versions were preserved.',
         );
       });
     } on InkNestApiException catch (error) {
@@ -530,8 +530,8 @@ class _LibraryScreenState extends State<LibraryScreen>
         _syncStatus = _LibrarySyncStatus(
           _LibrarySyncPhase.failed,
           error.statusCode == 401
-              ? '登录状态已过期；本地笔记未受影响，请重新登录后同步。'
-              : '暂时无法完成首次云端同步；本地笔记未受影响，可以重试。',
+              ? 'Your session expired. Local notes were not affected; sign in again to sync.'
+              : 'Initial cloud sync cannot be completed right now. Local notes were not affected; you can retry.',
         );
       });
     } on Object {
@@ -539,7 +539,7 @@ class _LibraryScreenState extends State<LibraryScreen>
       setState(() {
         _syncStatus = const _LibrarySyncStatus(
           _LibrarySyncPhase.failed,
-          '首次云端同步未完成；无法安全协调的内容未被覆盖，可以重试。',
+          'Initial cloud sync was not completed. Content that could not be reconciled safely was not overwritten; you can retry.',
         );
       });
     }
@@ -568,38 +568,38 @@ class _LibraryScreenState extends State<LibraryScreen>
     required IncrementalSyncPullResult pullResult,
   }) {
     if (pushResult.preservedDeleteEditCount > 0) {
-      return '已保留另一台设备上的编辑，无需在删除和编辑之间选择。';
+      return 'Edits from another device were preserved. You do not need to choose between the deletion and the edits.';
     }
     if (pullResult.receivedConflictCount > 0) {
-      return '${pullResult.receivedConflictCount} 个同步冲突待处理；两个版本都已保留。';
+      return '${_counted(pullResult.receivedConflictCount, 'sync conflict')} ${pullResult.receivedConflictCount == 1 ? 'needs' : 'need'} attention. Both versions were preserved.';
     }
     if (pullResult.deletedNotebookCount > 0) {
-      return '已同步 ${pullResult.changeCount} 项云端更改，从书架移除 '
-          '${pullResult.deletedNotebookCount} 本已在其他设备删除的笔记；本地恢复副本已保留。';
+      return 'Synchronized ${_counted(pullResult.changeCount, 'cloud change')} and removed '
+          '${_counted(pullResult.deletedNotebookCount, 'notebook')} deleted on another device from the shelf. Local recovery copies were preserved.';
     }
     if (pullResult.confirmedLocalDeletionCount > 0) {
-      return '已将删除同步到云端，其他设备将在下次同步时移除这本笔记。';
+      return 'The deletion was synchronized to the cloud. Other devices will remove this notebook on their next sync.';
     }
     if (pullResult.deletedPageCount > 0) {
-      return '已同步其他设备的页面删除；可恢复的本地页面副本已保留。';
+      return 'Page deletions from another device were synchronized. Recoverable local page copies were preserved.';
     }
     if (pullResult.confirmedLocalPageDeletionCount > 0) {
-      return '已确认本机的页面删除同步到云端。';
+      return 'The local page deletion was synchronized to the cloud.';
     }
     if (pullResult.deletedFolderCount > 0) {
-      return '已同步其他设备的文件夹删除；其中的笔记已移回资料库根目录。';
+      return 'A folder deletion from another device was synchronized. Its notebooks were moved to the library root.';
     }
     if (pullResult.confirmedLocalFolderDeletionCount > 0) {
-      return '已确认本机的文件夹删除同步到云端；其中的笔记仍保留在资料库。';
+      return 'The local folder deletion was synchronized to the cloud. Its notebooks remain in the library.';
     }
     if (pullResult.appliedSharedResourceCount > 0) {
-      return '已上传 ${pushResult.uploadedOperationCount} 项本地更改，'
-          '同步 ${pullResult.changeCount} 项云端更改，更新 '
-          '${pullResult.appliedSharedResourceCount} 项已有内容。';
+      return 'Uploaded ${_counted(pushResult.uploadedOperationCount, 'local change')}, '
+          'synchronized ${_counted(pullResult.changeCount, 'cloud change')}, and updated '
+          '${_counted(pullResult.appliedSharedResourceCount, 'existing item')}.';
     }
-    return '已上传 ${pushResult.uploadedOperationCount} 项本地更改，'
-        '同步 ${pullResult.changeCount} 项云端更改，下载 '
-        '${pullResult.downloadedNotebookCount} 本笔记。';
+    return 'Uploaded ${_counted(pushResult.uploadedOperationCount, 'local change')}, '
+        'synchronized ${_counted(pullResult.changeCount, 'cloud change')}, and downloaded '
+        '${_counted(pullResult.downloadedNotebookCount, 'notebook')}.';
   }
 
   Future<void> _openSyncStatus() async {
@@ -624,7 +624,7 @@ class _LibraryScreenState extends State<LibraryScreen>
               const SizedBox(height: 8),
               Text(
                 _syncStatus.phase == _LibrarySyncPhase.idle
-                    ? '本地笔记可离线使用；登录期间会自动与云端同步。'
+                    ? 'Local notes work offline and sync automatically while you are signed in.'
                     : _syncStatus.message,
               ),
               const SizedBox(height: 20),
@@ -638,7 +638,7 @@ class _LibraryScreenState extends State<LibraryScreen>
                     ? null
                     : () => Navigator.of(context).pop(true),
                 icon: const Icon(Icons.sync_rounded),
-                label: Text(_syncStatus.canRetry ? '重试同步' : '立即同步'),
+                label: Text(_syncStatus.canRetry ? 'Retry Sync' : 'Sync Now'),
               ),
             ],
           ),
@@ -662,9 +662,9 @@ class _LibraryScreenState extends State<LibraryScreen>
           child: Column(
             children: [
               ListTile(
-                title: const Text('同步冲突'),
+                title: const Text('Sync Conflicts'),
                 subtitle: Text(
-                  '${_pendingConflicts.length + _structuralConflicts.length} 项待处理；本机与云端版本均已安全保留。',
+                  '${_counted(_pendingConflicts.length + _structuralConflicts.length, 'item')} ${_pendingConflicts.length + _structuralConflicts.length == 1 ? 'needs' : 'need'} attention. Local and cloud versions are safely preserved.',
                 ),
               ),
               const Divider(height: 1),
@@ -682,7 +682,7 @@ class _LibraryScreenState extends State<LibraryScreen>
                         leading: const Icon(Icons.account_tree_outlined),
                         title: Text(_structuralConflictTitle(conflict)),
                         subtitle: Text(
-                          conflict.fields.map(_structuralFieldLabel).join('、'),
+                          conflict.fields.map(_structuralFieldLabel).join(', '),
                         ),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () async {
@@ -696,8 +696,8 @@ class _LibraryScreenState extends State<LibraryScreen>
                     }
                     final conflict = _pendingConflicts[index];
                     final resourceLabel = conflict.resourceType == 'page'
-                        ? '页面冲突'
-                        : '笔记冲突';
+                        ? 'Page conflict'
+                        : 'Notebook conflict';
                     final createdAt = conflict.createdAt.toLocal();
                     final time =
                         '${createdAt.year.toString().padLeft(4, '0')}-'
@@ -707,7 +707,7 @@ class _LibraryScreenState extends State<LibraryScreen>
                         '${createdAt.minute.toString().padLeft(2, '0')}';
                     return ListTile(
                       leading: const Icon(Icons.call_split_outlined),
-                      title: Text(conflict.copyDisplayName),
+                      title: Text(conflict.displayName),
                       subtitle: Text('$resourceLabel · $time'),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () async {
@@ -721,7 +721,9 @@ class _LibraryScreenState extends State<LibraryScreen>
               ),
               const Padding(
                 padding: EdgeInsets.fromLTRB(24, 12, 24, 20),
-                child: Text('正文冲突可保留两份；结构冲突请选择使用本机或云端版本。'),
+                child: Text(
+                  'Content conflicts can keep both copies. For structural conflicts, choose the local or cloud version.',
+                ),
               ),
             ],
           ),
@@ -754,20 +756,24 @@ class _LibraryScreenState extends State<LibraryScreen>
                 await showDialog<bool>(
                   context: context,
                   builder: (context) => AlertDialog(
-                    title: Text(useLocal ? '使用本机版本？' : '使用云端版本？'),
+                    title: Text(
+                      useLocal
+                          ? 'Use the local version?'
+                          : 'Use the cloud version?',
+                    ),
                     content: Text(
                       useLocal
-                          ? '本机结构将提交到云端；若云端再次变化，会重新提示。'
-                          : '这项本机结构修改将撤销，并应用已验证的云端结构。笔记正文与附件不会删除。',
+                          ? 'The local structure will be submitted to the cloud. You will be notified again if the cloud version changes.'
+                          : 'This local structural change will be reverted and the verified cloud structure applied. Note content and attachments will not be deleted.',
                     ),
                     actions: [
                       TextButton(
                         onPressed: () => Navigator.of(context).pop(false),
-                        child: const Text('取消'),
+                        child: const Text('Cancel'),
                       ),
                       FilledButton(
                         onPressed: () => Navigator.of(context).pop(true),
-                        child: const Text('确认'),
+                        child: const Text('Confirm'),
                       ),
                     ],
                   ),
@@ -795,8 +801,8 @@ class _LibraryScreenState extends State<LibraryScreen>
                       ? _LibrarySyncPhase.completed
                       : _LibrarySyncPhase.needsAttention,
                   result.pendingConflicts.isEmpty
-                      ? '结构冲突已处理，本地与云端已同步。'
-                      : '${result.pendingConflicts.length} 项结构冲突仍待处理。',
+                      ? 'The structural conflict was resolved. Local and cloud data are synchronized.'
+                      : '${_counted(result.pendingConflicts.length, 'structural conflict')} still ${result.pendingConflicts.length == 1 ? 'needs' : 'need'} attention.',
                 );
               });
               await _loadNotebooks();
@@ -805,7 +811,8 @@ class _LibraryScreenState extends State<LibraryScreen>
               if (!context.mounted) return;
               setSheetState(() {
                 busy = null;
-                errorMessage = '处理未完成；本机与云端版本仍安全保留，请重试。';
+                errorMessage =
+                    'Resolution was not completed. Local and cloud versions remain safely preserved; please retry.';
               });
             }
           }
@@ -823,25 +830,25 @@ class _LibraryScreenState extends State<LibraryScreen>
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '冲突字段：${conflict.fields.map(_structuralFieldLabel).join('、')}',
+                    'Conflicting fields: ${conflict.fields.map(_structuralFieldLabel).join(', ')}',
                   ),
                   const SizedBox(height: 16),
                   _StructuralVersionCard(
-                    title: '共同基线',
+                    title: 'Shared Baseline',
                     summary: _structuralMetadataSummary(
                       conflict.baseMetadata,
                       conflict.fields,
                     ),
                   ),
                   _StructuralVersionCard(
-                    title: '本机版本',
+                    title: 'Local Version',
                     summary: _structuralMetadataSummary(
                       conflict.localMetadata,
                       conflict.fields,
                     ),
                   ),
                   _StructuralVersionCard(
-                    title: '云端版本',
+                    title: 'Cloud Version',
                     summary: _structuralMetadataSummary(
                       conflict.cloudMetadata,
                       conflict.fields,
@@ -862,7 +869,7 @@ class _LibraryScreenState extends State<LibraryScreen>
                         ? () =>
                               resolve(SyncStructuralConflictResolution.useLocal)
                         : null,
-                    child: const Text('使用本机版本'),
+                    child: const Text('Use Local Version'),
                   ),
                   const SizedBox(height: 10),
                   OutlinedButton(
@@ -870,13 +877,13 @@ class _LibraryScreenState extends State<LibraryScreen>
                         ? () =>
                               resolve(SyncStructuralConflictResolution.useCloud)
                         : null,
-                    child: const Text('使用云端版本'),
+                    child: const Text('Use Cloud Version'),
                   ),
                   TextButton(
                     onPressed: busy == null
                         ? () => Navigator.of(context).pop()
                         : null,
-                    child: const Text('取消'),
+                    child: const Text('Cancel'),
                   ),
                 ],
               ),
@@ -902,7 +909,8 @@ class _LibraryScreenState extends State<LibraryScreen>
             if (busyResolution != null) return;
             if (resolutionService is! SyncConflictResolutionService) {
               setSheetState(() {
-                errorMessage = '当前同步服务暂不支持处理冲突，请稍后重试。';
+                errorMessage =
+                    'Conflict resolution is not available from the current sync service. Please try again later.';
               });
               return;
             }
@@ -922,7 +930,8 @@ class _LibraryScreenState extends State<LibraryScreen>
             if (session == null) {
               setSheetState(() {
                 busyResolution = null;
-                errorMessage = '登录状态已失效；两份版本仍然安全保留。';
+                errorMessage =
+                    'Your session expired. Both versions remain safely preserved.';
               });
               return;
             }
@@ -939,7 +948,8 @@ class _LibraryScreenState extends State<LibraryScreen>
               });
               await _loadNotebooks();
               if (!mounted || !context.mounted) return;
-              successMessage = '${resolution.label}完成，云端和本地已同步。';
+              successMessage =
+                  '${resolution.label} completed. Cloud and local data are synchronized.';
               Navigator.of(context).pop();
             } on SyncConflictResolutionException catch (error) {
               if (!context.mounted) return;
@@ -947,26 +957,27 @@ class _LibraryScreenState extends State<LibraryScreen>
                 busyResolution = null;
                 errorMessage = switch (error.failure) {
                   SyncConflictResolutionFailure.staleOriginal =>
-                    '原版本已再次更新，不能直接替换。可改选“保留原版本”或“两个都保留”。',
+                    'The original changed again and cannot be replaced directly. Choose Keep Original or Keep Both.',
                   SyncConflictResolutionFailure.alreadyResolved =>
-                    '这项冲突已在其他设备处理，请稍后重新同步。',
+                    'This conflict was resolved on another device. Please sync again.',
                   SyncConflictResolutionFailure.reconciliationRequired =>
-                    '云端已收到选择，但本地尚未完成同步；两份版本仍保留，请重试。',
+                    'The cloud received your choice, but local synchronization is incomplete. Both versions remain preserved; please retry.',
                   SyncConflictResolutionFailure.unavailable =>
-                    '处理失败，两份版本仍然安全保留，请重试。',
+                    'Resolution failed. Both versions remain safely preserved; please retry.',
                 };
               });
             } on Object {
               if (!context.mounted) return;
               setSheetState(() {
                 busyResolution = null;
-                errorMessage = '处理失败，两份版本仍然安全保留，请重试。';
+                errorMessage =
+                    'Resolution failed. Both versions remain safely preserved; please retry.';
               });
             }
           }
 
           final source = conflict.sourceDeviceId == null
-              ? '未知设备'
+              ? 'Unknown device'
               : conflict.sourceDeviceId!;
           return SafeArea(
             child: SingleChildScrollView(
@@ -976,12 +987,14 @@ class _LibraryScreenState extends State<LibraryScreen>
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    '处理同步冲突',
+                    'Resolve Sync Conflict',
                     style: Theme.of(context).textTheme.headlineSmall,
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    conflict.resourceType == 'page' ? '页面冲突' : '笔记冲突',
+                    conflict.resourceType == 'page'
+                        ? 'Page conflict'
+                        : 'Notebook conflict',
                     style: Theme.of(context).textTheme.labelLarge,
                   ),
                   const SizedBox(height: 16),
@@ -989,17 +1002,17 @@ class _LibraryScreenState extends State<LibraryScreen>
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(Icons.description_outlined),
                     title: Text(conflict.originalDisplayName),
-                    subtitle: const Text('当前原版本'),
+                    subtitle: const Text('Current original'),
                   ),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(Icons.call_split_outlined),
-                    title: Text(conflict.copyDisplayName),
-                    subtitle: Text('来自设备：$source'),
+                    title: Text(conflict.displayName),
+                    subtitle: Text('From device: $source'),
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '两个版本都已安全保留。请选择处理结果；关闭此页面不会做任何更改。',
+                    'Both versions are safely preserved. Choose an outcome; closing this sheet makes no changes.',
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
                   if (errorMessage != null) ...[
@@ -1024,7 +1037,7 @@ class _LibraryScreenState extends State<LibraryScreen>
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.copy_all_outlined),
-                    label: const Text('两个都保留（推荐）'),
+                    label: const Text('Keep Both (Recommended)'),
                   ),
                   const SizedBox(height: 10),
                   OutlinedButton(
@@ -1032,7 +1045,7 @@ class _LibraryScreenState extends State<LibraryScreen>
                     onPressed: busyResolution == null
                         ? () => resolve(SyncConflictResolution.keepOriginal)
                         : null,
-                    child: const Text('保留原版本'),
+                    child: const Text('Keep Original'),
                   ),
                   const SizedBox(height: 10),
                   OutlinedButton(
@@ -1040,14 +1053,14 @@ class _LibraryScreenState extends State<LibraryScreen>
                     onPressed: busyResolution == null
                         ? () => resolve(SyncConflictResolution.useConflict)
                         : null,
-                    child: const Text('使用冲突版本'),
+                    child: const Text('Use Conflict Version'),
                   ),
                   const SizedBox(height: 8),
                   TextButton(
                     onPressed: busyResolution == null
                         ? () => Navigator.of(context).pop()
                         : null,
-                    child: const Text('取消'),
+                    child: const Text('Cancel'),
                   ),
                 ],
               ),
@@ -1068,22 +1081,22 @@ class _LibraryScreenState extends State<LibraryScreen>
     SyncConflictResolution resolution,
   ) async {
     final description = resolution == SyncConflictResolution.keepOriginal
-        ? '将结束这个待处理冲突并继续使用当前原版本。冲突快照仍保留用于恢复。'
-        : '将用冲突版本更新当前原版本。若原版本已再次变化，操作会安全停止。';
+        ? 'This ends the pending conflict and keeps the current original. The conflict snapshot remains available for recovery.'
+        : 'This updates the current original with the conflict version. If the original changed again, the operation stops safely.';
     return await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: Text('确认${resolution.label}？'),
+            title: Text('Confirm ${resolution.label}?'),
             content: Text(description),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('取消'),
+                child: const Text('Cancel'),
               ),
               FilledButton(
                 key: const ValueKey('confirm-conflict-resolution'),
                 onPressed: () => Navigator.of(context).pop(true),
-                child: const Text('确认'),
+                child: const Text('Confirm'),
               ),
             ],
           ),
@@ -1107,7 +1120,8 @@ class _LibraryScreenState extends State<LibraryScreen>
             if (busyId != null) return;
             if (restoreService is! SyncTombstoneRestoreService) {
               setSheetState(() {
-                errorMessage = '当前同步服务暂不支持恢复，请稍后重试。';
+                errorMessage =
+                    'Restore is not available from the current sync service. Please try again later.';
               });
               return;
             }
@@ -1115,7 +1129,8 @@ class _LibraryScreenState extends State<LibraryScreen>
             final session = widget.authController.session;
             if (session == null) {
               setSheetState(() {
-                errorMessage = '登录状态已失效；删除记录仍然保留。';
+                errorMessage =
+                    'Your session expired. The deletion record remains available.';
               });
               return;
             }
@@ -1136,7 +1151,7 @@ class _LibraryScreenState extends State<LibraryScreen>
               });
               await _loadNotebooks();
               if (!mounted || !context.mounted) return;
-              successMessage = '${tombstone.resourceLabel}已恢复。';
+              successMessage = '${tombstone.resourceLabel} restored.';
               Navigator.of(context).pop();
             } on SyncTombstoneRestoreException catch (error) {
               if (!context.mounted) return;
@@ -1144,18 +1159,19 @@ class _LibraryScreenState extends State<LibraryScreen>
                 busyId = null;
                 errorMessage = switch (error.failure) {
                   SyncTombstoneRestoreFailure.alreadyRestored =>
-                    '此项目已在其他设备恢复，请稍后重新同步。',
+                    'This item was restored on another device. Please sync again.',
                   SyncTombstoneRestoreFailure.reconciliationRequired =>
-                    '云端已恢复，但本地尚未完成同步；删除记录仍保留，请重试。',
+                    'The item was restored in the cloud, but local synchronization is incomplete. The deletion record remains; please retry.',
                   SyncTombstoneRestoreFailure.unavailable =>
-                    '恢复失败，删除记录仍然安全保留，请重试。',
+                    'Restore failed. The deletion record remains safely stored; please retry.',
                 };
               });
             } on Object {
               if (!context.mounted) return;
               setSheetState(() {
                 busyId = null;
-                errorMessage = '恢复失败，删除记录仍然安全保留，请重试。';
+                errorMessage =
+                    'Restore failed. The deletion record remains safely stored; please retry.';
               });
             }
           }
@@ -1166,9 +1182,9 @@ class _LibraryScreenState extends State<LibraryScreen>
               child: Column(
                 children: [
                   ListTile(
-                    title: const Text('最近删除'),
+                    title: const Text('Recently Deleted'),
                     subtitle: Text(
-                      '${_activeTombstones.length} 项可恢复；当前没有永久删除操作。',
+                      '${_counted(_activeTombstones.length, 'item')} can be restored. Permanent deletion is not currently available.',
                     ),
                   ),
                   if (errorMessage != null)
@@ -1200,7 +1216,7 @@ class _LibraryScreenState extends State<LibraryScreen>
                             '${deletedAt.hour.toString().padLeft(2, '0')}:'
                             '${deletedAt.minute.toString().padLeft(2, '0')}';
                         final source = tombstone.deletedByDeviceId == null
-                            ? '未知设备'
+                            ? 'Unknown device'
                             : tombstone.deletedByDeviceId!;
                         final busy = busyId == tombstone.id;
                         return ListTile(
@@ -1210,7 +1226,7 @@ class _LibraryScreenState extends State<LibraryScreen>
                                 : Icons.description_outlined,
                           ),
                           title: Text(tombstone.resourceLabel),
-                          subtitle: Text('$time · 来源设备：$source'),
+                          subtitle: Text('$time · Source device: $source'),
                           trailing: FilledButton.tonalIcon(
                             key: ValueKey('restore-tombstone-${tombstone.id}'),
                             onPressed: busyId == null
@@ -1224,7 +1240,7 @@ class _LibraryScreenState extends State<LibraryScreen>
                                     ),
                                   )
                                 : const Icon(Icons.restore),
-                            label: const Text('恢复'),
+                            label: const Text('Restore'),
                           ),
                         );
                       },
@@ -1626,7 +1642,7 @@ class _LibraryScreenState extends State<LibraryScreen>
     setState(() {
       _syncStatus = const _LibrarySyncStatus(
         _LibrarySyncPhase.syncing,
-        '正在将删除同步到云端…',
+        'Synchronizing the deletion to the cloud…',
       );
     });
     try {
@@ -1647,7 +1663,7 @@ class _LibraryScreenState extends State<LibraryScreen>
         setState(() {
           _syncStatus = const _LibrarySyncStatus(
             _LibrarySyncPhase.preservedEdit,
-            '删除遇到另一台设备的新编辑；编辑内容已自动保留，无需处理。',
+            'New edits from another device conflicted with the deletion. The edits were preserved automatically; no action is needed.',
           );
         });
       } else if (pullResult.confirmedLocalDeletionCount > 0 ||
@@ -1655,7 +1671,7 @@ class _LibraryScreenState extends State<LibraryScreen>
         setState(() {
           _syncStatus = const _LibrarySyncStatus(
             _LibrarySyncPhase.completed,
-            '已将删除同步到云端，其他设备将在下次同步时更新。',
+            'The deletion was synchronized to the cloud. Other devices will update on their next sync.',
           );
         });
       } else if (pullResult.status ==
@@ -1664,14 +1680,14 @@ class _LibraryScreenState extends State<LibraryScreen>
         setState(() {
           _syncStatus = const _LibrarySyncStatus(
             _LibrarySyncPhase.needsAttention,
-            '删除同步需要协调；本地和云端内容均未被猜测性覆盖。',
+            'The deletion requires reconciliation. Neither local nor cloud content was overwritten.',
           );
         });
       } else {
         setState(() {
           _syncStatus = const _LibrarySyncStatus(
             _LibrarySyncPhase.completed,
-            '删除同步已完成。',
+            'Deletion synchronization completed.',
           );
         });
       }
@@ -1680,7 +1696,7 @@ class _LibraryScreenState extends State<LibraryScreen>
       setState(() {
         _syncStatus = _LibrarySyncStatus(
           _LibrarySyncPhase.failed,
-          '笔记已从本机删除；${error.pendingOperationCount} 项更改仍安全保留，等待重试。',
+          'The notebook was deleted from this device. ${_counted(error.pendingOperationCount, 'change')} ${error.pendingOperationCount == 1 ? 'remains' : 'remain'} safely stored and ready to retry.',
         );
       });
     } catch (_) {
@@ -1688,7 +1704,7 @@ class _LibraryScreenState extends State<LibraryScreen>
       setState(() {
         _syncStatus = const _LibrarySyncStatus(
           _LibrarySyncPhase.failed,
-          '笔记已从本机删除；云端删除仍安全保留，等待联网后重试。',
+          'The notebook was deleted from this device. The cloud deletion remains safely queued until the network is available.',
         );
       });
     }
@@ -1852,23 +1868,23 @@ class _StructuralVersionCard extends StatelessWidget {
 
 String _structuralConflictTitle(SyncStructuralConflict conflict) =>
     switch (conflict.resourceType) {
-      SyncResourceType.folder => '文件夹结构冲突',
-      SyncResourceType.notebook => '笔记结构冲突',
-      SyncResourceType.page => '页面属性冲突',
-      SyncResourceType.infiniteCanvas => '画布背景冲突',
+      SyncResourceType.folder => 'Folder Structure Conflict',
+      SyncResourceType.notebook => 'Notebook Structure Conflict',
+      SyncResourceType.page => 'Page Property Conflict',
+      SyncResourceType.infiniteCanvas => 'Canvas Background Conflict',
     };
 
 String _structuralFieldLabel(String field) => switch (field) {
-  'name' => '名称',
-  'title' => '标题',
-  'isArchived' => '归档状态',
-  'folderId' => '所在文件夹',
-  'pageOrder' => '页面顺序',
-  'template' => '纸张模板',
-  'rotationQuarterTurns' => '页面方向',
-  'width' || 'height' => '页面尺寸',
-  'coordinateSpaceVersion' => '坐标版本',
-  'background' => '画布背景',
+  'name' => 'Name',
+  'title' => 'Title',
+  'isArchived' => 'Archive Status',
+  'folderId' => 'Folder',
+  'pageOrder' => 'Page Order',
+  'template' => 'Paper Template',
+  'rotationQuarterTurns' => 'Page Orientation',
+  'width' || 'height' => 'Page Size',
+  'coordinateSpaceVersion' => 'Coordinate Version',
+  'background' => 'Canvas Background',
   _ => field,
 };
 
@@ -1879,21 +1895,22 @@ String _structuralMetadataSummary(
   final summaries = <String>[];
   for (final field in fields) {
     if (field == 'width' || field == 'height') {
-      if (summaries.any((item) => item.startsWith('页面尺寸：'))) continue;
-      summaries.add('页面尺寸：${metadata['width']} × ${metadata['height']}');
+      if (summaries.any((item) => item.startsWith('Page Size:'))) continue;
+      summaries.add('Page Size: ${metadata['width']} × ${metadata['height']}');
       continue;
     }
     final value = metadata[field];
     final display = switch ((field, value)) {
-      ('isArchived', true) => '已归档',
-      ('isArchived', false) => '未归档',
-      ('folderId', null) => '资料库根目录',
-      ('pageOrder', List<Object?> order) => '${order.length} 页的既定顺序',
+      ('isArchived', true) => 'Archived',
+      ('isArchived', false) => 'Not archived',
+      ('folderId', null) => 'Library root',
+      ('pageOrder', List<Object?> order) =>
+        'Defined order of ${order.length} pages',
       ('rotationQuarterTurns', int turns) => '${turns * 90}°',
-      (_, null) => '无',
+      (_, null) => 'None',
       _ => value.toString(),
     };
-    summaries.add('${_structuralFieldLabel(field)}：$display');
+    summaries.add('${_structuralFieldLabel(field)}: $display');
   }
   return summaries.join('\n');
 }
@@ -2087,7 +2104,8 @@ class _LibraryHeader extends StatelessWidget {
                           child: IconButton(
                             key: const ValueKey('library-recently-deleted'),
                             onPressed: onOpenRecentlyDeleted,
-                            tooltip: '最近删除 $recentlyDeletedCount 项',
+                            tooltip:
+                                '$recentlyDeletedCount recently deleted items',
                             icon: const Icon(Icons.restore_from_trash_outlined),
                           ),
                         ),
@@ -2137,13 +2155,18 @@ class _LibraryHeader extends StatelessWidget {
 }
 
 String _syncStatusTitle(_LibrarySyncPhase phase) => switch (phase) {
-  _LibrarySyncPhase.idle => '同步状态',
-  _LibrarySyncPhase.syncing => '正在同步',
-  _LibrarySyncPhase.completed => '同步完成',
-  _LibrarySyncPhase.needsAttention => '同步需要处理',
-  _LibrarySyncPhase.failed => '同步失败',
-  _LibrarySyncPhase.preservedEdit => '编辑已保留',
+  _LibrarySyncPhase.idle => 'Sync Status',
+  _LibrarySyncPhase.syncing => 'Synchronizing',
+  _LibrarySyncPhase.completed => 'Sync Complete',
+  _LibrarySyncPhase.needsAttention => 'Sync Needs Attention',
+  _LibrarySyncPhase.failed => 'Sync Failed',
+  _LibrarySyncPhase.preservedEdit => 'Edit Preserved',
 };
+
+String _counted(int count, String singular, [String? plural]) {
+  if (count == 1) return '$count $singular';
+  return '$count ${plural ?? '${singular}s'}';
+}
 
 Widget _syncStatusIcon(BuildContext context, _LibrarySyncPhase phase) {
   if (phase == _LibrarySyncPhase.syncing) {
