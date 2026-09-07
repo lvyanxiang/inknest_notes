@@ -1984,8 +1984,6 @@ class _LibraryHeader extends StatelessWidget {
                 : constraints.maxWidth < 600
                 ? 16.0
                 : 24.0;
-            final compactControls = constraints.maxWidth < 700;
-
             return Padding(
               padding: EdgeInsets.fromLTRB(
                 horizontalPadding,
@@ -2117,7 +2115,7 @@ class _LibraryHeader extends StatelessWidget {
                   ),
                   const SizedBox(height: 14),
                   _LibraryCommandBar(
-                    compact: compactControls,
+                    phone: phoneLayout,
                     searchController: searchController,
                     sortMode: sortMode,
                     showNewFolder: showNewFolder,
@@ -2217,7 +2215,7 @@ class _LibraryAccountButton extends StatelessWidget {
 
 class _LibraryCommandBar extends StatelessWidget {
   const _LibraryCommandBar({
-    required this.compact,
+    required this.phone,
     required this.searchController,
     required this.sortMode,
     required this.showNewFolder,
@@ -2229,7 +2227,7 @@ class _LibraryCommandBar extends StatelessWidget {
     required this.onCreateFolder,
   });
 
-  final bool compact;
+  final bool phone;
   final TextEditingController searchController;
   final _LibrarySortMode sortMode;
   final bool showNewFolder;
@@ -2247,23 +2245,28 @@ class _LibraryCommandBar extends StatelessWidget {
       controller: searchController,
       onChanged: onSearchChanged,
       onClear: onClearSearch,
+      compact: phone,
+    );
+    final sortControl = _LibrarySortControl(
+      mode: sortMode,
+      onSelected: onSortChanged,
+      compact: phone,
+      expanded: false,
     );
     final controls = <Widget>[
-      _LibrarySortControl(mode: sortMode, onSelected: onSortChanged),
+      if (phone) SizedBox(width: 108, child: sortControl) else sortControl,
       if (showNewFolder) ...[
-        const SizedBox(width: 6),
-        IconButton(
+        SizedBox(width: phone ? 4 : 6),
+        _LibraryHeaderIconButton(
           onPressed: onCreateFolder,
           tooltip: 'New folder',
-          style: IconButton.styleFrom(backgroundColor: colorScheme.surface),
           icon: const Icon(Icons.create_new_folder_outlined),
         ),
       ],
-      const SizedBox(width: 6),
-      IconButton(
+      SizedBox(width: phone ? 4 : 6),
+      _LibraryHeaderIconButton(
         onPressed: onToggleArchived,
         tooltip: showArchived ? 'Show notebooks' : 'Show archived',
-        style: IconButton.styleFrom(backgroundColor: colorScheme.surface),
         icon: Icon(
           showArchived ? Icons.inventory_2 : Icons.inventory_2_outlined,
         ),
@@ -2272,37 +2275,38 @@ class _LibraryCommandBar extends StatelessWidget {
 
     return Container(
       key: const ValueKey('library-command-bar'),
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: _libraryFurnitureColor(colorScheme),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: colorScheme.outlineVariant),
-      ),
-      child: compact
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                search,
-                const SizedBox(height: 8),
-                Row(children: controls),
-              ],
-            )
-          : Row(
-              children: [
-                Expanded(child: search),
-                const SizedBox(width: 8),
-                ...controls,
-              ],
+      padding: phone ? EdgeInsets.zero : const EdgeInsets.all(8),
+      decoration: phone
+          ? null
+          : BoxDecoration(
+              color: _libraryFurnitureColor(colorScheme),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: colorScheme.outlineVariant),
             ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(child: search),
+          SizedBox(width: phone ? 6 : 8),
+          ...controls,
+        ],
+      ),
     );
   }
 }
 
 class _LibrarySortControl extends StatelessWidget {
-  const _LibrarySortControl({required this.mode, required this.onSelected});
+  const _LibrarySortControl({
+    required this.mode,
+    required this.onSelected,
+    this.compact = false,
+    this.expanded = false,
+  });
 
   final _LibrarySortMode mode;
   final ValueChanged<_LibrarySortMode> onSelected;
+  final bool compact;
+  final bool expanded;
 
   @override
   Widget build(BuildContext context) {
@@ -2317,6 +2321,9 @@ class _LibrarySortControl extends StatelessWidget {
         tooltip: 'Sort notebooks',
         initialValue: mode,
         onSelected: onSelected,
+        style: compact
+            ? const ButtonStyle(tapTargetSize: MaterialTapTargetSize.shrinkWrap)
+            : null,
         itemBuilder: (context) {
           return [
             for (final option in _LibrarySortMode.values)
@@ -2329,20 +2336,32 @@ class _LibrarySortControl extends StatelessWidget {
         },
         child: ExcludeSemantics(
           child: Container(
-            height: 48,
-            constraints: const BoxConstraints(minWidth: 116),
-            padding: const EdgeInsets.symmetric(horizontal: 14),
+            height: compact ? 44 : 48,
+            width: expanded ? double.infinity : null,
+            constraints: BoxConstraints(minWidth: compact ? 0 : 116),
+            padding: EdgeInsets.symmetric(horizontal: compact ? 12 : 14),
             decoration: BoxDecoration(
-              color: colorScheme.surface,
-              borderRadius: BorderRadius.circular(10),
+              color: compact
+                  ? colorScheme.surfaceContainerHighest
+                  : colorScheme.surface,
+              borderRadius: BorderRadius.circular(compact ? 14 : 10),
               border: Border.all(color: colorScheme.outlineVariant),
             ),
             child: Row(
-              mainAxisSize: MainAxisSize.min,
+              mainAxisSize: expanded ? MainAxisSize.max : MainAxisSize.min,
               children: [
-                const Icon(Icons.sort_rounded, size: 20),
-                const SizedBox(width: 8),
-                Text(mode.label),
+                Icon(Icons.sort_rounded, size: compact ? 18 : 20),
+                SizedBox(width: compact ? 6 : 8),
+                if (expanded || compact)
+                  Flexible(
+                    child: Text(
+                      mode.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  )
+                else
+                  Text(mode.label),
                 const SizedBox(width: 4),
                 const Icon(Icons.expand_more_rounded, size: 18),
               ],
@@ -2354,23 +2373,55 @@ class _LibrarySortControl extends StatelessWidget {
   }
 }
 
+class _LibraryHeaderIconButton extends StatelessWidget {
+  const _LibraryHeaderIconButton({
+    required this.onPressed,
+    required this.tooltip,
+    required this.icon,
+  });
+
+  final VoidCallback onPressed;
+  final String tooltip;
+  final Widget icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return IconButton(
+      onPressed: onPressed,
+      tooltip: tooltip,
+      constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+      style: IconButton.styleFrom(
+        backgroundColor: colorScheme.surfaceContainerHighest,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: colorScheme.outlineVariant),
+        ),
+      ),
+      icon: icon,
+    );
+  }
+}
+
 class _LibrarySearchBar extends StatelessWidget {
   const _LibrarySearchBar({
     required this.controller,
     required this.onChanged,
     required this.onClear,
+    this.compact = false,
   });
 
   final TextEditingController controller;
   final ValueChanged<String> onChanged;
   final VoidCallback onClear;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
     return SizedBox(
-      height: 48,
+      height: compact ? 44 : 48,
       child: TextField(
         key: const ValueKey('library-search-field'),
         controller: controller,
@@ -2386,13 +2437,13 @@ class _LibrarySearchBar extends StatelessWidget {
                 ),
           filled: true,
           fillColor: colorScheme.surface,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+          contentPadding: EdgeInsets.symmetric(horizontal: compact ? 12 : 14),
           enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(compact ? 14 : 10),
             borderSide: BorderSide(color: colorScheme.outlineVariant),
           ),
           focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(compact ? 14 : 10),
             borderSide: BorderSide(color: colorScheme.primary, width: 1.5),
           ),
         ),

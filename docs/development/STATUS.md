@@ -22,6 +22,8 @@
   Recognition V2 core and the Android phone UX audit remain delivered. Infinite
   canvas now uses the same two-row editor chrome and width-based More overflow;
   background and Fit content remain its only canvas-specific document actions.
+  The library header now uses one shared flat row across phone and tablet, with a
+  flexible search, compact sorting, and folder/archive actions.
 
 ### Release readiness
 

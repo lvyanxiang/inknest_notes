@@ -47,6 +47,9 @@ surrounding header and dense contextual controls to keep touch targets stable.
 - Placement and hierarchy:
   - Under 480dp, remove the decorative library mark/brand line from the top row
     and prioritize location title, summary, and core actions.
+  - Use one shared phone/tablet command row: keep search as the flexible primary
+    command, remove the nested outer command surface, and place a compact sort
+    control plus matching 44dp folder/archive buttons beside it.
   - The phone keeps the existing packed spine rows and their title, metadata,
     open, and action behavior.
 - Reused components: existing search, sort, account, notebook/folder action menus,
@@ -81,6 +84,8 @@ surrounding header and dense contextual controls to keep touch targets stable.
 
 - [x] 360dp phone library has no clipped heading fragments and retains the
       bookshelf/spine presentation.
+- [x] Phone and tablet library commands keep search primary and present sort plus
+      folder/archive actions together in one compact row.
 - [x] Export dialog at 360dp has no overflow and no per-letter wrapping.
 - [x] Lasso selection at 360dp has no yellow/black overflow stripe.
 - [x] Text toolbar actions render at least 40dp and target approximately 44dp on
