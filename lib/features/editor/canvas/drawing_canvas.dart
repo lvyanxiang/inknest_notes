@@ -1,8 +1,13 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' show PointerDeviceKind;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:inknest_notes/features/editor/shapes/shape_layer.dart';
+import 'package:inknest_notes/features/editor/shapes/shape_recognizer.dart';
 import 'package:inknest_notes/models/note_page.dart';
+import 'package:inknest_notes/models/note_shape.dart';
 import 'package:inknest_notes/models/stroke.dart';
 import 'package:inknest_notes/models/stroke_geometry.dart';
 import 'package:inknest_notes/models/stroke_point.dart';
@@ -17,6 +22,7 @@ class DrawingCanvas extends StatefulWidget {
     required this.fingerWritingAssistEnabled,
     required this.onStrokeComplete,
     required this.onErase,
+    this.onShapeComplete,
     this.onEraseStart,
     this.onEraseEnd,
     this.replayRecordingId,
@@ -30,6 +36,7 @@ class DrawingCanvas extends StatefulWidget {
   final bool fingerWritingAssistEnabled;
   final ValueChanged<Stroke> onStrokeComplete;
   final ValueChanged<List<StrokePoint>> onErase;
+  final ValueChanged<NoteShape>? onShapeComplete;
   final VoidCallback? onEraseStart;
   final VoidCallback? onEraseEnd;
   final String? replayRecordingId;
@@ -41,11 +48,37 @@ class DrawingCanvas extends StatefulWidget {
 }
 
 class _DrawingCanvasState extends State<DrawingCanvas> {
+  static const _drawAndHoldDelay = Duration(milliseconds: 500);
+
   final Set<int> _activePointers = {};
   int? _drawingPointer;
   PointerDeviceKind? _drawingPointerKind;
   Stroke? _activeStroke;
+  Timer? _drawAndHoldTimer;
+  NoteShape? _heldShapePreview;
+  Offset? _heldShapePointer;
   bool _isMultitouch = false;
+
+  bool get _drawAndHoldEnabled =>
+      widget.tool.type == ToolType.pen &&
+      widget.tool.drawAndHoldShapeEnabled &&
+      widget.onShapeComplete != null;
+
+  @override
+  void didUpdateWidget(covariant DrawingCanvas oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.tool.type != widget.tool.type ||
+        oldWidget.tool.drawAndHoldShapeEnabled !=
+            widget.tool.drawAndHoldShapeEnabled) {
+      _cancelDrawAndHoldPreview();
+    }
+  }
+
+  @override
+  void dispose() {
+    _drawAndHoldTimer?.cancel();
+    super.dispose();
+  }
 
   void _startStroke(PointerDownEvent event) {
     if (_shouldIgnorePointer(event)) {
@@ -81,6 +114,7 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
         points: [point],
       );
     });
+    _scheduleDrawAndHold();
   }
 
   void _appendPoint(PointerMoveEvent event) {
@@ -104,6 +138,18 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
     }
 
     final point = _pointFromEvent(event.localPosition, event.pressure);
+    final heldShape = _heldShapePreview;
+    final heldPointer = _heldShapePointer;
+    if (heldShape != null && heldPointer != null) {
+      setState(() {
+        _heldShapePreview = _resizeHeldShape(
+          heldShape,
+          point.offset - heldPointer,
+        );
+        _heldShapePointer = point.offset;
+      });
+      return;
+    }
     if (!StrokeGeometry.shouldAppendPoint(activeStroke.points, point)) {
       return;
     }
@@ -113,6 +159,7 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
         points: [...activeStroke.points, point],
       );
     });
+    _scheduleDrawAndHold();
   }
 
   void _endStroke(PointerEvent event) {
@@ -134,7 +181,9 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
     }
 
     final activeStroke = _activeStroke;
+    final heldShape = _heldShapePreview;
     final pointerKind = _drawingPointerKind;
+    _drawAndHoldTimer?.cancel();
     _drawingPointer = null;
     _drawingPointerKind = null;
     if (widget.tool.type == ToolType.eraser) {
@@ -147,7 +196,14 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
 
     setState(() {
       _activeStroke = null;
+      _heldShapePreview = null;
+      _heldShapePointer = null;
     });
+
+    if (heldShape != null) {
+      widget.onShapeComplete?.call(heldShape);
+      return;
+    }
 
     if (activeStroke.points.isNotEmpty) {
       widget.onStrokeComplete(
@@ -177,6 +233,9 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
     _drawingPointer = null;
     _drawingPointerKind = null;
     _isMultitouch = true;
+    _drawAndHoldTimer?.cancel();
+    _heldShapePreview = null;
+    _heldShapePointer = null;
 
     if (_activeStroke == null) {
       return;
@@ -184,6 +243,71 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
 
     setState(() {
       _activeStroke = null;
+    });
+  }
+
+  void _scheduleDrawAndHold() {
+    _drawAndHoldTimer?.cancel();
+    if (!_drawAndHoldEnabled || _activeStroke == null) {
+      return;
+    }
+    _drawAndHoldTimer = Timer(_drawAndHoldDelay, _recognizeHeldStroke);
+  }
+
+  void _recognizeHeldStroke() {
+    final stroke = _activeStroke;
+    if (!mounted || stroke == null || _drawingPointer == null) {
+      return;
+    }
+    final shape = recognizeHandDrawnShape(
+      points: [for (final point in stroke.points) point.offset],
+      id: 'shape-${DateTime.now().microsecondsSinceEpoch}',
+      color: stroke.color,
+      width: stroke.width,
+    );
+    if (shape == null) {
+      return;
+    }
+    setState(() {
+      _heldShapePreview = shape;
+      _heldShapePointer = stroke.points.last.offset;
+    });
+    unawaited(HapticFeedback.selectionClick());
+  }
+
+  NoteShape _resizeHeldShape(NoteShape shape, Offset delta) {
+    if (shape.type == NoteShapeType.line || shape.type == NoteShapeType.arrow) {
+      return shape.copyWith(end: shape.end + delta);
+    }
+    final oldBounds = shape.bounds;
+    final nextEnd = shape.end + delta;
+    final nextBounds = Rect.fromPoints(shape.start, nextEnd);
+    final nextVertices = shape.vertices.isEmpty || oldBounds.isEmpty
+        ? shape.vertices
+        : [
+            for (final vertex in shape.vertices)
+              Offset(
+                nextBounds.left +
+                    (vertex.dx - oldBounds.left) /
+                        oldBounds.width *
+                        nextBounds.width,
+                nextBounds.top +
+                    (vertex.dy - oldBounds.top) /
+                        oldBounds.height *
+                        nextBounds.height,
+              ),
+          ];
+    return shape.copyWith(end: nextEnd, vertices: nextVertices);
+  }
+
+  void _cancelDrawAndHoldPreview() {
+    _drawAndHoldTimer?.cancel();
+    if (_heldShapePreview == null) {
+      return;
+    }
+    setState(() {
+      _heldShapePreview = null;
+      _heldShapePointer = null;
     });
   }
 
@@ -206,7 +330,11 @@ class _DrawingCanvasState extends State<DrawingCanvas> {
       child: RepaintBoundary(
         child: CustomPaint(
           painter: _StrokePainter(
-            strokes: [...widget.page.strokes, ?_activeStroke],
+            strokes: [
+              ...widget.page.strokes,
+              if (_heldShapePreview == null) ?_activeStroke,
+            ],
+            heldShapePreview: _heldShapePreview,
             replayRecordingId: widget.replayRecordingId,
             replayStartedAt: widget.replayStartedAt,
             replayPosition: widget.replayPosition,
@@ -238,6 +366,7 @@ Stroke applyFingerWritingAssist({
 class _StrokePainter extends CustomPainter {
   const _StrokePainter({
     required this.strokes,
+    required this.heldShapePreview,
     required this.replayRecordingId,
     required this.replayStartedAt,
     required this.replayPosition,
@@ -247,6 +376,7 @@ class _StrokePainter extends CustomPainter {
   static const _highlightTrail = Duration(milliseconds: 1200);
 
   final List<Stroke> strokes;
+  final NoteShape? heldShapePreview;
   final String? replayRecordingId;
   final DateTime? replayStartedAt;
   final Duration? replayPosition;
@@ -286,6 +416,9 @@ class _StrokePainter extends CustomPainter {
             : BlendMode.srcOver
         ..style = PaintingStyle.stroke;
       _drawStroke(canvas, stroke.points, stroke.width, paint);
+    }
+    if (heldShapePreview case final shape?) {
+      paintNoteShape(canvas, shape);
     }
   }
 
@@ -376,6 +509,7 @@ class _StrokePainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _StrokePainter oldDelegate) {
     return oldDelegate.strokes != strokes ||
+        oldDelegate.heldShapePreview != heldShapePreview ||
         oldDelegate.replayRecordingId != replayRecordingId ||
         oldDelegate.replayStartedAt != replayStartedAt ||
         oldDelegate.replayPosition != replayPosition ||

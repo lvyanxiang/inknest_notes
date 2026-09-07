@@ -66,20 +66,19 @@ class _EditorScreenState extends State<EditorScreen> {
       widget.digitalInkTextRecognizer ?? MlKitDigitalInkTextRecognizer();
   final FontGlyphStrokeGenerator _fontGlyphStrokeGenerator =
       const FontGlyphStrokeGenerator();
-  final GlobalKey<_ZoomablePageViewportState> _viewportKey =
-      GlobalKey<_ZoomablePageViewportState>();
+  final GlobalKey<_ContinuousPagesViewportState> _viewportKey =
+      GlobalKey<_ContinuousPagesViewportState>();
   final Map<String, List<NotePage>> _pageUndoHistoryByPageId = {};
   final Map<String, List<NotePage>> _pageRedoHistoryByPageId = {};
   final Set<String> _selectedStrokeIds = {};
   final Map<String, NotePage> _pagesById = {};
-  final Map<String, PageViewportSessionState> _viewportStatesByPageId = {};
   DrawingTool _tool = const DrawingTool(width: 3);
   late Notebook _notebook;
   late String _currentPageId;
   bool _isPageRailOpen = false;
   bool _isExporting = false;
   bool _isImportingPdfs = false;
-  bool _fingerPanEnabled = false;
+  bool _fingerPanEnabled = true;
   bool? _fingerPanBeforeLasso;
   bool _fingerWritingAssistEnabled = true;
   String? _selectedTextBoxId;
@@ -104,7 +103,7 @@ class _EditorScreenState extends State<EditorScreen> {
   bool _followAudioPlayback = true;
   int _audioPlaybackGeneration = 0;
   NotePage? _page;
-  List<Stroke>? _eraseGestureBaseline;
+  NotePage? _eraseGestureBaseline;
   bool _eraseGestureChanged = false;
   List<Stroke>? _pendingLassoStrokeBaseline;
 
@@ -187,9 +186,10 @@ class _EditorScreenState extends State<EditorScreen> {
     if (_selectedTextBoxId != null || _editingTextBoxId != null) {
       _dismissTextBoxInteraction();
     }
+    final requestedPageId = _currentPageId;
     final page = await widget.notebookRepository.loadPage(
       _notebook,
-      _currentPageId,
+      requestedPageId,
     );
 
     if (!mounted) {
@@ -197,8 +197,11 @@ class _EditorScreenState extends State<EditorScreen> {
     }
 
     setState(() {
-      _page = page;
       _pagesById[page.id] = page;
+      if (_currentPageId != requestedPageId) {
+        return;
+      }
+      _page = page;
       _selectedTextBoxId = null;
       _editingTextBoxId = null;
       _newTextBoxId = null;
@@ -273,6 +276,7 @@ class _EditorScreenState extends State<EditorScreen> {
     }
 
     final updatedPage = page.copyWith(shapes: [...page.shapes, shape]);
+    _recordPageMutation(before: page);
 
     setState(() {
       _page = updatedPage;
@@ -573,6 +577,7 @@ class _EditorScreenState extends State<EditorScreen> {
       });
       await _loadPage();
       unawaited(_loadPageThumbnails());
+      _scrollToPageSoon(importedPageIds.first);
       if (mounted) {
         _showSnackBar(
           'Imported ${sourceFiles.length} PDFs · '
@@ -698,6 +703,7 @@ class _EditorScreenState extends State<EditorScreen> {
     }
 
     final updatedPage = page.copyWith(images: updatedImages);
+    _recordPageMutation(before: page);
 
     setState(() {
       _page = updatedPage;
@@ -743,6 +749,7 @@ class _EditorScreenState extends State<EditorScreen> {
         ? null
         : _pagesById[playbackPageId];
 
+    var shouldScrollToPlaybackPage = false;
     setState(() {
       _audioPlaybackPosition = clampedPosition;
       if (_followAudioPlayback &&
@@ -755,8 +762,12 @@ class _EditorScreenState extends State<EditorScreen> {
         _selectedTextBoxId = null;
         _editingTextBoxId = null;
         _activeImageId = null;
+        shouldScrollToPlaybackPage = true;
       }
     });
+    if (shouldScrollToPlaybackPage) {
+      _scrollToPageSoon(playbackPageId!);
+    }
   }
 
   void _handleAudioPlayerState(PlayerState state) {
@@ -1249,14 +1260,42 @@ class _EditorScreenState extends State<EditorScreen> {
       radius: _tool.width / 2,
     );
 
-    if (identical(remainingStrokes, page.strokes)) {
+    final eraserRadius = _tool.width / 2;
+    final remainingShapes = [
+      for (final shape in page.shapes)
+        if (!points.any(
+          (point) =>
+              noteShapeHitTest(shape, point.offset, tolerance: eraserRadius),
+        ))
+          shape,
+    ];
+    final remainingImages = [
+      for (final image in page.images)
+        if (!points.any(
+          (point) => Rect.fromLTWH(
+            image.position.dx,
+            image.position.dy,
+            image.width,
+            image.height,
+          ).inflate(eraserRadius).contains(point.offset),
+        ))
+          image,
+    ];
+
+    if (identical(remainingStrokes, page.strokes) &&
+        remainingShapes.length == page.shapes.length &&
+        remainingImages.length == page.images.length) {
       return;
     }
 
-    final updatedPage = page.copyWith(strokes: remainingStrokes);
+    final updatedPage = page.copyWith(
+      strokes: remainingStrokes,
+      shapes: remainingShapes,
+      images: remainingImages,
+    );
 
     if (_eraseGestureBaseline == null) {
-      _recordStrokeMutation(page);
+      _recordPageMutation(before: page);
     } else {
       _eraseGestureChanged = true;
       _redoStack.clear();
@@ -1273,7 +1312,7 @@ class _EditorScreenState extends State<EditorScreen> {
   void _beginEraseGesture() {
     final page = _page;
     if (page == null || _eraseGestureBaseline != null) return;
-    _eraseGestureBaseline = List<Stroke>.unmodifiable(page.strokes);
+    _eraseGestureBaseline = page;
     _eraseGestureChanged = false;
   }
 
@@ -1284,7 +1323,7 @@ class _EditorScreenState extends State<EditorScreen> {
     _eraseGestureBaseline = null;
     _eraseGestureChanged = false;
     if (page == null || baseline == null || !changed) return;
-    _recordStrokeMutation(page, before: baseline);
+    _recordPageMutation(before: baseline);
     if (mounted) setState(() {});
   }
 
@@ -1858,6 +1897,7 @@ class _EditorScreenState extends State<EditorScreen> {
       await _savePage(styledPage);
     }
     unawaited(_loadPageThumbnails());
+    _scrollToPageSoon(insertedPageId);
   }
 
   Future<void> _duplicatePage(String pageId) async {
@@ -1893,6 +1933,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
     await _loadPage();
     unawaited(_loadPageThumbnails());
+    _scrollToPageSoon(duplicatedPageId);
   }
 
   Future<void> _deletePage(String pageId) async {
@@ -1940,6 +1981,7 @@ class _EditorScreenState extends State<EditorScreen> {
       await _loadPage();
     }
     unawaited(_loadPageThumbnails());
+    _scrollToPageSoon(nextPageId);
   }
 
   Future<bool> _confirmDeletePage(int pageNumber) async {
@@ -1987,6 +2029,7 @@ class _EditorScreenState extends State<EditorScreen> {
       _notebook = updatedNotebook;
     });
     unawaited(_loadPageThumbnails());
+    _scrollToPageSoon(_currentPageId);
   }
 
   Future<void> _rotatePageClockwise(String pageId) async {
@@ -2014,6 +2057,7 @@ class _EditorScreenState extends State<EditorScreen> {
       }
     });
     unawaited(_loadPageThumbnails());
+    _scrollToPageSoon(_currentPageId);
   }
 
   void _showCoordinateSpaceWriteBlocked(
@@ -2118,16 +2162,24 @@ class _EditorScreenState extends State<EditorScreen> {
       return;
     }
 
+    if (_selectedTextBoxId != null || _editingTextBoxId != null) {
+      _dismissTextBoxInteraction();
+    }
+
+    final cachedPage = _pagesById[pageId];
+
     setState(() {
       _currentPageId = pageId;
-      _page = null;
+      _page = cachedPage;
       _selectedStrokeIds.clear();
       _eraseGestureBaseline = null;
       _eraseGestureChanged = false;
       _pendingLassoStrokeBaseline = null;
     });
 
-    await _loadPage();
+    if (cachedPage == null) {
+      await _loadPage();
+    }
   }
 
   Future<void> _selectPageManually(String pageId) async {
@@ -2142,6 +2194,42 @@ class _EditorScreenState extends State<EditorScreen> {
     }
 
     await _selectPage(pageId);
+    _scrollToPageSoon(pageId);
+  }
+
+  void _selectPageFromScroll(String pageId) {
+    if (pageId == _currentPageId) {
+      return;
+    }
+    final page = _pagesById[pageId];
+    if (page == null) {
+      return;
+    }
+
+    if (_selectedTextBoxId != null || _editingTextBoxId != null) {
+      _dismissTextBoxInteraction();
+    }
+
+    setState(() {
+      _followAudioPlayback = false;
+      _currentPageId = pageId;
+      _page = page;
+      _selectedStrokeIds.clear();
+      _selectedTextBoxId = null;
+      _editingTextBoxId = null;
+      _activeImageId = null;
+      _eraseGestureBaseline = null;
+      _eraseGestureChanged = false;
+      _pendingLassoStrokeBaseline = null;
+    });
+  }
+
+  void _scrollToPageSoon(String pageId) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _viewportKey.currentState?.scrollToPage(pageId);
+      }
+    });
   }
 
   @override
@@ -2449,24 +2537,32 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   Widget _buildPageCanvas(NotePage page) {
+    final useCompactDocumentBar = MediaQuery.sizeOf(context).width < 600;
     return Stack(
       children: [
-        _ZoomablePageViewport(
+        _ContinuousPagesViewport(
           key: _viewportKey,
-          page: page,
+          pageIds: _notebook.pageIds,
+          pagesById: _pagesById,
+          currentPageId: _currentPageId,
           fingerPanEnabled:
               _fingerPanEnabled || page.isCoordinateSpaceWriteProtected,
-          initialSessionState: _viewportStatesByPageId[page.id],
-          onSessionStateChanged: (state) {
-            _viewportStatesByPageId[page.id] = state;
+          showZoomControls:
+              _selectedTextBoxId == null && _editingTextBoxId == null,
+          onCurrentPageChanged: _selectPageFromScroll,
+          pageBuilder: (visiblePage) {
+            return IgnorePointer(
+              ignoring: visiblePage.id != _currentPageId,
+              child: RotatedBox(
+                key: ValueKey(
+                  'rotated-page-surface-${visiblePage.id}-'
+                  '${visiblePage.rotationQuarterTurns}',
+                ),
+                quarterTurns: visiblePage.rotationQuarterTurns,
+                child: _buildPageSurface(visiblePage),
+              ),
+            );
           },
-          child: RotatedBox(
-            key: ValueKey(
-              'rotated-page-surface-${page.id}-${page.rotationQuarterTurns}',
-            ),
-            quarterTurns: page.rotationQuarterTurns,
-            child: _buildPageSurface(page),
-          ),
         ),
         if (page.isCoordinateSpaceWriteProtected)
           Positioned(
@@ -2478,9 +2574,12 @@ class _EditorScreenState extends State<EditorScreen> {
         if (_tool.type == ToolType.lasso && _selectedStrokeIds.isNotEmpty)
           Positioned(
             top: 16,
-            left: 0,
-            right: 0,
-            child: Center(
+            left: useCompactDocumentBar ? 12 : 0,
+            right: useCompactDocumentBar ? 80 : 0,
+            child: Align(
+              alignment: useCompactDocumentBar
+                  ? Alignment.centerLeft
+                  : Alignment.center,
               child: LassoSelectionToolbar(
                 selectedStrokeCount: _selectedStrokesForPage(page).length,
                 onSmartInk: () => unawaited(_runSmartInkForSelectedStrokes()),
@@ -2543,6 +2642,7 @@ class _EditorScreenState extends State<EditorScreen> {
                 fingerPanEnabled: _fingerPanEnabled,
                 fingerWritingAssistEnabled: _fingerWritingAssistEnabled,
                 onStrokeComplete: _addStroke,
+                onShapeComplete: _addShape,
                 onErase: _eraseAt,
                 onEraseStart: _beginEraseGesture,
                 onEraseEnd: _endEraseGesture,
@@ -2558,6 +2658,9 @@ class _EditorScreenState extends State<EditorScreen> {
                 fingerPanEnabled: _fingerPanEnabled,
                 onShapeComplete: _tool.type == ToolType.shape
                     ? _addShape
+                    : null,
+                onStrokeFallback: _tool.type == ToolType.shape
+                    ? _addStroke
                     : null,
               ),
               ImageLayer(
@@ -3496,32 +3599,7 @@ class _ExportOptionsDialogState extends State<_ExportOptionsDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SegmentedButton<_ExportScope>(
-                showSelectedIcon: false,
-                selected: {_scope},
-                segments: const [
-                  ButtonSegment(
-                    value: _ExportScope.fullNotebook,
-                    icon: Icon(Icons.library_books_outlined),
-                    label: Text('Full'),
-                  ),
-                  ButtonSegment(
-                    value: _ExportScope.currentPage,
-                    icon: Icon(Icons.description_outlined),
-                    label: Text('Current'),
-                  ),
-                  ButtonSegment(
-                    value: _ExportScope.selectedPages,
-                    icon: Icon(Icons.playlist_add_check),
-                    label: Text('Pages'),
-                  ),
-                ],
-                onSelectionChanged: (selected) {
-                  setState(() {
-                    _scope = selected.single;
-                  });
-                },
-              ),
+              _buildScopePicker(),
               const SizedBox(height: 16),
               Text(
                 _scopeSummary,
@@ -3557,19 +3635,7 @@ class _ExportOptionsDialogState extends State<_ExportOptionsDialog> {
               const SizedBox(height: 20),
               Text('Export quality', style: theme.textTheme.titleSmall),
               const SizedBox(height: 8),
-              SegmentedButton<PdfExportQuality>(
-                showSelectedIcon: false,
-                selected: {_quality},
-                segments: [
-                  for (final quality in PdfExportQuality.values)
-                    ButtonSegment(value: quality, label: Text(quality.label)),
-                ],
-                onSelectionChanged: (selected) {
-                  setState(() {
-                    _quality = selected.single;
-                  });
-                },
-              ),
+              _buildQualityPicker(),
               const SizedBox(height: 8),
               Text(
                 _quality.description,
@@ -3593,6 +3659,101 @@ class _ExportOptionsDialogState extends State<_ExportOptionsDialog> {
           icon: const Icon(Icons.ios_share),
           label: const Text('Export'),
         ),
+      ],
+    );
+  }
+
+  Widget _buildScopePicker() {
+    if (MediaQuery.sizeOf(context).width >= 480) {
+      return SegmentedButton<_ExportScope>(
+        showSelectedIcon: false,
+        selected: {_scope},
+        segments: const [
+          ButtonSegment(
+            value: _ExportScope.fullNotebook,
+            icon: Icon(Icons.library_books_outlined),
+            label: Text('Full'),
+          ),
+          ButtonSegment(
+            value: _ExportScope.currentPage,
+            icon: Icon(Icons.description_outlined),
+            label: Text('Current'),
+          ),
+          ButtonSegment(
+            value: _ExportScope.selectedPages,
+            icon: Icon(Icons.playlist_add_check),
+            label: Text('Pages'),
+          ),
+        ],
+        onSelectionChanged: (selected) {
+          setState(() => _scope = selected.single);
+        },
+      );
+    }
+
+    return Wrap(
+      key: const ValueKey('export-scope-phone-picker'),
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        _exportScopeChip(
+          _ExportScope.fullNotebook,
+          Icons.library_books_outlined,
+          'Full',
+        ),
+        _exportScopeChip(
+          _ExportScope.currentPage,
+          Icons.description_outlined,
+          'Current',
+        ),
+        _exportScopeChip(
+          _ExportScope.selectedPages,
+          Icons.playlist_add_check,
+          'Pages',
+        ),
+      ],
+    );
+  }
+
+  Widget _exportScopeChip(_ExportScope scope, IconData icon, String label) {
+    return ChoiceChip(
+      key: ValueKey('export-scope-${scope.name}'),
+      avatar: Icon(icon, size: 18),
+      label: Text(label),
+      selected: _scope == scope,
+      showCheckmark: false,
+      onSelected: (_) => setState(() => _scope = scope),
+    );
+  }
+
+  Widget _buildQualityPicker() {
+    if (MediaQuery.sizeOf(context).width >= 480) {
+      return SegmentedButton<PdfExportQuality>(
+        showSelectedIcon: false,
+        selected: {_quality},
+        segments: [
+          for (final quality in PdfExportQuality.values)
+            ButtonSegment(value: quality, label: Text(quality.label)),
+        ],
+        onSelectionChanged: (selected) {
+          setState(() => _quality = selected.single);
+        },
+      );
+    }
+
+    return Wrap(
+      key: const ValueKey('export-quality-phone-picker'),
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final quality in PdfExportQuality.values)
+          ChoiceChip(
+            key: ValueKey('export-quality-${quality.name}'),
+            label: Text(quality.label),
+            selected: _quality == quality,
+            showCheckmark: false,
+            onSelected: (_) => setState(() => _quality = quality),
+          ),
       ],
     );
   }
@@ -4163,185 +4324,282 @@ String _formatDateTime(DateTime dateTime) {
       '${dateTime.minute.toString().padLeft(2, '0')}';
 }
 
-class _ZoomablePageViewport extends StatefulWidget {
-  const _ZoomablePageViewport({
+class _ContinuousPagesViewport extends StatefulWidget {
+  const _ContinuousPagesViewport({
     super.key,
-    required this.page,
+    required this.pageIds,
+    required this.pagesById,
+    required this.currentPageId,
     required this.fingerPanEnabled,
-    required this.initialSessionState,
-    required this.onSessionStateChanged,
-    required this.child,
+    required this.showZoomControls,
+    required this.onCurrentPageChanged,
+    required this.pageBuilder,
   });
 
-  final NotePage page;
+  final List<String> pageIds;
+  final Map<String, NotePage> pagesById;
+  final String currentPageId;
   final bool fingerPanEnabled;
-  final PageViewportSessionState? initialSessionState;
-  final ValueChanged<PageViewportSessionState> onSessionStateChanged;
-  final Widget child;
+  final bool showZoomControls;
+  final ValueChanged<String> onCurrentPageChanged;
+  final Widget Function(NotePage page) pageBuilder;
 
   @override
-  State<_ZoomablePageViewport> createState() => _ZoomablePageViewportState();
+  State<_ContinuousPagesViewport> createState() =>
+      _ContinuousPagesViewportState();
 }
 
-class _ZoomablePageViewportState extends State<_ZoomablePageViewport> {
-  final Map<int, Offset> _activePointers = {};
-  Offset? _lastFocalPoint;
-  double? _lastPointerDistance;
-  PageViewportTransform? _transform;
+class _ContinuousPagesViewportState extends State<_ContinuousPagesViewport> {
+  static const double _horizontalInset = 16;
+  static const double _pageGap = 24;
+  static const Size _fallbackPageSize = Size(768, 1024);
+  static const double _minimumZoomFactor = 0.25;
+  static const double _maximumZoomFactor = 8;
+
+  final ScrollController _verticalController = ScrollController();
+  final ScrollController _horizontalController = ScrollController();
+  final Map<int, Offset> _activeTouchPointers = {};
+  Size _viewportSize = Size.zero;
+  double _zoomFactor = 1;
+  double? _lastPinchDistance;
+  bool _isPinching = false;
   bool _zoomChromeExpanded = false;
   bool _showZoomBadge = false;
   Timer? _zoomIdleTimer;
 
   @override
+  void initState() {
+    super.initState();
+    _verticalController.addListener(_handleVerticalScroll);
+  }
+
+  @override
   void dispose() {
     _zoomIdleTimer?.cancel();
+    _verticalController
+      ..removeListener(_handleVerticalScroll)
+      ..dispose();
+    _horizontalController.dispose();
     super.dispose();
   }
 
-  void fitWidth() => _fit(PageViewportMode.fitWidth);
+  void fitWidth() {
+    _changeZoom(1, mode: PageViewportMode.fitWidth);
+  }
 
-  void fitPage() => _fit(PageViewportMode.fitPage);
-
-  @override
-  void didUpdateWidget(covariant _ZoomablePageViewport oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.page.id != oldWidget.page.id) {
-      _transform = null;
-      _zoomChromeExpanded = false;
-      _showZoomBadge = false;
-      _zoomIdleTimer?.cancel();
-    } else if (_transform case final transform?
-        when widget.page.width != oldWidget.page.width ||
-            widget.page.height != oldWidget.page.height ||
-            widget.page.rotationQuarterTurns !=
-                oldWidget.page.rotationQuarterTurns) {
-      _transform = PageViewportTransform.restore(
-        documentSize: Size(widget.page.width, widget.page.height),
-        rotationQuarterTurns: widget.page.rotationQuarterTurns,
-        usableRect: transform.usableRect,
-        state: transform.sessionState,
-      );
-      widget.onSessionStateChanged(_transform!.sessionState);
+  void fitPage() {
+    final page = widget.pagesById[widget.currentPageId];
+    if (page == null || _viewportSize.isEmpty) {
+      return;
     }
-    if (widget.fingerPanEnabled != oldWidget.fingerPanEnabled) {
-      _resetPointerTracking();
+    final baseHeight = _displaySize(page, zoomFactor: 1).height;
+    final availableHeight = math.max(1.0, _viewportSize.height - _pageGap * 2);
+    _changeZoom(
+      math.min(1.0, availableHeight / baseHeight),
+      mode: PageViewportMode.fitPage,
+    );
+  }
+
+  void scrollToPage(String pageId, {bool animate = true}) {
+    if (!widget.pageIds.contains(pageId)) {
+      return;
+    }
+    if (!_verticalController.hasClients || _viewportSize.isEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          scrollToPage(pageId, animate: animate);
+        }
+      });
+      return;
+    }
+
+    final requestedOffset = _pageTop(pageId) - _pageGap;
+    final target = requestedOffset.clamp(
+      _verticalController.position.minScrollExtent,
+      _verticalController.position.maxScrollExtent,
+    );
+    if (animate) {
+      unawaited(
+        _verticalController.animateTo(
+          target,
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
+        ),
+      );
+    } else {
+      _verticalController.jumpTo(target);
+    }
+  }
+
+  NotePage? _pageFor(String pageId) => widget.pagesById[pageId];
+
+  Size _rotatedPageSize(NotePage? page) {
+    final size = page == null
+        ? _fallbackPageSize
+        : Size(page.width, page.height);
+    final turns = page?.rotationQuarterTurns ?? 0;
+    return turns.isOdd ? Size(size.height, size.width) : size;
+  }
+
+  double _fitWidthScale(NotePage? page) {
+    final availableWidth = math.max(
+      1.0,
+      _viewportSize.width - _horizontalInset * 2,
+    );
+    return availableWidth / _rotatedPageSize(page).width;
+  }
+
+  Size _displaySize(NotePage? page, {double? zoomFactor}) {
+    final factor = zoomFactor ?? _zoomFactor;
+    return _rotatedPageSize(page) * (_fitWidthScale(page) * factor);
+  }
+
+  double _pageTop(String pageId) {
+    var top = _pageGap;
+    for (final id in widget.pageIds) {
+      if (id == pageId) {
+        return top;
+      }
+      top += _displaySize(_pageFor(id)).height + _pageGap;
+    }
+    return top;
+  }
+
+  void _handleVerticalScroll() {
+    if (_isPinching ||
+        !_verticalController.hasClients ||
+        _viewportSize.isEmpty ||
+        widget.pageIds.isEmpty) {
+      return;
+    }
+
+    final focusY = _verticalController.offset + _viewportSize.height * 0.42;
+    var nearestPageId = widget.pageIds.first;
+    var nearestDistance = double.infinity;
+    var top = _pageGap;
+    for (final pageId in widget.pageIds) {
+      final height = _displaySize(_pageFor(pageId)).height;
+      final distance = (top + height / 2 - focusY).abs();
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearestPageId = pageId;
+      }
+      top += height + _pageGap;
+    }
+
+    if (nearestPageId != widget.currentPageId) {
+      widget.onCurrentPageChanged(nearestPageId);
     }
   }
 
   void _handlePointerDown(PointerDownEvent event) {
-    final transform = _transform;
-    if (transform != null &&
-        transform.mode != PageViewportMode.custom &&
-        (event.kind != PointerDeviceKind.touch || !widget.fingerPanEnabled)) {
-      _setTransform(transform.enterCustom(), announceZoom: false);
-    }
-
     if (event.kind != PointerDeviceKind.touch) {
       return;
     }
-
-    _activePointers[event.pointer] = event.localPosition;
-    if (_activePointers.length >= 2) {
-      _primePinchGesture();
-    } else if (widget.fingerPanEnabled) {
-      _lastFocalPoint = event.localPosition;
-      _lastPointerDistance = null;
+    _activeTouchPointers[event.pointer] = event.localPosition;
+    if (_activeTouchPointers.length >= 2) {
+      _lastPinchDistance = _pinchDistance();
+      if (!_isPinching) {
+        setState(() {
+          _isPinching = true;
+        });
+      }
     }
   }
 
   void _handlePointerMove(PointerMoveEvent event) {
-    if (!_activePointers.containsKey(event.pointer)) {
+    if (!_activeTouchPointers.containsKey(event.pointer)) {
+      return;
+    }
+    _activeTouchPointers[event.pointer] = event.localPosition;
+    if (_activeTouchPointers.length < 2) {
       return;
     }
 
-    _activePointers[event.pointer] = event.localPosition;
-    if (_activePointers.length == 1) {
-      if (widget.fingerPanEnabled) {
-        _handleSingleFingerPan(event.localPosition);
-      }
-      return;
-    }
-
-    final focalPoint = _pinchFocalPoint();
     final distance = _pinchDistance();
-    final previousFocalPoint = _lastFocalPoint;
-    final previousDistance = _lastPointerDistance;
-
-    if (previousFocalPoint != null &&
-        previousDistance != null &&
-        previousDistance > 0 &&
-        distance > 0) {
-      final transform = _transform;
-      if (transform != null) {
-        _setTransform(
-          transform.applyViewportGesture(
-            previousFocalPoint: previousFocalPoint,
-            focalPoint: focalPoint,
-            scaleFactor: distance / previousDistance,
-          ),
-        );
-      }
+    final previousDistance = _lastPinchDistance;
+    if (previousDistance != null && previousDistance > 0 && distance > 0) {
+      _changeZoom(
+        _zoomFactor * distance / previousDistance,
+        mode: PageViewportMode.custom,
+      );
     }
-
-    _lastFocalPoint = focalPoint;
-    _lastPointerDistance = distance;
+    _lastPinchDistance = distance;
   }
 
   void _handlePointerEnd(PointerEvent event) {
     if (event.kind != PointerDeviceKind.touch) {
       return;
     }
-
-    _activePointers.remove(event.pointer);
-    if (_activePointers.length >= 2) {
-      _primePinchGesture();
-    } else if (_activePointers.length == 1 && widget.fingerPanEnabled) {
-      _lastFocalPoint = _activePointers.values.single;
-      _lastPointerDistance = null;
-    } else {
-      _lastFocalPoint = null;
-      _lastPointerDistance = null;
+    _activeTouchPointers.remove(event.pointer);
+    if (_activeTouchPointers.length >= 2) {
+      _lastPinchDistance = _pinchDistance();
+      return;
+    }
+    _lastPinchDistance = null;
+    if (_isPinching) {
+      setState(() {
+        _isPinching = false;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _handleVerticalScroll();
+        }
+      });
     }
   }
 
-  void _handleSingleFingerPan(Offset focalPoint) {
-    final previousFocalPoint = _lastFocalPoint;
-    final transform = _transform;
-    if (previousFocalPoint != null && transform != null) {
-      _setTransform(
-        transform.panBy(focalPoint - previousFocalPoint),
-        announceZoom: false,
-      );
-    }
-
-    _lastFocalPoint = focalPoint;
+  double _pinchDistance() {
+    final points = _activeTouchPointers.values.take(2).toList();
+    return (points[0] - points[1]).distance;
   }
 
-  void _primePinchGesture() {
-    if (_activePointers.length < 2) {
+  void _changeZoom(double requestedFactor, {required PageViewportMode mode}) {
+    if (_viewportSize.isEmpty) {
+      return;
+    }
+    final nextFactor = requestedFactor.clamp(
+      _minimumZoomFactor,
+      _maximumZoomFactor,
+    );
+    if ((_zoomFactor - nextFactor).abs() < 0.0001 && _mode == mode) {
       return;
     }
 
-    _lastFocalPoint = _pinchFocalPoint();
-    _lastPointerDistance = _pinchDistance();
+    final oldPageTop = _pageTop(widget.currentPageId);
+    final oldPageHeight = _displaySize(_pageFor(widget.currentPageId)).height;
+    final viewportFocus = _viewportSize.height * 0.42;
+    final contentFocus = _verticalController.hasClients
+        ? _verticalController.offset + viewportFocus
+        : oldPageTop;
+    final pageFraction = oldPageHeight <= 0
+        ? 0.0
+        : ((contentFocus - oldPageTop) / oldPageHeight).clamp(0.0, 1.0);
+
+    setState(() {
+      _zoomFactor = nextFactor;
+      _mode = mode;
+      _showZoomBadge = true;
+      _zoomChromeExpanded = true;
+    });
+    _scheduleZoomIdleCollapse();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_verticalController.hasClients) {
+        return;
+      }
+      final newPageTop = _pageTop(widget.currentPageId);
+      final newPageHeight = _displaySize(_pageFor(widget.currentPageId)).height;
+      final target = (newPageTop + newPageHeight * pageFraction - viewportFocus)
+          .clamp(
+            _verticalController.position.minScrollExtent,
+            _verticalController.position.maxScrollExtent,
+          );
+      _verticalController.jumpTo(target);
+    });
   }
 
-  void _setTransform(
-    PageViewportTransform transform, {
-    bool announceZoom = true,
-  }) {
-    setState(() {
-      _transform = transform;
-      if (announceZoom) {
-        _showZoomBadge = true;
-        _zoomChromeExpanded = true;
-      }
-    });
-    widget.onSessionStateChanged(transform.sessionState);
-    if (announceZoom) {
-      _scheduleZoomIdleCollapse();
-    }
-  }
+  PageViewportMode _mode = PageViewportMode.fitWidth;
 
   void _scheduleZoomIdleCollapse() {
     _zoomIdleTimer?.cancel();
@@ -4364,89 +4622,28 @@ class _ZoomablePageViewportState extends State<_ZoomablePageViewport> {
   }
 
   void _zoomBy(double scaleFactor) {
-    final transform = _transform;
-    if (transform != null) {
-      _setTransform(transform.zoomBy(scaleFactor: scaleFactor));
-    }
-  }
-
-  void _fit(PageViewportMode mode) {
-    final transform = _transform;
-    if (transform == null || mode == PageViewportMode.custom) {
-      return;
-    }
-    _setTransform(transform.fit(mode));
-    _resetPointerTracking();
-  }
-
-  void _resetPointerTracking() {
-    _activePointers.clear();
-    _lastFocalPoint = null;
-    _lastPointerDistance = null;
-  }
-
-  Offset _pinchFocalPoint() {
-    final points = _activePointers.values.take(2).toList();
-    return Offset(
-      (points[0].dx + points[1].dx) / 2,
-      (points[0].dy + points[1].dy) / 2,
-    );
-  }
-
-  double _pinchDistance() {
-    final points = _activePointers.values.take(2).toList();
-    return (points[0] - points[1]).distance;
-  }
-
-  PageViewportTransform? _resolveTransform(BoxConstraints constraints) {
-    final viewportSize = constraints.biggest;
-    if (!viewportSize.width.isFinite ||
-        !viewportSize.height.isFinite ||
-        viewportSize.width <= 0 ||
-        viewportSize.height <= 0) {
-      return null;
-    }
-
-    final usableRect = Offset.zero & viewportSize;
-    final documentSize = Size(widget.page.width, widget.page.height);
-    var transform = _transform;
-
-    if (transform == null) {
-      final restoredState = widget.initialSessionState;
-      transform = restoredState == null
-          ? PageViewportTransform.firstVisit(
-              documentSize: documentSize,
-              rotationQuarterTurns: widget.page.rotationQuarterTurns,
-              usableRect: usableRect,
-            )
-          : PageViewportTransform.restore(
-              documentSize: documentSize,
-              rotationQuarterTurns: widget.page.rotationQuarterTurns,
-              usableRect: usableRect,
-              state: restoredState,
-            );
-    } else if (transform.usableRect != usableRect) {
-      transform = transform.reflow(usableRect);
-    }
-
-    _transform = transform;
-    widget.onSessionStateChanged(transform.sessionState);
-    return transform;
+    _changeZoom(_zoomFactor * scaleFactor, mode: PageViewportMode.custom);
   }
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final transform = _resolveTransform(constraints);
-        if (transform == null) {
+        if (!constraints.hasBoundedWidth || !constraints.hasBoundedHeight) {
           return const SizedBox.shrink();
         }
-        final pageSize = transform.rotatedPageSize;
-        final zoomPercent = transform.fitWidthRelativePercent;
+        _viewportSize = constraints.biggest;
+        final contentWidth = math.max(
+          _viewportSize.width,
+          (_viewportSize.width - _horizontalInset * 2) * _zoomFactor +
+              _horizontalInset * 2,
+        );
+        final scrollBehavior = _ContinuousPageScrollBehavior(
+          touchDraggingEnabled: widget.fingerPanEnabled && !_isPinching,
+        );
 
         return Listener(
-          key: ValueKey('viewport-${widget.page.id}'),
+          key: const ValueKey('continuous-paged-viewport'),
           behavior: HitTestBehavior.opaque,
           onPointerDown: _handlePointerDown,
           onPointerMove: _handlePointerMove,
@@ -4455,46 +4652,120 @@ class _ZoomablePageViewportState extends State<_ZoomablePageViewport> {
           child: ClipRect(
             child: Stack(
               children: [
-                Positioned(
-                  left: transform.pageOriginInViewport.dx,
-                  top: transform.pageOriginInViewport.dy,
-                  width: pageSize.width,
-                  height: pageSize.height,
-                  child: Transform.scale(
-                    key: ValueKey(
-                      'page-transform-${widget.page.id}-'
-                      '${widget.page.rotationQuarterTurns}',
-                    ),
-                    scale: transform.effectiveScale,
-                    alignment: Alignment.topLeft,
-                    child: SizedBox.fromSize(
-                      size: pageSize,
-                      child: widget.child,
+                ScrollConfiguration(
+                  behavior: scrollBehavior,
+                  child: SingleChildScrollView(
+                    controller: _horizontalController,
+                    scrollDirection: Axis.horizontal,
+                    physics: _isPinching || !widget.fingerPanEnabled
+                        ? const NeverScrollableScrollPhysics()
+                        : const ClampingScrollPhysics(),
+                    child: SizedBox(
+                      width: contentWidth,
+                      height: _viewportSize.height,
+                      child: Scrollbar(
+                        controller: _verticalController,
+                        child: ListView.builder(
+                          key: const ValueKey('continuous-page-list'),
+                          controller: _verticalController,
+                          physics: _isPinching || !widget.fingerPanEnabled
+                              ? const NeverScrollableScrollPhysics()
+                              : const ClampingScrollPhysics(),
+                          padding: const EdgeInsets.only(top: _pageGap),
+                          itemCount: widget.pageIds.length,
+                          itemBuilder: (context, index) {
+                            final pageId = widget.pageIds[index];
+                            final page = _pageFor(pageId);
+                            final displaySize = _displaySize(page);
+                            return SizedBox(
+                              key: ValueKey('continuous-page-item-$pageId'),
+                              height: displaySize.height + _pageGap,
+                              child: Align(
+                                alignment: Alignment.topCenter,
+                                child: Semantics(
+                                  container: true,
+                                  label:
+                                      'Page ${index + 1} of '
+                                      '${widget.pageIds.length}',
+                                  child: SizedBox.fromSize(
+                                    size: displaySize,
+                                    child: page == null
+                                        ? const ColoredBox(
+                                            color: EditorWorkspaceTokens.paper,
+                                            child: Center(
+                                              child:
+                                                  CircularProgressIndicator(),
+                                            ),
+                                          )
+                                        : RepaintBoundary(
+                                            child: OverflowBox(
+                                              alignment: Alignment.topLeft,
+                                              minWidth: _rotatedPageSize(
+                                                page,
+                                              ).width,
+                                              maxWidth: _rotatedPageSize(
+                                                page,
+                                              ).width,
+                                              minHeight: _rotatedPageSize(
+                                                page,
+                                              ).height,
+                                              maxHeight: _rotatedPageSize(
+                                                page,
+                                              ).height,
+                                              child: Transform.scale(
+                                                scale:
+                                                    _fitWidthScale(page) *
+                                                    _zoomFactor,
+                                                alignment: Alignment.topLeft,
+                                                child: PageViewportScaleScope(
+                                                  scale:
+                                                      _fitWidthScale(page) *
+                                                      _zoomFactor,
+                                                  child: SizedBox.fromSize(
+                                                    size: _rotatedPageSize(
+                                                      page,
+                                                    ),
+                                                    child: widget.pageBuilder(
+                                                      page,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
                     ),
                   ),
                 ),
-                Positioned(
-                  top: 16,
-                  right: 16,
-                  child: _ZoomControls(
-                    expanded: _zoomChromeExpanded,
-                    mode: transform.mode,
-                    zoomPercent: zoomPercent,
-                    canZoomOut:
-                        transform.effectiveScale > transform.minimumCustomScale,
-                    canZoomIn:
-                        transform.effectiveScale < transform.maximumCustomScale,
-                    onExpand: _expandZoomChrome,
-                    onZoomOut: () => _zoomBy(0.8),
-                    onZoomIn: () => _zoomBy(1.25),
-                    onFitWidth: () => _fit(PageViewportMode.fitWidth),
-                    onFitPage: () => _fit(PageViewportMode.fitPage),
+                if (widget.showZoomControls)
+                  Positioned(
+                    top: 16,
+                    right: 16,
+                    child: _ZoomControls(
+                      expanded: _zoomChromeExpanded,
+                      mode: _mode,
+                      zoomPercent: (_zoomFactor * 100).round(),
+                      canZoomOut: _zoomFactor > _minimumZoomFactor,
+                      canZoomIn: _zoomFactor < _maximumZoomFactor,
+                      onExpand: _expandZoomChrome,
+                      onZoomOut: () => _zoomBy(0.8),
+                      onZoomIn: () => _zoomBy(1.25),
+                      onFitWidth: fitWidth,
+                      onFitPage: fitPage,
+                    ),
                   ),
-                ),
-                if (_showZoomBadge)
+                if (widget.showZoomControls && _showZoomBadge)
                   IgnorePointer(
                     child: Center(
-                      child: _ZoomStatusBadge(percent: zoomPercent),
+                      child: _ZoomStatusBadge(
+                        percent: (_zoomFactor * 100).round(),
+                      ),
                     ),
                   ),
               ],
@@ -4504,6 +4775,18 @@ class _ZoomablePageViewportState extends State<_ZoomablePageViewport> {
       },
     );
   }
+}
+
+class _ContinuousPageScrollBehavior extends MaterialScrollBehavior {
+  const _ContinuousPageScrollBehavior({required this.touchDraggingEnabled});
+
+  final bool touchDraggingEnabled;
+
+  @override
+  Set<PointerDeviceKind> get dragDevices => {
+    if (touchDraggingEnabled) PointerDeviceKind.touch,
+    PointerDeviceKind.trackpad,
+  };
 }
 
 class _ZoomControls extends StatelessWidget {

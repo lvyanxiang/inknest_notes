@@ -19,7 +19,9 @@ void main() {
         final surface = find.byKey(
           const ValueKey('rotated-page-surface-page-1-0'),
         );
-        final viewport = find.byKey(const ValueKey('viewport-page-1'));
+        final viewport = find.byKey(
+          const ValueKey('continuous-paged-viewport'),
+        );
 
         expect(tester.getSize(surface), const Size(768, 1024));
         expect(
@@ -210,6 +212,76 @@ void main() {
       await tester.tap(next);
       await tester.pumpAndSettle();
       expect(find.text('2 / 2'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('scrolls continuously between pages on phone and tablet', (
+      tester,
+    ) async {
+      final fixture = await _createFixture(tester, const Size(390, 844));
+
+      await tester.tap(find.byKey(const ValueKey('editor-add-page-button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('page-template-blank')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('continuous-page-list')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('continuous-page-item-page-1')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('continuous-page-item-page-2')),
+        findsOneWidget,
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey('editor-previous-page-button')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('1 / 2'), findsOneWidget);
+
+      await tester.drag(
+        find.byKey(const ValueKey('continuous-page-list')),
+        const Offset(0, -520),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('2 / 2'), findsOneWidget);
+
+      final pageTwoCanvas = find.descendant(
+        of: find.byKey(const ValueKey('continuous-page-item-page-2')),
+        matching: find.byType(DrawingCanvas),
+      );
+      final canvasRect = tester.getRect(pageTwoCanvas);
+      final visibleRect = canvasRect.intersect(
+        Offset.zero & (tester.view.physicalSize / tester.view.devicePixelRatio),
+      );
+      final drawStart = visibleRect.center;
+      final stylus = await tester.startGesture(
+        drawStart,
+        kind: ui.PointerDeviceKind.stylus,
+      );
+      await stylus.moveBy(const Offset(32, 12));
+      await stylus.up();
+      await tester.pumpAndSettle();
+      expect(
+        (await fixture.repository.loadPage(fixture.notebook, 'page-1')).strokes,
+        isEmpty,
+      );
+      expect(
+        (await fixture.repository.loadPage(fixture.notebook, 'page-2')).strokes,
+        hasLength(1),
+      );
+
+      tester.view.physicalSize = const Size(834, 1194);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('continuous-page-list')),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
     });
 

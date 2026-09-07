@@ -1,0 +1,81 @@
+# Continuous Paged Editor
+
+- Status: Delivered
+- Size: Medium
+- Updated: 2026-09-07
+- Roadmap link: User-requested paged editor improvement
+
+## Problem
+
+The paged editor presents one fitted page at a time and makes adjacent-page
+buttons the primary navigation. On tall phones this leaves the paper visually
+detached from the rest of the notebook, while on tablets it interrupts reading
+and writing across a page boundary.
+
+## Recommended Outcome
+
+Present every page in one vertically continuous, lazy list on phone and tablet.
+Each sheet keeps its persisted dimensions, rotation, content coordinates, and
+independent edit history. Scrolling changes the current page shown by the
+header; the Pages panel and adjacent-page actions remain alternate accessible
+jump mechanisms rather than the primary flow.
+
+Because a touch drag cannot both write and scroll, paged notebooks start in
+`Finger moves`: one finger scrolls and a stylus writes. `Finger writes` remains
+available as an explicit mode and disables one-finger page scrolling while it
+is active.
+
+## Scope
+
+- In scope:
+  - One vertical continuous-page layout for phones and tablets on iOS/iPadOS
+    and Android.
+  - Lazy page construction with a consistent workspace gap between sheets.
+  - Fit Width as the initial scale for every sheet, shared notebook zoom, and
+    horizontal panning when zoomed beyond the viewport.
+  - Current-page tracking while scrolling and programmatic jumps from header,
+    Pages, Outline, Bookmarks, audio follow, and page creation.
+  - Existing editing layers, canonical coordinates, rotation, persistence,
+    undo/redo, protected-page state, and PDF backgrounds.
+  - Explicit gesture ownership between finger scrolling, stylus writing,
+    finger writing, and pinch zoom.
+- Non-goals:
+  - Changing stored page dimensions or notebook format.
+  - Mixing infinite-canvas content into paged notebooks.
+  - Two-page spreads, horizontal page flow, or freeform page rearrangement in
+    the editor surface.
+  - Persisting zoom and scroll position across app restarts.
+
+## Acceptance Criteria
+
+- [x] Two or more notebook pages are vertically stacked and reachable by
+      scrolling on phone and tablet layouts.
+- [x] Scrolling updates the header current-page number without unloading the
+      notebook workspace.
+- [x] Page navigation controls, thumbnails, bookmarks, outline, and audio
+      follow scroll to the requested page.
+- [x] New, duplicated, imported, or retained pages become visible at their
+      requested position.
+- [x] Every page keeps its canonical document size and coordinate mapping;
+      drawing after scrolling or zooming saves inside that page.
+- [x] Finger moves scrolls without creating ink; stylus writing does not drag
+      the page list; Finger writes preserves touch drawing without simultaneous
+      one-finger scrolling.
+- [x] Fit Width, Fit Page, zoom in/out, rotation, erasing, selection, text,
+      images, shapes, undo/redo, and write protection remain available.
+- [x] The complete Flutter test suite and static analysis pass.
+
+## Risks
+
+- Rendering every page eagerly would increase memory use for long PDF
+  notebooks, so page widgets must remain lazily built.
+- Current-page updates during scroll must not recursively trigger another
+  animated jump.
+- Nested vertical and horizontal scrolling must exclude stylus drags so Pencil
+  input remains owned by the active page.
+
+## Delivery
+
+- UI/UX spec: `UI_UX_SPEC.md`
+- Implementation status: Delivered
+- Verification: `flutter analyze`; full `flutter test` suite (310 tests).

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:inknest_notes/features/editor/tools/editor_toolbar.dart';
+import 'package:inknest_notes/models/note_shape.dart';
 import 'package:inknest_notes/models/tool.dart';
 
 void main() {
@@ -132,10 +133,20 @@ void main() {
     await rebuild();
     await tester.tap(find.byKey(const ValueKey('editor-insert-menu')));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('Shape'));
+    await tester.pumpAndSettle();
+    expect(tool.type, ToolType.shape);
+    await rebuild();
+    expect(find.byTooltip('Shape properties'), findsOneWidget);
+    expect(find.text('Shape · Line'), findsOneWidget);
+
+    await rebuild();
+    await tester.tap(find.byKey(const ValueKey('editor-insert-menu')));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Image'));
     await tester.pumpAndSettle();
     expect(imageInsertCount, 1);
-    expect(tool.type, ToolType.text);
+    expect(tool.type, ToolType.shape);
   });
 
   testWidgets('keeps complete presets inside contextual properties', (
@@ -167,6 +178,61 @@ void main() {
     expect(tool.type, ToolType.pen);
     expect(tool.color, const Color(0xFF2F6F73));
     expect(tool.width, 5);
+  });
+
+  testWidgets('exposes explicit auto shape creation mode', (tester) async {
+    var tool = const DrawingTool(
+      type: ToolType.shape,
+      shapeType: NoteShapeType.line,
+      color: Color(0xFF1E2526),
+      width: 3,
+    );
+
+    await pumpToolbar(
+      tester,
+      size: const Size(600, 800),
+      tool: tool,
+      onToolChanged: (value) => tool = value,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('editor-tool-properties')));
+    await tester.pumpAndSettle();
+    expect(find.text('Creation'), findsOneWidget);
+    expect(find.text('Auto shape'), findsOneWidget);
+
+    await tester.ensureVisible(find.byKey(const ValueKey('shape-mode-auto')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('shape-mode-auto')));
+    await tester.pump();
+    expect(tool.shapeCreationMode, ShapeCreationMode.auto);
+  });
+
+  testWidgets('Pen properties can disable Draw and hold', (tester) async {
+    var tool = const DrawingTool(
+      type: ToolType.pen,
+      color: Color(0xFF1E2526),
+      width: 3,
+    );
+
+    await pumpToolbar(
+      tester,
+      size: const Size(600, 800),
+      tool: tool,
+      onToolChanged: (value) => tool = value,
+    );
+    await tester.tap(find.byKey(const ValueKey('editor-tool-properties')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Draw and hold'), findsOneWidget);
+    expect(tool.drawAndHoldShapeEnabled, isTrue);
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('pen-draw-and-hold-shape')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('pen-draw-and-hold-shape')));
+    await tester.pump();
+
+    expect(tool.drawAndHoldShapeEnabled, isFalse);
   });
 
   testWidgets('properties sheet changes only contextual settings', (

@@ -419,6 +419,15 @@ class NotebookPdfExporter {
         case NoteShapeType.ellipse:
           _paintShapeEllipse(canvas, shape, page, scaleX, scaleY);
           break;
+        case NoteShapeType.triangle:
+          _paintShapeTriangle(canvas, shape, page, scaleX, scaleY);
+          break;
+        case NoteShapeType.diamond:
+          _paintShapeDiamond(canvas, shape, page, scaleX, scaleY);
+          break;
+        case NoteShapeType.polygon:
+          _paintShapePolygon(canvas, shape, page, scaleX, scaleY);
+          break;
       }
 
       canvas
@@ -511,6 +520,113 @@ class NotebookPdfExporter {
       rect.width * scaleX / 2,
       rect.height * scaleY / 2,
     );
+  }
+
+  void _paintShapeTriangle(
+    pdf.PdfGraphics canvas,
+    NoteShape shape,
+    NotePage page,
+    double scaleX,
+    double scaleY,
+  ) {
+    final rect = shape.bounds;
+    final top = _mapOffset(
+      ui.Offset(rect.center.dx, rect.top),
+      page,
+      scaleX,
+      scaleY,
+    );
+    final right = _mapOffset(
+      ui.Offset(rect.right, rect.bottom),
+      page,
+      scaleX,
+      scaleY,
+    );
+    final left = _mapOffset(
+      ui.Offset(rect.left, rect.bottom),
+      page,
+      scaleX,
+      scaleY,
+    );
+    canvas
+      ..moveTo(top.dx, top.dy)
+      ..lineTo(right.dx, right.dy)
+      ..lineTo(left.dx, left.dy)
+      ..lineTo(top.dx, top.dy);
+  }
+
+  void _paintShapeDiamond(
+    pdf.PdfGraphics canvas,
+    NoteShape shape,
+    NotePage page,
+    double scaleX,
+    double scaleY,
+  ) {
+    final rect = shape.bounds;
+    _paintClosedShapePath(
+      canvas,
+      [
+        ui.Offset(rect.center.dx, rect.top),
+        ui.Offset(rect.right, rect.center.dy),
+        ui.Offset(rect.center.dx, rect.bottom),
+        ui.Offset(rect.left, rect.center.dy),
+      ],
+      page,
+      scaleX,
+      scaleY,
+    );
+  }
+
+  void _paintShapePolygon(
+    pdf.PdfGraphics canvas,
+    NoteShape shape,
+    NotePage page,
+    double scaleX,
+    double scaleY,
+  ) {
+    final vertices = shape.vertices.isNotEmpty
+        ? shape.vertices
+        : _regularPolygonVertices(shape.bounds, 5);
+    _paintClosedShapePath(canvas, vertices, page, scaleX, scaleY);
+  }
+
+  void _paintClosedShapePath(
+    pdf.PdfGraphics canvas,
+    List<ui.Offset> vertices,
+    NotePage page,
+    double scaleX,
+    double scaleY,
+  ) {
+    if (vertices.isEmpty) {
+      return;
+    }
+    final mapped = [
+      for (final vertex in vertices) _mapOffset(vertex, page, scaleX, scaleY),
+    ];
+    canvas.moveTo(mapped.first.dx, mapped.first.dy);
+    for (final vertex in mapped.skip(1)) {
+      canvas.lineTo(vertex.dx, vertex.dy);
+    }
+    canvas.lineTo(mapped.first.dx, mapped.first.dy);
+  }
+
+  List<ui.Offset> _regularPolygonVertices(ui.Rect bounds, int sides) {
+    if (bounds.isEmpty || sides < 3) {
+      return const [];
+    }
+    return [
+      for (var index = 0; index < sides; index++)
+        ui.Offset(
+          bounds.center.dx +
+              math.cos(-math.pi / 2 + math.pi * 2 * index / sides) *
+                  bounds.width /
+                  2,
+          bounds.center.dy +
+              math.sin(-math.pi / 2 + math.pi * 2 * index / sides) *
+                  bounds.height /
+                  2,
+        ),
+    ];
   }
 
   void _paintStrokes(pdf.PdfGraphics canvas, pdf.PdfPoint size, NotePage page) {

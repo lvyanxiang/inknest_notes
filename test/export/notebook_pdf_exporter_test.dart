@@ -104,6 +104,25 @@ void main() {
             end: Offset(360, 280),
             width: 5,
           ),
+          NoteShape(
+            id: 'shape-2',
+            type: NoteShapeType.diamond,
+            start: Offset(420, 180),
+            end: Offset(540, 280),
+          ),
+          NoteShape(
+            id: 'shape-3',
+            type: NoteShapeType.polygon,
+            start: Offset(400, 320),
+            end: Offset(560, 460),
+            vertices: [
+              Offset(480, 320),
+              Offset(560, 375),
+              Offset(530, 460),
+              Offset(430, 460),
+              Offset(400, 375),
+            ],
+          ),
         ],
         textBoxes: const [
           NoteTextBox(

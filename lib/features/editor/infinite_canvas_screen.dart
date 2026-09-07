@@ -5,12 +5,14 @@ import 'dart:ui' show PointerDeviceKind;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image/image.dart' as image_codec;
 import 'package:inknest_notes/features/editor/canvas/drawing_canvas.dart';
 import 'package:inknest_notes/features/editor/images/image_layer.dart';
 import 'package:inknest_notes/features/editor/lasso/lasso_geometry.dart';
 import 'package:inknest_notes/features/editor/lasso/lasso_selection_layer.dart';
 import 'package:inknest_notes/features/editor/shapes/shape_layer.dart';
+import 'package:inknest_notes/features/editor/shapes/shape_recognizer.dart';
 import 'package:inknest_notes/features/editor/text/text_box_layer.dart';
 import 'package:inknest_notes/features/editor/tools/editor_toolbar.dart';
 import 'package:inknest_notes/models/infinite_canvas_document.dart';
@@ -136,17 +138,44 @@ class _InfiniteCanvasScreenState extends State<InfiniteCanvasScreen> {
       ],
       radius: math.max(8, _tool.width / 2),
     );
-    if (identical(updatedStrokes, document.strokes)) return;
-    setState(() => _document = document.copyWith(strokes: updatedStrokes));
+    final eraserRadius = math.max(8, _tool.width / 2).toDouble();
+    final updatedShapes = [
+      for (final shape in document.shapes)
+        if (!noteShapeHitTest(shape, point, tolerance: eraserRadius)) shape,
+    ];
+    final updatedImages = [
+      for (final image in document.images)
+        if (!Rect.fromLTWH(
+          image.position.dx,
+          image.position.dy,
+          image.width,
+          image.height,
+        ).inflate(eraserRadius).contains(point))
+          image,
+    ];
+    if (identical(updatedStrokes, document.strokes) &&
+        updatedShapes.length == document.shapes.length &&
+        updatedImages.length == document.images.length) {
+      return;
+    }
+    setState(
+      () => _document = document.copyWith(
+        strokes: updatedStrokes,
+        shapes: updatedShapes,
+        images: updatedImages,
+      ),
+    );
   }
 
   void _endErase() {
     final before = _eraseStartState;
     final document = _document;
     _eraseStartState = null;
-    if (before == null ||
-        document == null ||
-        _sameStrokeList(before.strokes, document.strokes)) {
+    if (before == null || document == null) {
+      return;
+    }
+    final after = _contentState(document);
+    if (_sameContentState(before, after)) {
       return;
     }
     _undoStates.add(before);
@@ -841,10 +870,15 @@ class _InfiniteCanvasViewport extends StatefulWidget {
 }
 
 class _InfiniteCanvasViewportState extends State<_InfiniteCanvasViewport> {
+  static const _drawAndHoldDelay = Duration(milliseconds: 500);
+
   final Map<int, Offset> _touches = {};
   late Offset _focus = widget.document.viewportFocus;
   late double _scale = widget.document.viewportScale;
   Stroke? _activeStroke;
+  Timer? _drawAndHoldTimer;
+  NoteShape? _heldShapePreview;
+  Offset? _heldShapePointer;
   int? _drawingPointer;
   PointerDeviceKind? _drawingKind;
   int? _panPointer;
@@ -852,6 +886,25 @@ class _InfiniteCanvasViewportState extends State<_InfiniteCanvasViewport> {
   Offset? _gestureFocal;
   double? _gestureDistance;
   bool _erasing = false;
+
+  bool get _drawAndHoldEnabled =>
+      widget.tool.type == ToolType.pen && widget.tool.drawAndHoldShapeEnabled;
+
+  @override
+  void didUpdateWidget(covariant _InfiniteCanvasViewport oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.tool.type != widget.tool.type ||
+        oldWidget.tool.drawAndHoldShapeEnabled !=
+            widget.tool.drawAndHoldShapeEnabled) {
+      _cancelDrawAndHoldPreview();
+    }
+  }
+
+  @override
+  void dispose() {
+    _drawAndHoldTimer?.cancel();
+    super.dispose();
+  }
 
   Offset get focus => _focus;
 
@@ -973,6 +1026,7 @@ class _InfiniteCanvasViewportState extends State<_InfiniteCanvasViewport> {
         points: [point],
       );
     });
+    _scheduleDrawAndHold();
   }
 
   void _appendDrawing(Offset screenPoint, double pressure) {
@@ -982,6 +1036,18 @@ class _InfiniteCanvasViewportState extends State<_InfiniteCanvasViewport> {
       return;
     }
     final stroke = _activeStroke;
+    final heldShape = _heldShapePreview;
+    final heldPointer = _heldShapePointer;
+    if (heldShape != null && heldPointer != null) {
+      setState(() {
+        _heldShapePreview = _resizeHeldShape(
+          heldShape,
+          point.offset - heldPointer,
+        );
+        _heldShapePointer = point.offset;
+      });
+      return;
+    }
     if (stroke == null ||
         !StrokeGeometry.shouldAppendPoint(
           stroke.points,
@@ -993,11 +1059,14 @@ class _InfiniteCanvasViewportState extends State<_InfiniteCanvasViewport> {
     setState(
       () => _activeStroke = stroke.copyWith(points: [...stroke.points, point]),
     );
+    _scheduleDrawAndHold();
   }
 
   void _finishDrawing() {
     final stroke = _activeStroke;
+    final heldShape = _heldShapePreview;
     final kind = _drawingKind;
+    _drawAndHoldTimer?.cancel();
     _drawingPointer = null;
     _drawingKind = null;
     if (_erasing) {
@@ -1006,7 +1075,15 @@ class _InfiniteCanvasViewportState extends State<_InfiniteCanvasViewport> {
       return;
     }
     if (stroke == null) return;
-    setState(() => _activeStroke = null);
+    setState(() {
+      _activeStroke = null;
+      _heldShapePreview = null;
+      _heldShapePointer = null;
+    });
+    if (heldShape != null) {
+      widget.onShapeComplete(heldShape);
+      return;
+    }
     widget.onStrokeComplete(
       applyFingerWritingAssist(
         stroke: stroke,
@@ -1020,11 +1097,79 @@ class _InfiniteCanvasViewportState extends State<_InfiniteCanvasViewport> {
     if (_drawingKind != PointerDeviceKind.touch) return;
     _drawingPointer = null;
     _drawingKind = null;
+    _drawAndHoldTimer?.cancel();
+    _heldShapePreview = null;
+    _heldShapePointer = null;
     if (_erasing) {
       _erasing = false;
       widget.onEraseEnd();
     }
     if (_activeStroke != null) setState(() => _activeStroke = null);
+  }
+
+  void _scheduleDrawAndHold() {
+    _drawAndHoldTimer?.cancel();
+    if (!_drawAndHoldEnabled || _activeStroke == null) {
+      return;
+    }
+    _drawAndHoldTimer = Timer(_drawAndHoldDelay, _recognizeHeldStroke);
+  }
+
+  void _recognizeHeldStroke() {
+    final stroke = _activeStroke;
+    if (!mounted || stroke == null || _drawingPointer == null) {
+      return;
+    }
+    final shape = recognizeHandDrawnShape(
+      points: [for (final point in stroke.points) point.offset],
+      id: 'shape-${DateTime.now().microsecondsSinceEpoch}',
+      color: stroke.color,
+      width: stroke.width,
+    );
+    if (shape == null) {
+      return;
+    }
+    setState(() {
+      _heldShapePreview = shape;
+      _heldShapePointer = stroke.points.last.offset;
+    });
+    unawaited(HapticFeedback.selectionClick());
+  }
+
+  NoteShape _resizeHeldShape(NoteShape shape, Offset delta) {
+    if (shape.type == NoteShapeType.line || shape.type == NoteShapeType.arrow) {
+      return shape.copyWith(end: shape.end + delta);
+    }
+    final oldBounds = shape.bounds;
+    final nextEnd = shape.end + delta;
+    final nextBounds = Rect.fromPoints(shape.start, nextEnd);
+    final nextVertices = shape.vertices.isEmpty || oldBounds.isEmpty
+        ? shape.vertices
+        : [
+            for (final vertex in shape.vertices)
+              Offset(
+                nextBounds.left +
+                    (vertex.dx - oldBounds.left) /
+                        oldBounds.width *
+                        nextBounds.width,
+                nextBounds.top +
+                    (vertex.dy - oldBounds.top) /
+                        oldBounds.height *
+                        nextBounds.height,
+              ),
+          ];
+    return shape.copyWith(end: nextEnd, vertices: nextVertices);
+  }
+
+  void _cancelDrawAndHoldPreview() {
+    _drawAndHoldTimer?.cancel();
+    if (_heldShapePreview == null) {
+      return;
+    }
+    setState(() {
+      _heldShapePreview = null;
+      _heldShapePointer = null;
+    });
   }
 
   StrokePoint _point(Offset screenPoint, double pressure) {
@@ -1220,6 +1365,8 @@ class _InfiniteCanvasViewportState extends State<_InfiniteCanvasViewport> {
           shapes: [
             for (final shape in widget.document.shapes)
               _shapeToScreen(shape, size),
+            if (_heldShapePreview case final shape?)
+              _shapeToScreen(shape, size),
           ],
         );
         final selectedIds = {
@@ -1267,7 +1414,10 @@ class _InfiniteCanvasViewportState extends State<_InfiniteCanvasViewport> {
                   onPointerCancel: _onDrawingPointerEnd,
                   child: CustomPaint(
                     painter: _InfiniteCanvasPainter(
-                      strokes: [...widget.document.strokes, ?_activeStroke],
+                      strokes: [
+                        ...widget.document.strokes,
+                        if (_heldShapePreview == null) ?_activeStroke,
+                      ],
                       background: widget.document.background,
                       focus: _focus,
                       scale: _scale,
@@ -1284,6 +1434,11 @@ class _InfiniteCanvasViewportState extends State<_InfiniteCanvasViewport> {
                   onShapeComplete: widget.tool.type == ToolType.shape
                       ? (shape) =>
                             widget.onShapeComplete(_shapeToWorld(shape, size))
+                      : null,
+                  onStrokeFallback: widget.tool.type == ToolType.shape
+                      ? (stroke) => widget.onStrokeComplete(
+                          _strokeToWorld(stroke, size),
+                        )
                       : null,
                 ),
                 ImageLayer(
@@ -1492,6 +1647,22 @@ bool _sameStrokeList(List<Stroke> first, List<Stroke> second) {
   if (identical(first, second)) return true;
   if (first.length != second.length) return false;
   for (var index = 0; index < first.length; index++) {
+    if (!identical(first[index], second[index])) return false;
+  }
+  return true;
+}
+
+bool _sameContentState(_CanvasContentState first, _CanvasContentState second) {
+  return _sameStrokeList(first.strokes, second.strokes) &&
+      _sameIdentityList(first.textBoxes, second.textBoxes) &&
+      _sameIdentityList(first.images, second.images) &&
+      _sameIdentityList(first.shapes, second.shapes);
+}
+
+bool _sameIdentityList<T>(List<T> first, List<T> second) {
+  if (identical(first, second)) return true;
+  if (first.length != second.length) return false;
+  for (var index = 0; index < first.length; index += 1) {
     if (!identical(first[index], second[index])) return false;
   }
   return true;

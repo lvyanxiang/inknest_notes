@@ -14,6 +14,7 @@ import 'package:inknest_notes/features/editor/text/text_box_layer.dart';
 import 'package:inknest_notes/models/note_text_box.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/note_page_template.dart';
+import 'package:inknest_notes/models/note_shape.dart';
 import 'package:inknest_notes/models/notebook_audio_recording.dart';
 import 'package:inknest_notes/models/infinite_canvas_document.dart';
 import 'package:inknest_notes/models/notebook_layout_mode.dart';
@@ -104,7 +105,7 @@ void main() {
 
   Future<void> drawVisibleStroke(
     WidgetTester tester, {
-    ui.PointerDeviceKind kind = ui.PointerDeviceKind.touch,
+    ui.PointerDeviceKind kind = ui.PointerDeviceKind.stylus,
   }) async {
     final start = visibleCanvasPoint(tester);
     final gesture = await tester.startGesture(start, kind: kind);
@@ -140,6 +141,150 @@ void main() {
     expect(find.text('New notebook'), findsWidgets);
     expect(find.text('Import PDF'), findsOneWidget);
   });
+
+  testWidgets('retains the spine bookshelf at Android phone width', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final repository = InMemoryNotebookRepository();
+    final notebook = await repository.createNotebook(
+      title: 'A readable notebook title on phone',
+    );
+    final folder = await repository.createFolder('Research references');
+
+    await tester.pumpWidget(InkNestApp(notebookRepository: repository));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('library-bookshelf')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('library-bookshelf-row-0')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('phone-library-grid')), findsNothing);
+    expect(
+      find.byKey(ValueKey('notebook-spine-${notebook.id}')),
+      findsOneWidget,
+    );
+    expect(find.byKey(ValueKey('folder-spine-${folder.id}')), findsOneWidget);
+    expect(find.text('A readable notebook title on phone'), findsOneWidget);
+    expect(find.text('1p'), findsOneWidget);
+    expect(find.text('InkNest Notes'), findsNothing);
+    expect(find.text('My Library'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('disables empty names and emphasizes permanent deletion', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final repository = InMemoryNotebookRepository();
+    await repository.createNotebook(title: 'Danger note');
+    await tester.pumpWidget(InkNestApp(notebookRepository: repository));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('New folder'));
+    await tester.pumpAndSettle();
+    var save = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Save'),
+    );
+    expect(save.onPressed, isNull);
+    await tester.enterText(find.byType(TextField).last, '  Reading  ');
+    await tester.pump();
+    save = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Save'),
+    );
+    expect(save.onPressed, isNotNull);
+    await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Danger note actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete notebook'));
+    await tester.pumpAndSettle();
+
+    final deleteButton = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Delete'),
+    );
+    final errorColor = Theme.of(
+      tester.element(find.byType(AlertDialog)),
+    ).colorScheme.error;
+    expect(deleteButton.style?.backgroundColor?.resolve({}), errorColor);
+    await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('keeps export and lasso controls usable at phone width', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await pumpInkNestApp(tester);
+    await createPagedNotebook(tester);
+    await selectEditorMoreAction(tester, 'Export PDF');
+
+    expect(
+      find.byKey(const ValueKey('export-scope-phone-picker')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('export-quality-phone-picker')),
+      findsOneWidget,
+    );
+    expect(tester.getSize(find.text('Balanced')).height, lessThan(32));
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+    await tester.pumpAndSettle();
+    await drawVisibleStroke(tester);
+    await selectVisibleStrokeWithLasso(tester);
+
+    expect(find.byKey(const ValueKey('lasso-color-menu')), findsOneWidget);
+    expect(find.byTooltip('Beautify selected ink'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'keeps text object controls screen-sized on a fitted phone page',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await pumpInkNestApp(tester);
+      await createPagedNotebook(tester);
+      await selectInsertAction(tester, 'Text');
+      await tester.tapAt(visibleCanvasPoint(tester, verticalInset: 160));
+      await tester.pumpAndSettle();
+
+      final toolbar = find.byWidgetPredicate((widget) {
+        final key = widget.key;
+        return key is ValueKey<String> &&
+            key.value.startsWith('text-box-toolbar-');
+      });
+      expect(toolbar, findsOneWidget);
+      expect(find.byKey(const ValueKey('editor-zoom-chip')), findsNothing);
+      expect(tester.getRect(toolbar).height, greaterThanOrEqualTo(40));
+      expect(tester.getRect(toolbar).right, lessThanOrEqualTo(360));
+      expect(
+        tester.getRect(find.byTooltip('Resize text box from right')).width,
+        greaterThanOrEqualTo(40),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('creates and opens a notebook', (WidgetTester tester) async {
     await pumpInkNestApp(tester);
@@ -341,6 +486,40 @@ void main() {
         findsOneWidget,
       );
     }
+  });
+
+  testWidgets('infinite canvas converts a held Pen line into a shape', (
+    WidgetTester tester,
+  ) async {
+    final repository = InMemoryNotebookRepository();
+    final notebook = await repository.createNotebook(
+      title: 'Hold shapes',
+      layoutMode: NotebookLayoutMode.infiniteCanvas,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: InfiniteCanvasScreen(
+          notebook: notebook,
+          notebookRepository: repository,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final viewport = find.byKey(const ValueKey('infinite-canvas-viewport'));
+    final center = tester.getCenter(viewport);
+    final gesture = await tester.startGesture(
+      center - const Offset(100, 0),
+      kind: ui.PointerDeviceKind.stylus,
+    );
+    await gesture.moveTo(center + const Offset(100, 2));
+    await tester.pump(const Duration(milliseconds: 520));
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    final document = await repository.loadInfiniteCanvas(notebook);
+    expect(document.strokes, isEmpty);
+    expect(document.shapes.single.type, NoteShapeType.line);
   });
 
   testWidgets('adds and persists infinite canvas text and shapes', (
@@ -1248,7 +1427,10 @@ void main() {
     await tester.tap(find.byTooltip('Eraser'));
     await tester.pump();
     final eraseStart = visibleCanvasPoint(tester);
-    final eraserGesture = await tester.startGesture(eraseStart);
+    final eraserGesture = await tester.startGesture(
+      eraseStart,
+      kind: ui.PointerDeviceKind.stylus,
+    );
     await eraserGesture.moveBy(const Offset(28, 12));
     await eraserGesture.up();
     await tester.pump();
@@ -1482,6 +1664,7 @@ void main() {
       ),
       'Class Notes',
     );
+    await tester.pump();
     await tester.tap(find.widgetWithText(FilledButton, 'Save'));
     await tester.pumpAndSettle();
 
@@ -1931,12 +2114,16 @@ void main() {
     expect(find.byTooltip('Pen'), findsOneWidget);
     expect(find.byTooltip('Highlighter'), findsOneWidget);
     expect(find.byTooltip('Eraser'), findsOneWidget);
-    expect(find.byTooltip('Finger writes'), findsOneWidget);
+    expect(find.byTooltip('Finger moves'), findsOneWidget);
     expect(
       find.byKey(const ValueKey('editor-tool-properties')),
       findsOneWidget,
     );
 
+    await tester.tap(find.byKey(const ValueKey('editor-finger-mode-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Finger writes'));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('editor-finger-mode-menu')));
     await tester.pumpAndSettle();
     expect(find.text('Writing assist'), findsOneWidget);
@@ -1992,17 +2179,69 @@ void main() {
     );
   });
 
+  testWidgets('erases page shapes and keeps the action undoable', (
+    WidgetTester tester,
+  ) async {
+    final repository = InMemoryNotebookRepository();
+    final notebook = await repository.createNotebook(title: 'Shape notes');
+    await tester.pumpWidget(InkNestApp(notebookRepository: repository));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(notebook.title));
+    await tester.pumpAndSettle();
+
+    await selectInsertAction(tester, 'Shape');
+    final start = visibleCanvasPoint(tester);
+    final shapeGesture = await tester.startGesture(
+      start,
+      kind: ui.PointerDeviceKind.stylus,
+    );
+    await shapeGesture.moveBy(const Offset(96, 48));
+    await shapeGesture.up();
+    await tester.pumpAndSettle();
+
+    expect(
+      (await repository.loadPage(notebook, 'page-1')).shapes,
+      hasLength(1),
+    );
+
+    final undoButton = find.byKey(const ValueKey('editor-undo-button'));
+    final redoButton = find.byKey(const ValueKey('editor-redo-button'));
+    await tester.tap(undoButton);
+    await tester.pumpAndSettle();
+    expect((await repository.loadPage(notebook, 'page-1')).shapes, isEmpty);
+
+    await tester.tap(redoButton);
+    await tester.pumpAndSettle();
+    expect(
+      (await repository.loadPage(notebook, 'page-1')).shapes,
+      hasLength(1),
+    );
+
+    await tester.tap(find.byTooltip('Eraser'));
+    await tester.pump();
+    final eraserGesture = await tester.startGesture(
+      start + const Offset(48, 24),
+      kind: ui.PointerDeviceKind.stylus,
+    );
+    await eraserGesture.moveBy(const Offset(24, 12));
+    await eraserGesture.up();
+    await tester.pumpAndSettle();
+    expect((await repository.loadPage(notebook, 'page-1')).shapes, isEmpty);
+
+    await tester.tap(undoButton);
+    await tester.pumpAndSettle();
+    expect(
+      (await repository.loadPage(notebook, 'page-1')).shapes,
+      hasLength(1),
+    );
+  });
+
   testWidgets('finger pan mode ignores touch drawing but accepts stylus', (
     WidgetTester tester,
   ) async {
     await pumpInkNestApp(tester);
 
     await createPagedNotebook(tester);
-
-    await tester.tap(find.byKey(const ValueKey('editor-finger-mode-menu')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Finger moves'));
-    await tester.pumpAndSettle();
 
     var start = visibleCanvasPoint(tester);
     final touchGesture = await tester.startGesture(start);

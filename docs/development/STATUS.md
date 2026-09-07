@@ -9,11 +9,15 @@
   choices: public HTTPS Privacy/Terms/deletion pages, final operator and contact
   details, launch territories and retention/processor disclosures; then select
   an email provider before implementing verified email and password recovery.
-- Last completed: Replaced the placeholder local legal drafts with versioned
-  Simplified Chinese Privacy Policy and Terms `2026-08-31.1`, audited against
-  the current local-first storage, optional cloud account/sync, permissions,
-  ML Kit metrics, security logs, retention, deletion, and licensing behavior;
-  App and backend agreement versions now require reacceptance.
+- Last completed: Replaced the paged editor's one-sheet viewport with a lazy
+  continuous vertical page flow on phone and tablet across iOS/iPadOS and
+  Android. Scrolling updates the active page and page actions; direct page
+  navigation, shared zoom, rotation, canonical document coordinates, and all
+  editing layers remain intact. Paged notebooks now start in Finger moves so a
+  finger scrolls while a stylus writes; Finger writes and Lasso suspend list
+  dragging to avoid gesture conflicts. This supersedes the earlier narrow-phone
+  single-page top-anchoring behavior. Shape Recognition V2 core and the Android
+  phone UX audit remain delivered.
 
 ### Release readiness
 
@@ -382,6 +386,18 @@
   its source JSON.
 
 ## Verification
+
+- Continuous paged editing passes all 310 Flutter tests and `flutter analyze`.
+  Focused coverage verifies phone/tablet vertical page stacking, scroll-driven
+  current-page updates, direct page jumps, writing to Page 2 after scrolling,
+  canonical coordinates, rotation, zoom, Finger moves, Finger writes, Lasso,
+  text, images, shapes, erasing, undo/redo, and existing page operations.
+
+- Shape Recognition V2 core passes all 309 Flutter tests. Coverage includes
+  quick Pen ink, 500ms hold conversion, preview adjustment, disabling the
+  setting, paged and infinite canvases, richer shape recognition, JSON round
+  trips, erasing, undo, and PDF export. `flutter analyze` and
+  `git diff --check` pass.
 
 - P0 synchronization completion passes 134 focused Flutter synchronization
   tests and the complete 285-test Flutter suite; `flutter analyze` reports no

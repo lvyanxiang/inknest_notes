@@ -1,7 +1,32 @@
 import 'dart:math' as math;
-import 'dart:ui';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
+
+/// Makes the current document-to-screen scale available to page object chrome.
+///
+/// Persisted page content should continue to scale with the page. Interactive
+/// controls can use this value to preserve a usable screen-space target.
+class PageViewportScaleScope extends InheritedWidget {
+  const PageViewportScaleScope({
+    super.key,
+    required this.scale,
+    required super.child,
+  });
+
+  final double scale;
+
+  static double maybeOf(BuildContext context) {
+    return context
+            .dependOnInheritedWidgetOfExactType<PageViewportScaleScope>()
+            ?.scale ??
+        1;
+  }
+
+  @override
+  bool updateShouldNotify(PageViewportScaleScope oldWidget) {
+    return scale != oldWidget.scale;
+  }
+}
 
 /// The way a notebook page is fitted into its usable editor viewport.
 enum PageViewportMode {
@@ -186,6 +211,7 @@ class PageViewportTransform {
       pageOriginInViewport: metrics.clampPageOrigin(
         requestedOrigin,
         scale: scale,
+        mode: mode,
       ),
       pagePadding: metrics.pagePadding,
       recoverablePageExtent: metrics.recoverablePageExtent,
@@ -525,7 +551,11 @@ class _PageViewportMetrics {
     };
   }
 
-  Offset clampPageOrigin(Offset requestedOrigin, {required double scale}) {
+  Offset clampPageOrigin(
+    Offset requestedOrigin, {
+    required double scale,
+    required PageViewportMode mode,
+  }) {
     final scaledSize = rotatedPageSize * scale;
     return Offset(
       _clampAxisOrigin(
@@ -541,6 +571,8 @@ class _PageViewportMetrics {
         usableExtent: usableRect.height,
         pageExtent: scaledSize.height,
         recoverableExtent: recoverablePageExtent,
+        topAlignWhenContained:
+            mode == PageViewportMode.fitWidth && usableRect.width < 480,
       ),
     );
   }
@@ -556,8 +588,12 @@ double _clampAxisOrigin({
   required double usableExtent,
   required double pageExtent,
   required double recoverableExtent,
+  bool topAlignWhenContained = false,
 }) {
   if (pageExtent <= usableExtent) {
+    if (topAlignWhenContained) {
+      return usableStart + 24;
+    }
     return usableStart + (usableExtent - pageExtent) / 2;
   }
 

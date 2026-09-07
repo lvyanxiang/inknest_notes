@@ -390,64 +390,137 @@ class LassoSelectionToolbar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-
-    return Material(
-      key: const ValueKey('lasso-selection-toolbar'),
-      color: colorScheme.surface,
-      elevation: 4,
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.open_with, size: 18, color: colorScheme.primary),
-            const SizedBox(width: 4),
-            Text(
-              '$selectedStrokeCount',
-              style: Theme.of(context).textTheme.labelMedium,
-            ),
-            const SizedBox(width: 6),
-            if (onSmartInk != null) ...[
-              FilledButton.tonalIcon(
-                key: const ValueKey('lasso-smart-ink'),
-                onPressed: onSmartInk,
-                icon: const Icon(Icons.auto_fix_high, size: 19),
-                label: const Text('Beautify'),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size(44, 44),
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 430;
+        return Material(
+          key: const ValueKey('lasso-selection-toolbar'),
+          color: colorScheme.surface,
+          elevation: 4,
+          borderRadius: BorderRadius.circular(12),
+          clipBehavior: Clip.antiAlias,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    minWidth: 44,
+                    minHeight: 44,
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.open_with,
+                          size: 18,
+                          color: colorScheme.primary,
+                        ),
+                        const SizedBox(width: 3),
+                        Text(
+                          '$selectedStrokeCount',
+                          style: Theme.of(context).textTheme.labelMedium,
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 4),
-            ],
-            for (final colorChoice in _colorChoices)
-              _LassoColorButton(
-                color: colorChoice.color,
-                label: colorChoice.label,
-                onPressed: () => onColorChanged(colorChoice.color),
-              ),
-            IconButton(
-              key: const ValueKey('lasso-delete-selection'),
-              onPressed: onDelete,
-              tooltip: 'Delete selected strokes',
-              icon: const Icon(Icons.delete_outline),
-              iconSize: 20,
-              constraints: const BoxConstraints.tightFor(width: 44, height: 44),
-              padding: EdgeInsets.zero,
+                if (onSmartInk != null) ...[
+                  if (compact)
+                    IconButton(
+                      key: const ValueKey('lasso-smart-ink'),
+                      onPressed: onSmartInk,
+                      tooltip: 'Beautify selected ink',
+                      icon: const Icon(Icons.auto_fix_high),
+                      iconSize: 20,
+                      constraints: const BoxConstraints.tightFor(
+                        width: 44,
+                        height: 44,
+                      ),
+                      padding: EdgeInsets.zero,
+                    )
+                  else ...[
+                    FilledButton.tonalIcon(
+                      key: const ValueKey('lasso-smart-ink'),
+                      onPressed: onSmartInk,
+                      icon: const Icon(Icons.auto_fix_high, size: 19),
+                      label: const Text('Beautify'),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size(44, 44),
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                ],
+                if (compact)
+                  PopupMenuButton<Color>(
+                    key: const ValueKey('lasso-color-menu'),
+                    tooltip: 'Recolor selected strokes',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 180),
+                    onSelected: onColorChanged,
+                    itemBuilder: (context) => [
+                      for (final choice in _colorChoices)
+                        PopupMenuItem<Color>(
+                          value: choice.color,
+                          child: Row(
+                            children: [
+                              Icon(Icons.circle, color: choice.color, size: 20),
+                              const SizedBox(width: 12),
+                              Text(
+                                '${choice.label[0].toUpperCase()}'
+                                '${choice.label.substring(1)}',
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                    child: const SizedBox.square(
+                      dimension: 44,
+                      child: Icon(Icons.palette_outlined, size: 20),
+                    ),
+                  )
+                else
+                  for (final colorChoice in _colorChoices)
+                    _LassoColorButton(
+                      color: colorChoice.color,
+                      label: colorChoice.label,
+                      onPressed: () => onColorChanged(colorChoice.color),
+                    ),
+                IconButton(
+                  key: const ValueKey('lasso-delete-selection'),
+                  onPressed: onDelete,
+                  tooltip: 'Delete selected strokes',
+                  icon: const Icon(Icons.delete_outline),
+                  iconSize: 20,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 44,
+                    height: 44,
+                  ),
+                  padding: EdgeInsets.zero,
+                ),
+                IconButton(
+                  key: const ValueKey('lasso-clear-selection'),
+                  onPressed: onClearSelection,
+                  tooltip: 'Clear lasso selection',
+                  icon: const Icon(Icons.close),
+                  iconSize: 20,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 44,
+                    height: 44,
+                  ),
+                  padding: EdgeInsets.zero,
+                ),
+              ],
             ),
-            IconButton(
-              key: const ValueKey('lasso-clear-selection'),
-              onPressed: onClearSelection,
-              tooltip: 'Clear lasso selection',
-              icon: const Icon(Icons.close),
-              iconSize: 20,
-              constraints: const BoxConstraints.tightFor(width: 44, height: 44),
-              padding: EdgeInsets.zero,
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }

@@ -272,6 +272,7 @@ class _EditorToolbarState extends State<EditorToolbar> {
                             isSelected:
                                 widget.tool.type == ToolType.text ||
                                 widget.tool.type == ToolType.shape,
+                            shapeSelected: widget.tool.type == ToolType.shape,
                             showLabel: showPrimaryLabels,
                             onSelected: _selectInsertAction,
                           ),
@@ -365,11 +366,13 @@ class _PrimaryToolButton extends StatelessWidget {
 class _InsertMenuButton extends StatelessWidget {
   const _InsertMenuButton({
     required this.isSelected,
+    required this.shapeSelected,
     required this.showLabel,
     required this.onSelected,
   });
 
   final bool isSelected;
+  final bool shapeSelected;
   final bool showLabel;
   final ValueChanged<_InsertAction> onSelected;
 
@@ -435,11 +438,12 @@ class _InsertMenuButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Tooltip(
-      message: 'Insert',
+      message: shapeSelected ? 'Shape' : 'Insert',
       child: Semantics(
         button: true,
         selected: isSelected,
-        label: 'Insert${isSelected ? ', selected' : ''}',
+        label:
+            '${shapeSelected ? 'Shape' : 'Insert'}${isSelected ? ', selected' : ''}',
         excludeSemantics: true,
         child: _DockPopupControl(
           child: Builder(
@@ -463,10 +467,15 @@ class _InsertMenuButton extends StatelessWidget {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.add_circle_outline, size: 21),
+                        Icon(
+                          shapeSelected
+                              ? Icons.category_outlined
+                              : Icons.add_circle_outline,
+                          size: 21,
+                        ),
                         if (showLabel) ...[
                           const SizedBox(width: 6),
-                          const Text('Insert'),
+                          Text(shapeSelected ? 'Shape' : 'Insert'),
                         ],
                         const SizedBox(width: 2),
                         const Icon(Icons.arrow_drop_down, size: 18),
@@ -483,7 +492,7 @@ class _InsertMenuButton extends StatelessWidget {
   }
 }
 
-class _PropertyButton extends StatelessWidget {
+class _PropertyButton extends StatefulWidget {
   const _PropertyButton({
     required this.tool,
     required this.compact,
@@ -495,33 +504,108 @@ class _PropertyButton extends StatelessWidget {
   final ValueChanged<BuildContext> onPressed;
 
   @override
+  State<_PropertyButton> createState() => _PropertyButtonState();
+}
+
+class _PropertyButtonState extends State<_PropertyButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _attentionController;
+  late final Animation<double> _attentionScale;
+  late final Animation<double> _attentionRotation;
+
+  @override
+  void initState() {
+    super.initState();
+    _attentionController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 720),
+    );
+    _attentionScale = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 0, end: 1), weight: 18),
+      TweenSequenceItem(tween: Tween(begin: 1, end: 0.2), weight: 24),
+      TweenSequenceItem(tween: Tween(begin: 0.2, end: 0.8), weight: 20),
+      TweenSequenceItem(tween: Tween(begin: 0.8, end: 0), weight: 38),
+    ]).animate(_attentionController);
+    _attentionRotation = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 0, end: -0.06), weight: 18),
+      TweenSequenceItem(tween: Tween(begin: -0.06, end: 0.05), weight: 24),
+      TweenSequenceItem(tween: Tween(begin: 0.05, end: -0.025), weight: 20),
+      TweenSequenceItem(tween: Tween(begin: -0.025, end: 0), weight: 38),
+    ]).animate(_attentionController);
+  }
+
+  @override
+  void didUpdateWidget(covariant _PropertyButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.tool.type == ToolType.shape &&
+        oldWidget.tool.type != ToolType.shape) {
+      _attentionController.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _attentionController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final preset = _matchingPreset(tool);
-    final label = _dockPropertySummary(tool, preset);
-    final tooltip = '${_toolLabel(tool.type)} properties';
+    final preset = _matchingPreset(widget.tool);
+    final label = _dockPropertySummary(widget.tool, preset);
+    final tooltip = '${_toolLabel(widget.tool.type)} properties';
+    final shapeHint = widget.tool.type == ToolType.shape;
 
     return Tooltip(
       message: tooltip,
       child: Semantics(
         button: true,
-        label: '$label. Open ${_toolLabel(tool.type)} properties',
+        label: '$label. Open ${_toolLabel(widget.tool.type)} properties',
+        hint: shapeHint ? 'Tap to choose a shape type' : null,
         excludeSemantics: true,
-        child: _DockControlSurface(
-          key: const ValueKey('editor-tool-properties'),
-          isSelected: false,
-          onTap: () => onPressed(context),
-          minWidth: compact ? 48 : 72,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _ToolPreview(tool: tool),
-              if (!compact) ...[
-                const SizedBox(width: 7),
-                Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+        child: AnimatedBuilder(
+          animation: _attentionController,
+          builder: (context, child) {
+            final attention = _attentionScale.value;
+            final colorScheme = Theme.of(context).colorScheme;
+            return Transform.rotate(
+              angle: _attentionRotation.value,
+              child: Transform.scale(
+                scale: 1 + attention * 0.08,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: colorScheme.primary.withValues(
+                        alpha: attention * 0.9,
+                      ),
+                      width: 2,
+                    ),
+                    borderRadius: BorderRadius.circular(
+                      EditorWorkspaceTokens.controlRadius,
+                    ),
+                  ),
+                  child: child,
+                ),
+              ),
+            );
+          },
+          child: _DockControlSurface(
+            key: const ValueKey('editor-tool-properties'),
+            isSelected: false,
+            onTap: () => widget.onPressed(context),
+            minWidth: widget.compact ? 48 : 72,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _ToolPreview(tool: widget.tool),
+                if (!widget.compact) ...[
+                  const SizedBox(width: 7),
+                  Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+                ],
+                const SizedBox(width: 2),
+                const Icon(Icons.expand_more, size: 18),
               ],
-              const SizedBox(width: 2),
-              const Icon(Icons.expand_more, size: 18),
-            ],
+            ),
           ),
         ),
       ),
@@ -712,10 +796,8 @@ class _FingerModeMenuButton extends StatelessWidget {
       message: label,
       child: Semantics(
         button: true,
-        selected: fingerPanEnabled,
-        label: fingerPanEnabled
-            ? 'Finger moves, selected'
-            : 'Finger writes, default',
+        selected: true,
+        label: '$label, selected',
         excludeSemantics: true,
         child: _DockPopupControl(
           child: Builder(
@@ -1065,13 +1147,31 @@ class _ToolPropertiesSheetState extends State<_ToolPropertiesSheet> {
                   ),
                   const SizedBox(height: 12),
                 ],
+                if (_tool.type == ToolType.pen) ...[
+                  const _PanelSectionLabel('Drawing assist'),
+                  const SizedBox(height: 6),
+                  SwitchListTile.adaptive(
+                    key: const ValueKey('pen-draw-and-hold-shape'),
+                    contentPadding: EdgeInsets.zero,
+                    value: _tool.drawAndHoldShapeEnabled,
+                    onChanged: (value) =>
+                        _apply(_tool.copyWith(drawAndHoldShapeEnabled: value)),
+                    title: const Text('Draw and hold'),
+                    subtitle: const Text(
+                      'Pause at the end of a shape to straighten it',
+                    ),
+                    secondary: const Icon(Icons.gesture),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 if (_tool.type == ToolType.eraser) ...[
                   const _PanelSectionLabel('Eraser'),
                   const SizedBox(height: 6),
                   const _SelectedSettingRow(
                     icon: Icons.auto_fix_off_outlined,
-                    title: 'Whole-stroke eraser',
-                    subtitle: 'Removes a complete stroke when touched',
+                    title: 'Ink and object eraser',
+                    subtitle:
+                        'Erases ink locally; touching a shape or image removes it',
                   ),
                   const SizedBox(height: 12),
                 ],
@@ -1092,6 +1192,46 @@ class _ToolPropertiesSheetState extends State<_ToolPropertiesSheet> {
                               _apply(_tool.copyWith(shapeType: shapeType)),
                         ),
                     ],
+                  ),
+                  const SizedBox(height: 12),
+                  const _PanelSectionLabel('Creation'),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      _CompactChoiceChip(
+                        key: const ValueKey('shape-mode-preset'),
+                        label: 'Preset',
+                        icon: Icons.shape_line_outlined,
+                        isSelected:
+                            _tool.shapeCreationMode == ShapeCreationMode.preset,
+                        onPressed: () => _apply(
+                          _tool.copyWith(
+                            shapeCreationMode: ShapeCreationMode.preset,
+                          ),
+                        ),
+                      ),
+                      _CompactChoiceChip(
+                        key: const ValueKey('shape-mode-auto'),
+                        label: 'Auto shape',
+                        icon: Icons.auto_awesome,
+                        isSelected:
+                            _tool.shapeCreationMode == ShapeCreationMode.auto,
+                        onPressed: () => _apply(
+                          _tool.copyWith(
+                            shapeCreationMode: ShapeCreationMode.auto,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Draw one stroke and release to convert it into a clean shape.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
                   const SizedBox(height: 12),
                 ],
@@ -1684,7 +1824,9 @@ bool _toolMatches(DrawingTool a, DrawingTool b) {
   return a.type == b.type &&
       a.color == b.color &&
       a.width == b.width &&
-      a.shapeType == b.shapeType;
+      a.shapeType == b.shapeType &&
+      a.shapeCreationMode == b.shapeCreationMode &&
+      a.drawAndHoldShapeEnabled == b.drawAndHoldShapeEnabled;
 }
 
 _FavoriteToolPreset? _matchingPreset(DrawingTool tool) {
@@ -1707,7 +1849,7 @@ String _propertySummary(DrawingTool tool, _FavoriteToolPreset? matchingPreset) {
     ToolType.text => 'Text style',
     ToolType.lasso => 'Ink only',
     ToolType.shape =>
-      '${_shapeLabel(tool.shapeType)} · ${_formatWidth(tool.width)} pt',
+      '${_shapeCreationModeLabel(tool.shapeCreationMode)} · ${_formatWidth(tool.width)} pt',
   };
 }
 
@@ -1716,6 +1858,11 @@ String _dockPropertySummary(
   DrawingTool tool,
   _FavoriteToolPreset? matchingPreset,
 ) {
+  if (tool.type == ToolType.shape) {
+    return tool.shapeCreationMode == ShapeCreationMode.auto
+        ? 'Shape · Auto'
+        : 'Shape · ${_shapeLabel(tool.shapeType)}';
+  }
   if (_toolUsesColor(tool.type) && _toolUsesWidth(tool.type)) {
     return '${_namedColorLabel(tool.color)} · ${_formatWidth(tool.width)}';
   }
@@ -1740,7 +1887,10 @@ IconData _toolIcon(DrawingTool tool) {
     ToolType.eraser => Icons.cleaning_services_outlined,
     ToolType.text => Icons.text_fields,
     ToolType.lasso => Icons.select_all,
-    ToolType.shape => _shapeIcon(tool.shapeType),
+    ToolType.shape =>
+      tool.shapeCreationMode == ShapeCreationMode.auto
+          ? Icons.auto_awesome
+          : _shapeIcon(tool.shapeType),
   };
 }
 
@@ -1780,6 +1930,9 @@ IconData _shapeIcon(NoteShapeType shapeType) {
     NoteShapeType.arrow => Icons.north_east,
     NoteShapeType.rectangle => Icons.check_box_outline_blank,
     NoteShapeType.ellipse => Icons.radio_button_unchecked,
+    NoteShapeType.triangle => Icons.change_history,
+    NoteShapeType.diamond => Icons.diamond_outlined,
+    NoteShapeType.polygon => Icons.pentagon_outlined,
   };
 }
 
@@ -1789,7 +1942,14 @@ String _shapeLabel(NoteShapeType shapeType) {
     NoteShapeType.arrow => 'Arrow',
     NoteShapeType.rectangle => 'Rectangle',
     NoteShapeType.ellipse => 'Ellipse',
+    NoteShapeType.triangle => 'Triangle',
+    NoteShapeType.diamond => 'Diamond',
+    NoteShapeType.polygon => 'Polygon',
   };
+}
+
+String _shapeCreationModeLabel(ShapeCreationMode mode) {
+  return mode == ShapeCreationMode.auto ? 'Auto shape' : 'Preset shape';
 }
 
 String _formatWidth(double width) {

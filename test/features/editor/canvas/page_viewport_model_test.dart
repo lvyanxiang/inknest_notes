@@ -107,6 +107,18 @@ void main() {
       expect(transform.pageOriginInUsable, const Offset(24, 24));
     });
 
+    test('phone Fit Width keeps a contained page near the top edge', () {
+      final transform = PageViewportTransform.firstVisit(
+        documentSize: const Size(768, 1024),
+        rotationQuarterTurns: 0,
+        usableRect: const Rect.fromLTWH(0, 0, 390, 700),
+      );
+
+      expect(transform.pageRectInViewport.top, closeTo(24, 1e-12));
+      expect(transform.pageRectInViewport.left, closeTo(24, 1e-12));
+      expect(transform.pageRectInViewport.bottom, lessThan(700));
+    });
+
     test('Fit Page centers the padded complete page', () {
       final transform = PageViewportTransform.firstVisit(
         documentSize: documentSize,

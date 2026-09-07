@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:inknest_notes/features/editor/canvas/page_viewport_model.dart';
 import 'package:inknest_notes/features/editor/text/note_text_box_styles.dart';
 import 'package:inknest_notes/models/note_page.dart';
 import 'package:inknest_notes/models/note_text_box.dart';
@@ -21,9 +22,6 @@ class TextBoxLayer extends StatelessWidget {
     this.editingTextBoxId,
   });
 
-  static const double _toolbarWidth = 312;
-  static const double _toolbarExtent = 52;
-
   final NotePage page;
   final ValueChanged<Offset>? onCreateTextBox;
   final ValueChanged<NoteTextBox> onTextBoxChanged;
@@ -36,9 +34,12 @@ class TextBoxLayer extends StatelessWidget {
   final String? selectedTextBoxId;
   final String? editingTextBoxId;
 
+  static const _toolbarWidthAllowance = 4.0;
+
   @override
   Widget build(BuildContext context) {
     final interactionEnabled = onCreateTextBox != null;
+    final viewportScale = PageViewportScaleScope.maybeOf(context);
 
     return Stack(
       fit: StackFit.expand,
@@ -59,18 +60,35 @@ class TextBoxLayer extends StatelessWidget {
             ),
           ),
         for (final textBox in page.textBoxes)
-          _positionedTextBox(textBox, interactionEnabled),
+          _positionedTextBox(textBox, interactionEnabled, viewportScale),
       ],
     );
   }
 
-  Widget _positionedTextBox(NoteTextBox textBox, bool interactionEnabled) {
+  Widget _positionedTextBox(
+    NoteTextBox textBox,
+    bool interactionEnabled,
+    double viewportScale,
+  ) {
     final isSelected = textBox.id == selectedTextBoxId;
     final isEditing = textBox.id == editingTextBoxId;
     final showsControls = interactionEnabled && (isSelected || isEditing);
-    final toolbarAbove = showsControls && textBox.position.dy >= _toolbarExtent;
+    final toolbarActionCount = isEditing ? 7 : 6;
+    final safeViewportScale = math.max(0.01, viewportScale);
+    final desiredControlExtent = math.max(44.0, 44 / safeViewportScale);
+    final availableControlExtent =
+        (page.width - _toolbarWidthAllowance) / toolbarActionCount;
+    final controlExtent = math.min(
+      desiredControlExtent,
+      availableControlExtent,
+    );
+    final toolbarWidth =
+        toolbarActionCount * controlExtent + _toolbarWidthAllowance;
+    final toolbarGap = controlExtent * (8 / 44);
+    final toolbarExtent = controlExtent + toolbarGap;
+    final toolbarAbove = showsControls && textBox.position.dy >= toolbarExtent;
     final rootWidth = showsControls
-        ? math.max(textBox.width, _toolbarWidth)
+        ? math.max(textBox.width, toolbarWidth)
         : textBox.width;
     final alignToolbarToRight =
         showsControls && textBox.position.dx + rootWidth > page.width;
@@ -79,7 +97,7 @@ class TextBoxLayer extends StatelessWidget {
         : 0.0;
     final rootLeft = math.max(0.0, textBox.position.dx - desiredContentOffsetX);
     final contentOffsetX = textBox.position.dx - rootLeft;
-    final rootTop = textBox.position.dy - (toolbarAbove ? _toolbarExtent : 0);
+    final rootTop = textBox.position.dy - (toolbarAbove ? toolbarExtent : 0);
 
     return Positioned(
       left: rootLeft,
@@ -95,6 +113,8 @@ class TextBoxLayer extends StatelessWidget {
           isEditing: isEditing,
           showsControls: showsControls,
           toolbarAbove: toolbarAbove,
+          controlExtent: controlExtent,
+          toolbarGap: toolbarGap,
           contentOffsetX: contentOffsetX,
           onSelected: () => onTextBoxSelected(textBox.id),
           onEditingStarted: () => onTextBoxEditingStarted(textBox.id),
@@ -118,6 +138,8 @@ class _EditableTextBox extends StatefulWidget {
     required this.isEditing,
     required this.showsControls,
     required this.toolbarAbove,
+    required this.controlExtent,
+    required this.toolbarGap,
     required this.contentOffsetX,
     required this.onSelected,
     required this.onEditingStarted,
@@ -134,6 +156,8 @@ class _EditableTextBox extends StatefulWidget {
   final bool isEditing;
   final bool showsControls;
   final bool toolbarAbove;
+  final double controlExtent;
+  final double toolbarGap;
   final double contentOffsetX;
   final VoidCallback onSelected;
   final VoidCallback onEditingStarted;
@@ -284,6 +308,7 @@ class _EditableTextBoxState extends State<_EditableTextBox> {
     final toolbar = _TextBoxObjectToolbar(
       textBox: widget.textBox,
       isEditing: widget.isEditing,
+      controlExtent: widget.controlExtent,
       onMoveStart: _startControlMutation,
       onMoveUpdate: _moveBy,
       onMoveEnd: _endControlMutation,
@@ -327,6 +352,7 @@ class _EditableTextBoxState extends State<_EditableTextBox> {
               onUpdate: _resizeLeft,
               onEnd: _endControlMutation,
               semanticLabel: 'Resize text box from left',
+              controlExtent: widget.controlExtent,
             ),
             _ResizeHandle(
               key: ValueKey('text-box-resize-right-${widget.textBox.id}'),
@@ -336,6 +362,7 @@ class _EditableTextBoxState extends State<_EditableTextBox> {
               onUpdate: _resizeRight,
               onEnd: _endControlMutation,
               semanticLabel: 'Resize text box from right',
+              controlExtent: widget.controlExtent,
             ),
           ],
         ),
@@ -347,8 +374,8 @@ class _EditableTextBoxState extends State<_EditableTextBox> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: widget.toolbarAbove
-            ? [toolbar, const SizedBox(height: 8), framedContent]
-            : [framedContent, const SizedBox(height: 8), toolbar],
+            ? [toolbar, SizedBox(height: widget.toolbarGap), framedContent]
+            : [framedContent, SizedBox(height: widget.toolbarGap), toolbar],
       ),
     );
   }
@@ -404,6 +431,7 @@ class _ResizeHandle extends StatelessWidget {
     required this.onUpdate,
     required this.onEnd,
     required this.semanticLabel,
+    required this.controlExtent,
   });
 
   final Alignment alignment;
@@ -412,6 +440,7 @@ class _ResizeHandle extends StatelessWidget {
   final ValueChanged<double> onUpdate;
   final VoidCallback onEnd;
   final String semanticLabel;
+  final double controlExtent;
 
   @override
   Widget build(BuildContext context) {
@@ -419,7 +448,7 @@ class _ResizeHandle extends StatelessWidget {
       child: Align(
         alignment: alignment,
         child: Transform.translate(
-          offset: Offset(alignment.x * 14, 0),
+          offset: Offset(alignment.x * controlExtent * (14 / 44), 0),
           child: Semantics(
             label: semanticLabel,
             child: Tooltip(
@@ -434,15 +463,20 @@ class _ResizeHandle extends StatelessWidget {
                   onHorizontalDragEnd: (_) => onEnd(),
                   onHorizontalDragCancel: onEnd,
                   child: SizedBox.square(
-                    dimension: 44,
+                    dimension: controlExtent,
                     child: Center(
                       child: DecoratedBox(
                         decoration: BoxDecoration(
                           color: Theme.of(context).colorScheme.primary,
                           shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
+                          border: Border.all(
+                            color: Colors.white,
+                            width: controlExtent * (2 / 44),
+                          ),
                         ),
-                        child: const SizedBox.square(dimension: 12),
+                        child: SizedBox.square(
+                          dimension: controlExtent * (12 / 44),
+                        ),
                       ),
                     ),
                   ),
@@ -460,6 +494,7 @@ class _TextBoxObjectToolbar extends StatelessWidget {
   const _TextBoxObjectToolbar({
     required this.textBox,
     required this.isEditing,
+    required this.controlExtent,
     required this.onMoveStart,
     required this.onMoveUpdate,
     required this.onMoveEnd,
@@ -479,6 +514,7 @@ class _TextBoxObjectToolbar extends StatelessWidget {
 
   final NoteTextBox textBox;
   final bool isEditing;
+  final double controlExtent;
   final VoidCallback onMoveStart;
   final ValueChanged<Offset> onMoveUpdate;
   final VoidCallback onMoveEnd;
@@ -490,14 +526,15 @@ class _TextBoxObjectToolbar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final iconSize = controlExtent * (20 / 44);
     return Material(
       key: ValueKey('text-box-toolbar-${textBox.id}'),
       color: colorScheme.surface,
       elevation: 5,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(controlExtent * (12 / 44)),
       clipBehavior: Clip.antiAlias,
       child: SizedBox(
-        height: 44,
+        height: controlExtent,
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -511,9 +548,9 @@ class _TextBoxObjectToolbar extends StatelessWidget {
                   onPanUpdate: (details) => onMoveUpdate(details.delta),
                   onPanEnd: (_) => onMoveEnd(),
                   onPanCancel: onMoveEnd,
-                  child: const SizedBox.square(
-                    dimension: 44,
-                    child: Icon(Icons.drag_indicator, size: 20),
+                  child: SizedBox.square(
+                    dimension: controlExtent,
+                    child: Icon(Icons.drag_indicator, size: iconSize),
                   ),
                 ),
               ),
@@ -528,10 +565,10 @@ class _TextBoxObjectToolbar extends StatelessWidget {
                 key: ValueKey('text-box-done-${textBox.id}'),
                 tooltip: 'Done editing',
                 onPressed: onDone,
-                icon: const Icon(Icons.check, size: 20),
-                constraints: const BoxConstraints.tightFor(
-                  width: 44,
-                  height: 44,
+                icon: Icon(Icons.check, size: iconSize),
+                constraints: BoxConstraints.tightFor(
+                  width: controlExtent,
+                  height: controlExtent,
                 ),
               ),
           ],
@@ -542,7 +579,7 @@ class _TextBoxObjectToolbar extends StatelessWidget {
 
   Widget _fontMenu() {
     return SizedBox.square(
-      dimension: 44,
+      dimension: controlExtent,
       child: PopupMenuButton<NoteTextBoxFont>(
         key: ValueKey('text-box-font-menu-${textBox.id}'),
         tooltip: 'Choose font (${noteTextBoxFontLabel(textBox.font)})',
@@ -553,7 +590,10 @@ class _TextBoxObjectToolbar extends StatelessWidget {
           }
         },
         padding: EdgeInsets.zero,
-        icon: const Icon(Icons.font_download_outlined, size: 20),
+        icon: Icon(
+          Icons.font_download_outlined,
+          size: controlExtent * (20 / 44),
+        ),
         itemBuilder: (context) => [
           for (final font in noteTextBoxFontChoices)
             CheckedPopupMenuItem<NoteTextBoxFont>(
@@ -572,7 +612,7 @@ class _TextBoxObjectToolbar extends StatelessWidget {
 
   Widget _sizeMenu() {
     return SizedBox.square(
-      dimension: 44,
+      dimension: controlExtent,
       child: PopupMenuButton<double>(
         key: ValueKey('text-box-size-menu-${textBox.id}'),
         tooltip: 'Text size ${textBox.fontSize.round()}',
@@ -583,7 +623,7 @@ class _TextBoxObjectToolbar extends StatelessWidget {
           }
         },
         padding: EdgeInsets.zero,
-        icon: const Icon(Icons.format_size, size: 20),
+        icon: Icon(Icons.format_size, size: controlExtent * (20 / 44)),
         itemBuilder: (context) => [
           for (final size in _fontSizes)
             CheckedPopupMenuItem<double>(
@@ -599,7 +639,7 @@ class _TextBoxObjectToolbar extends StatelessWidget {
 
   Widget _colorMenu() {
     return SizedBox.square(
-      dimension: 44,
+      dimension: controlExtent,
       child: PopupMenuButton<Color>(
         key: ValueKey('text-box-color-menu-${textBox.id}'),
         tooltip: 'Text color',
@@ -609,7 +649,11 @@ class _TextBoxObjectToolbar extends StatelessWidget {
           }
         },
         padding: EdgeInsets.zero,
-        icon: Icon(Icons.circle, size: 20, color: textBox.color),
+        icon: Icon(
+          Icons.circle,
+          size: controlExtent * (20 / 44),
+          color: textBox.color,
+        ),
         itemBuilder: (context) => [
           for (final choice in _colors)
             CheckedPopupMenuItem<Color>(
@@ -636,7 +680,7 @@ class _TextBoxObjectToolbar extends StatelessWidget {
       NoteTextBoxAlignment.right => Icons.format_align_right,
     };
     return SizedBox.square(
-      dimension: 44,
+      dimension: controlExtent,
       child: PopupMenuButton<NoteTextBoxAlignment>(
         key: ValueKey('text-box-alignment-menu-${textBox.id}'),
         tooltip: 'Text alignment',
@@ -647,7 +691,7 @@ class _TextBoxObjectToolbar extends StatelessWidget {
           }
         },
         padding: EdgeInsets.zero,
-        icon: Icon(icon, size: 20),
+        icon: Icon(icon, size: controlExtent * (20 / 44)),
         itemBuilder: (context) => [
           for (final alignment in NoteTextBoxAlignment.values)
             CheckedPopupMenuItem<NoteTextBoxAlignment>(
@@ -669,7 +713,7 @@ class _TextBoxObjectToolbar extends StatelessWidget {
 
   Widget _moreMenu() {
     return SizedBox.square(
-      dimension: 44,
+      dimension: controlExtent,
       child: PopupMenuButton<_TextBoxAction>(
         key: ValueKey('text-box-more-${textBox.id}'),
         tooltip: 'More text box actions',
@@ -684,7 +728,7 @@ class _TextBoxObjectToolbar extends StatelessWidget {
           }
         },
         padding: EdgeInsets.zero,
-        icon: const Icon(Icons.more_horiz, size: 20),
+        icon: Icon(Icons.more_horiz, size: controlExtent * (20 / 44)),
         itemBuilder: (context) => [
           if (!isEditing)
             const PopupMenuItem(

@@ -71,6 +71,8 @@ class LibraryScreen extends StatefulWidget {
 
 enum _LibrarySortMode { recent, title, created, updated }
 
+const _phoneLibraryBreakpoint = 480.0;
+
 extension _LibrarySortModeLabel on _LibrarySortMode {
   String get label {
     switch (this) {
@@ -1485,6 +1487,7 @@ class _LibraryScreenState extends State<LibraryScreen>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) {
+        final colorScheme = Theme.of(context).colorScheme;
         return AlertDialog(
           title: const Text('Delete folder?'),
           content: Text(
@@ -1497,6 +1500,10 @@ class _LibraryScreenState extends State<LibraryScreen>
             ),
             FilledButton.icon(
               onPressed: () => Navigator.of(context).pop(true),
+              style: FilledButton.styleFrom(
+                backgroundColor: colorScheme.error,
+                foregroundColor: colorScheme.onError,
+              ),
               icon: const Icon(Icons.delete_outline),
               label: const Text('Delete'),
             ),
@@ -1691,6 +1698,7 @@ class _LibraryScreenState extends State<LibraryScreen>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) {
+        final colorScheme = Theme.of(context).colorScheme;
         return AlertDialog(
           title: const Text('Delete notebook?'),
           content: Text(
@@ -1703,6 +1711,10 @@ class _LibraryScreenState extends State<LibraryScreen>
             ),
             FilledButton.icon(
               onPressed: () => Navigator.of(context).pop(true),
+              style: FilledButton.styleFrom(
+                backgroundColor: colorScheme.error,
+                foregroundColor: colorScheme.onError,
+              ),
               icon: const Icon(Icons.delete_outline),
               label: const Text('Delete'),
             ),
@@ -1966,7 +1978,12 @@ class _LibraryHeader extends StatelessWidget {
         ),
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final horizontalPadding = constraints.maxWidth < 600 ? 16.0 : 24.0;
+            final phoneLayout = constraints.maxWidth < _phoneLibraryBreakpoint;
+            final horizontalPadding = phoneLayout
+                ? 12.0
+                : constraints.maxWidth < 600
+                ? 16.0
+                : 24.0;
             final compactControls = constraints.maxWidth < 700;
 
             return Padding(
@@ -1986,40 +2003,43 @@ class _LibraryHeader extends StatelessWidget {
                           tooltip: 'Show library',
                           icon: const Icon(Icons.arrow_back_rounded),
                         ),
-                        const SizedBox(width: 4),
+                        SizedBox(width: phoneLayout ? 0 : 4),
                       ],
-                      ExcludeSemantics(
-                        child: Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: _libraryFurnitureColor(colorScheme),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: colorScheme.outlineVariant,
+                      if (!phoneLayout) ...[
+                        ExcludeSemantics(
+                          child: Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: _libraryFurnitureColor(colorScheme),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: colorScheme.outlineVariant,
+                              ),
+                            ),
+                            child: Icon(
+                              Icons.local_library_outlined,
+                              color: colorScheme.primary,
                             ),
                           ),
-                          child: Icon(
-                            Icons.local_library_outlined,
-                            color: colorScheme.primary,
-                          ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
+                        const SizedBox(width: 12),
+                      ],
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              'InkNest Notes',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: textTheme.labelMedium?.copyWith(
-                                color: colorScheme.primary,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 0.6,
+                            if (!phoneLayout)
+                              Text(
+                                'InkNest Notes',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: textTheme.labelMedium?.copyWith(
+                                  color: colorScheme.primary,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.6,
+                                ),
                               ),
-                            ),
                             Text(
                               title,
                               maxLines: 1,
@@ -2041,7 +2061,7 @@ class _LibraryHeader extends StatelessWidget {
                           ],
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      SizedBox(width: phoneLayout ? 2 : 8),
                       if (syncAvailable) ...[
                         IconButton(
                           key: const ValueKey('library-sync-status'),
@@ -2049,7 +2069,7 @@ class _LibraryHeader extends StatelessWidget {
                           tooltip: _syncStatusTitle(syncStatus.phase),
                           icon: _syncStatusIcon(context, syncStatus.phase),
                         ),
-                        const SizedBox(width: 8),
+                        SizedBox(width: phoneLayout ? 0 : 8),
                       ],
                       if (pendingConflictCount > 0) ...[
                         Badge.count(
@@ -2061,7 +2081,7 @@ class _LibraryHeader extends StatelessWidget {
                             icon: const Icon(Icons.sync_problem_outlined),
                           ),
                         ),
-                        const SizedBox(width: 8),
+                        SizedBox(width: phoneLayout ? 0 : 8),
                       ],
                       if (recentlyDeletedCount > 0) ...[
                         Badge.count(
@@ -2073,24 +2093,26 @@ class _LibraryHeader extends StatelessWidget {
                             icon: const Icon(Icons.restore_from_trash_outlined),
                           ),
                         ),
-                        const SizedBox(width: 8),
+                        SizedBox(width: phoneLayout ? 0 : 8),
                       ],
                       _LibraryAccountButton(
                         controller: authController,
                         onPressed: onOpenAccount,
                       ),
-                      const SizedBox(width: 8),
-                      IconButton.filledTonal(
-                        onPressed: onImportPdf,
-                        tooltip: 'Import PDF',
-                        icon: const Icon(Icons.picture_as_pdf_outlined),
-                      ),
-                      const SizedBox(width: 8),
-                      IconButton.filled(
-                        onPressed: onCreateNotebook,
-                        tooltip: 'New notebook',
-                        icon: const Icon(Icons.add_rounded),
-                      ),
+                      if (!phoneLayout || !showArchived) ...[
+                        SizedBox(width: phoneLayout ? 0 : 8),
+                        IconButton.filledTonal(
+                          onPressed: onImportPdf,
+                          tooltip: 'Import PDF',
+                          icon: const Icon(Icons.picture_as_pdf_outlined),
+                        ),
+                        SizedBox(width: phoneLayout ? 0 : 8),
+                        IconButton.filled(
+                          onPressed: onCreateNotebook,
+                          tooltip: 'New notebook',
+                          icon: const Icon(Icons.add_rounded),
+                        ),
+                      ],
                     ],
                   ),
                   const SizedBox(height: 14),
@@ -2170,7 +2192,7 @@ class _LibraryAccountButton extends StatelessWidget {
             key: const ValueKey('library-account-restoring'),
             onPressed: onPressed,
             tooltip: 'Restoring account',
-            constraints: const BoxConstraints.tightFor(width: 48, height: 48),
+            constraints: const BoxConstraints.tightFor(width: 44, height: 44),
             icon: const Icon(Icons.manage_accounts_outlined),
           );
         }
@@ -2180,7 +2202,7 @@ class _LibraryAccountButton extends StatelessWidget {
           tooltip: session == null
               ? 'Sign in'
               : 'Account: ${session.user.email}',
-          constraints: const BoxConstraints.tightFor(width: 48, height: 48),
+          constraints: const BoxConstraints.tightFor(width: 44, height: 44),
           icon: session == null
               ? const Icon(Icons.account_circle_outlined)
               : CircleAvatar(
@@ -2531,19 +2553,26 @@ class _NamePromptDialog extends StatefulWidget {
 class _NamePromptDialogState extends State<_NamePromptDialog> {
   late final TextEditingController _controller;
 
+  bool get _canSave => _controller.text.trim().isNotEmpty;
+
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.initialValue);
+    _controller.addListener(_handleNameChanged);
   }
+
+  void _handleNameChanged() => setState(() {});
 
   @override
   void dispose() {
+    _controller.removeListener(_handleNameChanged);
     _controller.dispose();
     super.dispose();
   }
 
   void _save() {
+    if (!_canSave) return;
     Navigator.of(context).pop(_controller.text.trim());
   }
 
@@ -2563,7 +2592,10 @@ class _NamePromptDialogState extends State<_NamePromptDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
         ),
-        FilledButton(onPressed: _save, child: const Text('Save')),
+        FilledButton(
+          onPressed: _canSave ? _save : null,
+          child: const Text('Save'),
+        ),
       ],
     );
   }

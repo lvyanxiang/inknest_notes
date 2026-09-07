@@ -25,9 +25,9 @@ class AccountScreen extends StatelessWidget {
                 final compact = constraints.maxWidth < 600;
                 return SingleChildScrollView(
                   padding: EdgeInsets.fromLTRB(
-                    compact ? 20 : 32,
-                    24,
-                    compact ? 20 : 32,
+                    compact ? 14 : 32,
+                    compact ? 12 : 24,
+                    compact ? 14 : 32,
                     32,
                   ),
                   child: Center(
@@ -37,7 +37,7 @@ class AccountScreen extends StatelessWidget {
                         margin: EdgeInsets.zero,
                         clipBehavior: Clip.antiAlias,
                         child: Padding(
-                          padding: EdgeInsets.all(compact ? 22 : 32),
+                          padding: EdgeInsets.all(compact ? 18 : 32),
                           child: _AccountContent(controller: controller),
                         ),
                       ),
@@ -352,14 +352,19 @@ class _AuthFormState extends State<_AuthForm> {
   Widget build(BuildContext context) {
     final busy = widget.controller.isBusy;
     final colorScheme = Theme.of(context).colorScheme;
+    final compact = MediaQuery.sizeOf(context).width < 480;
     return AutofillGroup(
       child: Form(
         key: _formKey,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Icon(Icons.cloud_outlined, size: 44, color: colorScheme.primary),
-            const SizedBox(height: 16),
+            Icon(
+              Icons.cloud_outlined,
+              size: compact ? 36 : 44,
+              color: colorScheme.primary,
+            ),
+            SizedBox(height: compact ? 10 : 16),
             Text(
               _registering
                   ? 'Create your InkNest account'
@@ -369,7 +374,7 @@ class _AuthFormState extends State<_AuthForm> {
                 context,
               ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: compact ? 6 : 8),
             Text(
               'Your local notes remain available even when you are signed out or offline.',
               textAlign: TextAlign.center,
@@ -377,7 +382,7 @@ class _AuthFormState extends State<_AuthForm> {
                 color: colorScheme.onSurfaceVariant,
               ),
             ),
-            const SizedBox(height: 24),
+            SizedBox(height: compact ? 18 : 24),
             SegmentedButton<_AuthMode>(
               key: const ValueKey('account-auth-mode'),
               segments: const [
@@ -390,7 +395,7 @@ class _AuthFormState extends State<_AuthForm> {
               selected: {_mode},
               onSelectionChanged: busy ? null : _changeMode,
             ),
-            const SizedBox(height: 24),
+            SizedBox(height: compact ? 18 : 24),
             TextFormField(
               key: const ValueKey('account-email'),
               controller: _emailController,
