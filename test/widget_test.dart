@@ -291,7 +291,8 @@ void main() {
 
     await createPagedNotebook(tester);
 
-    expect(find.text('Notebook 1'), findsOneWidget);
+    expect(find.text('Notebook 1'), findsNothing);
+    expect(find.byTooltip('Open Pages, page 1 of 1'), findsOneWidget);
     expect(find.byTooltip('Start audio recording'), findsOneWidget);
     expect(find.byTooltip('Search notebook'), findsNothing);
     expect(find.byKey(const ValueKey('editor-more-actions')), findsOneWidget);
@@ -892,49 +893,22 @@ void main() {
     );
   });
 
-  testWidgets('rotates a page from its thumbnail action menu', (
+  testWidgets('does not expose page rotation actions', (
     WidgetTester tester,
   ) async {
     final repository = InMemoryNotebookRepository();
-    final notebook = await repository.createNotebook(title: 'Rotated notes');
+    final notebook = await repository.createNotebook(title: 'Page actions');
 
     await tester.pumpWidget(InkNestApp(notebookRepository: repository));
     await tester.pumpAndSettle();
     await tester.tap(find.text(notebook.title));
     await tester.pumpAndSettle();
 
-    final portraitSurface = find.byKey(
-      const ValueKey('rotated-page-surface-page-1-0'),
-    );
-    expect(
-      tester.getSize(portraitSurface).height,
-      greaterThan(tester.getSize(portraitSurface).width),
-    );
-
     await openEditorPages(tester);
+    expect(find.byKey(const ValueKey('pages-rotate-button')), findsNothing);
     await tester.tap(find.byTooltip('Page 1 actions'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Rotate page clockwise'));
-    await tester.pumpAndSettle();
-
-    final landscapeSurface = find.byKey(
-      const ValueKey('rotated-page-surface-page-1-1'),
-    );
-    expect(
-      tester.getSize(landscapeSurface).width,
-      greaterThan(tester.getSize(landscapeSurface).height),
-    );
-    expect(
-      (await repository.loadPage(notebook, 'page-1')).rotationQuarterTurns,
-      1,
-    );
-
-    await dismissEditorPages(tester);
-
-    await drawVisibleStroke(tester);
-
-    final undoButton = find.widgetWithIcon(IconButton, Icons.undo);
-    expect(tester.widget<IconButton>(undoButton).onPressed, isNotNull);
+    expect(find.text('Rotate page clockwise'), findsNothing);
   });
 
   testWidgets('lasso moves resizes recolors and deletes selected strokes', (
@@ -2105,25 +2079,22 @@ void main() {
 
     await createPagedNotebook(tester);
 
-    await tester.tap(find.byKey(const ValueKey('editor-zoom-chip')));
-    await tester.pump();
+    final pageItem = find.byKey(const ValueKey('continuous-page-item-page-1'));
+    final fitWidthPageHeight = tester.getSize(pageItem).height;
 
-    expect(find.byTooltip('Zoom out'), findsOneWidget);
-    expect(find.byTooltip('Zoom and fit'), findsOneWidget);
-    expect(find.byTooltip('Zoom in'), findsOneWidget);
-
-    final zoomOutButton = find.widgetWithIcon(IconButton, Icons.zoom_out);
-    expect(tester.widget<IconButton>(zoomOutButton).onPressed, isNotNull);
-
-    await tester.tap(find.byTooltip('Zoom in'));
-    await tester.pump();
-
-    expect(tester.widget<IconButton>(zoomOutButton).onPressed, isNotNull);
-
-    await tester.tap(find.byTooltip('Zoom and fit'));
+    await tester.tap(find.byKey(const ValueKey('editor-more-actions')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Fit width'));
-    await tester.pump();
+    expect(find.text('Zoom out'), findsOneWidget);
+    expect(find.text('Zoom in'), findsOneWidget);
+    expect(find.text('Fit width'), findsNothing);
+    expect(find.text('Fit page'), findsNothing);
+    await tester.tap(find.text('Zoom in'));
+    await tester.pumpAndSettle();
+    expect(tester.getSize(pageItem).height, greaterThan(fitWidthPageHeight));
+
+    await tester.tap(find.byKey(const ValueKey('editor-fit-width-button')));
+    await tester.pumpAndSettle();
+    expect(tester.getSize(pageItem).height, closeTo(fitWidthPageHeight, 0.01));
 
     await drawVisibleStroke(tester);
 

@@ -81,10 +81,8 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('editor-pages-button')));
     await tester.pump(const Duration(milliseconds: 240));
-    final rotateAction = find.byKey(const ValueKey('pages-rotate-button'));
-    expect(rotateAction, findsOneWidget);
-    expect(find.byTooltip('Rotate page unavailable'), findsOneWidget);
-    expect(tester.widget<IconButton>(rotateAction).onPressed, isNull);
+    expect(find.byKey(const ValueKey('pages-rotate-button')), findsNothing);
+    expect(find.text('Rotate page clockwise'), findsNothing);
     expect(repository.normalSaveAttempts, 0);
   });
 }

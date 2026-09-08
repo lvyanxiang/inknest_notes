@@ -9,12 +9,11 @@
   choices: public HTTPS Privacy/Terms/deletion pages, final operator and contact
   details, launch territories and retention/processor disclosures; then select
   an email provider before implementing verified email and password recovery.
-- Last completed: Unified all fixed user-visible App copy to English, including
-  synchronization status, conflict resolution, recovery, legal readers, and
-  handwriting-font labels. Privacy Policy and Terms are now immutable English
-  version `2026-09-07.1`, with matching App and backend agreement constants.
-  New server conflicts use English copy names, while legacy Chinese conflict
-  names are normalized to English for display without rewriting user content.
+- Last completed: Simplified the paged-editor document header to one compact,
+  labelled Pages icon in the right-aligned document action group instead of
+  visible notebook title/page text. Removed rotation controls from the Pages
+  panel and thumbnail menus while preserving compatibility for existing
+  rotated pages.
 
 ### Release readiness
 
@@ -285,7 +284,14 @@
   container topology or explicit service credential mappings in Compose
   `environment`; do not mirror every new application setting into Compose.
 - Use `docs/development/POST_MVP_ROADMAP.md` for GoodNotes / Notability-style post-MVP planning.
-- Prefer collapsing on-canvas zoom chrome and keeping Fit Width / Fit Page discoverable from More → View so the paper stays primary while writing.
+- Keep continuous paged paper free of persistent zoom chrome. Use pinch as the
+  primary touch path, provide Zoom out and Zoom in in More → View, keep one
+  direct Fit Width reset before More, and show only transient percentage
+  feedback. Use 20dp header icons inside 44dp touch targets.
+- Use one icon-only, current-page-labelled Pages header action as the first item
+  in the right-aligned document action group instead of visible notebook
+  title/page text. Do not expose page rotation; keep the stored rotation model
+  only for existing-notebook rendering and export compatibility.
 - Prefer anchored tool-property popovers on regular/wide iPad widths; keep bottom sheets only for compact Split View.
 - Keep notebook location and ink history in the document bar; show Record at
   ≥720px and Export at ≥1000px; use the header pager for adjacent page work,
@@ -298,7 +304,9 @@
 - Long-term product direction: iPad handwriting/PDF study, phone capture/review, and Web Yuque-like knowledge base.
 - Use a custom two-finger zoom/pan viewport instead of `InteractiveViewer` so single-pointer drawing remains reliable.
 - Keep every page layer at the persisted document size and apply one shared D→R→V transform for page rotation, zoom, pan, rendering, and hit testing.
-- Start each page in Fit Width; expose Fit Page explicitly, enter Custom on the first content/pan/zoom gesture, and remember mode, scale, and focus per page for the editor session.
+- Start each page in Fit Width; keep Fit Width as the only explicit view reset,
+  enter Custom on the first content/pan/zoom gesture, and remember mode, scale,
+  and focus per page for the editor session.
 - Keep finger drawing available by default; use an explicit Finger pan mode to make touch drag the page while stylus/mouse input writes.
 - Apply Finger Writing Assist only after a touch stroke completes; preserve its endpoints, pressure samples, and timestamps so persistence, audio replay, export, and recognition continue to share the same stroke model.
 - Keep Finger Writing Assist enabled by default with an editor toolbar toggle, and never apply it to Apple Pencil/stylus or mouse strokes.
@@ -387,6 +395,11 @@
 
 ## Verification
 
+- Paged-editor zoom chrome removal and the direct Fit Width header action pass
+  focused workspace/widget coverage, including viewport scale reset and compact
+  44dp header targets. `flutter analyze` and `git diff --check` pass.
+- Paged-editor header simplification passes focused workspace, coordinate-space,
+  and widget coverage for the icon-only Pages entry and absent rotation actions.
 - English-only UI delivery passes all 312 Flutter tests and `flutter analyze`.
   Backend Ruff formatting/lint and the 19-test synchronization-change suite
   pass. Runtime scans find no Han characters in `lib/`, platform shells, or
@@ -1085,15 +1098,17 @@
 - Editor can add pages, switch pages, and persist each page independently.
 - Library can import a PDF, copy it into notebook assets, create one note page per PDF page, and render the PDF page behind editable strokes.
 - Editor can export the current notebook as a PDF, including blank pages, imported PDF page backgrounds, and handwriting strokes.
-- Editor page viewport supports zoom controls and two-finger pinch/pan without saving accidental strokes.
+- Editor page viewport supports two-finger pinch/pan plus labelled Zoom and Fit
+  actions in More → View without saving accidental strokes.
 - Editor redesign records live under
   `docs/product/features/editor-workspace-redesign/`; the implemented shell
   replaces permanent all-actions chrome with a document header, contextual
   tool dock, on-demand page navigator, and fixed document-coordinate viewport.
 - Editor interaction polish records live under
   `docs/product/features/editor-workspace-polish/`; the floating page chip is
-  removed, zoom chrome collapses by default, Fit Width/Fit Page are in More →
-  View, and tool properties use an anchored popover on regular/wide widths.
+  removed, paged paper has no persistent zoom chrome, all explicit Zoom/Fit
+  actions are in More → View, and tool properties use an anchored popover on
+  regular/wide widths.
 - The current lowercase iOS bundle identifier uses a separate app container
   from the old mixed-case identifier; decide whether legacy prototype data
   must be recovered before implementing any coordinate conversion.

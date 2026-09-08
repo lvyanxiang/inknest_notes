@@ -1,7 +1,7 @@
 # Continuous Paged Editor UI/UX Specification
 
 - Status: Delivered
-- Updated: 2026-09-07
+- Updated: 2026-09-08
 - Product brief: `PRODUCT_BRIEF.md`
 - Affected surfaces: Paged editor viewport, page header, zoom, page navigation,
   and finger input mode
@@ -28,7 +28,7 @@ coordinates to match the device aspect ratio.
 | State | Visible behavior | Recovery |
 |---|---|---|
 | Loading | Current sheet appears first; unloaded sheets use quiet placeholders | Pages fill in without replacing the editor |
-| Fit Width | Each rotated sheet fits the available width | Zoom or Fit Page changes the shared scale |
+| Fit Width | Each rotated sheet fits the available width | Pinch or More → View zoom changes the shared scale |
 | Custom zoom | Sheets enlarge together and can pan horizontally | Fit Width restores the reading flow |
 | Scrolling | Header page number follows the sheet nearest the viewport focus | Page panel can jump precisely |
 | Finger moves | One finger scrolls; stylus edits the active sheet | Switch to Finger writes for touch ink |
@@ -43,18 +43,22 @@ coordinates to match the device aspect ratio.
   horizontal panning without changing their document size.
 - Build only visible and nearby pages. The current page remains the sheet
   nearest the viewport's reading focus.
-- Keep zoom controls viewport-fixed, upright, and above the paper list.
+- Keep the scrolling paper list free of persistent zoom controls. Show only a
+  temporary centered percentage badge after zoom or Fit actions.
 - Preserve the existing fixed header, editing dock, audio bars, navigator, and
   lasso toolbar.
-- Remove previous/next arrows and the separate page-count control. Keep one
-  44dp Add page button. Treat the title and page subtitle as one labelled
-  button that opens navigation.
+- Remove previous/next arrows, the visible title/page subtitle, and the separate
+  page-count control. Keep one 44dp Add page button and one 44dp icon-only Pages
+  button that opens navigation. Put Pages first in the right-aligned document
+  action group.
 - Use exactly two fixed 52dp rows at every width: the document row and the
   drawing toolbar. The document row has one prioritized action list in this
   order: Add page, Undo, Redo, Outline, Bookmarks, Record, Export. A simple
   width-based capacity determines how many are shown directly; all remaining
-  actions stay in More. The title/page context always opens Pages, and the
-  optional pinned Pages rail remains available at 1100dp and above.
+  actions stay in More. A direct Fit Width action stays immediately before
+  More. Header icons use a compact 20dp visual inside a 44dp touch target. The
+  Pages icon always opens Pages, and the optional pinned Pages rail remains
+  available at 1100dp and above.
 - At widths below 360dp, the drawing row may scroll horizontally within its
   fixed 52dp height so every core drawing tool remains reachable without
   changing the editor chrome height.
@@ -65,8 +69,8 @@ coordinates to match the device aspect ratio.
   discoverable. Stylus and inverted stylus are never page-scroll drag devices.
 - Finger writes disables one-finger list scrolling to prevent simultaneous ink
   and viewport motion. Pinch still cancels partial ink before zooming.
-- Mouse wheel and trackpad scroll vertically; zoom controls remain keyboard and
-  semantics-accessible alternatives to pinch.
+- Mouse wheel and trackpad scroll vertically; Zoom out/in remain available in
+  More → View, while Fit Width is a labelled direct header action.
 - Each sheet is a semantic region labelled `Page n of total`; the Pages panel
   remains a non-gesture route to every page.
 
@@ -82,13 +86,18 @@ coordinates to match the device aspect ratio.
       editable.
 - [x] Large text and screen readers retain labelled page navigation controls.
 - [x] No previous/next page arrows remain; Add page is still directly
-      available, and the document context opens Pages with a clear semantic
+      available, and the icon-only Pages action has a current-page semantic
       label.
+- [x] Page rotation is absent from the Pages panel and thumbnail action menus;
+      previously rotated pages remain viewable.
 - [x] 390dp, 600dp, 834dp, and 1194dp layouts use two fixed 52dp editor rows;
       no third navigation row is rendered.
 - [x] The ordered action capacity shows Add page directly at every width and
       exposes overflow actions in More without horizontal or vertical toolbar
       overflow.
+- [x] No persistent zoom control covers scrolling paper; Zoom out and Zoom in
+      remain in More → View, while one Fit Width reset is directly available in
+      the header.
 
 ## Verification
 
@@ -106,4 +115,8 @@ coordinates to match the device aspect ratio.
 - Every width now uses the same two-row chrome. The document row applies one
   ordered action-capacity rule: Add page, Undo, Redo, Outline, Bookmarks,
   Record, Export. Actions beyond the width capacity remain in More, while the
-  title/page context continues to open Pages.
+  icon-only Pages action continues to open Pages.
+- Persistent paged-paper zoom chrome was removed on 2026-09-08. Pinch remains
+  the primary touch path, More → View provides Zoom out and Zoom in, Fit Width
+  is a compact direct header action, and a transient percentage badge confirms
+  every applied action.

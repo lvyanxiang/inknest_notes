@@ -69,7 +69,7 @@ void main() {
       expect(
         find.descendant(
           of: find.byKey(const ValueKey('editor-pages-button')),
-          matching: find.byIcon(Icons.expand_more),
+          matching: find.byIcon(Icons.layers_outlined),
         ),
         findsOneWidget,
       );
@@ -112,20 +112,15 @@ void main() {
     });
 
     testWidgets(
-      'opens Pages from the document context without a floating page chip',
+      'opens Pages from the header icon without a floating page chip',
       (tester) async {
         await _createFixture(tester, const Size(834, 1194));
 
-        final documentContext = find.byKey(
-          const ValueKey('editor-document-context'),
-        );
         expect(
-          find.descendant(
-            of: documentContext,
-            matching: find.byKey(const ValueKey('editor-pages-button')),
-          ),
-          findsOneWidget,
+          find.byKey(const ValueKey('editor-document-context')),
+          findsNothing,
         );
+        expect(find.byTooltip('Open Pages, page 1 of 1'), findsOneWidget);
         expect(
           find.byKey(const ValueKey('editor-page-position-button')),
           findsNothing,
@@ -136,7 +131,7 @@ void main() {
           find.byKey(const ValueKey('editor-pages-panel')),
           findsOneWidget,
         );
-        expect(find.byKey(const ValueKey('editor-zoom-chip')), findsOneWidget);
+        expect(find.byKey(const ValueKey('editor-zoom-chip')), findsNothing);
       },
     );
 
@@ -145,27 +140,31 @@ void main() {
     ) async {
       await _createFixture(tester, const Size(390, 844));
 
-      final documentContext = find.byKey(
-        const ValueKey('editor-document-context'),
-      );
       final compactNavigation = find.byKey(
         const ValueKey('editor-compact-navigation-row'),
       );
       final appBar = tester.widget<AppBar>(find.byType(AppBar));
 
-      expect(documentContext, findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('editor-document-context')),
+        findsNothing,
+      );
       expect(appBar.preferredSize.height, 104);
       expect(compactNavigation, findsNothing);
-      expect(find.byKey(const ValueKey('editor-pages-button')), findsOneWidget);
-      expect(
-        find.byKey(const ValueKey('editor-add-page-button')),
-        findsOneWidget,
+      final pagesButton = find.byKey(const ValueKey('editor-pages-button'));
+      expect(pagesButton, findsOneWidget);
+      expect(tester.getSize(pagesButton), const Size.square(44));
+      final addPageButton = find.byKey(
+        const ValueKey('editor-add-page-button'),
       );
-      final addPageSize = tester.getSize(
-        find.byKey(const ValueKey('editor-add-page-button')),
-      );
+      expect(addPageButton, findsOneWidget);
+      final addPageSize = tester.getSize(addPageButton);
       expect(addPageSize.width, greaterThanOrEqualTo(44));
       expect(addPageSize.height, greaterThanOrEqualTo(44));
+      expect(
+        tester.getRect(pagesButton).right,
+        closeTo(tester.getRect(addPageButton).left, 0.01),
+      );
       expect(
         find.byKey(const ValueKey('editor-previous-page-button')),
         findsNothing,
@@ -181,6 +180,25 @@ void main() {
       );
       expect(find.byKey(const ValueKey('editor-undo-button')), findsOneWidget);
       expect(find.byKey(const ValueKey('editor-redo-button')), findsOneWidget);
+      final undoButton = tester.widget<IconButton>(
+        find.byKey(const ValueKey('editor-undo-button')),
+      );
+      expect(undoButton.iconSize, 20);
+      expect(
+        tester.getSize(find.byKey(const ValueKey('editor-undo-button'))),
+        const Size.square(44),
+      );
+      final fitWidth = find.byKey(const ValueKey('editor-fit-width-button'));
+      expect(fitWidth, findsOneWidget);
+      expect(tester.getSize(fitWidth), const Size.square(44));
+      expect(
+        tester.getSize(find.byKey(const ValueKey('editor-more-actions'))),
+        const Size.square(44),
+      );
+      expect(
+        tester.getRect(find.byKey(const ValueKey('editor-more-actions'))).right,
+        greaterThan(380),
+      );
       expect(tester.takeException(), isNull);
 
       await tester.tap(find.byKey(const ValueKey('editor-more-actions')));
@@ -211,7 +229,7 @@ void main() {
 
       expect(previous, findsNothing);
       expect(next, findsNothing);
-      expect(find.text('Page 1 of 1'), findsOneWidget);
+      expect(find.byTooltip('Open Pages, page 1 of 1'), findsOneWidget);
       expect(tester.getSize(add).width, greaterThanOrEqualTo(44));
       expect(tester.getSize(add).height, greaterThanOrEqualTo(44));
 
@@ -221,14 +239,14 @@ void main() {
       expect(find.text('Add page'), findsOneWidget);
       await tester.tap(find.byTooltip('Close paper styles'));
       await tester.pumpAndSettle();
-      expect(find.text('Page 1 of 1'), findsOneWidget);
+      expect(find.byTooltip('Open Pages, page 1 of 1'), findsOneWidget);
 
       await tester.tap(add);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('page-template-blank')));
       await tester.pumpAndSettle();
 
-      expect(find.text('Page 2 of 2'), findsOneWidget);
+      expect(find.byTooltip('Open Pages, page 2 of 2'), findsOneWidget);
       expect(previous, findsNothing);
       expect(next, findsNothing);
 
@@ -266,14 +284,14 @@ void main() {
         const Offset(0, 520),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Page 1 of 2'), findsOneWidget);
+      expect(find.byTooltip('Open Pages, page 1 of 2'), findsOneWidget);
 
       await tester.drag(
         find.byKey(const ValueKey('continuous-page-list')),
         const Offset(0, -520),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Page 2 of 2'), findsOneWidget);
+      expect(find.byTooltip('Open Pages, page 2 of 2'), findsOneWidget);
 
       final pageTwoCanvas = find.descendant(
         of: find.byKey(const ValueKey('continuous-page-item-page-2')),
@@ -324,7 +342,7 @@ void main() {
       );
       expect(find.byKey(const ValueKey('pages-template-button')), findsNothing);
       expect(find.byKey(const ValueKey('pages-bookmark-button')), findsNothing);
-      expect(find.byKey(const ValueKey('pages-rotate-button')), findsOneWidget);
+      expect(find.byKey(const ValueKey('pages-rotate-button')), findsNothing);
       expect(
         find.byKey(const ValueKey('page-thumbnail-page-1')),
         findsOneWidget,
@@ -359,10 +377,7 @@ void main() {
     ) async {
       await _createFixture(tester, const Size(600, 800));
 
-      expect(
-        find.byKey(const ValueKey('editor-document-context')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const ValueKey('editor-pages-button')), findsOneWidget);
       expect(find.byKey(const ValueKey('editor-undo-button')), findsOneWidget);
       expect(find.byKey(const ValueKey('editor-redo-button')), findsOneWidget);
       expect(
@@ -382,6 +397,10 @@ void main() {
 
       expect(find.byKey(const ValueKey('editor-record-button')), findsNothing);
       expect(find.byKey(const ValueKey('editor-export-button')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('editor-fit-width-button')),
+        findsOneWidget,
+      );
       await tester.tap(find.byKey(const ValueKey('editor-more-actions')));
       await tester.pumpAndSettle();
       for (final section in const ['DOCUMENT', 'AUDIO', 'VIEW']) {
@@ -414,38 +433,43 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('exposes Fit width and Fit page from the zoom menu', (
+    testWidgets('keeps zoom off paper and exposes Fit width in the header', (
       tester,
     ) async {
       await _createFixture(tester, const Size(834, 1194));
 
-      expect(find.text('Fit width'), findsNothing);
-      expect(find.text('Fit page'), findsNothing);
-
-      await tester.tap(find.byKey(const ValueKey('editor-zoom-chip')));
-      await tester.pump();
-      await tester.tap(find.byTooltip('Zoom and fit'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Fit width'), findsOneWidget);
-      expect(find.text('Fit page'), findsOneWidget);
-    });
-
-    testWidgets('exposes Fit width and Fit page from More View actions', (
-      tester,
-    ) async {
-      await _createFixture(tester, const Size(834, 1194));
+      final pageItem = find.byKey(
+        const ValueKey('continuous-page-item-page-1'),
+      );
+      final fitWidthButton = find.byKey(
+        const ValueKey('editor-fit-width-button'),
+      );
+      final fitWidthPageHeight = tester.getSize(pageItem).height;
+      expect(find.byKey(const ValueKey('editor-zoom-chip')), findsNothing);
+      expect(find.byTooltip('Zoom and fit'), findsNothing);
+      expect(fitWidthButton, findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('editor-more-actions')));
       await tester.pumpAndSettle();
-      expect(find.text('Fit width'), findsOneWidget);
-      expect(find.text('Fit page'), findsOneWidget);
+      expect(find.text('Zoom out'), findsOneWidget);
+      expect(find.text('Zoom in'), findsOneWidget);
+      expect(find.text('Fit width'), findsNothing);
+      expect(find.text('Fit page'), findsNothing);
 
-      await tester.tap(find.text('Fit page'));
+      await tester.tap(find.text('Zoom in'));
+      await tester.pumpAndSettle();
+      expect(tester.getSize(pageItem).height, greaterThan(fitWidthPageHeight));
+
+      await tester.pump(const Duration(milliseconds: 1800));
+      await tester.tap(fitWidthButton);
       await tester.pump();
 
-      expect(find.byKey(const ValueKey('editor-zoom-chip')), findsNothing);
-      expect(find.byTooltip('Zoom and fit'), findsOneWidget);
+      expect(
+        tester.getSize(pageItem).height,
+        closeTo(fitWidthPageHeight, 0.01),
+      );
+      expect(find.textContaining('%'), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets(
@@ -456,18 +480,22 @@ void main() {
         tester.view.physicalSize = const Size(800, 600);
         await tester.pumpAndSettle();
 
-        await tester.tap(find.byKey(const ValueKey('editor-zoom-chip')));
-        await tester.pump();
-        await tester.tap(find.byTooltip('Zoom and fit'));
+        await tester.tap(find.byKey(const ValueKey('editor-more-actions')));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Fit page'));
+        await tester.tap(find.text('Zoom in'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('editor-fit-width-button')));
         await tester.pump();
 
         final canvas = find.byType(DrawingCanvas);
         expect(tester.getSize(canvas), const Size(768, 1024));
 
-        final strokeStart =
-            tester.getBottomRight(canvas) - const Offset(32, 32);
+        final canvasRect = tester.getRect(canvas);
+        final visibleRect = canvasRect.intersect(
+          Offset.zero &
+              (tester.view.physicalSize / tester.view.devicePixelRatio),
+        );
+        final strokeStart = visibleRect.center;
         final gesture = await tester.startGesture(
           strokeStart,
           kind: ui.PointerDeviceKind.stylus,
@@ -496,14 +524,8 @@ void main() {
           ),
           isTrue,
         );
-        expect(
-          offsets.map((offset) => offset.dx).reduce(_maximum),
-          greaterThan(650),
-        );
-        expect(
-          offsets.map((offset) => offset.dy).reduce(_maximum),
-          greaterThan(850),
-        );
+        expect(offsets.last.dx, greaterThan(offsets.first.dx));
+        expect(offsets.last.dy, greaterThan(offsets.first.dy));
       },
     );
   });
@@ -531,8 +553,6 @@ Future<_EditorFixture> _createFixture(
 
   return _EditorFixture(repository: repository, notebook: notebook);
 }
-
-double _maximum(double first, double second) => first > second ? first : second;
 
 class _EditorFixture {
   const _EditorFixture({required this.repository, required this.notebook});

@@ -17,9 +17,10 @@ and writing across a page boundary.
 Present every page in one vertically continuous, lazy list on phone and tablet.
 Each sheet keeps its persisted dimensions, rotation, content coordinates, and
 independent edit history. Scrolling changes the current page shown by the
-header. Remove redundant previous/next toolbar buttons, keep Add page, and make
-the visible `Page n of total` document context open the Pages panel for precise
-navigation and management.
+Pages button semantics. Remove redundant previous/next toolbar buttons, keep
+Add page, and use one icon-only Pages header action for precise navigation and
+management. Keep it in the right-aligned action group with the other document
+controls.
 
 Keep the fixed editor chrome to two 52dp rows at every width. The document row
 uses one ordered action list and a width-derived visible-action capacity; items
@@ -43,12 +44,13 @@ is active.
   - Current-page tracking while scrolling and programmatic jumps from header,
     Pages, Outline, Bookmarks, audio follow, and page creation.
   - A simplified header with Add page as the only dedicated pagination action;
-    the visible page position opens Pages for non-gesture navigation.
+    an icon-only Pages action provides non-gesture navigation.
   - One two-row editor header at every width. The document row exposes a
     prioritized action list and moves overflow into More without toolbar
     wrapping.
-  - Existing editing layers, canonical coordinates, rotation, persistence,
-    undo/redo, protected-page state, and PDF backgrounds.
+  - Existing editing layers, canonical coordinates, persisted-rotation
+    compatibility, persistence, undo/redo, protected-page state, and PDF
+    backgrounds.
   - Explicit gesture ownership between finger scrolling, stylus writing,
     finger writing, and pinch zoom.
 - Non-goals:
@@ -62,8 +64,8 @@ is active.
 
 - [x] Two or more notebook pages are vertically stacked and reachable by
       scrolling on phone and tablet layouts.
-- [x] Scrolling updates the header current-page number without unloading the
-      notebook workspace.
+- [x] Scrolling updates the Pages action's accessible current-page label
+      without unloading the notebook workspace.
 - [x] Page navigation controls, thumbnails, bookmarks, outline, and audio
       follow scroll to the requested page.
 - [x] New, duplicated, imported, or retained pages become visible at their
@@ -73,11 +75,11 @@ is active.
 - [x] Finger moves scrolls without creating ink; stylus writing does not drag
       the page list; Finger writes preserves touch drawing without simultaneous
       one-finger scrolling.
-- [x] Fit Width, Fit Page, zoom in/out, rotation, erasing, selection, text,
-      images, shapes, undo/redo, and write protection remain available.
+- [x] Fit Width reset, zoom in/out, erasing, selection, text, images, shapes,
+      undo/redo, and write protection remain available; rotation is not exposed.
 - [x] The complete Flutter test suite and static analysis pass.
 - [x] Previous/next toolbar buttons are absent; Add page remains a 44dp target,
-      and activating `Page n of total` opens Pages.
+      and activating the labelled Pages icon opens Pages.
 - [x] At every supported width, the editor chrome occupies two 52dp rows; the
       prioritized document-row actions fit without wrapping, and overflow
       actions remain reachable from More.

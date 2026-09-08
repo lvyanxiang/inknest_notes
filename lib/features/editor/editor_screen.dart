@@ -1704,15 +1704,12 @@ class _EditorScreenState extends State<EditorScreen> {
           currentPageId: _currentPageId,
           onSelectPage: selectPage,
           onAddPage: () => run(_chooseTemplateAndInsertPageAfterCurrent),
-          onRotateCurrentPage: () =>
-              run(() => _rotatePageClockwise(_currentPageId)),
           onInsertPage: (index) =>
               run(() => _chooseTemplateAndInsertPage(index)),
           onDuplicatePage: (pageId) => run(() => _duplicatePage(pageId)),
           onDeletePage: (pageId) => run(() => _deletePage(pageId)),
           onMovePage: (pageId, newIndex) =>
               run(() => _movePage(pageId, newIndex)),
-          onRotatePage: (pageId) => run(() => _rotatePageClockwise(pageId)),
         ),
         _EditorNavigationPanel.outline => _OutlineNavigationPanel(
           fillAvailableHeight: fill,
@@ -1840,11 +1837,11 @@ class _EditorScreenState extends State<EditorScreen> {
           await _exportPdf();
         }
         break;
-      case _EditorMenuAction.fitWidth:
-        _viewportKey.currentState?.fitWidth();
+      case _EditorMenuAction.zoomOut:
+        _viewportKey.currentState?.zoomOut();
         break;
-      case _EditorMenuAction.fitPage:
-        _viewportKey.currentState?.fitPage();
+      case _EditorMenuAction.zoomIn:
+        _viewportKey.currentState?.zoomIn();
         break;
     }
   }
@@ -2043,34 +2040,6 @@ class _EditorScreenState extends State<EditorScreen> {
 
     setState(() {
       _notebook = updatedNotebook;
-    });
-    unawaited(_loadPageThumbnails());
-    _scrollToPageSoon(_currentPageId);
-  }
-
-  Future<void> _rotatePageClockwise(String pageId) async {
-    await _savePage();
-
-    late final NotePage rotatedPage;
-    try {
-      rotatedPage = await widget.notebookRepository.rotatePageClockwise(
-        _notebook,
-        pageId,
-      );
-    } on PageCoordinateSpaceWriteException catch (error) {
-      _showCoordinateSpaceWriteBlocked(error);
-      return;
-    }
-
-    if (!mounted) {
-      return;
-    }
-
-    setState(() {
-      _pagesById[pageId] = rotatedPage;
-      if (_currentPageId == pageId) {
-        _page = rotatedPage;
-      }
     });
     unawaited(_loadPageThumbnails());
     _scrollToPageSoon(_currentPageId);
@@ -2286,68 +2255,18 @@ class _EditorScreenState extends State<EditorScreen> {
         titleSpacing: 0,
         backgroundColor: EditorWorkspaceTokens.chrome,
         surfaceTintColor: Colors.transparent,
-        title: Row(
-          children: [
-            Expanded(
-              key: const ValueKey('editor-document-context'),
-              child: Tooltip(
-                message: documentNavigatorLabel,
-                child: Semantics(
-                  button: true,
-                  label:
-                      '$documentNavigatorLabel, page $currentPageNumber of '
-                      '${_notebook.pageIds.length}',
-                  excludeSemantics: true,
-                  child: InkWell(
-                    key: const ValueKey('editor-pages-button'),
-                    onTap: () => _showPagesForWidth(screenWidth),
-                    borderRadius: BorderRadius.circular(
-                      EditorWorkspaceTokens.controlRadius,
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(4, 2, 2, 2),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  _notebook.title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: Theme.of(context).textTheme.titleMedium
-                                      ?.copyWith(fontWeight: FontWeight.w700),
-                                ),
-                                Text(
-                                  'Page $currentPageNumber of '
-                                  '${_notebook.pageIds.length}',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: Theme.of(context).textTheme.labelSmall
-                                      ?.copyWith(
-                                        color: Theme.of(
-                                          context,
-                                        ).colorScheme.onSurfaceVariant,
-                                      ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const Icon(Icons.expand_more, size: 18),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
         actions: [
+          _buildHeaderIconButton(
+            key: const ValueKey('editor-pages-button'),
+            onPressed: () => _showPagesForWidth(screenWidth),
+            tooltip:
+                '$documentNavigatorLabel, page $currentPageNumber of '
+                '${_notebook.pageIds.length}',
+            icon: const Icon(Icons.layers_outlined),
+          ),
           for (final action in visibleHeaderActions)
             _buildHeaderAction(action, page: page, isRecording: isRecording),
+          _buildFitWidthButton(page),
           _EditorOverflowMenu(
             page: page,
             isRecording: isRecording,
@@ -2441,14 +2360,14 @@ class _EditorScreenState extends State<EditorScreen> {
       case _EditorHeaderAction.addPage:
         return _buildAddPageButton(page);
       case _EditorHeaderAction.undo:
-        return IconButton(
+        return _buildHeaderIconButton(
           key: const ValueKey('editor-undo-button'),
           onPressed: page != null && _undoStack.isNotEmpty ? _undo : null,
           tooltip: 'Undo ink edit',
           icon: const Icon(Icons.undo),
         );
       case _EditorHeaderAction.redo:
-        return IconButton(
+        return _buildHeaderIconButton(
           key: const ValueKey('editor-redo-button'),
           onPressed: _redoStack.isNotEmpty ? _redo : null,
           tooltip: 'Redo ink edit',
@@ -2459,7 +2378,7 @@ class _EditorScreenState extends State<EditorScreen> {
       case _EditorHeaderAction.bookmarks:
         return _buildBookmarksButton();
       case _EditorHeaderAction.record:
-        return IconButton(
+        return _buildHeaderIconButton(
           key: const ValueKey('editor-record-button'),
           onPressed: page == null || _isAudioBusy
               ? null
@@ -2480,7 +2399,7 @@ class _EditorScreenState extends State<EditorScreen> {
                 ),
         );
       case _EditorHeaderAction.export:
-        return IconButton(
+        return _buildHeaderIconButton(
           key: const ValueKey('editor-export-button'),
           onPressed: page == null || _isExporting
               ? null
@@ -2496,42 +2415,66 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
-  Widget _buildAddPageButton(NotePage? page) {
+  IconButton _buildHeaderIconButton({
+    required Key key,
+    required VoidCallback? onPressed,
+    required String tooltip,
+    required Widget icon,
+  }) {
     return IconButton(
+      key: key,
+      onPressed: onPressed,
+      tooltip: tooltip,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+      iconSize: 20,
+      style: IconButton.styleFrom(
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      icon: icon,
+    );
+  }
+
+  Widget _buildFitWidthButton(NotePage? page) {
+    return _buildHeaderIconButton(
+      key: const ValueKey('editor-fit-width-button'),
+      onPressed: page == null
+          ? null
+          : () => _viewportKey.currentState?.fitWidth(),
+      tooltip: 'Fit width',
+      icon: const Icon(Icons.fit_screen_outlined),
+    );
+  }
+
+  Widget _buildAddPageButton(NotePage? page) {
+    return _buildHeaderIconButton(
       key: const ValueKey('editor-add-page-button'),
       onPressed: page == null
           ? null
           : () => unawaited(_chooseTemplateAndInsertPageAfterCurrent()),
       tooltip: 'Add page after current',
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints.tightFor(width: 44, height: 44),
-      icon: const Icon(Icons.note_add_outlined, size: 20),
+      icon: const Icon(Icons.note_add_outlined),
     );
   }
 
   Widget _buildOutlineButton() {
-    return IconButton(
+    return _buildHeaderIconButton(
       key: const ValueKey('editor-outline-button'),
       onPressed: () => _showNavigationSheet(_EditorNavigationPanel.outline),
       tooltip: 'PDF outline',
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints.tightFor(width: 44, height: 44),
-      icon: const Icon(Icons.format_list_bulleted, size: 20),
+      icon: const Icon(Icons.format_list_bulleted),
     );
   }
 
   Widget _buildBookmarksButton() {
-    return IconButton(
+    return _buildHeaderIconButton(
       key: const ValueKey('editor-bookmarks-button'),
       onPressed: () => _showNavigationSheet(_EditorNavigationPanel.bookmarks),
       tooltip: 'Bookmarks',
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints.tightFor(width: 44, height: 44),
       icon: Icon(
         _notebook.bookmarkedPageIds.contains(_currentPageId)
             ? Icons.bookmark
             : Icons.bookmark_border,
-        size: 20,
         color: _notebook.bookmarkedPageIds.contains(_currentPageId)
             ? EditorWorkspaceTokens.primary
             : null,
@@ -2555,15 +2498,12 @@ class _EditorScreenState extends State<EditorScreen> {
           onSelectPage: (pageId) => unawaited(_selectPageManually(pageId)),
           onAddPage: () =>
               unawaited(_chooseTemplateAndInsertPageAfterCurrent()),
-          onRotateCurrentPage: () =>
-              unawaited(_rotatePageClockwise(_currentPageId)),
           onInsertPage: (index) =>
               unawaited(_chooseTemplateAndInsertPage(index)),
           onDuplicatePage: (pageId) => unawaited(_duplicatePage(pageId)),
           onDeletePage: (pageId) => unawaited(_deletePage(pageId)),
           onMovePage: (pageId, newIndex) =>
               unawaited(_movePage(pageId, newIndex)),
-          onRotatePage: (pageId) => unawaited(_rotatePageClockwise(pageId)),
         ),
       ),
     );
@@ -2580,8 +2520,6 @@ class _EditorScreenState extends State<EditorScreen> {
           currentPageId: _currentPageId,
           fingerPanEnabled:
               _fingerPanEnabled || page.isCoordinateSpaceWriteProtected,
-          showZoomControls:
-              _selectedTextBoxId == null && _editingTextBoxId == null,
           onCurrentPageChanged: _selectPageFromScroll,
           pageBuilder: (visiblePage) {
             return IgnorePointer(
@@ -2831,8 +2769,8 @@ enum _EditorMenuAction {
   toggleRecording,
   importPdf,
   exportPdf,
-  fitWidth,
-  fitPage,
+  zoomOut,
+  zoomIn,
 }
 
 class _EditorOverflowMenu extends StatelessWidget {
@@ -2862,108 +2800,113 @@ class _EditorOverflowMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return PopupMenuButton<_EditorMenuAction>(
-      key: const ValueKey('editor-more-actions'),
-      tooltip: 'More editor actions',
-      color: EditorWorkspaceTokens.chrome,
-      surfaceTintColor: Colors.transparent,
-      shape: EditorChrome.shape,
-      onSelected: onSelected,
-      itemBuilder: (context) {
-        final items = <PopupMenuEntry<_EditorMenuAction>>[];
-        if (hiddenActions.contains(_EditorHeaderAction.undo) ||
-            hiddenActions.contains(_EditorHeaderAction.redo)) {
-          items.add(_editorMenuSection('History'));
-          if (hiddenActions.contains(_EditorHeaderAction.undo)) {
-            items.add(
-              _editorMenuItem(
-                value: _EditorMenuAction.undo,
-                icon: Icons.undo,
-                label: 'Undo',
-                enabled: canUndo,
-              ),
-            );
+    return SizedBox.square(
+      dimension: 44,
+      child: PopupMenuButton<_EditorMenuAction>(
+        key: const ValueKey('editor-more-actions'),
+        tooltip: 'More editor actions',
+        color: EditorWorkspaceTokens.chrome,
+        surfaceTintColor: Colors.transparent,
+        shape: EditorChrome.shape,
+        onSelected: onSelected,
+        itemBuilder: (context) {
+          final items = <PopupMenuEntry<_EditorMenuAction>>[];
+          if (hiddenActions.contains(_EditorHeaderAction.undo) ||
+              hiddenActions.contains(_EditorHeaderAction.redo)) {
+            items.add(_editorMenuSection('History'));
+            if (hiddenActions.contains(_EditorHeaderAction.undo)) {
+              items.add(
+                _editorMenuItem(
+                  value: _EditorMenuAction.undo,
+                  icon: Icons.undo,
+                  label: 'Undo',
+                  enabled: canUndo,
+                ),
+              );
+            }
+            if (hiddenActions.contains(_EditorHeaderAction.redo)) {
+              items.add(
+                _editorMenuItem(
+                  value: _EditorMenuAction.redo,
+                  icon: Icons.redo,
+                  label: 'Redo',
+                  enabled: canRedo,
+                ),
+              );
+            }
+            items.add(const PopupMenuDivider(height: 8));
           }
-          if (hiddenActions.contains(_EditorHeaderAction.redo)) {
-            items.add(
-              _editorMenuItem(
-                value: _EditorMenuAction.redo,
-                icon: Icons.redo,
-                label: 'Redo',
-                enabled: canRedo,
-              ),
-            );
+          if (hiddenActions.contains(_EditorHeaderAction.outline) ||
+              hiddenActions.contains(_EditorHeaderAction.bookmarks)) {
+            items.add(_editorMenuSection('Navigate'));
+            if (hiddenActions.contains(_EditorHeaderAction.outline)) {
+              items.add(
+                _editorMenuItem(
+                  value: _EditorMenuAction.outline,
+                  icon: Icons.format_list_bulleted,
+                  label: 'Outline',
+                ),
+              );
+            }
+            if (hiddenActions.contains(_EditorHeaderAction.bookmarks)) {
+              items.add(
+                _editorMenuItem(
+                  value: _EditorMenuAction.bookmarks,
+                  icon: Icons.bookmark_border,
+                  label: 'Bookmarks',
+                ),
+              );
+            }
+            items.add(const PopupMenuDivider(height: 8));
           }
-          items.add(const PopupMenuDivider(height: 8));
-        }
-        if (hiddenActions.contains(_EditorHeaderAction.outline) ||
-            hiddenActions.contains(_EditorHeaderAction.bookmarks)) {
-          items.add(_editorMenuSection('Navigate'));
-          if (hiddenActions.contains(_EditorHeaderAction.outline)) {
-            items.add(
-              _editorMenuItem(
-                value: _EditorMenuAction.outline,
-                icon: Icons.format_list_bulleted,
-                label: 'Outline',
-              ),
-            );
-          }
-          if (hiddenActions.contains(_EditorHeaderAction.bookmarks)) {
-            items.add(
-              _editorMenuItem(
-                value: _EditorMenuAction.bookmarks,
-                icon: Icons.bookmark_border,
-                label: 'Bookmarks',
-              ),
-            );
-          }
-          items.add(const PopupMenuDivider(height: 8));
-        }
-        items.addAll([
-          _editorMenuSection('Document'),
-          _editorMenuItem(
-            value: _EditorMenuAction.importPdf,
-            icon: Icons.picture_as_pdf_outlined,
-            label: isImportingPdfs ? 'Importing PDF…' : 'Import PDF',
-            enabled: page != null && !isImportingPdfs && !isRecording,
-          ),
-          _editorMenuItem(
-            value: _EditorMenuAction.exportPdf,
-            icon: Icons.ios_share,
-            label: isExporting ? 'Exporting…' : 'Export PDF',
-            enabled: page != null && !isExporting,
-          ),
-          const PopupMenuDivider(height: 8),
-          _editorMenuSection('Audio'),
-          _editorMenuItem(
-            value: _EditorMenuAction.audioLibrary,
-            icon: Icons.library_music_outlined,
-            label: hasAudioRecordings ? 'Audio recordings' : 'Audio library',
-          ),
-          _editorMenuItem(
-            value: _EditorMenuAction.toggleRecording,
-            icon: isRecording ? Icons.stop_circle_outlined : Icons.mic_none,
-            label: isRecording ? 'Stop recording' : 'Start recording',
-            enabled: page != null && !isAudioBusy,
-          ),
-          const PopupMenuDivider(height: 8),
-          _editorMenuSection('View'),
-          _editorMenuItem(
-            value: _EditorMenuAction.fitWidth,
-            icon: Icons.fit_screen_outlined,
-            label: 'Fit width',
-            enabled: page != null,
-          ),
-          _editorMenuItem(
-            value: _EditorMenuAction.fitPage,
-            icon: Icons.center_focus_strong,
-            label: 'Fit page',
-            enabled: page != null,
-          ),
-        ]);
-        return items;
-      },
-      icon: const Icon(Icons.more_horiz),
+          items.addAll([
+            _editorMenuSection('Document'),
+            _editorMenuItem(
+              value: _EditorMenuAction.importPdf,
+              icon: Icons.picture_as_pdf_outlined,
+              label: isImportingPdfs ? 'Importing PDF…' : 'Import PDF',
+              enabled: page != null && !isImportingPdfs && !isRecording,
+            ),
+            _editorMenuItem(
+              value: _EditorMenuAction.exportPdf,
+              icon: Icons.ios_share,
+              label: isExporting ? 'Exporting…' : 'Export PDF',
+              enabled: page != null && !isExporting,
+            ),
+            const PopupMenuDivider(height: 8),
+            _editorMenuSection('Audio'),
+            _editorMenuItem(
+              value: _EditorMenuAction.audioLibrary,
+              icon: Icons.library_music_outlined,
+              label: hasAudioRecordings ? 'Audio recordings' : 'Audio library',
+            ),
+            _editorMenuItem(
+              value: _EditorMenuAction.toggleRecording,
+              icon: isRecording ? Icons.stop_circle_outlined : Icons.mic_none,
+              label: isRecording ? 'Stop recording' : 'Start recording',
+              enabled: page != null && !isAudioBusy,
+            ),
+            const PopupMenuDivider(height: 8),
+            _editorMenuSection('View'),
+            _editorMenuItem(
+              value: _EditorMenuAction.zoomOut,
+              icon: Icons.zoom_out,
+              label: 'Zoom out',
+              enabled: page != null,
+            ),
+            _editorMenuItem(
+              value: _EditorMenuAction.zoomIn,
+              icon: Icons.zoom_in,
+              label: 'Zoom in',
+              enabled: page != null,
+            ),
+          ]);
+          return items;
+        },
+        padding: EdgeInsets.zero,
+        iconSize: 20,
+        icon: const Icon(Icons.more_horiz),
+      ),
     );
   }
 }
@@ -3903,12 +3846,10 @@ class _PagesNavigationPanel extends StatelessWidget {
     required this.currentPageId,
     required this.onSelectPage,
     required this.onAddPage,
-    required this.onRotateCurrentPage,
     required this.onInsertPage,
     required this.onDuplicatePage,
     required this.onDeletePage,
     required this.onMovePage,
-    required this.onRotatePage,
   });
 
   final bool fillAvailableHeight;
@@ -3917,12 +3858,10 @@ class _PagesNavigationPanel extends StatelessWidget {
   final String currentPageId;
   final ValueChanged<String> onSelectPage;
   final VoidCallback onAddPage;
-  final VoidCallback onRotateCurrentPage;
   final ValueChanged<int> onInsertPage;
   final ValueChanged<String> onDuplicatePage;
   final ValueChanged<String> onDeletePage;
   final void Function(String pageId, int newIndex) onMovePage;
-  final ValueChanged<String> onRotatePage;
 
   @override
   Widget build(BuildContext context) {
@@ -3937,12 +3876,10 @@ class _PagesNavigationPanel extends StatelessWidget {
         bookmarkedPageIds: notebook.bookmarkedPageIds.toSet(),
         onSelectPage: onSelectPage,
         onAddPage: onAddPage,
-        onRotateCurrentPage: onRotateCurrentPage,
         onInsertPage: onInsertPage,
         onDuplicatePage: onDuplicatePage,
         onDeletePage: onDeletePage,
         onMovePage: onMovePage,
-        onRotatePage: onRotatePage,
       ),
     );
   }
@@ -3956,12 +3893,10 @@ class _PagesTab extends StatelessWidget {
     required this.bookmarkedPageIds,
     required this.onSelectPage,
     required this.onAddPage,
-    required this.onRotateCurrentPage,
     required this.onInsertPage,
     required this.onDuplicatePage,
     required this.onDeletePage,
     required this.onMovePage,
-    required this.onRotatePage,
   });
 
   final List<String> pageIds;
@@ -3970,19 +3905,14 @@ class _PagesTab extends StatelessWidget {
   final Set<String> bookmarkedPageIds;
   final ValueChanged<String> onSelectPage;
   final VoidCallback onAddPage;
-  final VoidCallback onRotateCurrentPage;
   final ValueChanged<int> onInsertPage;
   final ValueChanged<String> onDuplicatePage;
   final ValueChanged<String> onDeletePage;
   final void Function(String pageId, int newIndex) onMovePage;
-  final ValueChanged<String> onRotatePage;
 
   @override
   Widget build(BuildContext context) {
     final currentIndex = pageIds.indexOf(currentPageId);
-    final currentPage = pagesById[currentPageId];
-    final canRotate =
-        currentPage != null && !currentPage.isCoordinateSpaceWriteProtected;
     const actionConstraints = BoxConstraints.tightFor(width: 44, height: 44);
 
     return Column(
@@ -4017,16 +3947,6 @@ class _PagesTab extends StatelessWidget {
                     visualDensity: VisualDensity.compact,
                     constraints: actionConstraints,
                     icon: const Icon(Icons.note_add_outlined, size: 20),
-                  ),
-                  IconButton(
-                    key: const ValueKey('pages-rotate-button'),
-                    onPressed: canRotate ? onRotateCurrentPage : null,
-                    tooltip: canRotate
-                        ? 'Rotate current page clockwise'
-                        : 'Rotate page unavailable',
-                    visualDensity: VisualDensity.compact,
-                    constraints: actionConstraints,
-                    icon: const Icon(Icons.rotate_right),
                   ),
                 ],
               ),
@@ -4068,7 +3988,6 @@ class _PagesTab extends StatelessWidget {
                       onDelete: () => onDeletePage(pageId),
                       onMoveLeft: () => onMovePage(pageId, index - 1),
                       onMoveRight: () => onMovePage(pageId, index + 1),
-                      onRotate: () => onRotatePage(pageId),
                     ),
                   );
                 },
@@ -4338,7 +4257,6 @@ class _ContinuousPagesViewport extends StatefulWidget {
     required this.pagesById,
     required this.currentPageId,
     required this.fingerPanEnabled,
-    required this.showZoomControls,
     required this.onCurrentPageChanged,
     required this.pageBuilder,
   });
@@ -4347,7 +4265,6 @@ class _ContinuousPagesViewport extends StatefulWidget {
   final Map<String, NotePage> pagesById;
   final String currentPageId;
   final bool fingerPanEnabled;
-  final bool showZoomControls;
   final ValueChanged<String> onCurrentPageChanged;
   final Widget Function(NotePage page) pageBuilder;
 
@@ -4370,9 +4287,8 @@ class _ContinuousPagesViewportState extends State<_ContinuousPagesViewport> {
   double _zoomFactor = 1;
   double? _lastPinchDistance;
   bool _isPinching = false;
-  bool _zoomChromeExpanded = false;
   bool _showZoomBadge = false;
-  Timer? _zoomIdleTimer;
+  Timer? _zoomBadgeTimer;
 
   @override
   void initState() {
@@ -4382,7 +4298,7 @@ class _ContinuousPagesViewportState extends State<_ContinuousPagesViewport> {
 
   @override
   void dispose() {
-    _zoomIdleTimer?.cancel();
+    _zoomBadgeTimer?.cancel();
     _verticalController
       ..removeListener(_handleVerticalScroll)
       ..dispose();
@@ -4394,17 +4310,12 @@ class _ContinuousPagesViewportState extends State<_ContinuousPagesViewport> {
     _changeZoom(1, mode: PageViewportMode.fitWidth);
   }
 
-  void fitPage() {
-    final page = widget.pagesById[widget.currentPageId];
-    if (page == null || _viewportSize.isEmpty) {
-      return;
-    }
-    final baseHeight = _displaySize(page, zoomFactor: 1).height;
-    final availableHeight = math.max(1.0, _viewportSize.height - _pageGap * 2);
-    _changeZoom(
-      math.min(1.0, availableHeight / baseHeight),
-      mode: PageViewportMode.fitPage,
-    );
+  void zoomOut() {
+    _zoomBy(0.8);
+  }
+
+  void zoomIn() {
+    _zoomBy(1.25);
   }
 
   void scrollToPage(String pageId, {bool animate = true}) {
@@ -4570,6 +4481,7 @@ class _ContinuousPagesViewportState extends State<_ContinuousPagesViewport> {
       _maximumZoomFactor,
     );
     if ((_zoomFactor - nextFactor).abs() < 0.0001 && _mode == mode) {
+      _showZoomFeedback();
       return;
     }
 
@@ -4587,9 +4499,8 @@ class _ContinuousPagesViewportState extends State<_ContinuousPagesViewport> {
       _zoomFactor = nextFactor;
       _mode = mode;
       _showZoomBadge = true;
-      _zoomChromeExpanded = true;
     });
-    _scheduleZoomIdleCollapse();
+    _scheduleZoomBadgeDismissal();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_verticalController.hasClients) {
@@ -4608,24 +4519,23 @@ class _ContinuousPagesViewportState extends State<_ContinuousPagesViewport> {
 
   PageViewportMode _mode = PageViewportMode.fitWidth;
 
-  void _scheduleZoomIdleCollapse() {
-    _zoomIdleTimer?.cancel();
-    _zoomIdleTimer = Timer(const Duration(milliseconds: 1600), () {
+  void _showZoomFeedback() {
+    setState(() {
+      _showZoomBadge = true;
+    });
+    _scheduleZoomBadgeDismissal();
+  }
+
+  void _scheduleZoomBadgeDismissal() {
+    _zoomBadgeTimer?.cancel();
+    _zoomBadgeTimer = Timer(const Duration(milliseconds: 1600), () {
       if (!mounted) {
         return;
       }
       setState(() {
         _showZoomBadge = false;
-        _zoomChromeExpanded = false;
       });
     });
-  }
-
-  void _expandZoomChrome() {
-    setState(() {
-      _zoomChromeExpanded = true;
-    });
-    _scheduleZoomIdleCollapse();
   }
 
   void _zoomBy(double scaleFactor) {
@@ -4750,24 +4660,7 @@ class _ContinuousPagesViewportState extends State<_ContinuousPagesViewport> {
                     ),
                   ),
                 ),
-                if (widget.showZoomControls)
-                  Positioned(
-                    top: 16,
-                    right: 16,
-                    child: _ZoomControls(
-                      expanded: _zoomChromeExpanded,
-                      mode: _mode,
-                      zoomPercent: (_zoomFactor * 100).round(),
-                      canZoomOut: _zoomFactor > _minimumZoomFactor,
-                      canZoomIn: _zoomFactor < _maximumZoomFactor,
-                      onExpand: _expandZoomChrome,
-                      onZoomOut: () => _zoomBy(0.8),
-                      onZoomIn: () => _zoomBy(1.25),
-                      onFitWidth: fitWidth,
-                      onFitPage: fitPage,
-                    ),
-                  ),
-                if (widget.showZoomControls && _showZoomBadge)
+                if (_showZoomBadge)
                   IgnorePointer(
                     child: Center(
                       child: _ZoomStatusBadge(
@@ -4794,158 +4687,6 @@ class _ContinuousPageScrollBehavior extends MaterialScrollBehavior {
     if (touchDraggingEnabled) PointerDeviceKind.touch,
     PointerDeviceKind.trackpad,
   };
-}
-
-class _ZoomControls extends StatelessWidget {
-  const _ZoomControls({
-    required this.expanded,
-    required this.mode,
-    required this.zoomPercent,
-    required this.canZoomOut,
-    required this.canZoomIn,
-    required this.onExpand,
-    required this.onZoomOut,
-    required this.onZoomIn,
-    required this.onFitWidth,
-    required this.onFitPage,
-  });
-
-  final bool expanded;
-  final PageViewportMode mode;
-  final int zoomPercent;
-  final bool canZoomOut;
-  final bool canZoomIn;
-  final VoidCallback onExpand;
-  final VoidCallback onZoomOut;
-  final VoidCallback onZoomIn;
-  final VoidCallback onFitWidth;
-  final VoidCallback onFitPage;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: EditorWorkspaceTokens.chrome,
-      elevation: expanded ? 3 : 1,
-      shadowColor: EditorWorkspaceTokens.paperShadow,
-      borderRadius: BorderRadius.circular(EditorWorkspaceTokens.chromeRadius),
-      child: AnimatedSize(
-        duration: const Duration(milliseconds: 160),
-        curve: Curves.easeOutCubic,
-        alignment: Alignment.centerRight,
-        child: expanded
-            ? Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      onPressed: canZoomOut ? onZoomOut : null,
-                      tooltip: 'Zoom out',
-                      icon: const Icon(Icons.zoom_out),
-                    ),
-                    PopupMenuButton<PageViewportMode>(
-                      tooltip: 'Zoom and fit',
-                      color: EditorWorkspaceTokens.chrome,
-                      surfaceTintColor: Colors.transparent,
-                      shape: EditorChrome.shape,
-                      initialValue: mode == PageViewportMode.custom
-                          ? null
-                          : mode,
-                      onSelected: (selectedMode) {
-                        switch (selectedMode) {
-                          case PageViewportMode.fitWidth:
-                            onFitWidth();
-                          case PageViewportMode.fitPage:
-                            onFitPage();
-                          case PageViewportMode.custom:
-                            break;
-                        }
-                      },
-                      itemBuilder: (context) => const [
-                        PopupMenuItem(
-                          value: PageViewportMode.fitWidth,
-                          height: 48,
-                          child: Row(
-                            children: [
-                              Icon(Icons.fit_screen_outlined),
-                              SizedBox(width: 12),
-                              Text('Fit width'),
-                            ],
-                          ),
-                        ),
-                        PopupMenuItem(
-                          value: PageViewportMode.fitPage,
-                          height: 48,
-                          child: Row(
-                            children: [
-                              Icon(Icons.center_focus_strong),
-                              SizedBox(width: 12),
-                              Text('Fit page'),
-                            ],
-                          ),
-                        ),
-                      ],
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(
-                          minWidth: 68,
-                          minHeight: 44,
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              '$zoomPercent%',
-                              style: Theme.of(context).textTheme.labelLarge
-                                  ?.copyWith(fontWeight: FontWeight.w700),
-                            ),
-                            const Icon(Icons.arrow_drop_down, size: 18),
-                          ],
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: canZoomIn ? onZoomIn : null,
-                      tooltip: 'Zoom in',
-                      icon: const Icon(Icons.zoom_in),
-                    ),
-                  ],
-                ),
-              )
-            : Tooltip(
-                message: 'Zoom and fit',
-                child: InkWell(
-                  key: const ValueKey('editor-zoom-chip'),
-                  onTap: onExpand,
-                  borderRadius: BorderRadius.circular(
-                    EditorWorkspaceTokens.chromeRadius,
-                  ),
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(
-                      minWidth: 64,
-                      minHeight: 44,
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            '$zoomPercent%',
-                            style: Theme.of(context).textTheme.labelLarge
-                                ?.copyWith(fontWeight: FontWeight.w700),
-                          ),
-                          const SizedBox(width: 2),
-                          const Icon(Icons.unfold_more, size: 18),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-      ),
-    );
-  }
 }
 
 class _ZoomStatusBadge extends StatelessWidget {
@@ -4989,7 +4730,6 @@ class _PageThumbnailButton extends StatelessWidget {
     required this.onDelete,
     required this.onMoveLeft,
     required this.onMoveRight,
-    required this.onRotate,
   });
 
   final String pageId;
@@ -5007,7 +4747,6 @@ class _PageThumbnailButton extends StatelessWidget {
   final VoidCallback onDelete;
   final VoidCallback onMoveLeft;
   final VoidCallback onMoveRight;
-  final VoidCallback onRotate;
 
   void _handleAction(_PageAction action) {
     switch (action) {
@@ -5028,9 +4767,6 @@ class _PageThumbnailButton extends StatelessWidget {
         break;
       case _PageAction.moveRight:
         onMoveRight();
-        break;
-      case _PageAction.rotateClockwise:
-        onRotate();
         break;
     }
   }
@@ -5090,7 +4826,7 @@ class _PageThumbnailButton extends StatelessWidget {
                     right: 3,
                     child: _PageActionMenu(
                       pageNumber: pageNumber,
-                      canDuplicateOrRotate:
+                      canDuplicate:
                           !(page?.isCoordinateSpaceWriteProtected ?? false),
                       canDelete: canDelete,
                       canMoveLeft: canMoveLeft,
@@ -5137,13 +4873,12 @@ enum _PageAction {
   delete,
   moveLeft,
   moveRight,
-  rotateClockwise,
 }
 
 class _PageActionMenu extends StatelessWidget {
   const _PageActionMenu({
     required this.pageNumber,
-    required this.canDuplicateOrRotate,
+    required this.canDuplicate,
     required this.canDelete,
     required this.canMoveLeft,
     required this.canMoveRight,
@@ -5151,7 +4886,7 @@ class _PageActionMenu extends StatelessWidget {
   });
 
   final int pageNumber;
-  final bool canDuplicateOrRotate;
+  final bool canDuplicate;
   final bool canDelete;
   final bool canMoveLeft;
   final bool canMoveRight;
@@ -5184,13 +4919,7 @@ class _PageActionMenu extends StatelessWidget {
             value: _PageAction.duplicate,
             icon: Icons.copy,
             label: 'Duplicate page',
-            enabled: canDuplicateOrRotate,
-          ),
-          _pageActionItem(
-            value: _PageAction.rotateClockwise,
-            icon: Icons.rotate_right,
-            label: 'Rotate page clockwise',
-            enabled: canDuplicateOrRotate,
+            enabled: canDuplicate,
           ),
           _pageActionItem(
             value: _PageAction.delete,
