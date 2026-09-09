@@ -46,7 +46,7 @@ void main() {
           : find.text('New notebook').first,
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('create-paged-notebook')));
+    await tester.tap(find.byKey(const ValueKey('create-paged-notebook-a4')));
     await tester.pumpAndSettle();
   }
 
@@ -288,12 +288,52 @@ void main() {
   );
 
   testWidgets('creates and opens a notebook', (WidgetTester tester) async {
-    await pumpInkNestApp(tester);
+    final repository = InMemoryNotebookRepository();
+    await tester.pumpWidget(InkNestApp(notebookRepository: repository));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('New notebook').first);
+    await tester.pumpAndSettle();
 
-    await createPagedNotebook(tester);
+    expect(find.text('Paged notebook'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('create-paged-notebook-letter')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byTooltip('Landscape paper'));
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const ValueKey('create-paged-notebook-letter')),
+    );
+    await tester.pumpAndSettle();
+
+    final notebook = (await repository.listNotebooks()).single;
+    final firstPage = await repository.loadPage(notebook, 'page-1');
+    expect(
+      Size(firstPage.width, firstPage.height),
+      NotePageSizePreset.letter.sizeFor(NotePageOrientation.landscape),
+    );
+    expect(firstPage.template, NotePageTemplate.blank);
 
     expect(find.text('Notebook 1'), findsNothing);
     expect(find.byTooltip('Open Pages, page 1 of 1'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('editor-add-page-button')));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<ChoiceChip>(find.byKey(const ValueKey('page-size-letter')))
+          .selected,
+      isTrue,
+    );
+    expect(
+      tester
+          .widget<SegmentedButton<NotePageOrientation>>(
+            find.byType(SegmentedButton<NotePageOrientation>),
+          )
+          .selected,
+      {NotePageOrientation.landscape},
+    );
+    await tester.tap(find.byTooltip('Close paper styles'));
+    await tester.pumpAndSettle();
     expect(find.byTooltip('Start audio recording'), findsOneWidget);
     expect(find.byTooltip('Search notebook'), findsNothing);
     expect(find.byKey(const ValueKey('editor-more-actions')), findsOneWidget);
@@ -327,6 +367,55 @@ void main() {
     await openEditorPages(tester);
     expect(find.byKey(const ValueKey('page-thumbnail-page-1')), findsOneWidget);
     expect(find.text('No notebooks yet'), findsNothing);
+  });
+
+  testWidgets('uses notebook paper cards as direct actions without selection', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final repository = InMemoryNotebookRepository();
+    await tester.pumpWidget(InkNestApp(notebookRepository: repository));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('New notebook').first);
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('create-paged-notebook-a4')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('create-paged-notebook-letter')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('create-paged-notebook-digital')),
+      findsOneWidget,
+    );
+    expect(find.byIcon(Icons.check_circle), findsNothing);
+    await tester.tap(find.byTooltip('Landscape paper'));
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const ValueKey('create-paged-notebook-letter')),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('New notebook'));
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.check_circle), findsNothing);
+    expect(
+      tester
+          .widget<SegmentedButton<NotePageOrientation>>(
+            find.byType(SegmentedButton<NotePageOrientation>),
+          )
+          .selected,
+      {NotePageOrientation.landscape},
+    );
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('creates, draws, and configures an infinite canvas', (

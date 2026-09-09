@@ -46,9 +46,6 @@ class FileNotebookRepository implements NotebookRepository {
        _pdfImportInspector =
            pdfImportInspector ?? const PdfrxPdfImportInspector();
 
-  static const _pageWidth = defaultNotePageWidth;
-  static const _pageHeight = defaultNotePageHeight;
-
   final Directory _notebooksDirectory;
   final PdfImportInspector _pdfImportInspector;
   final PagePersistedCallback? onPagePersisted;
@@ -189,6 +186,8 @@ class FileNotebookRepository implements NotebookRepository {
   Future<Notebook> createNotebook({
     String? title,
     NotebookLayoutMode layoutMode = NotebookLayoutMode.paged,
+    Size? pageSize,
+    NotePageTemplate pageTemplate = NotePageTemplate.blank,
   }) async {
     final notebooks = await _readIndex();
     final now = DateTime.now();
@@ -205,7 +204,10 @@ class FileNotebookRepository implements NotebookRepository {
 
     await _writeIndex([...notebooks, notebook]);
     if (layoutMode == NotebookLayoutMode.paged) {
-      await savePage(notebook, _emptyPage('page-1'));
+      await savePage(
+        notebook,
+        _emptyPage('page-1', pageSize: pageSize, template: pageTemplate),
+      );
     } else {
       await saveInfiniteCanvas(notebook, const InfiniteCanvasDocument());
     }
@@ -733,6 +735,7 @@ class FileNotebookRepository implements NotebookRepository {
     Notebook notebook,
     int index, {
     Size? pageSize,
+    NotePageTemplate? template,
   }) async {
     final pageId = _nextPageId(notebook.pageIds);
     final clampedIndex = index.clamp(0, notebook.pageIds.length).toInt();
@@ -756,7 +759,7 @@ class FileNotebookRepository implements NotebookRepository {
         rotationQuarterTurns: pageSize == null
             ? _rotationForNewBlankPage(referencePage)
             : 0,
-        template: _templateForNewBlankPage(referencePage),
+        template: template ?? _templateForNewBlankPage(referencePage),
       ),
     );
     return updatedNotebook;
@@ -1250,13 +1253,15 @@ class FileNotebookRepository implements NotebookRepository {
 
   NotePage _emptyPage(
     String pageId, {
+    Size? pageSize,
     int rotationQuarterTurns = 0,
     NotePageTemplate template = NotePageTemplate.blank,
   }) {
+    final resolvedSize = pageSize ?? defaultNotePageSize;
     return NotePage(
       id: pageId,
-      width: _pageWidth,
-      height: _pageHeight,
+      width: resolvedSize.width,
+      height: resolvedSize.height,
       rotationQuarterTurns: rotationQuarterTurns,
       template: template,
     );

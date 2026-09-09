@@ -28,11 +28,13 @@ that do not fit move to More. Add page, undo, redo, outline, bookmarks,
 recording, and export therefore share one responsive rule instead of separate
 phone and tablet layouts.
 
-New paged notebooks default to A4 portrait. Adding a normal page reuses the
-paper-style sheet and lets the user choose A4, US Letter, or Digital 3:4 plus
-portrait or landscape before choosing Blank, Ruled, Dotted, Grid, Cornell, or
-Planner. The editor remembers the latest choice for the current session.
-Existing pages and imported PDF dimensions remain unchanged.
+The single New notebook sheet embeds compact A4, US Letter, and Digital 3:4
+paper cards inside Paged notebook plus a portrait/landscape toggle. Tapping a
+paper card creates a blank notebook immediately, so paper cards never show a
+selected or default state. The orientation toggle remains stateful because it
+changes the created page. Add page keeps the complete size, orientation, and
+Blank/Ruled/Dotted/Grid/Cornell/Planner setup, defaulting to the current
+notebook paper. Existing pages and imported PDF dimensions remain unchanged.
 
 Because a touch drag cannot both write and scroll, paged notebooks start in
 `Finger moves`: one finger scrolls and a stylus writes. `Finger writes` remains
@@ -47,6 +49,8 @@ is active.
   - Lazy page construction with a consistent workspace gap between sheets.
   - Standard paper selection for new normal pages: A4, US Letter, and Digital
     3:4 in portrait or landscape, independent of the page template.
+  - One-step paged-notebook creation from compact paper cards; complete template
+    setup remains in Add page.
   - Fit Width as the initial scale for every sheet, shared notebook zoom, and
     horizontal panning when zoomed beyond the viewport.
   - Current-page tracking while scrolling and programmatic jumps from header,
@@ -78,8 +82,12 @@ is active.
       follow scroll to the requested page.
 - [x] New, duplicated, imported, or retained pages become visible at their
       requested position.
-- [x] New paged notebooks default to exact A4 portrait dimensions; Add page
-      offers A4, Letter, and Digital 3:4 with portrait/landscape choices.
+- [x] New notebook shows A4, Letter, and Digital 3:4 cards directly inside the
+      Paged notebook option; tapping one creates a blank notebook immediately.
+- [x] New-notebook paper cards have no selected/default styling because each is
+      an immediate action; portrait/landscape retains meaningful state.
+- [x] Add page defaults to the created notebook's size and orientation, while
+      retaining the full paper-template choice.
 - [x] The last selected size and orientation remain selected for subsequent
       page additions in the same editor session.
 - [x] Existing page dimensions and imported PDF source dimensions are not

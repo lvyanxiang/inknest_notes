@@ -105,6 +105,8 @@ class InMemoryNotebookRepository implements NotebookRepository {
   Future<Notebook> createNotebook({
     String? title,
     NotebookLayoutMode layoutMode = NotebookLayoutMode.paged,
+    Size? pageSize,
+    NotePageTemplate pageTemplate = NotePageTemplate.blank,
   }) async {
     final now = DateTime.now();
     final notebook = Notebook(
@@ -120,10 +122,12 @@ class InMemoryNotebookRepository implements NotebookRepository {
 
     _notebooks.add(notebook);
     if (layoutMode == NotebookLayoutMode.paged) {
-      _pages['${notebook.id}/page-1'] = const NotePage(
+      final initialPageSize = pageSize ?? const Size(_pageWidth, _pageHeight);
+      _pages['${notebook.id}/page-1'] = NotePage(
         id: 'page-1',
-        width: _pageWidth,
-        height: _pageHeight,
+        width: initialPageSize.width,
+        height: initialPageSize.height,
+        template: pageTemplate,
       );
     } else {
       _canvases[notebook.id] = const InfiniteCanvasDocument();
@@ -402,6 +406,7 @@ class InMemoryNotebookRepository implements NotebookRepository {
     Notebook notebook,
     int index, {
     Size? pageSize,
+    NotePageTemplate? template,
   }) async {
     final pageId = _nextPageId(notebook.pageIds);
     final clampedIndex = index.clamp(0, notebook.pageIds.length).toInt();
@@ -423,7 +428,7 @@ class InMemoryNotebookRepository implements NotebookRepository {
       rotationQuarterTurns: pageSize == null
           ? _rotationForNewBlankPage(referencePage)
           : 0,
-      template: _templateForNewBlankPage(referencePage),
+      template: template ?? _templateForNewBlankPage(referencePage),
     );
     return updatedNotebook;
   }

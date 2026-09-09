@@ -38,3 +38,24 @@ enum NotePageSizePreset {
         : Size(portraitSize.height, portraitSize.width);
   }
 }
+
+class NotePageSizeMatch {
+  const NotePageSizeMatch({required this.preset, required this.orientation});
+
+  final NotePageSizePreset preset;
+  final NotePageOrientation orientation;
+}
+
+NotePageSizeMatch? matchNotePageSize(Size size) {
+  const tolerance = 0.01;
+  for (final preset in NotePageSizePreset.values) {
+    for (final orientation in NotePageOrientation.values) {
+      final candidate = preset.sizeFor(orientation);
+      if ((candidate.width - size.width).abs() <= tolerance &&
+          (candidate.height - size.height).abs() <= tolerance) {
+        return NotePageSizeMatch(preset: preset, orientation: orientation);
+      }
+    }
+  }
+  return null;
+}

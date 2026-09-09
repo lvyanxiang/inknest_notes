@@ -76,8 +76,8 @@ class _EditorScreenState extends State<EditorScreen> {
   DrawingTool _tool = const DrawingTool(width: 3);
   late Notebook _notebook;
   late String _currentPageId;
-  NotePageSizePreset _newPageSize = NotePageSizePreset.a4;
-  NotePageOrientation _newPageOrientation = NotePageOrientation.portrait;
+  NotePageSizePreset? _newPageSize;
+  NotePageOrientation? _newPageOrientation;
   bool _isPageRailOpen = false;
   bool _isExporting = false;
   bool _isImportingPdfs = false;
@@ -1858,11 +1858,19 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   Future<void> _chooseTemplateAndInsertPage(int index) async {
+    final currentPage = _page;
+    final currentPaper = currentPage == null
+        ? null
+        : matchNotePageSize(Size(currentPage.width, currentPage.height));
     final selection = await showPageTemplateSheet(
       context: context,
       selectedTemplate: _page?.template ?? NotePageTemplate.blank,
-      selectedSize: _newPageSize,
-      selectedOrientation: _newPageOrientation,
+      selectedSize:
+          _newPageSize ?? currentPaper?.preset ?? NotePageSizePreset.a4,
+      selectedOrientation:
+          _newPageOrientation ??
+          currentPaper?.orientation ??
+          NotePageOrientation.portrait,
       title: 'Add page',
       subtitle: 'Choose a size, orientation, and style',
     );
@@ -1891,6 +1899,7 @@ class _EditorScreenState extends State<EditorScreen> {
       _notebook,
       index,
       pageSize: pageSize,
+      template: template,
     );
 
     if (!mounted) {
@@ -1913,15 +1922,6 @@ class _EditorScreenState extends State<EditorScreen> {
     });
 
     await _loadPage();
-    final insertedPage = _page;
-    if (insertedPage != null && insertedPage.template != template) {
-      final styledPage = insertedPage.copyWith(template: template);
-      setState(() {
-        _page = styledPage;
-        _pagesById[styledPage.id] = styledPage;
-      });
-      await _savePage(styledPage);
-    }
     unawaited(_loadPageThumbnails());
     _scrollToPageSoon(insertedPageId);
   }

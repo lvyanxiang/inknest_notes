@@ -547,11 +547,13 @@ void main() {
       notebook,
       1,
       pageSize: landscapeLetter,
+      template: NotePageTemplate.cornell,
     );
 
     final insertedPage = await repository.loadPage(notebook, 'page-2');
     expect(Size(insertedPage.width, insertedPage.height), landscapeLetter);
     expect(insertedPage.rotationQuarterTurns, 0);
+    expect(insertedPage.template, NotePageTemplate.cornell);
     expect(insertedPage.pdfBackground, isNull);
   });
 

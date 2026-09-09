@@ -11,6 +11,7 @@ import 'package:inknest_notes/features/editor/infinite_canvas_screen.dart';
 import 'package:inknest_notes/models/notebook.dart';
 import 'package:inknest_notes/models/notebook_folder.dart';
 import 'package:inknest_notes/models/notebook_layout_mode.dart';
+import 'package:inknest_notes/models/note_page_size.dart';
 import 'package:inknest_notes/storage/notebook_repository.dart';
 import 'package:inknest_notes/sync/automatic_first_sign_in_sync.dart';
 import 'package:inknest_notes/sync/first_sign_in_sync_service.dart';
@@ -88,12 +89,40 @@ extension _LibrarySortModeLabel on _LibrarySortMode {
   }
 }
 
-class _NotebookTypePicker extends StatelessWidget {
-  const _NotebookTypePicker();
+class _NotebookCreationChoice {
+  const _NotebookCreationChoice({
+    required this.layoutMode,
+    this.pageSize,
+    this.orientation,
+  });
+
+  final NotebookLayoutMode layoutMode;
+  final NotePageSizePreset? pageSize;
+  final NotePageOrientation? orientation;
+}
+
+class _NotebookTypePicker extends StatefulWidget {
+  const _NotebookTypePicker({required this.selectedOrientation});
+
+  final NotePageOrientation selectedOrientation;
+
+  @override
+  State<_NotebookTypePicker> createState() => _NotebookTypePickerState();
+}
+
+class _NotebookTypePickerState extends State<_NotebookTypePicker> {
+  late NotePageOrientation _orientation;
+
+  @override
+  void initState() {
+    super.initState();
+    _orientation = widget.selectedOrientation;
+  }
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
     return SafeArea(
       top: false,
       child: Padding(
@@ -107,18 +136,101 @@ class _NotebookTypePicker extends StatelessWidget {
               Text('Create a notebook', style: textTheme.headlineSmall),
               const SizedBox(height: 4),
               Text(
-                'Choose how you want to organize this notebook.',
+                'Choose a paper or start with an infinite canvas.',
                 style: textTheme.bodyMedium,
               ),
               const SizedBox(height: 20),
-              _NotebookTypeCard(
-                key: const ValueKey('create-paged-notebook'),
-                icon: Icons.auto_stories_outlined,
-                title: 'Paged notebook',
-                description:
-                    'Structured paper pages with page management, bookmarks, and PDF tools.',
-                onTap: () =>
-                    Navigator.of(context).pop(NotebookLayoutMode.paged),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerLowest,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: colorScheme.outlineVariant),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.auto_stories_outlined,
+                            color: colorScheme.primary,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Paged notebook',
+                              style: textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          SegmentedButton<NotePageOrientation>(
+                            showSelectedIcon: false,
+                            segments: const [
+                              ButtonSegment(
+                                value: NotePageOrientation.portrait,
+                                icon: Icon(
+                                  Icons.stay_current_portrait,
+                                  size: 18,
+                                ),
+                                tooltip: 'Portrait paper',
+                              ),
+                              ButtonSegment(
+                                value: NotePageOrientation.landscape,
+                                icon: Icon(
+                                  Icons.stay_current_landscape,
+                                  size: 18,
+                                ),
+                                tooltip: 'Landscape paper',
+                              ),
+                            ],
+                            selected: {_orientation},
+                            onSelectionChanged: (selection) {
+                              setState(() {
+                                _orientation = selection.first;
+                              });
+                            },
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Tap a paper size to create immediately.',
+                        style: textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          for (
+                            var index = 0;
+                            index < NotePageSizePreset.values.length;
+                            index++
+                          ) ...[
+                            if (index > 0) const SizedBox(width: 8),
+                            Expanded(
+                              child: _NotebookPaperCard(
+                                preset: NotePageSizePreset.values[index],
+                                orientation: _orientation,
+                                onTap: () => Navigator.of(context).pop(
+                                  _NotebookCreationChoice(
+                                    layoutMode: NotebookLayoutMode.paged,
+                                    pageSize: NotePageSizePreset.values[index],
+                                    orientation: _orientation,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
               ),
               const SizedBox(height: 12),
               _NotebookTypeCard(
@@ -127,11 +239,98 @@ class _NotebookTypePicker extends StatelessWidget {
                 title: 'Infinite canvas',
                 description:
                     'A flexible space for freeform thinking, zooming, and spatial notes.',
-                onTap: () => Navigator.of(
-                  context,
-                ).pop(NotebookLayoutMode.infiniteCanvas),
+                onTap: () => Navigator.of(context).pop(
+                  const _NotebookCreationChoice(
+                    layoutMode: NotebookLayoutMode.infiniteCanvas,
+                  ),
+                ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NotebookPaperCard extends StatelessWidget {
+  const _NotebookPaperCard({
+    required this.preset,
+    required this.orientation,
+    required this.onTap,
+  });
+
+  final NotePageSizePreset preset;
+  final NotePageOrientation orientation;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final pageSize = preset.sizeFor(orientation);
+    return Semantics(
+      button: true,
+      label: '${preset.label}, ${orientation.label}, ${preset.detail}',
+      child: Material(
+        key: ValueKey('create-paged-notebook-${preset.name}'),
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: colorScheme.outlineVariant),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 10, 8, 9),
+              child: Column(
+                children: [
+                  SizedBox(
+                    height: 58,
+                    child: Center(
+                      child: AspectRatio(
+                        aspectRatio: pageSize.width / pageSize.height,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            border: Border.all(
+                              color: colorScheme.outlineVariant,
+                            ),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Color(0x141E2526),
+                                blurRadius: 6,
+                                offset: Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 7),
+                  Text(
+                    preset.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    preset.detail,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -216,6 +415,7 @@ class _LibraryScreenState extends State<LibraryScreen>
   bool _showArchived = false;
   String _searchQuery = '';
   _LibrarySortMode _sortMode = _LibrarySortMode.recent;
+  NotePageOrientation _newNotebookOrientation = NotePageOrientation.portrait;
   String? _currentFolderId;
   NotebookFolder? _currentFolder;
   String? _checkedSessionKey;
@@ -1336,18 +1536,26 @@ class _LibraryScreenState extends State<LibraryScreen>
   }
 
   Future<void> _createNotebook() async {
-    final layoutMode = await showModalBottomSheet<NotebookLayoutMode>(
+    final choice = await showModalBottomSheet<_NotebookCreationChoice>(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
-      builder: (context) => const _NotebookTypePicker(),
+      builder: (context) =>
+          _NotebookTypePicker(selectedOrientation: _newNotebookOrientation),
     );
-    if (layoutMode == null) {
+    if (choice == null) {
       return;
     }
 
+    if (choice.pageSize != null && choice.orientation != null) {
+      _newNotebookOrientation = choice.orientation!;
+    }
+
     var notebook = await widget.notebookRepository.createNotebook(
-      layoutMode: layoutMode,
+      layoutMode: choice.layoutMode,
+      pageSize: choice.pageSize?.sizeFor(
+        choice.orientation ?? NotePageOrientation.portrait,
+      ),
     );
     final folderId = _showArchived ? null : _currentFolderId;
     if (folderId != null) {

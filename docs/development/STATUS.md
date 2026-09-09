@@ -9,10 +9,11 @@
   choices: public HTTPS Privacy/Terms/deletion pages, final operator and contact
   details, launch territories and retention/processor disclosures; then select
   an email provider before implementing verified email and password recovery.
-- Last completed: Added Goodnotes-style paper setup to Add page. New paged
-  notebooks default to A4 portrait; users can choose A4, US Letter, or Digital
-  3:4 plus portrait/landscape before selecting a template. Existing pages and
-  imported PDF dimensions remain unchanged.
+- Last completed: Reduced notebook creation to one sheet. The Paged notebook
+  section now embeds compact A4, US Letter, and Digital 3:4 paper cards plus an
+  orientation toggle; tapping a card creates a blank notebook immediately, so
+  paper cards have no selected/default treatment. Add page defaults to that
+  notebook's paper and retains full template choices.
 
 ### Release readiness
 
@@ -291,9 +292,11 @@
   in the right-aligned document action group instead of visible notebook
   title/page text. Do not expose page rotation; keep the stored rotation model
   only for existing-notebook rendering and export compatibility.
-- Default new paged notebooks to exact A4 portrait dimensions. Add page offers
-  A4, US Letter, and Digital 3:4 in portrait or landscape, remembers the latest
-  editor-session selection, and never resizes existing or imported PDF pages.
+- Keep New notebook to one sheet. Embed exact A4, US Letter, and Digital 3:4
+  cards plus orientation inside Paged notebook and create immediately on paper
+  activation. Do not show selected/default paper-card styling; orientation
+  remains stateful because it changes the result. Use the created paper as the
+  Add page default; never resize existing or imported PDF pages.
 - Prefer anchored tool-property popovers on regular/wide iPad widths; keep bottom sheets only for compact Split View.
 - Keep notebook location and ink history in the document bar; show Record at
   ≥720px and Export at ≥1000px; use the header pager for adjacent page work,
@@ -403,9 +406,9 @@
 - Paged-editor header simplification passes focused workspace, coordinate-space,
   and widget coverage for the icon-only Pages entry and absent rotation actions.
 - Standard paper-size coverage verifies A4 defaults, Letter/Digital presets,
-  portrait/landscape sizing, persisted explicit dimensions, compact Add page
-  UI, and sync merge compatibility. All 315 Flutter tests, `flutter analyze`,
-  and `git diff --check` pass.
+  portrait/landscape sizing, persisted explicit dimensions, one-sheet
+  new-notebook creation, inherited Add page defaults, and sync compatibility.
+  All 317 Flutter tests, `flutter analyze`, and `git diff --check` pass.
 - English-only UI delivery passes all 312 Flutter tests and `flutter analyze`.
   Backend Ruff formatting/lint and the 19-test synchronization-change suite
   pass. Runtime scans find no Han characters in `lib/`, platform shells, or

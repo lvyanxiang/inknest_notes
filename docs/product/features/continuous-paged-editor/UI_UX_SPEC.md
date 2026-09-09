@@ -15,16 +15,20 @@ coordinates to match the device aspect ratio.
 
 ## Primary Flow
 
-1. Open a paged notebook in Fit Width with Page 1 near the top of the viewport.
-2. Write with a stylus or drag one finger to scroll through adjacent sheets.
-3. As the viewport focus crosses a page boundary, update the header page count,
+1. Open New notebook. In the Paged notebook section, optionally change
+   orientation, then tap an A4, Letter, or Digital 3:4 paper card to create and
+   open a blank notebook immediately. No paper card is preselected; orientation
+   starts in portrait.
+2. Open a paged notebook in Fit Width with Page 1 near the top of the viewport.
+3. Write with a stylus or drag one finger to scroll through adjacent sheets.
+4. As the viewport focus crosses a page boundary, update the header page count,
    undo/redo target, bookmark state, and current-page actions.
-4. Tap the labelled Pages icon, or use a visible Outline, Bookmarks, or More
+5. Tap the labelled Pages icon, or use a visible Outline, Bookmarks, or More
    action; selecting an item scrolls its sheet into view.
-5. Tap Add page, choose A4, Letter, or Digital 3:4, choose portrait or
+6. Tap Add page, choose A4, Letter, or Digital 3:4, choose portrait or
    landscape, then tap a paper style. The page is created, selected, and
    scrolled into view.
-6. The next Add page sheet reuses the latest size and orientation selected in
+7. The next Add page sheet reuses the latest size and orientation selected in
    this editor session.
 
 ## States And Feedback
@@ -39,6 +43,7 @@ coordinates to match the device aspect ratio.
 | Finger writes | Touch edits the active sheet; one-finger list scrolling is suspended | Header/Pages navigation remains available |
 | Protected page | Current protected-page message remains visible; scrolling continues | Navigate to another page |
 | Add page | Size chips, orientation toggle, and template grid | Closing cancels without creating a page; tapping a template confirms all selections |
+| New notebook | Paged section with orientation toggle and three compact paper cards; separate Infinite canvas card | Closing cancels; tapping a paper or Infinite canvas creates and opens immediately |
 
 ## Layout
 
@@ -69,7 +74,11 @@ coordinates to match the device aspect ratio.
   changing the editor chrome height.
 - The Add page sheet presents A4, Letter, and Digital 3:4 as size chips;
   portrait/landscape use one two-option segmented control. Template previews
-  reflect the selected aspect ratio. A4 portrait is the initial default.
+  reflect the selected aspect ratio. It defaults to the current recognized
+  notebook paper, with A4 portrait as fallback.
+- The single New notebook sheet shows three compact aspect-ratio previews inside
+  Paged notebook and one orientation toggle. Tapping a paper card creates a
+  blank notebook directly; Infinite canvas remains a separate direct card.
 
 ## Input And Accessibility
 
@@ -83,6 +92,9 @@ coordinates to match the device aspect ratio.
   remains a non-gesture route to every page.
 - Paper-size chips and portrait/landscape controls remain labelled and
   keyboard-focusable; selecting a template confirms the current setup.
+- New-notebook paper cards expose size, orientation, and physical dimensions in
+  semantics. They use normal button states only, with no selected/default
+  treatment.
 
 ## UI Acceptance Criteria
 
@@ -102,6 +114,10 @@ coordinates to match the device aspect ratio.
       previously rotated pages remain viewable.
 - [x] Add page offers A4, Letter, and Digital 3:4 independently from template
       style, in portrait and landscape.
+- [x] New notebook requires one sheet only: each Paged paper card and the
+      Infinite canvas card creates immediately.
+- [x] No new-notebook paper card appears selected before activation; Add page
+      still initially matches the created notebook paper.
 - [x] New notebooks default to A4 portrait, while existing and imported PDF
       page dimensions remain unchanged.
 - [x] 390dp, 600dp, 834dp, and 1194dp layouts use two fixed 52dp editor rows;

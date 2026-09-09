@@ -16,4 +16,12 @@ void main() {
       const Size(defaultNotePageHeight, defaultNotePageWidth),
     );
   });
+
+  test('matches persisted dimensions back to a preset and orientation', () {
+    final match = matchNotePageSize(const Size(792, 612));
+
+    expect(match?.preset, NotePageSizePreset.letter);
+    expect(match?.orientation, NotePageOrientation.landscape);
+    expect(matchNotePageSize(const Size(700, 900)), isNull);
+  });
 }

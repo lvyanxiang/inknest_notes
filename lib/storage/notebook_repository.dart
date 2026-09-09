@@ -8,6 +8,7 @@ import 'package:inknest_notes/models/notebook_folder.dart';
 import 'package:inknest_notes/models/notebook_layout_mode.dart';
 import 'package:inknest_notes/models/note_image.dart';
 import 'package:inknest_notes/models/note_page.dart';
+import 'package:inknest_notes/models/note_page_template.dart';
 
 enum PageCoordinateSpaceWriteBlockReason {
   unresolvedLegacyContent,
@@ -70,6 +71,8 @@ abstract class NotebookRepository {
   Future<Notebook> createNotebook({
     String? title,
     NotebookLayoutMode layoutMode = NotebookLayoutMode.paged,
+    Size? pageSize,
+    NotePageTemplate pageTemplate = NotePageTemplate.blank,
   });
 
   Future<InfiniteCanvasDocument> loadInfiniteCanvas(Notebook notebook);
@@ -137,7 +140,12 @@ abstract class NotebookRepository {
 
   Future<Notebook> addPage(Notebook notebook);
 
-  Future<Notebook> insertPage(Notebook notebook, int index, {Size? pageSize});
+  Future<Notebook> insertPage(
+    Notebook notebook,
+    int index, {
+    Size? pageSize,
+    NotePageTemplate? template,
+  });
 
   Future<Notebook> duplicatePage(Notebook notebook, String pageId);
 

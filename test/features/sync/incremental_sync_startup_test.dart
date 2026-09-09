@@ -78,7 +78,7 @@ void main() {
 
     await tester.tap(find.text('New notebook').first);
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('create-paged-notebook')));
+    await tester.tap(find.byKey(const ValueKey('create-paged-notebook-a4')));
     await tester.pumpAndSettle();
 
     expect(sync.calls, ['push', 'pull', 'push', 'pull']);
