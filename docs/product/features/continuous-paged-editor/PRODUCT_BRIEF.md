@@ -28,6 +28,12 @@ that do not fit move to More. Add page, undo, redo, outline, bookmarks,
 recording, and export therefore share one responsive rule instead of separate
 phone and tablet layouts.
 
+New paged notebooks default to A4 portrait. Adding a normal page reuses the
+paper-style sheet and lets the user choose A4, US Letter, or Digital 3:4 plus
+portrait or landscape before choosing Blank, Ruled, Dotted, Grid, Cornell, or
+Planner. The editor remembers the latest choice for the current session.
+Existing pages and imported PDF dimensions remain unchanged.
+
 Because a touch drag cannot both write and scroll, paged notebooks start in
 `Finger moves`: one finger scrolls and a stylus writes. `Finger writes` remains
 available as an explicit mode and disables one-finger page scrolling while it
@@ -39,6 +45,8 @@ is active.
   - One vertical continuous-page layout for phones and tablets on iOS/iPadOS
     and Android.
   - Lazy page construction with a consistent workspace gap between sheets.
+  - Standard paper selection for new normal pages: A4, US Letter, and Digital
+    3:4 in portrait or landscape, independent of the page template.
   - Fit Width as the initial scale for every sheet, shared notebook zoom, and
     horizontal panning when zoomed beyond the viewport.
   - Current-page tracking while scrolling and programmatic jumps from header,
@@ -70,6 +78,12 @@ is active.
       follow scroll to the requested page.
 - [x] New, duplicated, imported, or retained pages become visible at their
       requested position.
+- [x] New paged notebooks default to exact A4 portrait dimensions; Add page
+      offers A4, Letter, and Digital 3:4 with portrait/landscape choices.
+- [x] The last selected size and orientation remain selected for subsequent
+      page additions in the same editor session.
+- [x] Existing page dimensions and imported PDF source dimensions are not
+      migrated or resized.
 - [x] Every page keeps its canonical document size and coordinate mapping;
       drawing after scrolling or zooming saves inside that page.
 - [x] Finger moves scrolls without creating ink; stylus writing does not drag

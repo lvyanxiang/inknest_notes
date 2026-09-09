@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:inknest_notes/models/note_page.dart';
+import 'package:inknest_notes/models/note_page_size.dart';
 import 'package:inknest_notes/models/notebook.dart';
 import 'package:inknest_notes/storage/file_notebook_repository.dart';
 import 'package:inknest_notes/sync/file_sync_state_store.dart';
@@ -786,8 +787,8 @@ class _MixedFirstSignInCloudClient implements FirstSignInCloudClient {
           id: sharedRemotePageId,
           notebookId: sharedNotebook.id,
           position: 0,
-          width: 768,
-          height: 1024,
+          width: defaultNotePageWidth,
+          height: defaultNotePageHeight,
           coordinateSpaceVersion: 1,
           rotationQuarterTurns: 0,
           template: 'blank',

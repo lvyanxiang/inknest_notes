@@ -137,7 +137,7 @@ abstract class NotebookRepository {
 
   Future<Notebook> addPage(Notebook notebook);
 
-  Future<Notebook> insertPage(Notebook notebook, int index);
+  Future<Notebook> insertPage(Notebook notebook, int index, {Size? pageSize});
 
   Future<Notebook> duplicatePage(Notebook notebook, String pageId);
 

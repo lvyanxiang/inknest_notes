@@ -9,6 +9,7 @@ import 'package:inknest_notes/models/notebook_folder.dart';
 import 'package:inknest_notes/models/notebook_layout_mode.dart';
 import 'package:inknest_notes/models/note_image.dart';
 import 'package:inknest_notes/models/note_page.dart';
+import 'package:inknest_notes/models/note_page_size.dart';
 import 'package:inknest_notes/models/note_page_template.dart';
 import 'package:inknest_notes/models/pdf_background.dart';
 import 'package:inknest_notes/models/pdf_outline_entry.dart';
@@ -45,8 +46,8 @@ class FileNotebookRepository implements NotebookRepository {
        _pdfImportInspector =
            pdfImportInspector ?? const PdfrxPdfImportInspector();
 
-  static const _pageWidth = 768.0;
-  static const _pageHeight = 1024.0;
+  static const _pageWidth = defaultNotePageWidth;
+  static const _pageHeight = defaultNotePageHeight;
 
   final Directory _notebooksDirectory;
   final PdfImportInspector _pdfImportInspector;
@@ -728,7 +729,11 @@ class FileNotebookRepository implements NotebookRepository {
   }
 
   @override
-  Future<Notebook> insertPage(Notebook notebook, int index) async {
+  Future<Notebook> insertPage(
+    Notebook notebook,
+    int index, {
+    Size? pageSize,
+  }) async {
     final pageId = _nextPageId(notebook.pageIds);
     final clampedIndex = index.clamp(0, notebook.pageIds.length).toInt();
     final referencePage = await _pageForInsertedBlank(notebook, clampedIndex);
@@ -740,13 +745,17 @@ class FileNotebookRepository implements NotebookRepository {
     );
 
     await _replaceNotebook(updatedNotebook);
+    final insertedPageSize =
+        pageSize ?? Size(referencePage.width, referencePage.height);
     await savePage(
       updatedNotebook,
       NotePage(
         id: pageId,
-        width: referencePage.width,
-        height: referencePage.height,
-        rotationQuarterTurns: _rotationForNewBlankPage(referencePage),
+        width: insertedPageSize.width,
+        height: insertedPageSize.height,
+        rotationQuarterTurns: pageSize == null
+            ? _rotationForNewBlankPage(referencePage)
+            : 0,
         template: _templateForNewBlankPage(referencePage),
       ),
     );
@@ -1256,7 +1265,7 @@ class FileNotebookRepository implements NotebookRepository {
   Size _pdfPageSize(PdfImportInspection inspection, int pageIndex) {
     final importedSize = inspection.validPageSizeAt(pageIndex);
     if (importedSize == null) {
-      return const Size(_pageWidth, _pageHeight);
+      return defaultNotePageSize;
     }
     return Size(importedSize.width, importedSize.height);
   }

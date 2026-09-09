@@ -9,6 +9,7 @@ import 'package:inknest_notes/models/infinite_canvas_document.dart';
 import 'package:inknest_notes/models/notebook_layout_mode.dart';
 import 'package:inknest_notes/models/note_image.dart';
 import 'package:inknest_notes/models/note_page.dart';
+import 'package:inknest_notes/models/note_page_size.dart';
 import 'package:inknest_notes/models/note_page_template.dart';
 import 'package:inknest_notes/models/note_shape.dart';
 import 'package:inknest_notes/models/note_text_box.dart';
@@ -472,8 +473,8 @@ void main() {
 
     var rotatedPage = await repository.rotatePageClockwise(notebook, 'page-1');
     expect(rotatedPage.rotationQuarterTurns, 1);
-    expect(rotatedPage.displayWidth, 1024);
-    expect(rotatedPage.displayHeight, 768);
+    expect(rotatedPage.displayWidth, defaultNotePageHeight);
+    expect(rotatedPage.displayHeight, defaultNotePageWidth);
 
     final reloadedRepository = FileNotebookRepository(
       rootDirectory: tempDirectory,
@@ -489,8 +490,8 @@ void main() {
       );
     }
     expect(rotatedPage.rotationQuarterTurns, 0);
-    expect(rotatedPage.displayWidth, 768);
-    expect(rotatedPage.displayHeight, 1024);
+    expect(rotatedPage.displayWidth, defaultNotePageWidth);
+    expect(rotatedPage.displayHeight, defaultNotePageHeight);
   });
 
   test('inserts blank pages around PDF pages persistently', () async {
@@ -532,6 +533,26 @@ void main() {
 
     final reloadedNotebook = (await repository.listNotebooks()).single;
     expect(reloadedNotebook.pageIds, ['page-3', 'page-1', 'page-2']);
+  });
+
+  test('inserts a blank page with an explicitly selected size', () async {
+    var notebook = await repository.createNotebook(title: 'Sized Pages');
+    final initialPage = await repository.loadPage(notebook, 'page-1');
+    expect(Size(initialPage.width, initialPage.height), defaultNotePageSize);
+    final landscapeLetter = NotePageSizePreset.letter.sizeFor(
+      NotePageOrientation.landscape,
+    );
+
+    notebook = await repository.insertPage(
+      notebook,
+      1,
+      pageSize: landscapeLetter,
+    );
+
+    final insertedPage = await repository.loadPage(notebook, 'page-2');
+    expect(Size(insertedPage.width, insertedPage.height), landscapeLetter);
+    expect(insertedPage.rotationQuarterTurns, 0);
+    expect(insertedPage.pdfBackground, isNull);
   });
 
   test('inherits templates when adding and inserting non-PDF pages', () async {
@@ -856,8 +877,10 @@ void main() {
     expect(firstImportedPage.height, 842);
     expect(secondPageFromFirstPdf.width, 842);
     expect(secondPageFromFirstPdf.height, 595);
-    expect(pageFromSecondPdf.width, 768);
-    expect(pageFromSecondPdf.height, 1024);
+    expect(
+      Size(pageFromSecondPdf.width, pageFromSecondPdf.height),
+      defaultNotePageSize,
+    );
     expect(
       firstImportedPage.pdfBackground?.assetPath,
       'assets/pdfs/course.pdf',

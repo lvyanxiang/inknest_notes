@@ -8,13 +8,14 @@ import 'package:inknest_notes/models/notebook_folder.dart';
 import 'package:inknest_notes/models/notebook_layout_mode.dart';
 import 'package:inknest_notes/models/note_image.dart';
 import 'package:inknest_notes/models/note_page.dart';
+import 'package:inknest_notes/models/note_page_size.dart';
 import 'package:inknest_notes/models/note_page_template.dart';
 import 'package:inknest_notes/models/pdf_outline_entry.dart';
 import 'package:inknest_notes/storage/notebook_repository.dart';
 
 class InMemoryNotebookRepository implements NotebookRepository {
-  static const _pageWidth = 768.0;
-  static const _pageHeight = 1024.0;
+  static const _pageWidth = defaultNotePageWidth;
+  static const _pageHeight = defaultNotePageHeight;
 
   final List<Notebook> _notebooks = [];
   final List<NotebookFolder> _folders = [];
@@ -397,7 +398,11 @@ class InMemoryNotebookRepository implements NotebookRepository {
   }
 
   @override
-  Future<Notebook> insertPage(Notebook notebook, int index) async {
+  Future<Notebook> insertPage(
+    Notebook notebook,
+    int index, {
+    Size? pageSize,
+  }) async {
     final pageId = _nextPageId(notebook.pageIds);
     final clampedIndex = index.clamp(0, notebook.pageIds.length).toInt();
     final referencePage = await _pageForInsertedBlank(notebook, clampedIndex);
@@ -409,11 +414,15 @@ class InMemoryNotebookRepository implements NotebookRepository {
     );
 
     _replaceNotebook(updatedNotebook);
+    final insertedPageSize =
+        pageSize ?? Size(referencePage.width, referencePage.height);
     _pages[_pageKey(notebook, pageId)] = NotePage(
       id: pageId,
-      width: referencePage.width,
-      height: referencePage.height,
-      rotationQuarterTurns: _rotationForNewBlankPage(referencePage),
+      width: insertedPageSize.width,
+      height: insertedPageSize.height,
+      rotationQuarterTurns: pageSize == null
+          ? _rotationForNewBlankPage(referencePage)
+          : 0,
       template: _templateForNewBlankPage(referencePage),
     );
     return updatedNotebook;

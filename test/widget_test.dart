@@ -13,6 +13,7 @@ import 'package:inknest_notes/features/editor/infinite_canvas_screen.dart';
 import 'package:inknest_notes/features/editor/text/text_box_layer.dart';
 import 'package:inknest_notes/models/note_text_box.dart';
 import 'package:inknest_notes/models/note_page.dart';
+import 'package:inknest_notes/models/note_page_size.dart';
 import 'package:inknest_notes/models/note_page_template.dart';
 import 'package:inknest_notes/models/note_shape.dart';
 import 'package:inknest_notes/models/notebook_audio_recording.dart';
@@ -876,6 +877,14 @@ void main() {
     for (final template in NotePageTemplate.values) {
       expect(find.text(template.label), findsOneWidget);
     }
+    expect(find.text('Paper size'), findsOneWidget);
+    expect(find.byKey(const ValueKey('page-size-a4')), findsOneWidget);
+    expect(find.byKey(const ValueKey('page-size-letter')), findsOneWidget);
+    expect(find.byKey(const ValueKey('page-size-digital')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('page-size-letter')));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Landscape paper'));
+    await tester.pump();
     await tester.tap(find.byKey(const ValueKey('page-template-grid')));
     await tester.pumpAndSettle();
 
@@ -883,9 +892,11 @@ void main() {
       find.byKey(const ValueKey('page-template-layer-page-2-grid')),
       findsOneWidget,
     );
+    final addedPage = await repository.loadPage(notebook, 'page-2');
+    expect(addedPage.template, NotePageTemplate.grid);
     expect(
-      (await repository.loadPage(notebook, 'page-2')).template,
-      NotePageTemplate.grid,
+      Size(addedPage.width, addedPage.height),
+      NotePageSizePreset.letter.sizeFor(NotePageOrientation.landscape),
     );
     expect(
       (await repository.loadPage(notebook, 'page-1')).template,

@@ -28,6 +28,7 @@ import 'package:inknest_notes/features/editor/theme/editor_workspace_tokens.dart
 import 'package:inknest_notes/features/editor/tools/editor_toolbar.dart';
 import 'package:inknest_notes/models/note_image.dart';
 import 'package:inknest_notes/models/note_page.dart';
+import 'package:inknest_notes/models/note_page_size.dart';
 import 'package:inknest_notes/models/note_page_template.dart';
 import 'package:inknest_notes/models/note_shape.dart';
 import 'package:inknest_notes/models/note_text_box.dart';
@@ -75,6 +76,8 @@ class _EditorScreenState extends State<EditorScreen> {
   DrawingTool _tool = const DrawingTool(width: 3);
   late Notebook _notebook;
   late String _currentPageId;
+  NotePageSizePreset _newPageSize = NotePageSizePreset.a4;
+  NotePageOrientation _newPageOrientation = NotePageOrientation.portrait;
   bool _isPageRailOpen = false;
   bool _isExporting = false;
   bool _isImportingPdfs = false;
@@ -1855,22 +1858,31 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   Future<void> _chooseTemplateAndInsertPage(int index) async {
-    final template = await showPageTemplateSheet(
+    final selection = await showPageTemplateSheet(
       context: context,
       selectedTemplate: _page?.template ?? NotePageTemplate.blank,
+      selectedSize: _newPageSize,
+      selectedOrientation: _newPageOrientation,
       title: 'Add page',
-      subtitle: 'Choose a paper style for the new page',
+      subtitle: 'Choose a size, orientation, and style',
     );
-    if (!mounted || template == null) {
+    if (!mounted || selection == null) {
       return;
     }
 
-    await _insertPage(index, template: template);
+    _newPageSize = selection.sizePreset;
+    _newPageOrientation = selection.orientation;
+    await _insertPage(
+      index,
+      template: selection.template,
+      pageSize: selection.pageSize,
+    );
   }
 
   Future<void> _insertPage(
     int index, {
     required NotePageTemplate template,
+    required Size pageSize,
   }) async {
     await _savePage();
 
@@ -1878,6 +1890,7 @@ class _EditorScreenState extends State<EditorScreen> {
     final updatedNotebook = await widget.notebookRepository.insertPage(
       _notebook,
       index,
+      pageSize: pageSize,
     );
 
     if (!mounted) {

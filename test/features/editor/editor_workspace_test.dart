@@ -7,6 +7,7 @@ import 'package:inknest_notes/features/editor/canvas/drawing_canvas.dart';
 import 'package:inknest_notes/features/editor/editor_screen.dart';
 import 'package:inknest_notes/features/editor/tools/editor_toolbar.dart';
 import 'package:inknest_notes/models/notebook.dart';
+import 'package:inknest_notes/models/note_page_size.dart';
 import 'package:inknest_notes/storage/in_memory_notebook_repository.dart';
 
 void main() {
@@ -23,22 +24,16 @@ void main() {
           const ValueKey('continuous-paged-viewport'),
         );
 
-        expect(tester.getSize(surface), const Size(768, 1024));
-        expect(
-          tester.getSize(find.byType(DrawingCanvas)),
-          const Size(768, 1024),
-        );
+        expect(tester.getSize(surface), defaultNotePageSize);
+        expect(tester.getSize(find.byType(DrawingCanvas)), defaultNotePageSize);
         final portraitViewportSize = tester.getSize(viewport);
 
         tester.view.physicalSize = const Size(1194, 834);
         await tester.pumpAndSettle();
 
         expect(tester.getSize(viewport), isNot(portraitViewportSize));
-        expect(tester.getSize(surface), const Size(768, 1024));
-        expect(
-          tester.getSize(find.byType(DrawingCanvas)),
-          const Size(768, 1024),
-        );
+        expect(tester.getSize(surface), defaultNotePageSize);
+        expect(tester.getSize(find.byType(DrawingCanvas)), defaultNotePageSize);
 
         final persistedPage = await fixture.repository.loadPage(
           fixture.notebook,
@@ -46,7 +41,7 @@ void main() {
         );
         expect(
           Size(persistedPage.width, persistedPage.height),
-          const Size(768, 1024),
+          defaultNotePageSize,
         );
       },
     );
@@ -253,6 +248,51 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('editor-pages-button')));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('editor-pages-panel')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('selects and remembers paper setup on compact phones', (
+      tester,
+    ) async {
+      final fixture = await _createFixture(tester, const Size(320, 568));
+
+      await tester.tap(find.byKey(const ValueKey('editor-add-page-button')));
+      await tester.pumpAndSettle();
+      expect(find.text('Paper size'), findsOneWidget);
+      expect(find.byKey(const ValueKey('page-size-a4')), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('page-size-digital')));
+      await tester.pump();
+      await tester.tap(find.byTooltip('Landscape paper'));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('page-template-blank')));
+      await tester.pumpAndSettle();
+
+      final addedPage = await fixture.repository.loadPage(
+        fixture.notebook,
+        'page-2',
+      );
+      expect(
+        Size(addedPage.width, addedPage.height),
+        NotePageSizePreset.digital.sizeFor(NotePageOrientation.landscape),
+      );
+
+      await tester.tap(find.byKey(const ValueKey('editor-add-page-button')));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<ChoiceChip>(find.byKey(const ValueKey('page-size-digital')))
+            .selected,
+        isTrue,
+      );
+      expect(
+        tester
+            .widget<SegmentedButton<NotePageOrientation>>(
+              find.byType(SegmentedButton<NotePageOrientation>),
+            )
+            .selected,
+        {NotePageOrientation.landscape},
+      );
       expect(tester.takeException(), isNull);
     });
 
@@ -488,7 +528,7 @@ void main() {
         await tester.pump();
 
         final canvas = find.byType(DrawingCanvas);
-        expect(tester.getSize(canvas), const Size(768, 1024));
+        expect(tester.getSize(canvas), defaultNotePageSize);
 
         final canvasRect = tester.getRect(canvas);
         final visibleRect = canvasRect.intersect(

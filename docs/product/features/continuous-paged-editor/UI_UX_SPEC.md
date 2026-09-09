@@ -19,9 +19,13 @@ coordinates to match the device aspect ratio.
 2. Write with a stylus or drag one finger to scroll through adjacent sheets.
 3. As the viewport focus crosses a page boundary, update the header page count,
    undo/redo target, bookmark state, and current-page actions.
-4. Tap the title's `Page n of total` to open Pages, or use a visible Outline,
-   Bookmarks, or More action; selecting an item scrolls its sheet into view.
-5. Adding or duplicating a page selects it and scrolls it into view.
+4. Tap the labelled Pages icon, or use a visible Outline, Bookmarks, or More
+   action; selecting an item scrolls its sheet into view.
+5. Tap Add page, choose A4, Letter, or Digital 3:4, choose portrait or
+   landscape, then tap a paper style. The page is created, selected, and
+   scrolled into view.
+6. The next Add page sheet reuses the latest size and orientation selected in
+   this editor session.
 
 ## States And Feedback
 
@@ -34,6 +38,7 @@ coordinates to match the device aspect ratio.
 | Finger moves | One finger scrolls; stylus edits the active sheet | Switch to Finger writes for touch ink |
 | Finger writes | Touch edits the active sheet; one-finger list scrolling is suspended | Header/Pages navigation remains available |
 | Protected page | Current protected-page message remains visible; scrolling continues | Navigate to another page |
+| Add page | Size chips, orientation toggle, and template grid | Closing cancels without creating a page; tapping a template confirms all selections |
 
 ## Layout
 
@@ -62,6 +67,9 @@ coordinates to match the device aspect ratio.
 - At widths below 360dp, the drawing row may scroll horizontally within its
   fixed 52dp height so every core drawing tool remains reachable without
   changing the editor chrome height.
+- The Add page sheet presents A4, Letter, and Digital 3:4 as size chips;
+  portrait/landscape use one two-option segmented control. Template previews
+  reflect the selected aspect ratio. A4 portrait is the initial default.
 
 ## Input And Accessibility
 
@@ -73,6 +81,8 @@ coordinates to match the device aspect ratio.
   More → View, while Fit Width is a labelled direct header action.
 - Each sheet is a semantic region labelled `Page n of total`; the Pages panel
   remains a non-gesture route to every page.
+- Paper-size chips and portrait/landscape controls remain labelled and
+  keyboard-focusable; selecting a template confirms the current setup.
 
 ## UI Acceptance Criteria
 
@@ -90,6 +100,10 @@ coordinates to match the device aspect ratio.
       label.
 - [x] Page rotation is absent from the Pages panel and thumbnail action menus;
       previously rotated pages remain viewable.
+- [x] Add page offers A4, Letter, and Digital 3:4 independently from template
+      style, in portrait and landscape.
+- [x] New notebooks default to A4 portrait, while existing and imported PDF
+      page dimensions remain unchanged.
 - [x] 390dp, 600dp, 834dp, and 1194dp layouts use two fixed 52dp editor rows;
       no third navigation row is rendered.
 - [x] The ordered action capacity shows Add page directly at every width and
