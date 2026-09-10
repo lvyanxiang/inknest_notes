@@ -2,7 +2,7 @@
 
 - Status: Delivered
 - Size: Medium
-- Updated: 2026-09-08
+- Updated: 2026-09-09
 - Roadmap link: `docs/development/POST_MVP_ROADMAP.md` — Editor UI
 
 ## Problem
@@ -37,7 +37,14 @@ Deliver a writing-first interaction polish pass:
    bottom sheet only for compact Split View.
 4. Treat Finger writes as the quiet default and Finger moves as the emphasized
    active mode.
-5. Align workspace chrome colors with the editor redesign tokens so selected
+5. Make Pen and Highlighter direct touch-mode toggles: selecting either enters
+   Finger writes; tapping the active writing tool again enters Finger moves and
+   removes its selected treatment. Tool properties remain available from the
+   dedicated properties control.
+6. Treat Eraser as a temporary correction tool: selecting it enters Finger
+   writes, while tapping the active Eraser again restores the previous tool and
+   the touch mode that was active before Eraser.
+7. Align workspace chrome colors with the editor redesign tokens so selected
    controls read clearly against the paper.
 
 ## Scope
@@ -60,13 +67,16 @@ Deliver a writing-first interaction polish pass:
 
 1. Open a notebook and start writing with the paper mostly clear of floating
    chrome.
-2. Switch tools or open properties from the dock; properties appear near the
-   dock on iPad and do not cover the whole page.
-3. Pinch on the paper; a non-interactive Fit-Width-relative percentage appears
+2. Tap Pen or Highlighter to select it and enter Finger writes. Tap the same
+   writing tool again to enter Finger moves; use the properties control for
+   color, width, and preset settings.
+3. Tap Eraser to make one or more corrections, then tap Eraser again to return
+   to the previous tool and touch mode.
+4. Pinch on the paper; a non-interactive Fit-Width-relative percentage appears
    briefly, then leaves the writing area.
-4. Open More → View for explicit Zoom out or Zoom in. Tap the direct header Fit
+5. Open More → View for explicit Zoom out or Zoom in. Tap the direct header Fit
    Width action to restore the default reading scale.
-5. Switch Finger writes / Finger moves; only the non-default moves mode looks
+6. Switch Finger writes / Finger moves; only the non-default moves mode looks
    strongly selected.
 
 ## Acceptance Criteria
@@ -85,6 +95,10 @@ Deliver a writing-first interaction polish pass:
   bottom sheet below that.
 - [x] Finger writes is visually quiet by default; Finger moves uses the strong
   selected treatment.
+- [x] Pen and Highlighter enter Finger writes on selection and toggle to Finger
+  moves when the active writing tool is tapped again.
+- [x] Eraser enters Finger writes and a second tap restores the previous tool,
+  its settings, and the previous Finger writes / Finger moves state.
 - [x] Existing drawing, page navigation, insert, lasso, audio, search, and
   export flows remain available.
 - [x] Focused widget and workspace tests cover the changed controls.

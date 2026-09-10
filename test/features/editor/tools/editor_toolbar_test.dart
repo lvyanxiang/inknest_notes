@@ -324,7 +324,7 @@ void main() {
     expect(find.text('Writing assist'), findsNothing);
   });
 
-  testWidgets('switches pen and highlighter directly and reopens settings', (
+  testWidgets('writing tools toggle Finger writes and Finger moves', (
     tester,
   ) async {
     var tool = const DrawingTool(
@@ -332,14 +332,19 @@ void main() {
       color: Color(0xFF1E2526),
       width: 3,
     );
+    var fingerPanEnabled = true;
 
     Future<void> rebuild() async {
       await pumpToolbar(
         tester,
         size: const Size(834, 1194),
         tool: tool,
+        fingerPanEnabled: fingerPanEnabled,
         onToolChanged: (value) {
           tool = value;
+        },
+        onFingerPanChanged: (value) {
+          fingerPanEnabled = value;
         },
       );
     }
@@ -348,26 +353,73 @@ void main() {
     expect(find.byTooltip('Pen'), findsOneWidget);
     expect(find.byTooltip('Highlighter'), findsOneWidget);
 
+    await tester.tap(find.byKey(const ValueKey('editor-pen-tool')));
+    await tester.pump();
+    expect(fingerPanEnabled, isFalse);
+
+    await rebuild();
+    await tester.tap(find.byKey(const ValueKey('editor-pen-tool')));
+    await tester.pump();
+    expect(fingerPanEnabled, isTrue);
+
+    await rebuild();
     await tester.tap(find.byKey(const ValueKey('editor-highlighter-tool')));
     await tester.pump();
     expect(tool.type, ToolType.highlighter);
     expect(tool.width, 12);
+    expect(fingerPanEnabled, isFalse);
 
     await rebuild();
     await tester.tap(find.byKey(const ValueKey('editor-highlighter-tool')));
-    await tester.pumpAndSettle();
-    expect(find.text('Highlighter settings'), findsOneWidget);
+    await tester.pump();
+    expect(fingerPanEnabled, isTrue);
 
-    await tester.tap(find.byTooltip('Close tool properties'));
-    await tester.pumpAndSettle();
+    await rebuild();
     await tester.tap(find.byKey(const ValueKey('editor-pen-tool')));
     await tester.pump();
     expect(tool.type, ToolType.pen);
     expect(tool.width, 3);
+    expect(fingerPanEnabled, isFalse);
+  });
+
+  testWidgets('second Eraser tap restores the previous tool and finger mode', (
+    tester,
+  ) async {
+    var tool = const DrawingTool(
+      type: ToolType.highlighter,
+      color: Color(0xFFB98A16),
+      width: 12,
+    );
+    var fingerPanEnabled = true;
+
+    Future<void> rebuild() async {
+      await pumpToolbar(
+        tester,
+        size: const Size(834, 1194),
+        tool: tool,
+        fingerPanEnabled: fingerPanEnabled,
+        onToolChanged: (value) {
+          tool = value;
+        },
+        onFingerPanChanged: (value) {
+          fingerPanEnabled = value;
+        },
+      );
+    }
 
     await rebuild();
-    expect(find.byTooltip('Highlighter'), findsOneWidget);
-    expect(find.byTooltip('Pen'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('editor-eraser-tool')));
+    await tester.pump();
+    expect(tool.type, ToolType.eraser);
+    expect(fingerPanEnabled, isFalse);
+
+    await rebuild();
+    await tester.tap(find.byKey(const ValueKey('editor-eraser-tool')));
+    await tester.pump();
+    expect(tool.type, ToolType.highlighter);
+    expect(tool.color, const Color(0xFFB98A16));
+    expect(tool.width, 12);
+    expect(fingerPanEnabled, isTrue);
   });
 
   testWidgets('opens tool properties as a popover on regular widths', (

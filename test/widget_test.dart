@@ -2248,10 +2248,18 @@ void main() {
       findsOneWidget,
     );
 
-    await tester.tap(find.byKey(const ValueKey('editor-finger-mode-menu')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Finger writes'));
-    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('editor-pen-tool')));
+    await tester.pump();
+    expect(find.byTooltip('Finger writes'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('editor-pen-tool')));
+    await tester.pump();
+    expect(find.byTooltip('Finger moves'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('editor-highlighter-tool')));
+    await tester.pump();
+    expect(find.byTooltip('Finger writes'), findsOneWidget);
+
     await tester.tap(find.byKey(const ValueKey('editor-finger-mode-menu')));
     await tester.pumpAndSettle();
     expect(find.text('Writing assist'), findsOneWidget);
@@ -2264,9 +2272,6 @@ void main() {
     expect(find.byIcon(Icons.check_box_outline_blank), findsOneWidget);
     await tester.tapAt(const Offset(8, 180));
     await tester.pumpAndSettle();
-
-    await tester.tap(find.byKey(const ValueKey('editor-highlighter-tool')));
-    await tester.pump();
 
     final start = visibleCanvasPoint(tester);
     final gesture = await tester.startGesture(start);
@@ -2290,6 +2295,11 @@ void main() {
       tester.widget<DrawingCanvas>(find.byType(DrawingCanvas)).page.strokes,
       isEmpty,
     );
+
+    await tester.tap(find.byKey(const ValueKey('editor-eraser-tool')));
+    await tester.pump();
+    expect(find.byTooltip('Highlighter properties'), findsOneWidget);
+    expect(find.byTooltip('Finger writes'), findsOneWidget);
 
     await tester.tap(undoButton);
     await tester.pump();

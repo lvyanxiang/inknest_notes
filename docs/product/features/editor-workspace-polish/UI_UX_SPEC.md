@@ -1,7 +1,7 @@
 # Editor Workspace Interaction Polish UI/UX Specification
 
 - Status: Delivered
-- Updated: 2026-09-08
+- Updated: 2026-09-09
 - Product brief:
   `docs/product/features/editor-workspace-polish/PRODUCT_BRIEF.md`
 - Affected surfaces: Notebook editor header, tool dock, page viewport chrome,
@@ -21,18 +21,22 @@ Lead design:
    transient center badge as feedback.
 3. Tool properties stay near the dock as a popover on regular/wide widths.
 4. Finger writes is the quiet default; Finger moves is the strong mode chip.
-5. Reuse editor redesign tokens for workspace, chrome, selected fill, and paper.
-6. Pen and Highlighter share one primary writing control; style switches live in
-   properties/presets. Selected dock controls use a soft fill and primary icon
-   tint without a heavy outline border.
-7. Tool properties use a compact card: stroke preview header, segmented Style,
+5. Pen and Highlighter enter Finger writes on tap; tapping the active writing
+   tool again enters Finger moves and removes that tool's selected treatment.
+6. Eraser is temporary: selecting it enters Finger writes; tapping the active
+   Eraser again restores the previous tool and previous finger mode.
+7. Reuse editor redesign tokens for workspace, chrome, selected fill, and paper.
+8. Pen and Highlighter remain direct primary writing controls; style switches
+   live in properties/presets. Selected dock controls use a soft fill and
+   primary icon tint without a heavy outline border.
+9. Tool properties use a compact card: stroke preview header, segmented Style,
    icon presets, circular color swatches, and visual width tiles — not a long
    labelled form.
-8. Editor popovers/menus/sheets share `EditorChrome` surfaces (`#FFFCF7`,
+10. Editor popovers/menus/sheets share `EditorChrome` surfaces (`#FFFCF7`,
    12px radius, divider border): Insert and Finger use anchored cards; More /
    zoom / page actions use chrome-tinted menus; template, search, and audio use
    chrome sheets; Export / Smart Ink / delete confirmations use chrome dialogs.
-9. Header and tool dock share one chrome surface: AppBar hosts the dock as
+11. Header and tool dock share one chrome surface: AppBar hosts the dock as
    `bottom`, Pages badge uses primary teal (not error red), property chip uses
    a short `Color · width` label. On tablet widths the dock controls form one
    centered cluster (tools → properties/presets → undo/redo → Finger) instead
@@ -42,14 +46,18 @@ Lead design:
 
 1. Enter the editor from the library. Paper is clear of persistent zoom
    controls.
-2. Tap a primary tool or the properties chip. On ≥720 width, properties open as
-   an anchored popover under the dock; outside tap or Close dismisses it.
-3. Pinch the paper to change scale. A center badge shows the
+2. Tap Pen or Highlighter to select it and enter Finger writes. Tap the active
+   writing tool again to enter Finger moves; open its settings from the
+   properties chip. On ≥720 width, properties open as an anchored popover under
+   the dock; outside tap or Close dismisses it.
+3. Tap Eraser and make one or more corrections. Tap Eraser again to restore the
+   previous tool, its settings, and its prior Finger writes / Finger moves mode.
+4. Pinch the paper to change scale. A center badge shows the
    Fit-Width-relative percentage, then fades after idle.
-4. Choose Zoom out or Zoom in from More → View when an explicit incremental
+5. Choose Zoom out or Zoom in from More → View when an explicit incremental
    control is needed. Tap the header Fit Width icon to restore the default
    reading scale.
-5. Open Finger mode. Finger writes remains the quiet default; choosing Finger
+6. Open Finger mode. Finger writes remains the quiet default; choosing Finger
    moves emphasizes the mode until the user returns to Finger writes.
 
 ## State Matrix
@@ -61,7 +69,9 @@ Lead design:
 | Properties open (≥720) | Anchored popover near dock | Change color/width/preset/shape | Outside tap or Close dismisses; tool stays active |
 | Properties open (<720) | Bottom sheet | Same property actions | Drag handle / Close / outside dismiss |
 | Finger writes | Quiet mode chip labelled Finger writes | Open menu; enable/disable Writing assist | Not strongly selected |
-| Finger moves | Strong selected mode chip | Pan with finger; Pencil still writes | Strong fill + outline + semantics |
+| Finger moves | Strong selected mode chip; Pen/Highlighter has no selected treatment | Pan with finger; Pencil still uses the configured writing tool | Strong fill + outline + semantics |
+| Writing tool selected | Active Pen or Highlighter treatment; Finger writes | Write with touch or Pencil; tap active tool again | Switches to Finger moves without losing tool settings |
+| Eraser selected | Active Eraser treatment; Finger writes | Erase one or more items; open Properties; tap Eraser again | Restores the previous tool and finger mode |
 | More → View | Zoom out / Zoom in rows | Apply to current viewport | Menu closes; viewport updates and briefly confirms scale |
 | Header Fit Width | Compact Fit Width icon before More | Reset current viewport | View returns to Fit Width and briefly confirms 100% |
 
@@ -86,6 +96,10 @@ Lead design:
 - Tool properties popover width ~360px, chrome surface `#FFFCF7`, 12px radius.
 - Finger mode: only Finger moves uses the selected dock treatment by default
   styling rules.
+- Pen and Highlighter selected treatment is shown only while Finger writes is
+  active. Their settings open from the dedicated properties control.
+- Eraser keeps its selected treatment until another tool is chosen or Eraser is
+  tapped again. Its settings open from the dedicated properties control.
 - Workspace `#F3F0E8`, chrome `#FFFCF7`, selected fill `#DCEEEE`, ink `#1E2526`,
   divider/paper border `#DDD7CB`, primary `#2F6F73`.
 
@@ -115,6 +129,7 @@ Lead design:
   touch target.
 - Selected tool and Finger moves use fill + outline + semantics, not color
   alone.
+- Pen/Highlighter semantics report selected only while Finger writes is active.
 - Fit Width remains available without relying on pinch.
 
 ## UI Acceptance Criteria
@@ -129,6 +144,10 @@ Lead design:
 - [x] The direct header Fit Width action resets the current page reliably.
 - [x] Properties use popover ≥720 and sheet <720.
 - [x] Finger writes is quiet; Finger moves is strongly selected.
+- [x] Pen and Highlighter switch to Finger writes on tap; a second tap on the
+      active writing tool switches to Finger moves and clears its selection.
+- [x] Eraser switches to Finger writes on selection; a second active Eraser tap
+      restores the previous tool, settings, and finger mode.
 - [x] Existing editor workflows remain reachable.
 
 ## Verification

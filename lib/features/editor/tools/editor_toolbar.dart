@@ -70,6 +70,9 @@ class EditorToolbar extends StatefulWidget {
 }
 
 class _EditorToolbarState extends State<EditorToolbar> {
+  DrawingTool? _toolBeforeEraser;
+  bool? _fingerPanBeforeEraser;
+
   late final Map<ToolType, DrawingTool> _lastToolSettings = {
     ToolType.pen: EditorToolbar._favoritePresets[0].tool,
     ToolType.highlighter: EditorToolbar._favoritePresets[3].tool,
@@ -108,12 +111,34 @@ class _EditorToolbarState extends State<EditorToolbar> {
   }
 
   void _selectTool(ToolType type) {
+    if (widget.tool.type == ToolType.eraser && type != ToolType.eraser) {
+      _toolBeforeEraser = null;
+      _fingerPanBeforeEraser = null;
+    }
     final rememberedTool = _lastToolSettings[type];
     if (rememberedTool != null) {
       _applyTool(rememberedTool);
       return;
     }
     _applyTool(widget.tool.copyWith(type: type));
+  }
+
+  void _toggleEraser() {
+    if (widget.tool.type == ToolType.eraser) {
+      final restoredTool =
+          _toolBeforeEraser ?? _lastToolSettings[ToolType.pen]!;
+      final restoredFingerPan = _fingerPanBeforeEraser ?? false;
+      _toolBeforeEraser = null;
+      _fingerPanBeforeEraser = null;
+      _applyTool(restoredTool);
+      widget.onFingerPanChanged(restoredFingerPan);
+      return;
+    }
+
+    _toolBeforeEraser = widget.tool;
+    _fingerPanBeforeEraser = widget.fingerPanEnabled;
+    _selectTool(ToolType.eraser);
+    widget.onFingerPanChanged(false);
   }
 
   void _selectInsertAction(_InsertAction action) {
@@ -170,23 +195,41 @@ class _EditorToolbarState extends State<EditorToolbar> {
     required IconData icon,
     required String label,
     required bool showLabel,
+    bool controlsFingerWriting = false,
+    VoidCallback? action,
   }) {
     return Builder(
       builder: (buttonContext) {
-        final isSelected = widget.tool.type == type;
+        final isCurrentTool = widget.tool.type == type;
+        final isSelected =
+            isCurrentTool &&
+            (!controlsFingerWriting || !widget.fingerPanEnabled);
         return _PrimaryToolButton(
           key: key,
           icon: icon,
           label: label,
           isSelected: isSelected,
           showLabel: showLabel,
-          onPressed: () {
-            if (isSelected) {
-              unawaited(_showToolProperties(buttonContext));
-              return;
-            }
-            _selectTool(type);
-          },
+          onPressed:
+              action ??
+              () {
+                if (controlsFingerWriting) {
+                  if (isSelected) {
+                    widget.onFingerPanChanged(true);
+                    return;
+                  }
+                  if (!isCurrentTool) {
+                    _selectTool(type);
+                  }
+                  widget.onFingerPanChanged(false);
+                  return;
+                }
+                if (isSelected) {
+                  unawaited(_showToolProperties(buttonContext));
+                  return;
+                }
+                _selectTool(type);
+              },
         );
       },
     );
@@ -245,6 +288,7 @@ class _EditorToolbarState extends State<EditorToolbar> {
                           icon: Icons.edit,
                           label: 'Pen',
                           showLabel: showPrimaryLabels,
+                          controlsFingerWriting: true,
                         ),
                         _buildConfigurableToolButton(
                           key: const ValueKey('editor-highlighter-tool'),
@@ -252,12 +296,15 @@ class _EditorToolbarState extends State<EditorToolbar> {
                           icon: Icons.border_color,
                           label: 'Highlighter',
                           showLabel: showPrimaryLabels,
+                          controlsFingerWriting: true,
                         ),
                         _buildConfigurableToolButton(
+                          key: const ValueKey('editor-eraser-tool'),
                           icon: Icons.cleaning_services_outlined,
                           type: ToolType.eraser,
                           label: 'Eraser',
                           showLabel: showPrimaryLabels,
+                          action: _toggleEraser,
                         ),
                         if (widget.showLasso)
                           _PrimaryToolButton(

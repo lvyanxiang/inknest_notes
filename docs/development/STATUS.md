@@ -9,11 +9,9 @@
   choices: public HTTPS Privacy/Terms/deletion pages, final operator and contact
   details, launch territories and retention/processor disclosures; then select
   an email provider before implementing verified email and password recovery.
-- Last completed: Reduced notebook creation to one sheet. The Paged notebook
-  section now embeds compact A4, US Letter, and Digital 3:4 paper cards plus an
-  orientation toggle; tapping a card creates a blank notebook immediately, so
-  paper cards have no selected/default treatment. Add page defaults to that
-  notebook's paper and retains full template choices.
+- Last completed: Made Eraser a temporary correction tool. Selecting it enters
+  Finger writes; tapping the active Eraser again restores the previous tool,
+  its settings, and the prior Finger writes / Finger moves state.
 
 ### Release readiness
 
@@ -305,6 +303,12 @@
   contextual style, and touch mode in the editing dock; keep presets inside
   properties instead of persistent chrome.
 - Treat Finger writes as the quiet default and Finger moves as the strongly selected touch mode.
+- Let Pen and Highlighter own the common touch-mode shortcut: selecting either
+  enters Finger writes, while tapping the active writing tool again enters
+  Finger moves and clears its selected treatment. Keep Pencil configuration and
+  open settings from the dedicated Properties control.
+- Treat Eraser as temporary: selecting it enters Finger writes, while a second
+  active Eraser tap restores the previous tool, settings, and finger mode.
 - Use `docs/development/SUBSCRIPTION_PLAN.md` as the product reference for Free, InkNest Cloud, and future Pro monetization.
 - Long-term product direction: iPad handwriting/PDF study, phone capture/review, and Web Yuque-like knowledge base.
 - Use a custom two-finger zoom/pan viewport instead of `InteractiveViewer` so single-pointer drawing remains reliable.
@@ -408,7 +412,11 @@
 - Standard paper-size coverage verifies A4 defaults, Letter/Digital presets,
   portrait/landscape sizing, persisted explicit dimensions, one-sheet
   new-notebook creation, inherited Add page defaults, and sync compatibility.
-  All 317 Flutter tests, `flutter analyze`, and `git diff --check` pass.
+  All 318 Flutter tests, `flutter analyze`, and `git diff --check` pass.
+- Writing-tool toggle coverage verifies Pen/Highlighter selection enters Finger
+  writes and a second active-tool tap enters Finger moves. Eraser coverage
+  verifies Finger writes activation, restoration of the previous configured
+  tool and finger mode on a second tap, and successful erase persistence.
 - English-only UI delivery passes all 312 Flutter tests and `flutter analyze`.
   Backend Ruff formatting/lint and the 19-test synchronization-change suite
   pass. Runtime scans find no Han characters in `lib/`, platform shells, or
