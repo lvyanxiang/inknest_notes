@@ -1,7 +1,7 @@
-import 'dart:ui';
-
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:inknest_notes/features/editor/lasso/lasso_geometry.dart';
+import 'package:inknest_notes/features/editor/lasso/lasso_selection_layer.dart';
 import 'package:inknest_notes/models/stroke.dart';
 import 'package:inknest_notes/models/stroke_point.dart';
 import 'package:inknest_notes/models/tool.dart';
@@ -77,6 +77,103 @@ void main() {
       LassoGeometry.hitTestNearestStroke([near, far], const Offset(120, 120)),
       isNull,
     );
+  });
+
+  test('tap selects a connected handwriting block without the next line', () {
+    final firstCharacterLeft = _stroke(
+      id: 'first-left',
+      offsets: const [Offset(20, 20), Offset(20, 52)],
+    );
+    final firstCharacterRight = _stroke(
+      id: 'first-right',
+      offsets: const [Offset(34, 20), Offset(34, 52)],
+    );
+    final nextCharacter = _stroke(
+      id: 'next-character',
+      offsets: const [Offset(58, 20), Offset(76, 52)],
+    );
+    final separatedWord = _stroke(
+      id: 'separated-word',
+      offsets: const [Offset(160, 20), Offset(180, 52)],
+    );
+    final nextLine = _stroke(
+      id: 'next-line',
+      offsets: const [Offset(20, 92), Offset(76, 92)],
+    );
+
+    final selectedIds = LassoGeometry.selectConnectedStrokeIdsForTap([
+      firstCharacterLeft,
+      firstCharacterRight,
+      nextCharacter,
+      separatedWord,
+      nextLine,
+    ], const Offset(22, 30));
+
+    expect(selectedIds, {'first-left', 'first-right', 'next-character'});
+  });
+
+  test('tap away from handwriting selects nothing', () {
+    final stroke = _stroke(
+      id: 'ink',
+      offsets: const [Offset(20, 20), Offset(40, 40)],
+    );
+
+    expect(
+      LassoGeometry.selectConnectedStrokeIdsForTap([
+        stroke,
+      ], const Offset(200, 200)),
+      isEmpty,
+    );
+  });
+
+  testWidgets('a true tap selects the connected handwriting block', (
+    tester,
+  ) async {
+    final first = _stroke(
+      id: 'first',
+      offsets: const [Offset(20, 20), Offset(20, 52)],
+    );
+    final adjacent = _stroke(
+      id: 'adjacent',
+      offsets: const [Offset(44, 20), Offset(62, 52)],
+    );
+    final distant = _stroke(
+      id: 'distant',
+      offsets: const [Offset(180, 20), Offset(200, 52)],
+    );
+    Set<String>? selectedIds;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 300,
+            height: 200,
+            child: Stack(
+              children: [
+                LassoSelectionLayer(
+                  pageStrokes: [first, adjacent, distant],
+                  selectedStrokes: const [],
+                  onSelectionComplete: (_) {},
+                  onTapSelectionComplete: (ids) => selectedIds = ids,
+                  onStrokesPreviewChanged: (_) {},
+                  onStrokesChanged: (_) {},
+                  onClearSelection: () {},
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final layerOrigin = tester.getTopLeft(
+      find.byKey(const ValueKey('lasso-drawing-region')),
+    );
+    await tester.tapAt(layerOrigin + const Offset(22, 30));
+    await tester.pump();
+
+    expect(selectedIds, {'first', 'adjacent'});
   });
 }
 

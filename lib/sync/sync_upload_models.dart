@@ -100,6 +100,7 @@ class SyncContentCommitOperationResult {
     required this.revision,
     required this.contentHash,
     required this.outcome,
+    this.metadata,
     this.conflict,
   });
 
@@ -109,12 +110,17 @@ class SyncContentCommitOperationResult {
   final int revision;
   final String contentHash;
   final String outcome;
+  final Map<String, Object?>? metadata;
   final CloudSyncConflict? conflict;
 
   factory SyncContentCommitOperationResult.fromJson(Map<String, Object?> json) {
     final resourceType = requiredString(json, 'resourceType');
     final revision = json['revision'];
     final outcome = requiredString(json, 'outcome');
+    final metadata = _parseCommitResultMetadata(
+      resourceType: resourceType,
+      value: json['metadata'],
+    );
     final rawConflict = json['conflict'];
     if (!const {
           'folder',
@@ -158,9 +164,80 @@ class SyncContentCommitOperationResult {
       revision: revision,
       contentHash: requiredSha256(json, 'contentHash'),
       outcome: outcome,
+      metadata: metadata,
       conflict: conflict,
     );
   }
+}
+
+Map<String, Object?>? _parseCommitResultMetadata({
+  required String resourceType,
+  required Object? value,
+}) {
+  if (value == null) return null;
+  if (value is! Map<Object?, Object?> ||
+      value.keys.any((key) => key is! String)) {
+    throw const FormatException(
+      'Shared-content commit metadata must be a JSON object.',
+    );
+  }
+  final metadata = value.cast<String, Object?>();
+  switch (resourceType) {
+    case 'folder':
+      if (metadata.keys.toSet().difference(const {'name'}).isNotEmpty ||
+          metadata['name'] is! String ||
+          (metadata['name']! as String).isEmpty) {
+        throw const FormatException('Invalid folder commit metadata.');
+      }
+      break;
+    case 'notebook':
+      if (metadata.keys.toSet().difference(const {
+            'title',
+            'isArchived',
+            'folderId',
+            'pageOrder',
+          }).isNotEmpty ||
+          metadata['title'] is! String ||
+          metadata['isArchived'] is! bool ||
+          (metadata['folderId'] != null && metadata['folderId'] is! String)) {
+        throw const FormatException('Invalid notebook commit metadata.');
+      }
+      final pageOrder = metadata['pageOrder'];
+      if (pageOrder != null &&
+          (pageOrder is! List<Object?> ||
+              pageOrder.any((pageId) => pageId is! String))) {
+        throw const FormatException('Invalid notebook page-order metadata.');
+      }
+      break;
+    case 'page':
+      if (metadata.keys.toSet().difference(const {
+            'width',
+            'height',
+            'coordinateSpaceVersion',
+            'rotationQuarterTurns',
+            'template',
+          }).isNotEmpty ||
+          metadata['width'] is! num ||
+          (metadata['width']! as num) <= 0 ||
+          metadata['height'] is! num ||
+          (metadata['height']! as num) <= 0 ||
+          !metadata.containsKey('coordinateSpaceVersion') ||
+          metadata['rotationQuarterTurns'] is! int ||
+          (metadata['rotationQuarterTurns']! as int) < 0 ||
+          (metadata['rotationQuarterTurns']! as int) > 3 ||
+          metadata['template'] is! String ||
+          (metadata['template']! as String).isEmpty) {
+        throw const FormatException('Invalid page commit metadata.');
+      }
+      break;
+    case 'infinite_canvas':
+      if (metadata.keys.toSet().difference(const {'background'}).isNotEmpty ||
+          !const {'blank', 'dotted', 'grid'}.contains(metadata['background'])) {
+        throw const FormatException('Invalid infinite-canvas commit metadata.');
+      }
+      break;
+  }
+  return Map.unmodifiable(metadata);
 }
 
 class SyncContentCommitResult {

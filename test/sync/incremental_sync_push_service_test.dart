@@ -27,6 +27,26 @@ void main() {
     expect(result.outcome, 'deleted');
   });
 
+  test('parses authoritative page metadata from a commit result', () {
+    final result = SyncContentCommitOperationResult.fromJson({
+      'operationId': 'page-1-update',
+      'resourceType': 'page',
+      'resourceId': 'page-1',
+      'revision': 2,
+      'contentHash': 'a' * 64,
+      'outcome': 'applied',
+      'metadata': const {
+        'width': 768.0,
+        'height': 1024.0,
+        'coordinateSpaceVersion': 1,
+        'rotationQuarterTurns': 0,
+        'template': 'blank',
+      },
+    });
+
+    expect(result.metadata?['template'], 'blank');
+  });
+
   test('uploads pending operations and persists returned revision', () async {
     final fixture = await _PushFixture.create();
     addTearDown(fixture.dispose);
@@ -125,22 +145,170 @@ void main() {
     },
   );
 
-  test('metadata commit waits for pull before advancing its mapping', () async {
-    final fixture = await _PushFixture.create(metadata: true);
-    addTearDown(fixture.dispose);
+  test(
+    'metadata commit advances revision and authoritative baseline',
+    () async {
+      final fixture = await _PushFixture.create(metadata: true);
+      addTearDown(fixture.dispose);
 
-    await fixture.service.push(userId: 'user-1', deviceId: 'device-1');
+      await fixture.service.push(userId: 'user-1', deviceId: 'device-1');
 
-    expect(fixture.cloud.requests.single.operation, isNot(contains('content')));
-    expect(fixture.cloud.requests.single.operation['metadata'], {
-      'title': 'After',
-      'isArchived': true,
-      'folderId': null,
-    });
-    final mapping = await fixture.resourceMap.find('notebook:notebook-1');
-    expect(mapping?.revision, 1);
-    expect(mapping?.notebookMetadata?['title'], 'Before');
-  });
+      expect(
+        fixture.cloud.requests.single.operation,
+        isNot(contains('content')),
+      );
+      expect(fixture.cloud.requests.single.operation['metadata'], {
+        'title': 'After',
+        'isArchived': true,
+        'folderId': null,
+      });
+      final mapping = await fixture.resourceMap.find('notebook:notebook-1');
+      expect(mapping?.revision, 2);
+      expect(mapping?.contentHash, 'b' * 64);
+      expect(mapping?.notebookMetadata, {
+        'title': 'After',
+        'isArchived': true,
+        'folderId': null,
+      });
+    },
+  );
+
+  test(
+    'missing authoritative metadata keeps the exact batch retryable',
+    () async {
+      final fixture = await _PushFixture.create(
+        metadata: true,
+        omitMetadata: true,
+      );
+      addTearDown(fixture.dispose);
+
+      await expectLater(
+        fixture.service.push(userId: 'user-1', deviceId: 'device-1'),
+        throwsA(isA<IncrementalSyncPushException>()),
+      );
+
+      final state = await fixture.stateStore.loadSnapshot();
+      expect(state.inFlightBatch, isNotNull);
+      final mapping = await fixture.resourceMap.find('notebook:notebook-1');
+      expect(mapping?.revision, 1);
+      expect(mapping?.notebookMetadata?['title'], 'Before');
+    },
+  );
+
+  test(
+    'successful incremental folder creation establishes its mapping',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'inknest-folder-creation-push-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      final stateStore = FileSyncStateStore(
+        rootDirectory: root,
+        userId: 'user-1',
+        deviceId: 'device-1',
+        idFactory: (prefix) => '$prefix-1',
+      );
+      await stateStore.markChangesPageApplied('cursor-1');
+      await stateStore.enqueueFolderMetadata(
+        resourceId: 'folder-1',
+        baseRevision: 0,
+        baseMetadata: null,
+        metadata: const {'name': 'Projects'},
+      );
+      final service = IncrementalSyncPushService(
+        cloudClient: _PushCloudClient(failuresRemaining: 0),
+        repository: FileNotebookRepository(rootDirectory: root),
+        rootDirectory: root,
+      );
+
+      await service.push(userId: 'user-1', deviceId: 'device-1');
+
+      final mapping = await FileSyncResourceMapStore(
+        rootDirectory: root,
+        userId: 'user-1',
+        deviceId: 'device-1',
+      ).find(folderSyncLocalKey('folder-1'));
+      expect(mapping?.resourceType, SyncResourceType.folder);
+      expect(mapping?.remoteResourceId, 'folder-1');
+      expect(mapping?.revision, 1);
+      expect(mapping?.folderMetadata, {'name': 'Projects'});
+    },
+  );
+
+  test(
+    'consecutive page saves use the revision returned by the first save',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'inknest-consecutive-page-push-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      var nextId = 0;
+      final stateStore = FileSyncStateStore(
+        rootDirectory: root,
+        userId: 'user-1',
+        deviceId: 'device-1',
+        idFactory: (prefix) => '$prefix-${nextId++}',
+      );
+      final resourceMap = FileSyncResourceMapStore(
+        rootDirectory: root,
+        userId: 'user-1',
+        deviceId: 'device-1',
+      );
+      const metadata = {
+        'width': 768.0,
+        'height': 1024.0,
+        'coordinateSpaceVersion': 1,
+        'rotationQuarterTurns': 0,
+        'template': 'blank',
+      };
+      await stateStore.markChangesPageApplied('cursor-1');
+      await resourceMap.replaceAll([
+        SyncResourceMapping(
+          localKey: 'page:notebook-1:page-1',
+          resourceType: SyncResourceType.page,
+          remoteResourceId: 'page-1',
+          revision: 1,
+          contentHash: 'a' * 64,
+          pageMetadata: metadata,
+        ),
+      ]);
+      await stateStore.enqueuePage(
+        resourceId: 'page-1',
+        baseRevision: 1,
+        content: const {
+          'strokes': ['handwritten'],
+        },
+        baseMetadata: metadata,
+        metadata: metadata,
+      );
+      final cloud = _PushCloudClient(failuresRemaining: 0);
+      final service = IncrementalSyncPushService(
+        cloudClient: cloud,
+        repository: FileNotebookRepository(rootDirectory: root),
+        rootDirectory: root,
+      );
+
+      await service.push(userId: 'user-1', deviceId: 'device-1');
+      final firstMapping = await resourceMap.find('page:notebook-1:page-1');
+      await stateStore.enqueuePage(
+        resourceId: 'page-1',
+        baseRevision: firstMapping!.revision,
+        content: const {
+          'strokes': ['beautified'],
+        },
+        baseMetadata: firstMapping.pageMetadata!,
+        metadata: metadata,
+      );
+      await service.push(userId: 'user-1', deviceId: 'device-1');
+
+      expect(cloud.requests, hasLength(2));
+      expect(cloud.requests[0].operation['baseRevision'], 1);
+      expect(cloud.requests[1].operation['baseRevision'], 2);
+      final finalMapping = await resourceMap.find('page:notebook-1:page-1');
+      expect(finalMapping?.revision, 3);
+      expect(finalMapping?.pageMetadata, metadata);
+    },
+  );
 
   test(
     'page content conflict retries its metadata without page content',
@@ -175,6 +343,26 @@ void main() {
           'template': 'grid',
         },
       );
+      await FileSyncResourceMapStore(
+        rootDirectory: root,
+        userId: 'user-1',
+        deviceId: 'device-1',
+      ).replaceAll([
+        SyncResourceMapping(
+          localKey: 'page:notebook-1:page-1',
+          resourceType: SyncResourceType.page,
+          remoteResourceId: 'page-1',
+          revision: 1,
+          contentHash: 'a' * 64,
+          pageMetadata: const {
+            'width': 768.0,
+            'height': 1024.0,
+            'coordinateSpaceVersion': 1,
+            'rotationQuarterTurns': 0,
+            'template': 'blank',
+          },
+        ),
+      ]);
       final cloud = _PushCloudClient(failuresRemaining: 0, outcome: 'conflict');
 
       final result = await IncrementalSyncPushService(
@@ -347,6 +535,7 @@ class _PushFixture {
     bool delete = false,
     bool metadata = false,
     bool structuralConflict = false,
+    bool omitMetadata = false,
     String? outcome,
   }) async {
     final root = await Directory.systemTemp.createTemp('inknest-push-');
@@ -416,6 +605,7 @@ class _PushFixture {
         failuresRemaining: failuresRemaining,
         outcome: outcome,
         structuralConflict: structuralConflict,
+        omitMetadata: omitMetadata,
       ),
       repository: repository,
     );
@@ -444,12 +634,14 @@ class _PushCloudClient implements FirstSignInCloudClient {
     this.assetFailuresRemaining = 0,
     this.outcome,
     this.structuralConflict = false,
+    this.omitMetadata = false,
   });
 
   int failuresRemaining;
   int assetFailuresRemaining;
   final String? outcome;
   final bool structuralConflict;
+  final bool omitMetadata;
   final List<_PushRequest> requests = [];
   final List<String> events = [];
   LocalSyncAsset? uploadedAsset;
@@ -492,6 +684,9 @@ class _PushCloudClient implements FirstSignInCloudClient {
         outcome == 'conflict' && !operation.containsKey('content')
         ? 'applied'
         : outcome;
+    final finalOutcome =
+        requestedOutcome ??
+        (operation['operation'] == 'delete' ? 'deleted' : 'applied');
     return SyncContentCommitResult(
       idempotencyKey: idempotencyKey,
       nextCursor: 'cursor-2',
@@ -500,11 +695,14 @@ class _PushCloudClient implements FirstSignInCloudClient {
           operationId: operation['operationId']! as String,
           resourceType: operation['resourceType']! as String,
           resourceId: operation['resourceId']! as String,
-          revision: requests.length + 1,
+          revision: (operation['baseRevision']! as int) + 1,
           contentHash: 'b' * 64,
-          outcome:
-              requestedOutcome ??
-              (operation['operation'] == 'delete' ? 'deleted' : 'applied'),
+          outcome: finalOutcome,
+          metadata:
+              !omitMetadata &&
+                  const {'applied', 'unchanged'}.contains(finalOutcome)
+              ? (operation['metadata'] as Map<String, Object?>?)
+              : null,
         ),
       ],
     );

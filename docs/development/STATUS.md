@@ -9,9 +9,10 @@
   choices: public HTTPS Privacy/Terms/deletion pages, final operator and contact
   details, launch territories and retention/processor disclosures; then select
   an email provider before implementing verified email and password recovery.
-- Last completed: Made Eraser a temporary correction tool. Selecting it enters
-  Finger writes; tapping the active Eraser again restores the previous tool,
-  its settings, and the prior Finger writes / Finger moves state.
+- Last completed: Incremental sync now advances Revision, Content Hash, and
+  authoritative metadata together after a successful commit, preventing a
+  device's original handwriting save and subsequent Beautify save from
+  creating a false self-conflict.
 
 ### Release readiness
 
@@ -404,6 +405,16 @@
 
 ## Verification
 
+- Sync baseline consistency passes all 334 Flutter tests and `flutter analyze`.
+  Backend Ruff format/check, mypy, 72 non-integration tests, and all 16 real
+  PostgreSQL/MinIO integration tests pass. Focused coverage verifies
+  consecutive page saves use Revision 1 → 2 → 3, upload-time newer edits rebase
+  on authoritative metadata, malformed success responses retain the exact
+  retry batch, incremental folder creation establishes its mapping, and
+  unchanged canvas metadata cannot revert a remote background. Pull also
+  reapplies an authoritative snapshot when push has already advanced the same
+  Revision, so server-side metadata merges converge into the local repository.
+  `git diff --check` passes; no database migration is required.
 - Paged-editor zoom chrome removal and the direct Fit Width header action pass
   focused workspace/widget coverage, including viewport scale reset and compact
   44dp header targets. `flutter analyze` and `git diff --check` pass.

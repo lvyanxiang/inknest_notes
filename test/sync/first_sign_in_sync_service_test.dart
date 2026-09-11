@@ -684,6 +684,7 @@ class _CloudRestoreHandoffClient implements FirstSignInCloudClient {
             revision: 1,
             contentHash: 'a' * 64,
             outcome: 'unchanged',
+            metadata: operation['metadata'] as Map<String, Object?>?,
           ),
       ],
     );
@@ -1009,6 +1010,7 @@ class _ChildPageCloudClient implements FirstSignInCloudClient {
             revision: (operation['baseRevision']! as int) + 1,
             contentHash: 'c' * 64,
             outcome: 'applied',
+            metadata: operation['metadata'] as Map<String, Object?>?,
           ),
       ],
     );

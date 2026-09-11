@@ -398,6 +398,7 @@ class SyncCommitOperationResult(SyncApiModel):
     content_hash: str
     changed: bool
     outcome: Literal["applied", "unchanged", "conflict", "deleted", "delete_conflict"]
+    metadata: dict[str, object] | None = None
     conflict: SyncConflictResponse | None = None
     tombstone: SyncTombstoneResponse | None = None
 

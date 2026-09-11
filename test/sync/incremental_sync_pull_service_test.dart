@@ -755,6 +755,83 @@ void main() {
     expect((await stateStore.loadSnapshot()).lastAppliedCursor, 'cursor-2');
   });
 
+  test(
+    'reapplies an authoritative page snapshot after push advanced mapping',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'inknest-pull-own-page-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      final repository = FileNotebookRepository(rootDirectory: root);
+      final notebook = await repository.createNotebook(title: 'Local notes');
+      final stateStore = FileSyncStateStore(
+        rootDirectory: root,
+        userId: 'user-1',
+        deviceId: 'device-1',
+      );
+      await stateStore.markChangesPageApplied('cursor-1');
+      await FileSyncResourceMapStore(
+        rootDirectory: root,
+        userId: 'user-1',
+        deviceId: 'device-1',
+      ).replaceAll([
+        SyncResourceMapping(
+          localKey: notebookSyncLocalKey(notebook.id),
+          resourceType: SyncResourceType.notebook,
+          remoteResourceId: notebook.id,
+          revision: 1,
+          contentHash: 'a' * 64,
+        ),
+        SyncResourceMapping(
+          localKey: pageSyncLocalKey(notebook.id, notebook.pageIds.single),
+          resourceType: SyncResourceType.page,
+          remoteResourceId: 'remote-page',
+          revision: 2,
+          contentHash: 'e' * 64,
+          pageMetadata: const {
+            'width': 768.0,
+            'height': 1024.0,
+            'coordinateSpaceVersion': 1,
+            'rotationQuarterTurns': 1,
+            'template': 'grid',
+          },
+        ),
+      ]);
+      final cloud = _PullCloudClient(
+        bootstrapSnapshot: _sharedPageBootstrap(notebook.id),
+        pages: [
+          CloudSyncChangePage(
+            changes: [
+              _change(
+                'page',
+                'remote-page',
+                revision: 2,
+                contentHash: 'e' * 64,
+                deviceId: 'device-1',
+              ),
+            ],
+            nextCursor: 'cursor-2',
+            hasMore: false,
+          ),
+        ],
+      );
+
+      final result = await IncrementalSyncPullService(
+        repository: repository,
+        cloudClient: cloud,
+        rootDirectory: root,
+      ).pull(userId: 'user-1', deviceId: 'device-1');
+
+      expect(result.status, IncrementalSyncPullStatus.applied);
+      expect(result.appliedSharedResourceCount, 1);
+      final page = await repository.loadPage(notebook, notebook.pageIds.single);
+      expect(page.textBoxes.single.text, 'Cloud text');
+      expect(page.rotationQuarterTurns, 1);
+      expect(page.template.name, 'grid');
+      expect((await stateStore.loadSnapshot()).lastAppliedCursor, 'cursor-2');
+    },
+  );
+
   test('applies a resolved conflict with its original-page update', () async {
     final root = await Directory.systemTemp.createTemp(
       'inknest-pull-resolved-conflict-',
@@ -1179,6 +1256,60 @@ void main() {
     },
   );
 
+  test(
+    'current-device Tombstone restore downloads its missing notebook',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'inknest-pull-own-restore-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      final repository = FileNotebookRepository(rootDirectory: root);
+      final stateStore = FileSyncStateStore(
+        rootDirectory: root,
+        userId: 'user-1',
+        deviceId: 'device-1',
+      );
+      await stateStore.markChangesPageApplied('cursor-1');
+      final activePayload = _tombstonePayload();
+      await FileSyncTombstoneStore(
+        rootDirectory: root,
+        userId: 'user-1',
+        deviceId: 'device-1',
+      ).applyChanges([_tombstoneChange(activePayload)]);
+      final restoredPayload = _tombstonePayload(restored: true);
+      final cloud = _PullCloudClient(
+        bootstrapSnapshot: _cloudNotebookBootstrap(),
+        pages: [
+          CloudSyncChangePage(
+            changes: [
+              _change(
+                'notebook',
+                'cloud-notebook',
+                revision: 3,
+                deviceId: 'device-1',
+              ),
+              _tombstoneChange(restoredPayload, deviceId: 'device-1'),
+            ],
+            nextCursor: 'cursor-2',
+            hasMore: false,
+          ),
+        ],
+      );
+
+      final result = await IncrementalSyncPullService(
+        repository: repository,
+        cloudClient: cloud,
+        rootDirectory: root,
+      ).pull(userId: 'user-1', deviceId: 'device-1');
+
+      expect(result.status, IncrementalSyncPullStatus.applied);
+      expect(result.activeTombstones, isEmpty);
+      expect(result.downloadedNotebookCount, 1);
+      expect((await repository.listNotebooks()).single.title, 'Cloud notes');
+      expect((await stateStore.loadSnapshot()).lastAppliedCursor, 'cursor-2');
+    },
+  );
+
   test('confirms a deletion originated by the same local device', () async {
     final root = await Directory.systemTemp.createTemp(
       'inknest-pull-own-delete-',
@@ -1451,18 +1582,20 @@ Map<String, Object?> _tombstonePayload({bool restored = false}) => {
   'createdAt': '2026-08-07T00:00:00Z',
 };
 
-CloudSyncChange _tombstoneChange(Map<String, Object?> payload) =>
-    CloudSyncChange(
-      changeId: 'change-tombstone-${payload['state']}',
-      resourceType: CloudSyncChangeResourceType.tombstone,
-      resourceId: 'tombstone-1',
-      operation: CloudSyncChangeOperation.upsert,
-      revision: null,
-      contentHash: null,
-      payload: payload,
-      deviceId: 'device-2',
-      createdAt: DateTime.utc(2026, 8, 7),
-    );
+CloudSyncChange _tombstoneChange(
+  Map<String, Object?> payload, {
+  String deviceId = 'device-2',
+}) => CloudSyncChange(
+  changeId: 'change-tombstone-${payload['state']}',
+  resourceType: CloudSyncChangeResourceType.tombstone,
+  resourceId: 'tombstone-1',
+  operation: CloudSyncChangeOperation.upsert,
+  revision: null,
+  contentHash: null,
+  payload: payload,
+  deviceId: deviceId,
+  createdAt: DateTime.utc(2026, 8, 7),
+);
 
 CloudSyncBootstrap _cloudNotebookBootstrap() {
   final now = DateTime.utc(2026, 8, 7);

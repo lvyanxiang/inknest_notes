@@ -1359,7 +1359,7 @@ class _LibraryScreenState extends State<LibraryScreen>
                 busyId = null;
                 errorMessage = switch (error.failure) {
                   SyncTombstoneRestoreFailure.alreadyRestored =>
-                    'This item was restored on another device. Please sync again.',
+                    'This item is already restored in the cloud, but local synchronization is incomplete. Please sync again.',
                   SyncTombstoneRestoreFailure.reconciliationRequired =>
                     'The item was restored in the cloud, but local synchronization is incomplete. The deletion record remains; please retry.',
                   SyncTombstoneRestoreFailure.unavailable =>

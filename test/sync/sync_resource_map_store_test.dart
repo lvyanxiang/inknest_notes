@@ -49,6 +49,17 @@ void main() {
     expect(mapping?.resourceType, SyncResourceType.folder);
     expect(mapping?.revision, 2);
     expect(mapping?.folderMetadata, {'name': 'Projects'});
+
+    await store.updateRemote(
+      resourceType: SyncResourceType.folder,
+      remoteResourceId: folder.id,
+      revision: 3,
+      contentHash: 'd' * 64,
+      folderMetadata: const {'name': 'Renamed'},
+    );
+    final updated = await store.find(folderSyncLocalKey(folder.id));
+    expect(updated?.revision, 3);
+    expect(updated?.folderMetadata, {'name': 'Renamed'});
   });
 
   test('builds and persists local-to-cloud page mappings', () async {
@@ -215,5 +226,16 @@ void main() {
     final mapping = await store.find(canvasSyncLocalKey(notebook.id));
     expect(mapping?.revision, 3);
     expect(mapping?.infiniteCanvasMetadata, {'background': 'dotted'});
+
+    await store.updateRemote(
+      resourceType: SyncResourceType.infiniteCanvas,
+      remoteResourceId: 'remote-canvas',
+      revision: 4,
+      contentHash: 'c' * 64,
+      infiniteCanvasMetadata: const {'background': 'grid'},
+    );
+    final updated = await store.find(canvasSyncLocalKey(notebook.id));
+    expect(updated?.revision, 4);
+    expect(updated?.infiniteCanvasMetadata, {'background': 'grid'});
   });
 }

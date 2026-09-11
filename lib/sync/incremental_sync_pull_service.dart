@@ -564,7 +564,6 @@ class IncrementalSyncPullService {
     final referencedCloudOnlyNotebooks = <String>{};
 
     for (final change in changes) {
-      if (change.deviceId == currentDeviceId) continue;
       if (change.operation != CloudSyncChangeOperation.upsert) return false;
       final canApply = switch (change.resourceType) {
         CloudSyncChangeResourceType.folder =>
@@ -587,6 +586,7 @@ class IncrementalSyncPullService {
         CloudSyncChangeResourceType.conflict ||
         CloudSyncChangeResourceType.tombstone => false,
       };
+      if (change.deviceId == currentDeviceId && !canApply) continue;
       if (!canApply) return false;
       switch (change.resourceType) {
         case CloudSyncChangeResourceType.folder:

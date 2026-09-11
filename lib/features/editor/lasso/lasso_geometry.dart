@@ -45,6 +45,48 @@ class LassoGeometry {
     return bestId;
   }
 
+  /// Selects the spatially connected handwriting block nearest to [point].
+  ///
+  /// Connectivity is deliberately more permissive horizontally than
+  /// vertically so a tap can collect a word or handwritten line without
+  /// normally spilling into the line above or below it.
+  static Set<String> selectConnectedStrokeIdsForTap(
+    Iterable<Stroke> strokes,
+    Offset point, {
+    double maxDistance = 28,
+  }) {
+    final candidates = [
+      for (final stroke in strokes)
+        if (boundsForStroke(stroke) case final bounds?)
+          (stroke: stroke, bounds: bounds),
+    ];
+    final seedId = hitTestNearestStroke(
+      candidates.map((candidate) => candidate.stroke),
+      point,
+      maxDistance: maxDistance,
+    );
+    if (seedId == null) return const {};
+
+    final selectedIds = <String>{seedId};
+    final pendingIds = <String>[seedId];
+    final boundsById = {
+      for (final candidate in candidates) candidate.stroke.id: candidate.bounds,
+    };
+    while (pendingIds.isNotEmpty) {
+      final selectedBounds = boundsById[pendingIds.removeLast()]!;
+      for (final candidate in candidates) {
+        final candidateId = candidate.stroke.id;
+        if (selectedIds.contains(candidateId) ||
+            !_belongsToSameInkBlock(selectedBounds, candidate.bounds)) {
+          continue;
+        }
+        selectedIds.add(candidateId);
+        pendingIds.add(candidateId);
+      }
+    }
+    return selectedIds;
+  }
+
   static List<Offset> rectPolygon(Rect rect) {
     return [rect.topLeft, rect.topRight, rect.bottomRight, rect.bottomLeft];
   }
@@ -77,6 +119,31 @@ class LassoGeometry {
     final clamped = t.clamp(0.0, 1.0).toDouble();
     final projection = Offset(start.dx + dx * clamped, start.dy + dy * clamped);
     return (point - projection).distance;
+  }
+
+  static bool _belongsToSameInkBlock(Rect first, Rect second) {
+    final horizontalGap = math.max(
+      0,
+      math.max(first.left, second.left) - math.min(first.right, second.right),
+    );
+    final verticalGap = math.max(
+      0,
+      math.max(first.top, second.top) - math.min(first.bottom, second.bottom),
+    );
+    final referenceHeight = math.max(first.height, second.height);
+    final allowedHorizontalGap = (referenceHeight * 1.1)
+        .clamp(24.0, 52.0)
+        .toDouble();
+    final allowedVerticalGap = (referenceHeight * 0.35)
+        .clamp(10.0, 20.0)
+        .toDouble();
+    final allowedCenterDelta = (referenceHeight * 0.9)
+        .clamp(20.0, 48.0)
+        .toDouble();
+
+    return horizontalGap <= allowedHorizontalGap &&
+        verticalGap <= allowedVerticalGap &&
+        (first.center.dy - second.center.dy).abs() <= allowedCenterDelta;
   }
 
   static Rect? boundsForStrokes(Iterable<Stroke> strokes) {

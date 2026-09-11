@@ -205,6 +205,8 @@ class FileSyncResourceMapStore {
     required String remoteResourceId,
     required int revision,
     required String contentHash,
+    String? localKeyIfMissing,
+    Map<String, Object?>? folderMetadata,
     Map<String, Object?>? notebookMetadata,
     Map<String, Object?>? pageMetadata,
     Map<String, Object?>? infiniteCanvasMetadata,
@@ -217,9 +219,34 @@ class FileSyncResourceMapStore {
             resource.remoteResourceId == remoteResourceId,
       );
       if (!hasResource) {
-        throw StateError(
-          'The committed resource is missing from the local sync map.',
+        if (localKeyIfMissing == null ||
+            document.resources.any(
+              (resource) => resource.localKey == localKeyIfMissing,
+            )) {
+          throw StateError(
+            'The committed resource is missing from the local sync map.',
+          );
+        }
+        await _write(
+          _SyncResourceMapDocument(
+            resources: [
+              ...document.resources,
+              SyncResourceMapping(
+                localKey: localKeyIfMissing,
+                resourceType: resourceType,
+                remoteResourceId: remoteResourceId,
+                revision: revision,
+                contentHash: contentHash,
+                folderMetadata: folderMetadata,
+                notebookMetadata: notebookMetadata,
+                pageMetadata: pageMetadata,
+                infiniteCanvasMetadata: infiniteCanvasMetadata,
+              ),
+            ],
+            cloudAssetKeys: document.cloudAssetKeys,
+          ),
         );
+        return;
       }
       final updated = [
         for (final resource in document.resources)
@@ -228,6 +255,7 @@ class FileSyncResourceMapStore {
             resource.copyWith(
               revision: revision,
               contentHash: contentHash,
+              folderMetadata: folderMetadata,
               notebookMetadata: notebookMetadata,
               pageMetadata: pageMetadata,
               infiniteCanvasMetadata: infiniteCanvasMetadata,

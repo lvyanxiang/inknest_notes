@@ -46,6 +46,97 @@ void main() {
     },
   );
 
+  test('prefers an installed model over an earlier missing model', () async {
+    final backend = _FakeDigitalInkBackend(
+      downloadedLanguages: const {'zh-Hani-CN'},
+      candidatesByLanguage: const {
+        'zh-Hani-CN': [DigitalInkRecognitionCandidate(text: '吕', score: 0)],
+      },
+    );
+
+    final result = await MlKitDigitalInkTextRecognizer(backend: backend)
+        .recognize(
+          strokes: [_stroke('ink', DateTime.utc(2026, 9, 11))],
+          writingArea: const Size(768, 1024),
+          languageTags: const ['en-US', 'zh-Hani-CN'],
+        );
+
+    expect(result.text, '吕');
+    expect(result.languageTag, 'zh-Hani-CN');
+    expect(backend.ensuredLanguages, ['zh-Hani-CN']);
+    expect(backend.recognizedLanguages, ['zh-Hani-CN']);
+  });
+
+  test('returns immediately after the first usable language result', () async {
+    final backend = _FakeDigitalInkBackend(
+      candidatesByLanguage: const {
+        'zh-Hani-CN': [DigitalInkRecognitionCandidate(text: '中文', score: 0)],
+        'en-US': [DigitalInkRecognitionCandidate(text: 'English', score: 0)],
+      },
+    );
+
+    final result = await MlKitDigitalInkTextRecognizer(backend: backend)
+        .recognize(
+          strokes: [_stroke('ink', DateTime.utc(2026, 9, 11))],
+          writingArea: const Size(768, 1024),
+          languageTags: const ['zh-Hani-CN', 'en-US'],
+        );
+
+    expect(result.text, '中文');
+    expect(backend.ensuredLanguages, ['zh-Hani-CN']);
+    expect(backend.recognizedLanguages, ['zh-Hani-CN']);
+  });
+
+  test('preloads every unique language before recognition', () async {
+    final backend = _FakeDigitalInkBackend();
+
+    await MlKitDigitalInkTextRecognizer(
+      backend: backend,
+    ).preloadModels(languageTags: const ['en-US', 'zh-Hani-CN', 'en-US', '']);
+
+    expect(backend.ensuredLanguages, containsAll(['en-US', 'zh-Hani-CN']));
+    expect(backend.ensuredLanguages, hasLength(2));
+    expect(backend.recognizedLanguages, isEmpty);
+  });
+
+  test('continues preloading when one language model fails', () async {
+    final backend = _FakeDigitalInkBackend(
+      failingPreparationLanguages: const {'en-US'},
+    );
+
+    await MlKitDigitalInkTextRecognizer(
+      backend: backend,
+    ).preloadModels(languageTags: const ['en-US', 'zh-Hani-CN']);
+
+    expect(backend.ensuredLanguages, containsAll(['en-US', 'zh-Hani-CN']));
+  });
+
+  test(
+    'times out model preparation and falls back to another language',
+    () async {
+      final backend = _FakeDigitalInkBackend(
+        hangingPreparationLanguages: const {'en-US'},
+        candidatesByLanguage: const {
+          'zh-Hani-CN': [DigitalInkRecognitionCandidate(text: '中文', score: 0)],
+        },
+      );
+
+      final result =
+          await MlKitDigitalInkTextRecognizer(
+            backend: backend,
+            modelPreparationTimeout: const Duration(milliseconds: 10),
+          ).recognize(
+            strokes: [_stroke('ink', DateTime.utc(2026, 9, 11))],
+            writingArea: const Size(768, 1024),
+            languageTags: const ['en-US', 'zh-Hani-CN'],
+          );
+
+      expect(result.text, '中文');
+      expect(backend.ensuredLanguages, ['en-US', 'zh-Hani-CN']);
+      expect(backend.recognizedLanguages, ['zh-Hani-CN']);
+    },
+  );
+
   test('rejects an empty selection before requesting a model', () async {
     final backend = _FakeDigitalInkBackend();
 
@@ -163,14 +254,37 @@ Stroke _stroke(String id, DateTime time) {
 }
 
 class _FakeDigitalInkBackend implements DigitalInkRecognitionBackend {
+  _FakeDigitalInkBackend({
+    this.downloadedLanguages = const {},
+    this.hangingPreparationLanguages = const {},
+    this.failingPreparationLanguages = const {},
+    this.candidatesByLanguage = const {},
+  });
+
+  final Set<String> downloadedLanguages;
+  final Set<String> hangingPreparationLanguages;
+  final Set<String> failingPreparationLanguages;
+  final Map<String, List<DigitalInkRecognitionCandidate>> candidatesByLanguage;
   final List<String> ensuredLanguages = [];
   final List<String> recognizedLanguages = [];
   List<DigitalInkStroke> lastStrokes = const [];
   Size? lastWritingArea;
 
   @override
+  Future<bool> isModelDownloaded(String languageTag) async =>
+      downloadedLanguages.contains(languageTag);
+
+  @override
   Future<void> ensureModel(String languageTag) async {
     ensuredLanguages.add(languageTag);
+    if (failingPreparationLanguages.contains(languageTag)) {
+      throw DigitalInkRecognitionUnavailableException(
+        'Unable to prepare $languageTag.',
+      );
+    }
+    if (hangingPreparationLanguages.contains(languageTag)) {
+      await Completer<void>().future;
+    }
   }
 
   @override
@@ -182,6 +296,8 @@ class _FakeDigitalInkBackend implements DigitalInkRecognitionBackend {
     recognizedLanguages.add(languageTag);
     lastStrokes = strokes;
     lastWritingArea = writingArea;
+    final configured = candidatesByLanguage[languageTag];
+    if (configured != null) return configured;
     if (languageTag == 'zh-Hani-CN') return const [];
     return const [
       DigitalInkRecognitionCandidate(text: 'Class notes', score: -2),

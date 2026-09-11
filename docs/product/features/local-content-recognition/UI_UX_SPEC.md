@@ -1,7 +1,7 @@
 # Local Content Recognition UI/UX Specification
 
 - Status: Editor search removed; Smart Ink retained
-- Updated: 2026-08-18
+- Updated: 2026-09-11
 - Product brief: `docs/product/features/local-content-recognition/PRODUCT_BRIEF.md`
 - Affected surfaces: Editor document bar, page surface, and Smart Ink dialog
 
@@ -19,7 +19,10 @@ Smart Ink paths.
 2. PDF pages, inserted images, and text boxes render without search overlays.
 3. Manual page navigation only affects normal page and audio-follow state.
 4. Lassoing handwriting still exposes Smart Ink.
-5. Smart Ink prepares ML Kit Digital Ink recognition, allows correction or
+5. Tapping handwriting while Lasso is active selects its spatially connected
+   handwriting block and exposes the same selection toolbar. Recognition does
+   not start until the user chooses Beautify.
+6. Smart Ink prepares ML Kit Digital Ink recognition, allows correction or
    manual entry, and redraws inside the fixed original selection bounds.
 
 ## State And Layout
@@ -32,7 +35,16 @@ Smart Ink paths.
 - Accessibility: no stale Search tooltip, semantics node, focus target, or
   keyboard route remains.
 - Smart Ink: current busy, ready, failure, cancel, confirm, and undo/redo states
-  remain unchanged.
+  remain unchanged. Opening the editor starts a non-blocking, best-effort
+  preload of the locale's primary and fallback handwriting models. No progress
+  dialog interrupts writing. Already-downloaded language models are attempted
+  before a missing fallback model; the first usable result ends the busy state
+  without waiting for another model download. Model preparation and
+  recognition have bounded waits, after which the existing manual-entry
+  recovery remains available.
+- Lasso tap: select the connected handwriting block nearest the tap. Prefer
+  horizontal expansion along one line; do not normally include clearly
+  separated words or adjacent lines. Keep drag-lasso selection unchanged.
 
 ## UI Acceptance Criteria
 
@@ -44,6 +56,10 @@ Smart Ink paths.
 - [x] Library `Search notebooks` remains visible and unchanged.
 - [x] Smart Ink remains accessible from a lasso selection and does not add
   permanent editor chrome.
+- [x] Entering the editor prepares the current language models in the
+  background so the first recognition normally performs no model download.
+- [x] Tapping handwriting with Lasso active frames its connected handwriting
+  block and shows Beautify without launching recognition automatically.
 
 ## Verification
 

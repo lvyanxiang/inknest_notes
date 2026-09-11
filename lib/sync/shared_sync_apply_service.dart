@@ -98,7 +98,10 @@ class SharedSyncApplyService {
           snapshot.contentHash != _finalHash(mapping, entry.value)) {
         return null;
       }
-      if (mapping.revision == snapshot.revision) continue;
+      // A successful push can advance the mapping before the pull cursor sees
+      // the matching change event. Reapply that authoritative snapshot even
+      // when Revision + ContentHash already match so server-side metadata
+      // merges also converge into the local repository.
       final action = await _buildAction(
         mapping: mapping,
         snapshot: snapshot,

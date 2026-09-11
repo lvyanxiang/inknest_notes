@@ -575,6 +575,9 @@ class SyncService:
             content_hash=content_result.content_hash,
             changed=content_result.created_revision,
             outcome="applied" if content_result.created_revision else "unchanged",
+            metadata=(
+                content_result.metadata if operation.metadata is not None else None
+            ),
         )
 
     async def restore_tombstone(

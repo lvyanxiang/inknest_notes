@@ -167,6 +167,10 @@ warning badge always opens a real recoverable conflict record.
    Revision.
 5. When sync reports `delete_conflict`, show “已保留另一台设备上的编辑” in
    sync status. No user choice is required and no editor modal appears.
+6. If the cloud already confirms restoration but local application has not
+   completed, explain that local synchronization is incomplete and offer Sync
+   Again. Do not attribute the restore to another device unless the device
+   metadata proves that attribution.
 
 ## State Matrix
 

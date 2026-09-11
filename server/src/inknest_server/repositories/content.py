@@ -71,6 +71,7 @@ class ContentSaveResult:
     revision: int
     content_hash: str
     created_revision: bool
+    metadata: dict[str, object] | None = None
 
 
 class ContentRepository:
@@ -124,6 +125,7 @@ class ContentRepository:
                 revision=folder.revision,
                 content_hash=folder.content_hash,
                 created_revision=True,
+                metadata={"name": folder.name},
             )
 
         if base_metadata is None:
@@ -146,11 +148,13 @@ class ContentRepository:
                     revision=folder.revision,
                     content_hash=folder.content_hash,
                     created_revision=True,
+                    metadata={"name": folder.name},
                 )
             return ContentSaveResult(
                 revision=folder.revision,
                 content_hash=folder.content_hash,
                 created_revision=False,
+                metadata={"name": folder.name},
             )
 
         baseline_name = str(base_metadata["name"])
@@ -159,6 +163,7 @@ class ContentRepository:
                 revision=folder.revision,
                 content_hash=folder.content_hash,
                 created_revision=False,
+                metadata={"name": folder.name},
             )
         if folder.name != baseline_name or folder.revision != base_revision:
             raise FolderMetadataConflictError
@@ -180,6 +185,7 @@ class ContentRepository:
             revision=folder.revision,
             content_hash=folder.content_hash,
             created_revision=True,
+            metadata={"name": folder.name},
         )
 
     async def delete_folder(
@@ -315,6 +321,7 @@ class ContentRepository:
         }
         merged_metadata = dict(current_metadata)
         page_order: list[str] | None = None
+        authoritative_page_order: list[str] | None = None
         current_pages: list[Page] = []
         structure_changed = False
         if metadata is not None:
@@ -349,20 +356,20 @@ class ContentRepository:
                     raise NotebookMetadataConflictError(["pageOrder"])
                 page_order = self._validated_page_order(desired_page_order)
                 baseline_order = self._validated_page_order(baseline_page_order)
-                if page_order != baseline_order:
-                    current_pages = list(
-                        await self._session.scalars(
-                            select(Page)
-                            .where(
-                                Page.user_id == user_id,
-                                Page.notebook_id == resource.id,
-                                Page.deleted_at.is_(None),
-                            )
-                            .order_by(Page.position, Page.id)
-                            .with_for_update()
+                current_pages = list(
+                    await self._session.scalars(
+                        select(Page)
+                        .where(
+                            Page.user_id == user_id,
+                            Page.notebook_id == resource.id,
+                            Page.deleted_at.is_(None),
                         )
+                        .order_by(Page.position, Page.id)
+                        .with_for_update()
                     )
-                    current_order = [page.id for page in current_pages]
+                )
+                current_order = [page.id for page in current_pages]
+                if page_order != baseline_order:
                     same_members = len(page_order) == len(baseline_order) == len(
                         current_order
                     ) and set(page_order) == set(baseline_order) == set(current_order)
@@ -372,6 +379,15 @@ class ContentRepository:
                     ):
                         raise NotebookMetadataConflictError(["pageOrder"])
                     structure_changed = current_order != page_order
+                authoritative_page_order = (
+                    page_order if structure_changed else current_order
+                )
+
+        committed_metadata = None
+        if metadata is not None:
+            committed_metadata = dict(merged_metadata)
+            if authoritative_page_order is not None:
+                committed_metadata["pageOrder"] = authoritative_page_order
 
         normalized_content = (
             normalized_json_object(content) if content is not None else resource.content
@@ -389,6 +405,7 @@ class ContentRepository:
                 revision=resource.revision,
                 content_hash=resource.content_hash,
                 created_revision=False,
+                metadata=committed_metadata,
             )
 
         if structure_changed:
@@ -435,6 +452,7 @@ class ContentRepository:
             revision=next_revision,
             content_hash=new_hash,
             created_revision=True,
+            metadata=committed_metadata,
         )
 
     @staticmethod
@@ -577,6 +595,7 @@ class ContentRepository:
                 revision=resource.revision,
                 content_hash=resource.content_hash,
                 created_revision=False,
+                metadata=dict(merged_metadata) if metadata is not None else None,
             )
 
         next_revision = resource.revision + 1
@@ -620,6 +639,7 @@ class ContentRepository:
             revision=next_revision,
             content_hash=new_hash,
             created_revision=True,
+            metadata=dict(merged_metadata) if metadata is not None else None,
         )
 
     async def save_infinite_canvas_content(
@@ -669,13 +689,15 @@ class ContentRepository:
         if metadata is not None:
             if base_metadata is None:
                 raise ValueError("base_metadata is required with metadata")
-            desired_background = str(metadata["background"])
+            requested_background = str(metadata["background"])
             baseline_background = str(base_metadata["background"])
-            if (
-                desired_background != baseline_background
-                and resource.background not in {baseline_background, desired_background}
-            ):
-                raise InfiniteCanvasMetadataConflictError
+            if requested_background != baseline_background:
+                if resource.background not in {
+                    baseline_background,
+                    requested_background,
+                }:
+                    raise InfiniteCanvasMetadataConflictError
+                desired_background = requested_background
 
         normalized_content = (
             normalized_json_object(content) if content is not None else resource.content
@@ -693,6 +715,9 @@ class ContentRepository:
                 revision=resource.revision,
                 content_hash=resource.content_hash,
                 created_revision=False,
+                metadata=(
+                    {"background": desired_background} if metadata is not None else None
+                ),
             )
 
         next_revision = resource.revision + 1
@@ -725,6 +750,9 @@ class ContentRepository:
             revision=next_revision,
             content_hash=new_hash,
             created_revision=True,
+            metadata=(
+                {"background": desired_background} if metadata is not None else None
+            ),
         )
 
     async def list_revisions(

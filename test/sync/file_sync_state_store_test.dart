@@ -214,6 +214,60 @@ void main() {
     },
   );
 
+  test(
+    'rebases newer metadata on the authoritative committed metadata',
+    () async {
+      await store.markChangesPageApplied('cursor-1');
+      const original = {
+        'title': 'Before',
+        'isArchived': false,
+        'folderId': null,
+      };
+      await store.enqueueNotebookMetadata(
+        resourceId: 'notebook-1',
+        baseRevision: 1,
+        baseMetadata: original,
+        metadata: const {
+          'title': 'First local title',
+          'isArchived': false,
+          'folderId': null,
+        },
+      );
+      final batch = await store.prepareNextCommit();
+      await store.enqueueNotebookMetadata(
+        resourceId: 'notebook-1',
+        baseRevision: 1,
+        baseMetadata: original,
+        metadata: const {
+          'title': 'Newest local title',
+          'isArchived': false,
+          'folderId': null,
+        },
+      );
+      const authoritative = {
+        'title': 'First local title',
+        'isArchived': true,
+        'folderId': null,
+      };
+
+      await store.markCommitSucceeded(
+        idempotencyKey: batch!.idempotencyKey,
+        results: const [
+          SyncOperationCommitResult(
+            operationId: 'operation-1',
+            revision: 2,
+            metadata: authoritative,
+          ),
+        ],
+      );
+
+      final pending = (await store.loadSnapshot()).pendingOperations.single;
+      expect(pending.baseRevision, 2);
+      expect(pending.baseMetadata, authoritative);
+      expect(pending.metadata?['title'], 'Newest local title');
+    },
+  );
+
   test('does not clear a batch for a partial or mismatched response', () async {
     await store.markChangesPageApplied('cursor-1');
     await store.enqueueUpsert(

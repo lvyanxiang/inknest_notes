@@ -195,10 +195,12 @@ class SyncOperationCommitResult {
   const SyncOperationCommitResult({
     required this.operationId,
     required this.revision,
+    this.metadata,
   });
 
   final String operationId;
   final int revision;
+  final Map<String, Object?>? metadata;
 }
 
 class SyncStateSnapshot {

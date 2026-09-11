@@ -88,7 +88,7 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/google_mlkit_digital_ink_recognition/ios"
 
 SPEC CHECKSUMS:
-  Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  Flutter: 71a624a5bc0c04062bf19101d501e466baf2fb47
   google_mlkit_commons: b2c0a76e7ef4ff555e70e5d71f21d66ce3d08a97
   google_mlkit_digital_ink_recognition: f59b44fccf63c628f442540cd7433700025f2201
   GoogleDataTransport: aae35b7ea0c09004c3797d53c8c41f66f219d6a7

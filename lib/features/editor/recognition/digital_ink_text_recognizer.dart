@@ -61,6 +61,10 @@ abstract interface class DigitalInkTextRecognizer {
   });
 }
 
+abstract interface class DigitalInkModelPreloader {
+  Future<void> preloadModels({required List<String> languageTags});
+}
+
 class DigitalInkRecognitionUnavailableException implements Exception {
   const DigitalInkRecognitionUnavailableException([
     this.message = 'Handwriting recognition is unavailable.',
@@ -82,6 +86,8 @@ class DigitalInkRecognitionException implements Exception {
 }
 
 abstract interface class DigitalInkRecognitionBackend {
+  Future<bool> isModelDownloaded(String languageTag);
+
   Future<void> ensureModel(String languageTag);
 
   Future<List<DigitalInkRecognitionCandidate>> recognize({
@@ -102,13 +108,32 @@ class MlKitDigitalInkRecognitionBackend
 
   final mlkit.DigitalInkRecognizerModelManager _modelManager =
       mlkit.DigitalInkRecognizerModelManager();
+  final Map<String, Future<void>> _modelPreparations = {};
+
+  @override
+  Future<bool> isModelDownloaded(String languageTag) =>
+      _modelManager.isModelDownloaded(languageTag);
 
   @override
   Future<void> ensureModel(String languageTag) async {
+    final existing = _modelPreparations[languageTag];
+    if (existing != null) return existing;
+    final preparation = _prepareModel(languageTag);
+    _modelPreparations[languageTag] = preparation;
+    try {
+      await preparation;
+    } finally {
+      if (identical(_modelPreparations[languageTag], preparation)) {
+        _modelPreparations.remove(languageTag);
+      }
+    }
+  }
+
+  Future<void> _prepareModel(String languageTag) async {
     final stopwatch = Stopwatch()..start();
     _smartInkLog('model check started language=$languageTag');
     try {
-      final isDownloaded = await _modelManager.isModelDownloaded(languageTag);
+      final isDownloaded = await isModelDownloaded(languageTag);
       _smartInkLog(
         'model check finished language=$languageTag '
         'downloaded=$isDownloaded elapsedMs=${stopwatch.elapsedMilliseconds}',
@@ -254,13 +279,51 @@ class MlKitDigitalInkRecognitionBackend
   }
 }
 
-class MlKitDigitalInkTextRecognizer implements DigitalInkTextRecognizer {
-  MlKitDigitalInkTextRecognizer({DigitalInkRecognitionBackend? backend})
-    : backend = backend ?? MlKitDigitalInkRecognitionBackend();
+class MlKitDigitalInkTextRecognizer
+    implements DigitalInkTextRecognizer, DigitalInkModelPreloader {
+  MlKitDigitalInkTextRecognizer({
+    DigitalInkRecognitionBackend? backend,
+    this.modelStatusTimeout = const Duration(seconds: 2),
+    this.modelPreparationTimeout = const Duration(seconds: 10),
+    this.recognitionTimeout = const Duration(seconds: 10),
+  }) : backend = backend ?? MlKitDigitalInkRecognitionBackend();
 
   static const engineIdentifier = 'google-mlkit-digital-ink-v1';
 
   final DigitalInkRecognitionBackend backend;
+  final Duration modelStatusTimeout;
+  final Duration modelPreparationTimeout;
+  final Duration recognitionTimeout;
+
+  @override
+  Future<void> preloadModels({required List<String> languageTags}) async {
+    final languages = languageTags
+        .map((language) => language.trim())
+        .where((language) => language.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+    if (languages.isEmpty) return;
+
+    _smartInkLog('model preload started languages=$languages');
+    await Future.wait([
+      for (final languageTag in languages) _preloadModel(languageTag),
+    ]);
+    _smartInkLog('model preload finished languages=$languages');
+  }
+
+  Future<void> _preloadModel(String languageTag) async {
+    try {
+      await backend.ensureModel(languageTag);
+    } catch (error, stackTrace) {
+      // Preloading is best-effort. Recognition retries preparation and retains
+      // its manual-entry recovery when a model or network is unavailable.
+      _smartInkLogError(
+        'model preload failed language=$languageTag',
+        error,
+        stackTrace,
+      );
+    }
+  }
 
   @override
   Future<DigitalInkRecognitionResult> recognize({
@@ -303,16 +366,19 @@ class MlKitDigitalInkTextRecognizer implements DigitalInkTextRecognizer {
       );
     }
 
+    final orderedLanguages = await _prioritizeDownloadedModels(languages);
     Object? lastError;
-    for (final languageTag in languages) {
+    for (final languageTag in orderedLanguages) {
       _smartInkLog('language attempt started language=$languageTag');
       try {
-        await backend.ensureModel(languageTag);
-        final candidates = await backend.recognize(
-          languageTag: languageTag,
-          strokes: preparedInk.strokes,
-          writingArea: preparedInk.writingArea,
-        );
+        await backend.ensureModel(languageTag).timeout(modelPreparationTimeout);
+        final candidates = await backend
+            .recognize(
+              languageTag: languageTag,
+              strokes: preparedInk.strokes,
+              writingArea: preparedInk.writingArea,
+            )
+            .timeout(recognitionTimeout);
         // ML Kit already returns candidates in likelihood order. Preserve that
         // order because models without scores legitimately report 0 for every
         // candidate, and sorting equal scores could move the native best match.
@@ -376,6 +442,31 @@ class MlKitDigitalInkTextRecognizer implements DigitalInkTextRecognizer {
           ? lastError.message ?? 'ML Kit handwriting recognition failed.'
           : 'ML Kit handwriting recognition returned no text.',
     );
+  }
+
+  Future<List<String>> _prioritizeDownloadedModels(
+    List<String> languages,
+  ) async {
+    final downloaded = <String>[];
+    final pending = <String>[];
+    for (final languageTag in languages) {
+      try {
+        final isDownloaded = await backend
+            .isModelDownloaded(languageTag)
+            .timeout(modelStatusTimeout);
+        (isDownloaded ? downloaded : pending).add(languageTag);
+      } catch (error, stackTrace) {
+        _smartInkLogError(
+          'model status unavailable language=$languageTag',
+          error,
+          stackTrace,
+        );
+        pending.add(languageTag);
+      }
+    }
+    final ordered = [...downloaded, ...pending];
+    _smartInkLog('language order after model check=$ordered');
+    return ordered;
   }
 }
 

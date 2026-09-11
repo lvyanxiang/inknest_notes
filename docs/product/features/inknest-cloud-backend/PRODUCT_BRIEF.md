@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Size: Large
-- Updated: 2026-08-31
+- Updated: 2026-09-11
 - Roadmap link: `docs/development/ROADMAP.md#milestone-8-sync-and-backup-paused`
 
 ## Problem
@@ -365,6 +365,13 @@ larger document.
   server three-way checks only changed metadata fields and shares one page
   Revision with content; unknown coordinate-space values are compared and
   preserved as JSON, never rewritten.
+- Every successful metadata-bearing commit returns the server's authoritative
+  Revision, Content Hash, and final merged metadata. Flutter persists that
+  tuple before clearing the frozen batch and rebases any newer queued edit on
+  the same tuple. A missing or mismatched result leaves the exact batch
+  retryable instead of advancing a partial baseline. When the pull Cursor later
+  observes that same Revision and Content Hash, Flutter still reapplies the
+  authoritative snapshot so server-side metadata merges reach local storage.
 - A metadata conflict returns the affected resource and fields. Flutter saves
   one account/device-scoped reconciliation item before reporting attention.
   Retrying does not discard the frozen local operation or create duplicate
@@ -399,6 +406,9 @@ larger document.
   requiring another sign-in or reopening the notebook.
 - [x] Page template, rotation, dimensions, and coordinate-space metadata
   converge across devices without being embedded in page content.
+- [x] Consecutive saves from one device advance the page/canvas/notebook/folder
+  Revision and authoritative metadata baseline after every successful commit;
+  they never create a false content conflict from the device's own prior save.
 - [x] Concurrent folder/notebook/page/canvas metadata changes create a durable
   warning that can apply either the local or cloud structure without silently
   overwriting the other version.

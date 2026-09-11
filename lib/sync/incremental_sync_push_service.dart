@@ -111,12 +111,34 @@ class IncrementalSyncPushService {
         for (final result in response.results) {
           final operation = operationsById[result.operationId]!;
           if (operation.operation == SyncOperationKind.upsert &&
-              operation.metadata == null) {
+              const {'applied', 'unchanged'}.contains(result.outcome)) {
+            final resourceType = SyncResourceType.fromApiValue(
+              result.resourceType,
+            );
             await resourceMap.updateRemote(
-              resourceType: SyncResourceType.fromApiValue(result.resourceType),
+              resourceType: resourceType,
               remoteResourceId: result.resourceId,
               revision: result.revision,
               contentHash: result.contentHash,
+              localKeyIfMissing:
+                  resourceType == SyncResourceType.folder &&
+                      operation.baseRevision == 0 &&
+                      operation.baseMetadata == null
+                  ? folderSyncLocalKey(operation.resourceId)
+                  : null,
+              folderMetadata: resourceType == SyncResourceType.folder
+                  ? result.metadata
+                  : null,
+              notebookMetadata: resourceType == SyncResourceType.notebook
+                  ? result.metadata
+                  : null,
+              pageMetadata: resourceType == SyncResourceType.page
+                  ? result.metadata
+                  : null,
+              infiniteCanvasMetadata:
+                  resourceType == SyncResourceType.infiniteCanvas
+                  ? result.metadata
+                  : null,
             );
           }
         }
@@ -127,6 +149,7 @@ class IncrementalSyncPushService {
               SyncOperationCommitResult(
                 operationId: result.operationId,
                 revision: result.revision,
+                metadata: result.metadata,
               ),
           ],
         );
@@ -371,7 +394,10 @@ class IncrementalSyncPushService {
     SyncCommitBatch batch,
     SyncContentCommitResult result,
   ) {
-    final expected = {for (final item in batch.operations) item.operationId};
+    final operationsById = {
+      for (final item in batch.operations) item.operationId: item,
+    };
+    final expected = operationsById.keys.toSet();
     final actual = {for (final item in result.results) item.operationId};
     if (result.idempotencyKey != batch.idempotencyKey ||
         result.results.length != batch.operations.length ||
@@ -381,6 +407,42 @@ class IncrementalSyncPushService {
       throw const FormatException(
         'Incremental commit response does not match the in-flight batch.',
       );
+    }
+    for (final item in result.results) {
+      final operation = operationsById[item.operationId]!;
+      if (item.resourceType != operation.resourceType.apiValue ||
+          item.resourceId != operation.resourceId) {
+        throw const FormatException(
+          'Incremental commit result identifies the wrong resource.',
+        );
+      }
+      if (operation.operation == SyncOperationKind.delete) {
+        if (!const {'deleted', 'delete_conflict'}.contains(item.outcome) ||
+            item.metadata != null) {
+          throw const FormatException(
+            'Incremental delete result has an incompatible outcome.',
+          );
+        }
+        continue;
+      }
+      final applied = const {'applied', 'unchanged'}.contains(item.outcome);
+      if (!applied &&
+          !const {'conflict', 'delete_conflict'}.contains(item.outcome)) {
+        throw const FormatException(
+          'Incremental upsert result has an incompatible outcome.',
+        );
+      }
+      if (applied &&
+          ((operation.metadata == null) != (item.metadata == null))) {
+        throw const FormatException(
+          'Incremental commit result is missing authoritative metadata.',
+        );
+      }
+      if (!applied && item.metadata != null) {
+        throw const FormatException(
+          'A preserved conflict must not advance metadata baselines.',
+        );
+      }
     }
   }
 }

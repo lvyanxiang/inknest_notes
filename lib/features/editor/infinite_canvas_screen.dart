@@ -509,6 +509,10 @@ class _InfiniteCanvasScreenState extends State<InfiniteCanvasScreen> {
     final document = _document;
     if (document == null) return;
     final ids = LassoGeometry.selectStrokeIds(document.strokes, polygon);
+    _selectStrokeIds(ids);
+  }
+
+  void _selectStrokeIds(Set<String> ids) {
     setState(() {
       _selectedStrokeIds
         ..clear()
@@ -666,6 +670,7 @@ class _InfiniteCanvasScreenState extends State<InfiniteCanvasScreen> {
                   onImageDeleted: _deleteImage,
                   onShapeComplete: _addShape,
                   onLassoSelectionComplete: _selectStrokes,
+                  onLassoTapSelectionComplete: _selectStrokeIds,
                   onSelectedStrokesPreviewChanged: (strokes) =>
                       _replaceSelectedStrokes(strokes, commit: false),
                   onSelectedStrokesChanged: (strokes) =>
@@ -982,6 +987,7 @@ class _InfiniteCanvasViewport extends StatefulWidget {
     required this.onImageDeleted,
     required this.onShapeComplete,
     required this.onLassoSelectionComplete,
+    required this.onLassoTapSelectionComplete,
     required this.onSelectedStrokesPreviewChanged,
     required this.onSelectedStrokesChanged,
     required this.onClearLassoSelection,
@@ -1012,6 +1018,7 @@ class _InfiniteCanvasViewport extends StatefulWidget {
   final ValueChanged<String> onImageDeleted;
   final ValueChanged<NoteShape> onShapeComplete;
   final ValueChanged<List<Offset>> onLassoSelectionComplete;
+  final ValueChanged<Set<String>> onLassoTapSelectionComplete;
   final ValueChanged<List<Stroke>> onSelectedStrokesPreviewChanged;
   final ValueChanged<List<Stroke>> onSelectedStrokesChanged;
   final VoidCallback onClearLassoSelection;
@@ -1630,6 +1637,7 @@ class _InfiniteCanvasViewportState extends State<_InfiniteCanvasViewport> {
                           for (final point in polygon)
                             _screenToWorld(point, size),
                         ]),
+                    onTapSelectionComplete: widget.onLassoTapSelectionComplete,
                     onStrokesPreviewChanged: (strokes) =>
                         widget.onSelectedStrokesPreviewChanged([
                           for (final stroke in strokes)

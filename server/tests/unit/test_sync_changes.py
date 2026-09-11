@@ -384,6 +384,11 @@ async def test_sync_commit_updates_notebook_metadata_and_rejects_concurrent_stru
 
     assert committed.status_code == 200
     assert committed.json()["results"][0]["revision"] == 1
+    assert committed.json()["results"][0]["metadata"] == {
+        "title": "After",
+        "isArchived": True,
+        "folderId": "metadata-folder",
+    }
     assert replayed.json() == {**committed.json(), "replayed": True}
     assert conflict.status_code == 409
     assert conflict.json()["error"]["code"] == "sync_notebook_metadata_conflict"
@@ -482,6 +487,11 @@ async def test_sync_commit_updates_page_metadata_and_rejects_stale_fields(
 
     assert updated.status_code == 200
     assert updated.json()["results"][0]["revision"] == 2
+    assert updated.json()["results"][0]["metadata"] == {
+        **base_metadata,
+        "rotationQuarterTurns": 1,
+        "template": "grid",
+    }
     assert stale.status_code == 409
     assert stale.json()["error"]["code"] == "sync_page_metadata_conflict"
     assert stale.json()["error"]["details"]["fields"] == ["template"]
@@ -613,6 +623,10 @@ async def test_sync_commit_reorders_pages_atomically_and_rejects_stale_order(
 
     assert reordered.status_code == 200
     assert reordered.json()["results"][0]["revision"] == 2
+    assert reordered.json()["results"][0]["metadata"] == {
+        **base_metadata,
+        "pageOrder": [page_ids[1], page_ids[0], page_ids[2]],
+    }
     assert stale.status_code == 409
     assert stale.json()["error"]["code"] == "sync_notebook_metadata_conflict"
     assert stale.json()["error"]["details"]["fields"] == ["pageOrder"]
@@ -683,6 +697,26 @@ async def test_sync_commit_updates_canvas_background_and_rejects_stale_baseline(
             ],
         },
     )
+    observed_remote = await client.post(
+        "/api/v1/sync/commit",
+        headers=headers,
+        json={
+            "deviceId": str(device_id),
+            "idempotencyKey": "canvas-background-observe-remote",
+            "baseCursor": before.json()["nextCursor"],
+            "operations": [
+                {
+                    "operationId": "canvas-background-observe-remote",
+                    "operation": "upsert",
+                    "resourceType": "infinite_canvas",
+                    "resourceId": canvas_id,
+                    "baseRevision": 1,
+                    "baseMetadata": {"background": "blank"},
+                    "metadata": {"background": "blank"},
+                }
+            ],
+        },
+    )
     stale = await client.post(
         "/api/v1/sync/commit",
         headers=headers,
@@ -725,9 +759,14 @@ async def test_sync_commit_updates_canvas_background_and_rejects_stale_baseline(
         "contentHash": initial.content_hash,
         "changed": True,
         "outcome": "applied",
+        "metadata": {"background": "grid"},
         "conflict": None,
         "tombstone": None,
     }
+    assert observed_remote.status_code == 200
+    assert observed_remote.json()["results"][0]["outcome"] == "unchanged"
+    assert observed_remote.json()["results"][0]["revision"] == 2
+    assert observed_remote.json()["results"][0]["metadata"] == {"background": "grid"}
     assert stale.status_code == 409
     assert stale.json()["error"]["code"] == "sync_infinite_canvas_metadata_conflict"
     assert stale.json()["error"]["details"]["fields"] == ["background"]
@@ -810,9 +849,11 @@ async def test_sync_commit_creates_and_renames_folder_with_conflict_guard(
 
     assert created.status_code == 200
     assert created.json()["results"][0]["revision"] == 1
+    assert created.json()["results"][0]["metadata"] == {"name": "Original"}
     assert replayed.json() == {**created.json(), "replayed": True}
     assert renamed.status_code == 200
     assert renamed.json()["results"][0]["revision"] == 2
+    assert renamed.json()["results"][0]["metadata"] == {"name": "Renamed"}
     assert conflict.status_code == 409
     assert conflict.json()["error"]["code"] == "sync_folder_metadata_conflict"
     assert stored is not None
@@ -904,6 +945,7 @@ async def test_sync_commit_deletes_folder_and_moves_notebooks_to_root(
         "contentHash": created.json()["results"][0]["contentHash"],
         "changed": True,
         "outcome": "deleted",
+        "metadata": None,
         "conflict": None,
         "tombstone": None,
     }

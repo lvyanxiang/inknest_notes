@@ -10,6 +10,7 @@ class LassoSelectionLayer extends StatefulWidget {
     required this.pageStrokes,
     required this.selectedStrokes,
     required this.onSelectionComplete,
+    required this.onTapSelectionComplete,
     required this.onStrokesPreviewChanged,
     required this.onStrokesChanged,
     required this.onClearSelection,
@@ -18,6 +19,7 @@ class LassoSelectionLayer extends StatefulWidget {
   final List<Stroke> pageStrokes;
   final List<Stroke> selectedStrokes;
   final ValueChanged<List<Offset>> onSelectionComplete;
+  final ValueChanged<Set<String>> onTapSelectionComplete;
   final ValueChanged<List<Stroke>> onStrokesPreviewChanged;
   final ValueChanged<List<Stroke>> onStrokesChanged;
   final VoidCallback onClearSelection;
@@ -61,6 +63,8 @@ class _LassoSelectionLayerState extends State<LassoSelectionLayer> {
                 child: GestureDetector(
                   key: const ValueKey('lasso-drawing-region'),
                   behavior: HitTestBehavior.translucent,
+                  onTapUp: (details) =>
+                      _selectConnectedInkAt(details.localPosition),
                   onPanStart: _startLasso,
                   onPanUpdate: _updateLasso,
                   onPanEnd: (_) => _finishLasso(),
@@ -171,28 +175,18 @@ class _LassoSelectionLayerState extends State<LassoSelectionLayer> {
         dragBounds.width < _minimumLassoExtent &&
         dragBounds.height < _minimumLassoExtent;
     if (isTap) {
-      final strokeId = LassoGeometry.hitTestNearestStroke(
-        widget.pageStrokes,
-        points.first,
-      );
-      if (strokeId == null) {
-        return;
-      }
-      final stroke = widget.pageStrokes.firstWhere(
-        (candidate) => candidate.id == strokeId,
-      );
-      final strokeBounds = LassoGeometry.boundsForStroke(stroke);
-      if (strokeBounds == null) {
-        return;
-      }
-      widget.onSelectionComplete(
-        LassoGeometry.rectPolygon(strokeBounds.inflate(4)),
-      );
+      _selectConnectedInkAt(points.first);
       return;
     }
 
     widget.onSelectionComplete(
       LassoGeometry.rectPolygon(dragBounds.inflate(_marqueePadding)),
+    );
+  }
+
+  void _selectConnectedInkAt(Offset point) {
+    widget.onTapSelectionComplete(
+      LassoGeometry.selectConnectedStrokeIdsForTap(widget.pageStrokes, point),
     );
   }
 

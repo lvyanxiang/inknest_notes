@@ -5,13 +5,34 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:inknest_notes/app/theme.dart';
 import 'package:inknest_notes/features/editor/canvas/drawing_canvas.dart';
 import 'package:inknest_notes/features/editor/editor_screen.dart';
+import 'package:inknest_notes/features/editor/recognition/digital_ink_text_recognizer.dart';
 import 'package:inknest_notes/features/editor/tools/editor_toolbar.dart';
+import 'package:inknest_notes/models/stroke.dart';
 import 'package:inknest_notes/models/notebook.dart';
 import 'package:inknest_notes/models/note_page_size.dart';
 import 'package:inknest_notes/storage/in_memory_notebook_repository.dart';
 
 void main() {
   group('editor workspace', () {
+    testWidgets('preloads Smart Ink models when the editor opens', (
+      tester,
+    ) async {
+      tester.binding.platformDispatcher.localeTestValue = const Locale(
+        'zh',
+        'CN',
+      );
+      addTearDown(tester.binding.platformDispatcher.clearLocaleTestValue);
+      final recognizer = _PreloadingDigitalInkRecognizer();
+
+      await _createFixture(
+        tester,
+        const Size(834, 1194),
+        digitalInkTextRecognizer: recognizer,
+      );
+
+      expect(recognizer.preloadedLanguages, ['zh-Hani-CN', 'en-US']);
+    });
+
     testWidgets(
       'keeps the document surface at canonical size across viewport rotation',
       (tester) async {
@@ -573,8 +594,9 @@ void main() {
 
 Future<_EditorFixture> _createFixture(
   WidgetTester tester,
-  Size surfaceSize,
-) async {
+  Size surfaceSize, {
+  DigitalInkTextRecognizer? digitalInkTextRecognizer,
+}) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = surfaceSize;
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -586,12 +608,35 @@ Future<_EditorFixture> _createFixture(
   await tester.pumpWidget(
     MaterialApp(
       theme: buildInkNestTheme(),
-      home: EditorScreen(notebook: notebook, notebookRepository: repository),
+      home: EditorScreen(
+        notebook: notebook,
+        notebookRepository: repository,
+        digitalInkTextRecognizer: digitalInkTextRecognizer,
+      ),
     ),
   );
   await tester.pumpAndSettle();
 
   return _EditorFixture(repository: repository, notebook: notebook);
+}
+
+class _PreloadingDigitalInkRecognizer
+    implements DigitalInkTextRecognizer, DigitalInkModelPreloader {
+  final List<String> preloadedLanguages = [];
+
+  @override
+  Future<void> preloadModels({required List<String> languageTags}) async {
+    preloadedLanguages.addAll(languageTags);
+  }
+
+  @override
+  Future<DigitalInkRecognitionResult> recognize({
+    required List<Stroke> strokes,
+    required Size writingArea,
+    required List<String> languageTags,
+  }) {
+    throw UnimplementedError();
+  }
 }
 
 class _EditorFixture {

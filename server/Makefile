@@ -1,4 +1,4 @@
-.PHONY: run migrate check-schema
+.PHONY: run migrate check-schema purge-account
 
 run: migrate
 	uv run uvicorn inknest_server.main:app --reload --host 0.0.0.0 --port 8000
@@ -11,3 +11,6 @@ check-schema:
 	uv run alembic current
 	uv run alembic heads
 	uv run alembic check
+
+purge-account:
+	uv run python scripts/purge_account.py

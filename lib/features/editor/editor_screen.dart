@@ -109,6 +109,7 @@ class _EditorScreenState extends State<EditorScreen> {
   NotePage? _eraseGestureBaseline;
   bool _eraseGestureChanged = false;
   List<Stroke>? _pendingLassoStrokeBaseline;
+  final Set<String> _preloadedDigitalInkLanguages = {};
 
   List<NotePage> get _undoStack =>
       _pageUndoHistoryByPageId.putIfAbsent(_currentPageId, () => <NotePage>[]);
@@ -126,6 +127,28 @@ class _EditorScreenState extends State<EditorScreen> {
     _currentPageId = _notebook.pageIds.first;
     _loadPage();
     unawaited(_loadPageThumbnails());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _preloadDigitalInkModels();
+  }
+
+  void _preloadDigitalInkModels() {
+    final recognizer = _digitalInkTextRecognizer;
+    final preloader = recognizer is DigitalInkModelPreloader
+        ? recognizer as DigitalInkModelPreloader
+        : null;
+    if (preloader == null) return;
+
+    final deviceLocale = View.of(context).platformDispatcher.locale;
+    final pendingLanguages = digitalInkLanguageTagsForLocale(
+      deviceLocale,
+    ).where(_preloadedDigitalInkLanguages.add).toList(growable: false);
+    if (pendingLanguages.isEmpty) return;
+
+    unawaited(preloader.preloadModels(languageTags: pendingLanguages));
   }
 
   @override
@@ -1359,6 +1382,10 @@ class _EditorScreenState extends State<EditorScreen> {
       page.strokes,
       polygon,
     );
+    _selectStrokeIds(selectedStrokeIds);
+  }
+
+  void _selectStrokeIds(Set<String> selectedStrokeIds) {
     _pendingLassoStrokeBaseline = null;
     setState(() {
       _selectedStrokeIds
@@ -2675,6 +2702,7 @@ class _EditorScreenState extends State<EditorScreen> {
                   pageStrokes: page.strokes,
                   selectedStrokes: _selectedStrokesForPage(page),
                   onSelectionComplete: _selectStrokesWithLasso,
+                  onTapSelectionComplete: _selectStrokeIds,
                   onStrokesPreviewChanged: _previewSelectedStrokes,
                   onStrokesChanged: _commitSelectedStrokes,
                   onClearSelection: _clearLassoSelection,

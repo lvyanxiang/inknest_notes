@@ -484,13 +484,14 @@ class FileSyncStateStore {
           'The successful response does not match the in-flight batch.',
         );
       }
-      final revisions = {
-        for (final result in results) result.operationId: result.revision,
+      final resultsByOperation = {
+        for (final result in results) result.operationId: result,
       };
       if (results.length != batch.operations.length ||
-          revisions.length != batch.operations.length ||
+          resultsByOperation.length != batch.operations.length ||
           batch.operations.any(
-            (operation) => !revisions.containsKey(operation.operationId),
+            (operation) =>
+                !resultsByOperation.containsKey(operation.operationId),
           )) {
         throw SyncCommitStateException(
           'Every in-flight operation must have exactly one successful result.',
@@ -509,9 +510,12 @@ class FileSyncStateStore {
         if (pendingIndex == -1) {
           continue;
         }
-        state.pendingOperations[pendingIndex] = state
-            .pendingOperations[pendingIndex]
-            .copyWith(baseRevision: revisions[committed.operationId]!);
+        final result = resultsByOperation[committed.operationId]!;
+        final pending = state.pendingOperations[pendingIndex];
+        state.pendingOperations[pendingIndex] = pending.copyWith(
+          baseRevision: result.revision,
+          baseMetadata: pending.metadata == null ? null : result.metadata,
+        );
       }
       state.inFlightBatch = null;
     });
