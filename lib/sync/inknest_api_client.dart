@@ -535,7 +535,7 @@ class InkNestApiClient
       final session = InkNestAuthSession.fromJson(
         _decodeObject(response, expectedStatus: 200),
       );
-      return _storeSession(session);
+      return await _storeSession(session);
     } on DioException catch (error) {
       final exception = _exceptionFromDio(error);
       if (exception.statusCode == 401 || exception.statusCode == 403) {

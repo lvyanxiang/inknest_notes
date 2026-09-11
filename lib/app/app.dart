@@ -1,9 +1,11 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:inknest_notes/app/theme.dart';
 import 'package:inknest_notes/auth/auth_controller.dart';
 import 'package:inknest_notes/auth/device_installation_id_store.dart';
+import 'package:inknest_notes/development/developer_data_reset.dart';
 import 'package:inknest_notes/features/library/library_screen.dart';
 import 'package:inknest_notes/storage/file_notebook_repository.dart';
 import 'package:inknest_notes/storage/notebook_repository.dart';
@@ -19,11 +21,13 @@ class InkNestApp extends StatefulWidget {
     this.notebookRepository,
     this.authController,
     this.firstSignInSyncService,
+    this.developerDataResetService,
   });
 
   final NotebookRepository? notebookRepository;
   final AuthController? authController;
   final FirstSignInSyncService? firstSignInSyncService;
+  final DeveloperDataResetService? developerDataResetService;
 
   @override
   State<InkNestApp> createState() => _InkNestAppState();
@@ -74,6 +78,7 @@ class _InkNestAppState extends State<InkNestApp> {
       return _AppResources(
         repository: injectedRepository,
         firstSignInSyncService: widget.firstSignInSyncService,
+        developerDataResetService: widget.developerDataResetService,
       );
     }
 
@@ -100,6 +105,11 @@ class _InkNestAppState extends State<InkNestApp> {
     return _AppResources(
       repository: repository,
       syncRequests: syncTrigger.requests,
+      developerDataResetService:
+          widget.developerDataResetService ??
+          (kDebugMode
+              ? FileDeveloperDataResetService(rootDirectory: documentsDirectory)
+              : null),
       firstSignInSyncService:
           widget.firstSignInSyncService ??
           (apiClient == null
@@ -129,6 +139,8 @@ class _InkNestAppState extends State<InkNestApp> {
               firstSignInSyncService:
                   snapshot.requireData.firstSignInSyncService,
               syncRequests: snapshot.requireData.syncRequests,
+              developerDataResetService:
+                  snapshot.requireData.developerDataResetService,
             );
           }
 
@@ -146,9 +158,11 @@ class _AppResources {
     required this.repository,
     required this.firstSignInSyncService,
     this.syncRequests,
+    this.developerDataResetService,
   });
 
   final NotebookRepository repository;
   final FirstSignInSyncService? firstSignInSyncService;
   final Stream<void>? syncRequests;
+  final DeveloperDataResetService? developerDataResetService;
 }

@@ -4,6 +4,7 @@ import 'package:inknest_notes/app/app.dart';
 import 'package:inknest_notes/auth/account_agreements.dart';
 import 'package:inknest_notes/auth/auth_controller.dart';
 import 'package:inknest_notes/auth/auth_service.dart';
+import 'package:inknest_notes/development/developer_data_reset.dart';
 import 'package:inknest_notes/storage/in_memory_notebook_repository.dart';
 import 'package:inknest_notes/sync/inknest_api_client.dart';
 import 'package:inknest_notes/sync/inknest_api_models.dart';
@@ -358,6 +359,84 @@ void main() {
   });
 
   testWidgets(
+    'debug developer reset signs out and clears the selected local scope',
+    (tester) async {
+      final authService = _FakeAuthService(restoredSession: _session());
+      final controller = AuthController(
+        service: authService,
+        deviceName: 'Test iPad',
+        platform: 'ios',
+      );
+      final resetService = _FakeDeveloperDataResetService();
+      await tester.pumpWidget(
+        InkNestApp(
+          notebookRepository: InMemoryNotebookRepository(),
+          authController: controller,
+          developerDataResetService: resetService,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Account: user@example.com'));
+      await tester.pumpAndSettle();
+      final resetTile = find.byKey(
+        const ValueKey('developer-reset-notebooksAndSync'),
+      );
+      await tester.ensureVisible(resetTile);
+      await tester.tap(resetTile);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Clear all local test data?'), findsOneWidget);
+      expect(find.textContaining('Cloud data and this device'), findsOneWidget);
+      await tester.tap(
+        find.byKey(const ValueKey('developer-reset-confirm-notebooksAndSync')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(resetService.lastScope, DeveloperDataResetScope.notebooksAndSync);
+      expect(authService.logoutCount, 1);
+      expect(find.text('Sign in to InkNest'), findsOneWidget);
+      expect(
+        find.text(
+          'Local notebooks and sync state cleared. Cloud data was not changed.',
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'developer reset confirmation can be cancelled without changing data',
+    (tester) async {
+      final controller = AuthController(
+        service: _FakeAuthService(),
+        deviceName: 'Test iPad',
+        platform: 'ios',
+      );
+      final resetService = _FakeDeveloperDataResetService();
+      await tester.pumpWidget(
+        InkNestApp(
+          notebookRepository: InMemoryNotebookRepository(),
+          authController: controller,
+          developerDataResetService: resetService,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Sign in'));
+      await tester.pumpAndSettle();
+      final resetTile = find.byKey(const ValueKey('developer-reset-notebooks'));
+      await tester.ensureVisible(resetTile);
+      await tester.tap(resetTile);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(resetService.lastScope, isNull);
+    },
+  );
+
+  testWidgets(
     'account form remains accessible at compact width and large text',
     (tester) async {
       tester.view.physicalSize = const Size(500, 900);
@@ -377,6 +456,7 @@ void main() {
         InkNestApp(
           notebookRepository: InMemoryNotebookRepository(),
           authController: controller,
+          developerDataResetService: _FakeDeveloperDataResetService(),
         ),
       );
       await tester.pumpAndSettle();
@@ -394,9 +474,22 @@ void main() {
       await tester.ensureVisible(submit);
       await tester.pumpAndSettle();
       expect(tester.getSize(submit).height, greaterThanOrEqualTo(44));
+      final developerTools = find.text('Developer tools · Debug only');
+      await tester.ensureVisible(developerTools);
+      await tester.pumpAndSettle();
+      expect(developerTools, findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
+}
+
+class _FakeDeveloperDataResetService implements DeveloperDataResetService {
+  DeveloperDataResetScope? lastScope;
+
+  @override
+  Future<void> reset(DeveloperDataResetScope scope) async {
+    lastScope = scope;
+  }
 }
 
 class _FakeAuthService implements AuthService {

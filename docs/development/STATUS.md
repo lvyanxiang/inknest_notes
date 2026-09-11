@@ -9,10 +9,10 @@
   choices: public HTTPS Privacy/Terms/deletion pages, final operator and contact
   details, launch territories and retention/processor disclosures; then select
   an email provider before implementing verified email and password recovery.
-- Last completed: Incremental sync now advances Revision, Content Hash, and
-  authoritative metadata together after a successful commit, preventing a
-  device's original handwriting save and subsequent Beautify save from
-  creating a false self-conflict.
+- Last completed: Debug-only Account developer tools can now clear local
+  notebooks, local sync state, or both without reinstalling the App. The reset
+  waits for active sync, signs out first, never emits normal cloud-delete
+  mutations, preserves the installation identity, and refreshes the library.
 
 ### Release readiness
 
@@ -404,6 +404,9 @@
   its source JSON.
 
 ## Verification
+
+- 2026-09-11: Developer local-data reset — all 339 Flutter tests passed and
+  `flutter analyze` reported no issues.
 
 - Sync baseline consistency passes all 334 Flutter tests and `flutter analyze`.
   Backend Ruff format/check, mypy, 72 non-integration tests, and all 16 real

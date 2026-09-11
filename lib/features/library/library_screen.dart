@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:inknest_notes/auth/auth_controller.dart';
+import 'package:inknest_notes/development/developer_data_reset.dart';
 import 'package:inknest_notes/features/account/account_screen.dart';
 import 'package:inknest_notes/features/editor/editor_screen.dart';
 import 'package:inknest_notes/features/editor/infinite_canvas_screen.dart';
@@ -55,6 +56,7 @@ class LibraryScreen extends StatefulWidget {
     required this.authController,
     this.firstSignInSyncService,
     this.syncRequests,
+    this.developerDataResetService,
     this.syncDebounceDuration = const Duration(seconds: 2),
     this.foregroundSyncInterval = const Duration(seconds: 30),
   });
@@ -63,6 +65,7 @@ class LibraryScreen extends StatefulWidget {
   final AuthController authController;
   final FirstSignInSyncService? firstSignInSyncService;
   final Stream<void>? syncRequests;
+  final DeveloperDataResetService? developerDataResetService;
   final Duration syncDebounceDuration;
   final Duration foregroundSyncInterval;
 
@@ -422,6 +425,8 @@ class _LibraryScreenState extends State<LibraryScreen>
   bool _syncCheckScheduled = false;
   bool _syncRequestedWhileRunning = false;
   bool _pullRequestedWhileRunning = false;
+  bool _developerDataResetInProgress = false;
+  Completer<void>? _syncIdleCompleter;
   StreamSubscription<void>? _syncRequestSubscription;
   Timer? _syncDebounceTimer;
   Timer? _foregroundSyncTimer;
@@ -468,7 +473,10 @@ class _LibraryScreenState extends State<LibraryScreen>
   }
 
   void _scheduleAutomaticSync() {
-    if (!widget.authController.agreementsCurrent) return;
+    if (_developerDataResetInProgress ||
+        !widget.authController.agreementsCurrent) {
+      return;
+    }
     _syncDebounceTimer?.cancel();
     _syncDebounceTimer = Timer(
       widget.syncDebounceDuration,
@@ -477,7 +485,9 @@ class _LibraryScreenState extends State<LibraryScreen>
   }
 
   void _requestAutomaticSync() {
-    if (!mounted || !widget.authController.agreementsCurrent) {
+    if (!mounted ||
+        _developerDataResetInProgress ||
+        !widget.authController.agreementsCurrent) {
       return;
     }
     unawaited(
@@ -527,6 +537,9 @@ class _LibraryScreenState extends State<LibraryScreen>
     bool force = false,
     bool pullRemote = true,
   }) async {
+    if (_developerDataResetInProgress) {
+      return;
+    }
     if (_syncStatus.phase == _LibrarySyncPhase.syncing) {
       if (force) {
         _syncRequestedWhileRunning = true;
@@ -534,16 +547,28 @@ class _LibraryScreenState extends State<LibraryScreen>
       }
       return;
     }
-    var shouldPullRemote = pullRemote;
-    do {
-      _syncRequestedWhileRunning = false;
-      _pullRequestedWhileRunning = false;
-      await _runCloudSyncCycle(force: force, pullRemote: shouldPullRemote);
-      force = true;
-      shouldPullRemote = _pullRequestedWhileRunning;
-    } while (mounted &&
-        _syncRequestedWhileRunning &&
-        widget.authController.agreementsCurrent);
+    final syncIdleCompleter = Completer<void>();
+    _syncIdleCompleter = syncIdleCompleter;
+    try {
+      var shouldPullRemote = pullRemote;
+      do {
+        _syncRequestedWhileRunning = false;
+        _pullRequestedWhileRunning = false;
+        await _runCloudSyncCycle(force: force, pullRemote: shouldPullRemote);
+        force = true;
+        shouldPullRemote = _pullRequestedWhileRunning;
+      } while (mounted &&
+          !_developerDataResetInProgress &&
+          _syncRequestedWhileRunning &&
+          widget.authController.agreementsCurrent);
+    } finally {
+      if (identical(_syncIdleCompleter, syncIdleCompleter)) {
+        _syncIdleCompleter = null;
+      }
+      if (!syncIdleCompleter.isCompleted) {
+        syncIdleCompleter.complete();
+      }
+    }
   }
 
   Future<void> _runCloudSyncCycle({
@@ -1953,11 +1978,51 @@ class _LibraryScreenState extends State<LibraryScreen>
   Future<void> _openAccount() async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
-        builder: (_) => AccountScreen(controller: widget.authController),
+        builder: (_) => AccountScreen(
+          controller: widget.authController,
+          onDeveloperDataReset: widget.developerDataResetService == null
+              ? null
+              : _resetDeveloperData,
+        ),
       ),
     );
     if (!mounted) return;
     _handleAuthChanged();
+  }
+
+  Future<void> _resetDeveloperData(DeveloperDataResetScope scope) async {
+    final service = widget.developerDataResetService;
+    if (service == null || _developerDataResetInProgress) {
+      return;
+    }
+
+    _developerDataResetInProgress = true;
+    _syncDebounceTimer?.cancel();
+    _syncRequestedWhileRunning = false;
+    _pullRequestedWhileRunning = false;
+    try {
+      await _syncIdleCompleter?.future;
+      if (widget.authController.isSignedIn) {
+        await widget.authController.logout();
+      }
+      await service.reset(scope);
+      if (!mounted) return;
+      setState(() {
+        _checkedSessionKey = null;
+        _pendingConflicts = const [];
+        _structuralConflicts = const [];
+        _activeTombstones = const [];
+        _syncStatus = _LibrarySyncStatus.idle;
+        if (scope != DeveloperDataResetScope.syncState) {
+          _showArchived = false;
+          _currentFolderId = null;
+          _currentFolder = null;
+        }
+      });
+      await _loadNotebooks();
+    } finally {
+      _developerDataResetInProgress = false;
+    }
   }
 
   @override

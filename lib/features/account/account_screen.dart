@@ -1,15 +1,23 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:inknest_notes/auth/account_agreements.dart';
 import 'package:inknest_notes/auth/auth_controller.dart';
+import 'package:inknest_notes/development/developer_data_reset.dart';
 import 'package:inknest_notes/features/account/account_legal_screen.dart';
 import 'package:inknest_notes/features/account/account_security_dialogs.dart';
 
 enum _AuthMode { signIn, register }
 
 class AccountScreen extends StatelessWidget {
-  const AccountScreen({super.key, required this.controller});
+  const AccountScreen({
+    super.key,
+    required this.controller,
+    this.onDeveloperDataReset,
+  });
 
   final AuthController controller;
+  final Future<void> Function(DeveloperDataResetScope scope)?
+  onDeveloperDataReset;
 
   @override
   Widget build(BuildContext context) {
@@ -38,7 +46,22 @@ class AccountScreen extends StatelessWidget {
                         clipBehavior: Clip.antiAlias,
                         child: Padding(
                           padding: EdgeInsets.all(compact ? 18 : 32),
-                          child: _AccountContent(controller: controller),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _AccountContent(controller: controller),
+                              if (kDebugMode &&
+                                  onDeveloperDataReset != null) ...[
+                                const SizedBox(height: 28),
+                                const Divider(),
+                                const SizedBox(height: 12),
+                                _DeveloperDataTools(
+                                  controller: controller,
+                                  onReset: onDeveloperDataReset!,
+                                ),
+                              ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -51,6 +74,203 @@ class AccountScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+class _DeveloperDataTools extends StatefulWidget {
+  const _DeveloperDataTools({required this.controller, required this.onReset});
+
+  final AuthController controller;
+  final Future<void> Function(DeveloperDataResetScope scope) onReset;
+
+  @override
+  State<_DeveloperDataTools> createState() => _DeveloperDataToolsState();
+}
+
+class _DeveloperDataToolsState extends State<_DeveloperDataTools> {
+  DeveloperDataResetScope? _busyScope;
+  String? _errorMessage;
+
+  Future<void> _confirmAndReset(DeveloperDataResetScope scope) async {
+    if (_busyScope != null) return;
+    final details = _developerResetDetails(scope);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        final colorScheme = Theme.of(dialogContext).colorScheme;
+        return AlertDialog(
+          title: Text(details.confirmationTitle),
+          content: Text(
+            '${details.confirmationBody}\n\n'
+            '${widget.controller.isSignedIn ? 'The current account will be signed out first. ' : ''}'
+            'Cloud data and this device\'s installation identity will remain.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              key: ValueKey('developer-reset-confirm-${scope.name}'),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              style: FilledButton.styleFrom(
+                backgroundColor: colorScheme.error,
+                foregroundColor: colorScheme.onError,
+              ),
+              child: Text(details.actionLabel),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() {
+      _busyScope = scope;
+      _errorMessage = null;
+    });
+    try {
+      await widget.onReset(scope);
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(details.successMessage)));
+    } on Object {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage =
+            'Local data reset was incomplete. Check device storage and retry.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _busyScope = null);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Developer tools · Debug only',
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            color: colorScheme.error,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Reset device-only test data without uninstalling the app. These actions never delete cloud data.',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 8),
+        for (final scope in DeveloperDataResetScope.values)
+          _DeveloperResetTile(
+            scope: scope,
+            busy: _busyScope == scope,
+            enabled: _busyScope == null,
+            onTap: () => _confirmAndReset(scope),
+          ),
+        if (_errorMessage case final message?) ...[
+          const SizedBox(height: 8),
+          _AccountError(message: message),
+        ],
+      ],
+    );
+  }
+}
+
+class _DeveloperResetTile extends StatelessWidget {
+  const _DeveloperResetTile({
+    required this.scope,
+    required this.busy,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final DeveloperDataResetScope scope;
+  final bool busy;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final details = _developerResetDetails(scope);
+    return ListTile(
+      key: ValueKey('developer-reset-${scope.name}'),
+      contentPadding: EdgeInsets.zero,
+      enabled: enabled,
+      leading: busy
+          ? const SizedBox.square(
+              dimension: 24,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : Icon(details.icon),
+      title: Text(details.title),
+      subtitle: Text(details.subtitle),
+      trailing: const Icon(Icons.chevron_right_rounded),
+      onTap: enabled ? onTap : null,
+    );
+  }
+}
+
+class _DeveloperResetDetails {
+  const _DeveloperResetDetails({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.confirmationTitle,
+    required this.confirmationBody,
+    required this.actionLabel,
+    required this.successMessage,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final String confirmationTitle;
+  final String confirmationBody;
+  final String actionLabel;
+  final String successMessage;
+}
+
+_DeveloperResetDetails _developerResetDetails(DeveloperDataResetScope scope) {
+  return switch (scope) {
+    DeveloperDataResetScope.notebooks => const _DeveloperResetDetails(
+      icon: Icons.menu_book_outlined,
+      title: 'Clear notebook files only',
+      subtitle: 'Diagnostic only; keep existing sync mappings and cursor.',
+      confirmationTitle: 'Clear notebook files only?',
+      confirmationBody:
+          'All local notebooks, folders, PDFs, images, and audio attachments will be deleted. Existing sync mappings and cursor will remain, so this does not simulate a new device and may not download unchanged cloud notes on the next sign-in. Use Clear local data for a clean cloud-restore test.',
+      actionLabel: 'Clear files only',
+      successMessage:
+          'Local notebook files cleared. Existing sync state remains.',
+    ),
+    DeveloperDataResetScope.syncState => const _DeveloperResetDetails(
+      icon: Icons.sync_problem_outlined,
+      title: 'Reset sync state',
+      subtitle: 'Keep notebooks; clear local queues, mappings, and conflicts.',
+      confirmationTitle: 'Reset local sync state?',
+      confirmationBody:
+          'Local sync queues, resource mappings, conflicts, Recently Deleted records, and signed-out mutation journals will be deleted. Unsynced intentions may be lost, but notebook files remain.',
+      actionLabel: 'Reset sync',
+      successMessage: 'Local sync state reset. Notebook files remain.',
+    ),
+    DeveloperDataResetScope.notebooksAndSync => const _DeveloperResetDetails(
+      icon: Icons.delete_sweep_outlined,
+      title: 'Clear local data (recommended)',
+      subtitle: 'Reset notebooks and sync state for a clean restore test.',
+      confirmationTitle: 'Clear all local test data?',
+      confirmationBody:
+          'All local notebooks, attachments, and synchronization state will be deleted.',
+      actionLabel: 'Clear local data',
+      successMessage:
+          'Local notebooks and sync state cleared. Cloud data was not changed.',
+    ),
+  };
 }
 
 class _AccountContent extends StatelessWidget {
